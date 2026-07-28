@@ -13,7 +13,7 @@ internal sealed class PlayActorObserveMilestoneHandler(
     public async ValueTask<ObserveMilestoneRes> HandleAsync(
         PlayEntrySpot entrySpot,
         PlayActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ObserveMilestoneReq message,
         CancellationToken cancellationToken)
     {

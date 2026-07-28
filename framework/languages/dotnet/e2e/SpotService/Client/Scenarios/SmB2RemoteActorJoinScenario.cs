@@ -21,7 +21,7 @@ internal static class SmB2RemoteActorJoinScenario
             MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
-        await client.Request(new AuthReq(actorId, "remote actor", "play-b"))
+        await client.Request(new AuthReq(actorId, "remote actor"))
             .PacketName("AuthReq")
             .Async<AuthRes>();
         var reply = await client.Request(new ActorPingReq("b2"))

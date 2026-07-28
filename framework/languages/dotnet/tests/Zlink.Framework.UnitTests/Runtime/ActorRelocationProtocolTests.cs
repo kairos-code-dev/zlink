@@ -1,4 +1,4 @@
-﻿using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Backend.Contracts;
@@ -91,7 +91,7 @@ public sealed class ActorRelocationProtocolTests
         ZLinkEnvelopeHeader? targetContinuation = null;
         var targetIngress = new List<(string Packet, ZLinkFlowValue Flow)>();
         var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
+        options.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Off);
         var dispatcher = new ZLinkSpotRouteDispatcher(
             "actor-route",
             "target-spot",
@@ -260,8 +260,8 @@ public sealed class ActorRelocationProtocolTests
         var error = Assert.Throws<ZLinkFrameworkException>(
             () => ZLinkActorRelocationRoot.Load(wire, changedEnvelope));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RelocationDataLost, error.Kind);
-        Assert.False(error.IsRetriable);
+        Assert.Equal(ZLinkFrameworkErrorKind.DataLost, error.Kind);
+        Assert.False(error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry);
     }
 
     [Fact]

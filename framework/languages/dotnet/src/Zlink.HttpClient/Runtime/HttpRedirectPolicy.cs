@@ -57,7 +57,7 @@ internal static class HttpRedirectPolicy
             return resolved;
 
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.RequestFailed,
+            ZLinkFrameworkErrorKind.ProtocolError,
             $"HTTP redirect location is not supported: {location}");
     }
 }

@@ -188,7 +188,7 @@ Join에는 `Async`·`await`·`submit`과 `Yield`를 제공하지 않는다. Requ
 한 handler는 Join을 최대 64개까지 등록할 수 있다. Join request 하나는 encoded
 최대 1 MiB이고, 같은 handler가 등록한 모든 Join request의 합계는 최대 8 MiB다.
 제한을 넘긴 현재 registration은 일부 record를 남기지 않고 동기
-`InvalidConfiguration`으로 실패한다.
+startup configuration error로 실패한다.
 
 Timeout을 생략하면 5초를 사용한다. 명시 값은 millisecond로 올림한
 `1..INT_MAX` 범위의 유한한 값이어야 한다. Framework는 `Defer()`를 호출한 시점에
@@ -262,7 +262,7 @@ payload로 재사용하지 않는다.
 
 `Defer()`는 현재 handler의 registration scope가 열려 있을 때만 호출할 수 있다.
 Framework가 추적하는 awaited continuation은 같은 scope를 사용한다. Handler가
-종료되어 scope가 닫힌 뒤 호출하면 `InvalidConfiguration`이다. Handler에서 시작한
+종료되어 scope가 닫힌 뒤 호출하면 `InvalidOperation`이다. Handler에서 시작한
 작업을 기다리지 않고 background에서 계속 실행하는 detached task의 호출은
 application contract 위반이다. Framework는 모든 언어에서 detached task를 scope가
 닫히기 전에 식별한다고 보장하지 않는다.
@@ -300,15 +300,17 @@ ID나 여러 Store 항목을 함께 확정하는 aggregate commit ID와 같은 �
 
 | 실패한 지점 | `Failed.Kind` |
 |---|---|
-| 요청한 User Spot을 찾을 수 없다. | `SpotRouteNotFound` |
-| 이동할 수 있는 Entry Spot이나 호환 target node가 없다. | `RelocationTargetUnavailable` |
-| Target node의 수용 가능량이 부족하다. | `PlacementCapacityExhausted` |
-| Actor의 relocation policy가 cross-node 이동을 금지한다. | `RelocationDisabled` |
+| 요청한 User Spot을 찾을 수 없다. | `NotFound` |
+| 이동할 수 있는 Entry Spot이나 호환 target node가 없다. | `Unavailable` |
+| Target node의 수용 가능량이 부족하다. | `CapacityExceeded` |
+| Actor의 relocation policy가 cross-node 이동을 금지한다. | `Rejected` |
 | Deadline까지 위치 변경을 commit하지 못한다. | `DeadlineExceeded` |
-| Admission callback이 exception으로 끝나거나 capture·factory·restore·staging이 실패한다. | `RelocationFailed` |
-| Durable relocation payload가 없거나 검증에 실패한다. | `RelocationDataLost` |
-| Actor generation, owner 또는 membership fence가 현재 값과 다르다. | `ActorGenerationStale`, `ActorLocationStale` 또는 `ActorMoving` |
-| Runtime shutdown이 먼저 시작되어 commit 전에 중단한다. | `RuntimeShutdown` |
+| Admission callback이 operation을 거부한다. | `Rejected` |
+| Capture·factory·restore·staging이 내부 오류로 실패한다. | `InternalFailure` |
+| Durable relocation payload가 없거나 검증에 실패한다. | `DataLost` |
+| Actor generation이 현재 값과 다르다. | `InvalidOperation` |
+| Owner 또는 membership fence가 다르거나 Actor가 이동 중이다. | `Unavailable` |
+| Runtime shutdown이 먼저 시작되어 commit 전에 중단한다. | `ShuttingDown` |
 
 `Accepted`는 위치와 membership 변경이 commit되었다는 뜻이며 completion callback
 실행까지 끝났다는 뜻은 아니다. Framework는 lifecycle callback과 source membership
@@ -324,12 +326,12 @@ Actor가 이미 요청한 User Spot에 속해 있거나 Entry Spot Actor가 다�
 
 Join과 host maintenance가 동시에 시작되면 먼저 seal하거나 claim한 작업을 따른다.
 Join claim이 `Relocate`보다 먼저면 maintenance는 Join이 terminal 상태가 될 때까지
-기다린다. `Relocate` seal이 먼저면 Join은 `ActorMoving`, shutdown admission seal이
-먼저면 `RuntimeShutdown`으로 끝난다.
+기다린다. `Relocate` seal이 먼저면 Join은 `Unavailable`, shutdown admission seal이
+먼저면 `ShuttingDown`으로 끝난다.
 
 같은 handler가 barrier를 등록한 Actor에 request를 보내고 reply를 기다리면
 request와 handler가 서로 기다릴 수 있다. Framework는 이 request를 queue에
-제출하기 전에 `InvalidConfiguration`으로 거부한다.
+제출하기 전에 `InvalidOperation`으로 거부한다.
 
 ### 4.1 Entry Spot과 User Spot의 callback 비교
 
@@ -715,9 +717,9 @@ relocation에만 허용하며 같은 ActorId의 새 incarnation은 explicit bind
 - `SpotWide` member Actor의 request·worker `Yield`가 Actor queue claim을 유지하여 같은 Actor의 다음
   job보다 continuation을 먼저 완료한다.
 - Barrier가 걸린 Actor를 같은 handler에서 awaited request하면
-  `InvalidConfiguration`으로 거부한다.
+  `InvalidOperation`으로 거부한다.
 - Join과 Relocate·Shutdown 경합에서 먼저 확정한 claim·seal에 따라 wait,
-  `ActorMoving` 또는 `RuntimeShutdown`으로 끝난다.
+  `Unavailable` 또는 `ShuttingDown`으로 끝난다.
 - Same-target User Spot Join과 Entry Spot Actor의 `JoinEntrySpot`을 Store mutation과
   lifecycle callback이 없는 `Accepted`로 완료한다.
 - Reply encoding 실패는 barrier를 폐기하지만 encoding 뒤 caller disconnect나

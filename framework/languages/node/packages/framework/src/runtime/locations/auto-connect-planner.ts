@@ -14,6 +14,7 @@ import type {
   ZLinkAutoConnectLocal,
   ZLinkAutoConnectTarget
 } from './auto-connect-types';
+import { routeMeshConnectionNotRequired } from '../foundation/route-mesh-connection-policy';
 
 const encodeRoutingIdHex = ZLinkLocationKeyCodec.encodeRoutingIdHex;
 
@@ -63,6 +64,39 @@ export const ZLinkAutoConnectPlanner = Object.freeze({
 
   targetKeyOf(peer: ZLinkPeerLocation): string {
     return autoConnectTargetKeyOf(peer);
+  },
+
+  computeNotRequired(
+    local: ZLinkAutoConnectLocal,
+    peers: readonly ZLinkPeerLocation[]
+  ): readonly ZLinkAutoConnectTarget[] {
+    if (local.autoConnectType !== ZLinkLocationAutoConnectType.RouteMesh) {
+      return [];
+    }
+    return peers
+      .filter(peer =>
+        peer.autoConnectType === local.autoConnectType
+        && peer.meshName === local.meshName
+        && peer.endpoint.length > 0
+        && !isAutoConnectSelf(local, peer)
+        && routeMeshConnectionNotRequired(
+          local.objectRole ?? 'none',
+          local.hasRouteMeshServerChannel ?? false,
+          peer.metadata?.objectRole === 'client'
+            ? 'client'
+            : peer.metadata?.objectRole === 'server' ? 'server' : 'none',
+          peer.metadata?.hasRouteMeshServerChannel === 'true'
+        ))
+      .map(peer => ({
+        targetKey: autoConnectTargetKeyOf(peer),
+        nodeRid: peer.nodeRid,
+        lifecycleGeneration: peer.generation,
+        role: peer.role,
+        endpoint: peer.endpoint,
+        metadata: peer.metadata,
+        ownerId: peer.ownerId,
+        descriptorRevision: parseDescriptorRevision(peer.metadata?.descriptorRevision)
+      }));
   }
 });
 
@@ -112,11 +146,29 @@ function shouldDialAutoConnectPeer(local: ZLinkAutoConnectLocal, peer: ZLinkPeer
     case ZLinkLocationAutoConnectType.RouteMesh:
       return local.role === ZLinkLocationRole.Router
         && peer.role === ZLinkLocationRole.Router
+        && !routeMeshConnectionNotRequired(
+          local.objectRole ?? 'none',
+          local.hasRouteMeshServerChannel ?? false,
+          peer.metadata?.objectRole === 'client'
+            ? 'client'
+            : peer.metadata?.objectRole === 'server' ? 'server' : 'none',
+          peer.metadata?.hasRouteMeshServerChannel === 'true'
+        )
         && localIsPairwiseInitiator(local, peer);
     case ZLinkLocationAutoConnectType.Fanout:
       return local.role === ZLinkLocationRole.Sub && peer.role === ZLinkLocationRole.Pub;
     default:
       return false;
+  }
+}
+
+function parseDescriptorRevision(value: string | undefined): bigint | undefined {
+  if (value === undefined) return undefined;
+  try {
+    const revision = BigInt(value);
+    return revision > 0n ? revision : undefined;
+  } catch {
+    return undefined;
   }
 }
 

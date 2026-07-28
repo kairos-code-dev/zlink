@@ -41,7 +41,7 @@ internal static class ZLinkSpotId
         if (IsReservedEntrySpotId(spotId))
         {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Spot ID '{spotId}' uses the Framework-reserved Entry Spot ID format.");
         }
 

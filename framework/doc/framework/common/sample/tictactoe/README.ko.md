@@ -8,31 +8,30 @@
 
 ## 1. 목적
 
-TicTacToe는 location store 기반 자동 연결 없이 직접 endpoint를 설정해 scale-out을 구성하는
-기본 샘플이다. API 역할은 room 생성과 인증 발급을 맡고, Play 역할은 client stream
+TicTacToe는 자동 peer discovery 없이 endpoint를 직접 설정해 scale-out을 구성하는
+기본 샘플이다. API 역할은 framework의 User Spot 생성 API로 room을 만들고 인증을 발급한다. Play 역할은 client stream
 session, actor, room Spot을 함께 호스팅한다. 샘플은 `api-a`, `api-b`, `play-a`,
 `play-b`를 실행해 API와 Play가 모두 2개 이상일 때도 같은 게임 흐름이 유지되는지
 보여 준다.
 
 별도 Session 서버는 없다. 대신 각 Play 서버가 자기 stream session과 session relay를
-소유하고, room Spot은 Redis에 기록된 room route를 통해 owner Play의 MeshNode로
-찾아간다. 이 구조는 framework가 stream, actor, Spot 경계를 어떻게 연결하는지 보여 주면서,
-운영 환경에서 흔히 쓰는 Redis 기반 위치 저장소를 각 언어 framework의 public spot remote
-address resolver 계약 뒤에 숨긴다.
+소유한다. Room과 actor의 현재 위치는 공식 Location Store가 관리한다. 이 구조는
+framework가 stream, actor, Spot 경계를 어떻게 연결하는지 보여 주면서, 위치 조회와
+owner 선택을 application 코드에서 숨긴다.
 
 이 샘플에서 확인해야 하는 핵심은 아래와 같다.
 
 - 2개 API 서버가 같은 client-facing HTTP API를 제공한다.
-- 각 API 서버가 2개 Play MeshNode의 ROUTER peer endpoint에 수동으로 연결한다. ChannelName별 endpoint를
-  추가하지 않는다.
+- 각 API 서버의 Object Client RouteMesh가 2개 Play Object Server의 peer endpoint에 수동으로 연결한다.
+- Play가 API에 보내는 인증 request는 object routing과 분리한 ClientServer Channel을 사용한다.
 - 2개 Play 서버가 각각 stream session, actor runtime, MeshNode, room Spot factory를
   호스팅한다.
 - Play 서버끼리는 MeshNode router endpoint를 수동으로 연결한다.
-- Play 서버는 room 생성 시 Redis room route store에 `roomId`와 owner MeshNode 위치를
-  기록한다.
+- API 서버는 `IZLinkSpotManager.Create(spotType)`로 새 room을 만든다. Framework가
+  `RoomId`를 발급하고 owner를 선택하며 Location Store를 갱신한다.
 - Play 서버는 stream 인증 시 API 서버에서 user 정보를 받아 actor에 설정한다.
-- actor가 `JoinSpot(roomId)` 같은 public actor API를 사용할 때 Redis-backed resolver가
-  room owner MeshNode route를 반환한다.
+- actor가 `JoinSpot(roomId)` 같은 public actor API를 사용할 때 framework가
+  Location Store에서 current owner를 확인한다.
 - actor는 room join payload에 user 정보를 함께 보내고, room Spot은 level 조건을 확인한 뒤
   join을 허용한다.
 - 승리로 player win count가 100이 되면 room Spot이 Logical Multicast topic으로 milestone
@@ -42,7 +41,7 @@ address resolver 계약 뒤에 숨긴다.
 - client는 API 서버에서 받은 Play endpoint 목록으로 직접 stream 연결을 만든다.
 - Play session은 인증 후 actor를 만들고 현재 stream session에 bind한다.
 - room Spot은 board, turn, 승패 판정을 소유한다.
-- 연결은 location store 기반 자동 연결 없이 수동 endpoint 설정과 Redis room route store로 구성한다.
+- peer 연결은 수동 endpoint 설정으로 구성하고 object 위치는 공식 Location Store에서 찾는다.
 - handler는 annotation·attribute·decorator로 선언하되, **자동 스캔 없이 구성 코드에서 직접 등록**한다.
 - TicTacToe의 stream, channel, actor, room Spot payload는 JSON을 사용한다.
 
@@ -58,11 +57,14 @@ TicTacToe는 scale-out 연결 흐름을 보여 주는 샘플이지만 payload co
 
 ## 2. 서버 구성
 
-TicTacToe의 Channel 역할과 수동 peer 방향은 [공통 topology 기준](../README.ko.md#channel-역할과-물리-topology-기준)을
-따른다. Api와 Play는 `tictactoe` RouteMesh 하나를 공유하고 peer 쌍마다 pipe 하나만 사용한다. Play→Api
-request는 `tictactoe.api` Channel을 사용하며 별도 connect와 ClientServer Channel을 추가하지 않는다.
-두 Api는 `tictactoe.play`의 Client이고 PlayA와 PlayB는 같은 ChannelName의 Server다. Api는 업무
-ChannelName만 지정하며 Play process, peer endpoint나 NodeRid를 선택하지 않는다.
+TicTacToe의 역할과 수동 peer 방향은
+[공통 topology 기준](../README.ko.md#channel-역할과-물리-topology-기준)을 따른다.
+Object Client인 API와 Object Server인 Play는 `tictactoe` RouteMesh를 사용한다. Room 생성,
+actor와 Spot messaging은 이 RouteMesh의 logical object routing을 사용한다.
+
+Play가 API에 보내는 인증 request는 독립 `tictactoe.api` ClientServer Channel을 사용한다.
+Object Client와 ClientServer Server를 같은 RouteMesh에 섞지 않는다. Object Client끼리는
+연결할 필요가 없으므로 API끼리 RouteMesh peer를 만들지 않는다.
 
 ```mermaid
 graph LR
@@ -75,12 +77,13 @@ graph LR
 
     C -->|HTTP CreateGameHttpReq| APIA
     C -.->|HTTP CreateGameHttpReq| APIB
-    APIA -.->|Manual peer initiator| APIB
-    APIA -->|Manual peer initiator| PLAYA
-    APIA -->|Manual peer initiator| PLAYB
-    APIB -->|Manual peer initiator| PLAYA
-    APIB -->|Manual peer initiator| PLAYB
-    PLAYA -->|Manual peer initiator| PLAYB
+    APIA -->|Object RouteMesh| PLAYA
+    APIA -->|Object RouteMesh| PLAYB
+    APIB -->|Object RouteMesh| PLAYA
+    APIB -->|Object RouteMesh| PLAYB
+    PLAYA -->|Object RouteMesh| PLAYB
+    PLAYA -->|Independent API channel| APIA
+    PLAYB -->|Independent API channel| APIB
     PLAYA -->|Global room location| REDIS
     PLAYB -->|Global room location| REDIS
     C -->|STREAM host packets| PLAYA
@@ -91,48 +94,44 @@ graph LR
 
 다이어그램의 흐름은 아래와 같다.
 
-- 위 다이어그램의 stream 연결은 room owner를 뜻하지 않는다. Host는 생성 응답의
-  `OwnerPlayEndpoint`에 연결하고 guest와 observer는 다른 Play endpoint에 연결하지만, 이름과 달리
-  이 field는 생성 요청을 받은 Play의 stream endpoint일 뿐 Spot owner를 고정하거나 증명하지 않는다.
+- 위 다이어그램의 stream 연결은 room owner를 뜻하지 않는다.
 - client는 `CreateGameHttpReq`를 API 서버 HTTP endpoint 중 하나로 보낸다.
-- API 서버는 두 Play가 공유하는 `tictactoe.play` ChannelName으로 `CreateGameReq`를 보낸다. 수동 endpoint
-  목록은 MeshNode peer 연결에만 사용하고 업무 요청 대상을 고르는 인자로 사용하지 않는다.
-- 요청을 받은 Play 서버는 global `RoomId`로 Spot `GetOrCreate`를 호출한다. Framework가 stable Spot
-  type, capacity와 node weight로 owner를 선택하고 Location Store에 current route를 기록한다.
+- API 서버는 `IZLinkSpotManager.Create`에 stable Spot type과 초기 room 설정을 전달한다.
+  새 room은 caller가 재사용할 ID가 없으므로 `GetOrCreate`를 사용하지 않는다.
+- Framework가 global `RoomId`를 발급하고 stable type, capacity와 node weight로 owner를 선택한다.
+  API는 Play process, endpoint 또는 NodeRid를 배치 입력으로 전달하지 않는다.
 - API 응답은 room id와 Play stream endpoint 목록을 반환한다. NodeRid는 응답에 포함하지 않는다.
 - client는 응답에 들어 있는 Play stream endpoint만 사용한다. client 설정에 Play endpoint를
   미리 넣지 않는다.
-- host client는 생성 응답이 권장한 Play에 연결하고, guest client와 observer client는 다른 Play에
-  연결한다. 이 선택은 actor의 ingress를 나눌 뿐 room placement를 결정하지 않는다.
-- guest actor가 같은 `RoomId`로 join하면 global route resolver가 current owner 위치를
-  찾아 remote room Spot으로 라우팅한다.
-- observer actor는 owner가 아닌 Play 서버의 well-known local `PlayEntrySpot`에 observer로
+- host client는 응답의 첫 Play endpoint에 연결하고, guest와 observer는 다른 Play endpoint에
+  연결한다. 이 선택은 ingress를 나눌 뿐 room placement를 결정하지 않는다.
+- guest actor가 같은 `RoomId`로 join하면 framework가 Location Store에서 current owner를
+  확인해 remote room Spot으로 라우팅한다.
+- observer actor는 host와 다른 Play 서버의 well-known local `PlayEntrySpot`에 observer로
   등록되고, `PlayEntrySpot`이 milestone topic을 구독한다. 별도 Spot 타입을 새로 만들라는
   뜻이 아니다.
 - 게임에서 host가 승리해 누적 승수가 100이 되면 owner room Spot이 milestone event를
   publish하고, observer actor가 존재하는 Play 서버의 `PlayEntrySpot` observer handler가 이
   event를 받아 observer client로 push한다.
-- Play 서버는 stream 인증 시 API가 시작해 둔 MeshNode peer pipe를 반대 방향으로 사용해 API Channel에
-  인증을 요청한다. Play→API 전용 endpoint 연결은 추가하지 않는다.
+- Play 서버는 stream 인증 시 독립 `tictactoe.api` ClientServer Channel로 API에 요청한다.
 
 ## 3. 프로세스와 책임
 
 | 프로세스 | 구성 요소 | 책임 |
 |----------|-----------|------|
-| `TicTacToe.ApiA` / `TicTacToe.ApiB` | HTTP endpoint | room 생성 요청을 받고 client에 접속 정보를 반환한다. |
-| `TicTacToe.ApiA` / `TicTacToe.ApiB` | `tictactoe.api` ChannelName handler | Play 서버의 인증 요청을 처리하고 user 정보를 반환한다. |
-| `TicTacToe.ApiA` / `TicTacToe.ApiB` | `tictactoe.play` ChannelName client | ready Play 서버 하나에 room 생성 업무를 요청한다. 물리 node는 선택하지 않는다. |
-| `TicTacToe.PlayA` / `TicTacToe.PlayB` | `tictactoe.play` ChannelName handler | global `RoomId`로 room 생성을 요청하고 stream endpoint 목록을 반환한다. |
-| `TicTacToe.PlayA` / `TicTacToe.PlayB` | `tictactoe.api` ChannelName client | API→Play로 이미 설정된 peer pipe의 반대 방향에서 ready API member에 인증을 요청한다. Client 역할은 송신 대상을 선언하며 별도 connect를 뜻하지 않는다. |
+| `TicTacToe.ApiA` / `TicTacToe.ApiB` | HTTP endpoint와 `IZLinkSpotManager` | 새 room을 생성하고 client에 `RoomId`와 stream endpoint 목록을 반환한다. |
+| `TicTacToe.ApiA` / `TicTacToe.ApiB` | 독립 `tictactoe.api` ClientServer Server | Play 서버의 인증 요청을 처리하고 user 정보를 반환한다. |
+| `TicTacToe.ApiA` / `TicTacToe.ApiB` | Object Client RouteMesh | User Spot 생성을 요청한다. 물리 node는 선택하지 않는다. |
+| `TicTacToe.PlayA` / `TicTacToe.PlayB` | 독립 `tictactoe.api` ClientServer Client | ready API server에 인증을 요청한다. |
 | `TicTacToe.PlayA` / `TicTacToe.PlayB` | stream server | client 연결과 session dispatch를 처리한다. |
 | `TicTacToe.PlayA` / `TicTacToe.PlayB` | actor runtime | 인증된 actor를 user 정보로 설정하고 room에 join한다. |
-| `TicTacToe.PlayA` / `TicTacToe.PlayB` | MeshNode | API·Play ChannelName membership, Spot·Actor와 Logical Multicast를 하나의 ROUTER endpoint로 제공한다. |
+| `TicTacToe.PlayA` / `TicTacToe.PlayB` | Object Server RouteMesh | Spot·Actor와 Logical Multicast를 제공한다. |
 | `TicTacToe.PlayA` / `TicTacToe.PlayB` | Redis location store | room Spot 위치와 actor 위치를 저장하고 읽는다. |
 | `TicTacToe.PlayA` / `TicTacToe.PlayB` | spot/room | 입장 level 조건, board, turn, 승패 판정을 소유한다. |
 
 Play 서버 안에서 stream session과 actor, room이 함께 움직인다. 두 Play 서버는 같은 역할을
 수행하지만, room Spot은 한 owner MeshNode에만 존재한다. 다른 Play 서버에 존재하는 actor가 같은
-room에 join할 때는 Redis-backed location store에서 얻은 `SpotHandle`이 대상 room Spot을 가리킨다.
+room에 join할 때는 framework가 `RoomId`로 current owner를 확인한다.
 
 ## 4. 디렉토리와 파일 구성
 
@@ -165,7 +164,6 @@ TicTacToe/
       Configuration/
       SampleNames
       SampleSettings
-      RedisRoomRouteStore
       RedisLocationStore
     Api/
       ApiServer
@@ -178,16 +176,11 @@ TicTacToe/
         TicTacToe/
           TicTacToeBoard
           TicTacToeMatch
-      Application/
-        GameCreation/
-          TicTacToeGameCreator
       Infrastructure/
         ZLink/
           Actors/
             PlayActor
             PlayActorFactory
-          Handlers/
-            CreateGameHandler
           Sessions/
             PlaySession
           Spots/
@@ -218,10 +211,9 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 | `Client/TicTacToeClientScenario` | sample scenario | HTTP `POST /games`로 room을 만들고, 응답의 Play stream endpoint 목록으로 host, guest, observer connector를 만든 뒤 인증, join, move, push 검증을 순서대로 수행한다. |
 | `Shared/Contracts/*` | shared contract | HTTP, channel, stream, actor, Spot payload 계약을 정의한다. |
 | `Server/Configuration/*` | composition settings | 샘플 endpoint, Redis endpoint, instance 이름, routing id, timeout, logging 설정을 한 곳에 모은다. |
-| `Server/Api/*` | inbound HTTP adapter, API channel adapter | client의 room 생성 요청과 Play 서버의 인증 요청을 처리한다. |
+| `Server/Api/*` | inbound HTTP adapter, framework adapter | client의 room 생성 요청을 `IZLinkSpotManager.Create`로 처리하고 Play 서버의 인증 요청에 응답한다. |
 | `Server/Play/Domain/TicTacToe/*` | domain model | board, player, turn, 승패 판정 같은 게임 규칙을 framework 타입 없이 표현한다. |
-| `Server/Play/Application/GameCreation/*` | application use case | room id 생성, Spot 생성 요청, Redis room route 기록을 조율한다. |
-| `Server/Play/Infrastructure/ZLink/*` | ZLink adapter | channel, stream session, actor, Spot callback을 application/domain 호출로 변환한다. |
+| `Server/Play/Infrastructure/ZLink/*` | ZLink adapter | stream session, actor, Spot callback을 application/domain 호출로 변환한다. |
 
 observer milestone 알림 처리는 `PlayEntrySpot` 안의 observer handler와 private registry
 책임으로 둔다. 언어별 framework 제약 때문에 helper class나 private registry 객체를 둘 수는
@@ -264,7 +256,7 @@ TicTacToe 샘플은 모든 framework 언어에서 같은 public framework 모델
 - `run_sample`이 Redis container를 직접 준비할 때는 실행마다 고유한 container 이름, Docker가
   배정한 localhost port, 실행별 key prefix를 사용해야 한다. 외부 Redis endpoint 재사용 mode는
   제공하지 않는다. 이렇게 해야 동시에 실행되는 다른 테스트나 다른 샘플의 room route와 섞이지 않는다.
-- Redis client dependency는 room route store adapter 안에만 둔다. handler, actor, Spot,
+- Redis client dependency는 Location Store provider 안에만 둔다. Handler, actor, Spot,
   Domain 코드가 Redis client 타입을 직접 참조하면 안 된다.
 - actor가 room에 join하는 흐름은 각 언어 framework의 public actor/Spot API와 public spot
   handle resolver 계약을 사용해야 한다. 샘플을 통과시키기 위해 framework의
@@ -291,8 +283,6 @@ TicTacToe 샘플은 모든 framework 언어에서 같은 public framework 모델
   드러나야 한다.
 - Domain에는 board, turn, win/draw 판정만 둔다. stream session, actor context,
   handler, logger, codec, endpoint 설정은 Domain으로 들어오면 안 된다.
-- Application은 room 생성 use case를 조율한다. framework callback을 직접 받거나
-  transport 세부 구현을 다루지 않는다.
 - Infrastructure는 HTTP, channel, stream session, actor, Spot, timer, codec 연결을 맡는다.
   handler나 Spot adapter가 board 판정, turn 판정, winner 판정을 직접 구현하면 안 된다.
 
@@ -302,41 +292,38 @@ TicTacToe 샘플은 모든 framework 언어에서 같은 public framework 모델
 
 ## 6. 수동 연결 방식
 
-TicTacToe는 location store 기반 자동 연결을 사용하지 않는다. API 서버와 Play 서버는 샘플
-설정에 적힌 endpoint를 직접 사용하고, room Spot 위치는 Redis room route store에서 찾는다.
+TicTacToe는 automatic discovery를 사용하지 않는다. API와 Play는 샘플 설정의 endpoint로
+Object RouteMesh peer를 직접 구성한다. Room 위치는 공식 Location Store에서 찾는다.
 
 | 연결 | 설정 주체 | 예시 의미 |
 |------|-----------|-----------|
 | client -> API HTTP | client 설정 | room 생성 API endpoint |
-| API MeshNode -> API MeshNode | API-A 설정 | API-A가 API-B에 시작하는 canonical full-mesh peer 연결 |
-| API -> Play ChannelName | `tictactoe.play` | API MeshNode에 설정된 수동 peer 연결 위에서 ready server를 선택한다. |
-| Play -> API ChannelName | 추가 연결 없음 | `tictactoe.api` Client 역할은 API→Play로 이미 설정된 양방향 peer pipe를 사용한다. |
-| Play MeshNode -> Play MeshNode | Play 서버 설정 | RID direct·Spot direct·Logical Multicast가 공유하는 ROUTER endpoint의 수동 연결 |
-| Play -> Redis | Play 서버 설정 | room id에서 owner MeshNode 위치를 저장하고 조회하는 Redis endpoint |
-| client -> Play stream | API 응답 | 생성된 room이 사용할 Play stream endpoint 목록 |
+| API Object Client -> Play Object Server | API 설정 | User Spot create와 logical object routing에 쓰는 수동 RouteMesh peer |
+| Play -> API 인증 | 독립 `tictactoe.api` ClientServer Channel | object routing과 분리한 request/reply 연결 |
+| Play Object Server -> Play Object Server | Play 설정 | remote Spot·Actor와 Logical Multicast가 공유하는 수동 RouteMesh peer |
+| framework -> Redis | Location Store 설정 | room과 actor의 current owner를 저장하고 조회한다. |
+| client -> Play stream | API 응답 | client ingress를 분산할 Play stream endpoint 목록 |
 
 이 샘플이 수동 연결을 쓰는 이유는 자동 발견이 없는 기본 배선도 framework로 표현할 수
 있음을 보여 주기 위해서다. 공유 location store 기반 자동 연결은 Bingo 샘플이 맡는다.
 
-Redis는 location store 기반 자동 연결을 대신하는 장치가 아니다. 여기 쓰는 Redis에는 room Spot의
-위치만 저장한다. endpoint 목록, process 실행 순서, channel 연결은 여전히 샘플 설정과
-runner가 명시적으로 제공한다.
-
-네 MeshNode의 수동 full mesh는 각 unordered peer 쌍마다 initiator를 하나만 둔다. API-A→API-B,
-API-A→Play-A/Play-B, API-B→Play-A/Play-B, Play-A→Play-B가 canonical initiator다. 반대 방향
-업무 호출은 이미 설정된 양방향 peer pipe를 사용하며 reciprocal connect를 추가하지 않는다.
+Redis는 automatic discovery를 대신하지 않는다. Endpoint 목록과 연결 방향은 샘플 설정과
+runner가 제공한다. Object Client끼리는 연결하지 않는다. API-A와 API-B 사이에는 object
+routing용 peer가 필요하지 않다.
 
 ### 6.1 Room owner 선택
 
-API 서버는 room 생성 요청을 받을 때 두 Play가 공유하는 `tictactoe.play` ChannelName만 지정한다.
-요청을 받은 handler도 local node manager를 사용하지 않고 global Spot manager에 `RoomId`와 stable
-Spot type을 전달한다. Framework는 current descriptor의 capacity와 node weight로 owner를 정한다.
-수동 설정된 endpoint는 peer 연결과 client stream 접속에만 사용한다.
+API 서버는 새 room 요청을 받으면 `IZLinkSpotManager.Create(spotType)`에 초기 설정을
+전달한다. `Create`는 Framework가 새 global `RoomId`를 발급하는 API다. Caller가 소유한
+stable ID로 같은 room을 여러 요청에서 보장해야 할 때만 `GetOrCreate(spotId, spotType)`를
+사용한다. TicTacToe의 새 game에는 재사용할 caller ID가 없으므로 `Create`가 맞다.
+
+Framework는 eligible Object Server의 stable type, capacity와 node weight로 owner를 정한다.
+수동 endpoint는 peer 연결과 client stream 접속에만 사용한다.
 
 검증 기준은 특정 Play 이름이나 NodeRid가 아니다. 두 client ingress에서 같은 `RoomId`로 join하고
-동일한 game state와 notify를 확인하면 된다. `OwnerPlayEndpoint`는 기존 wire 이름을 유지하지만
-Spot owner 주소가 아니라 host client가 사용할 stream endpoint다. 이를 Location Store owner와
-비교하거나 다음 room의 placement 입력으로 사용하지 않는다.
+동일한 game state와 notify를 확인하면 된다. HTTP 응답에는 owner endpoint를 두지 않는다.
+`PlayEndpoints`는 client ingress 선택용이며 Spot owner를 나타내지 않는다.
 
 ### 6.2 room 위치 조회
 
@@ -346,24 +333,20 @@ lifecycle이 **spot location row**를 자동으로 기록한다. row schema, key
 generation은 [41 Redis location store](../../spec/22-location-store-redis.ko.md)가 소유하며
 샘플이 다시 정의하지 않는다.
 
-room Spot의 routing id는 `RoomId`에서 파생한다. 다른 노드가 그 room으로 보낼 때는 **spot handle
-resolver**로 spot rid에 해당하는 `SpotHandle`을 얻고, 전송 API는 그 handle을 받는다. handle은
-불투명하며 owner node rid와 전송 mesh는 framework가 소유한다 — 샘플 코드가 owner node rid를 읽거나
-보관하지 않는다([24 spot 주소 메시징](../../spec/16-spot-address-messaging.ko.md)).
-
-모든 언어 샘플은 같은 resolver와 `SpotHandle` 전송 의미를 사용해야 하며, 한 언어만 internal runtime
-객체나 별도 route helper로 이 경로를 우회하면 안 된다.
+다른 node에서 room으로 보낼 때는 public Spot·Actor API에 global `RoomId`를 전달한다.
+Framework가 owner route와 generation을 관리한다. 샘플 코드가 owner NodeRid를 읽거나
+보관하지 않는다([Spot 주소 메시징](../../spec/16-spot-address-messaging.ko.md)).
 
 Redis에 없는 room id는 재시도 가능한 route-not-found 오류로 처리한다. 없는 room을 샘플
 전용 fallback으로 새로 만들면 scale-out routing 오류가 숨겨지므로 금지한다.
 
 ### 6.3 Logical Multicast 연결
 
-Play 서버끼리 연결하는 MeshNode ROUTER는 ChannelName, RID direct, remote room Spot request, actor join과
+Play 서버끼리 연결하는 Object RouteMesh는 remote room Spot request, actor join과
 Logical Multicast가 함께 사용한다. milestone 알림을 위해 별도 endpoint를 만들지 않는다. 두 Play
 서버는 설정에 적힌 peer MeshNode endpoint로 한 번만 연결한다.
 
-Logical Multicast에는 Redis room route store를 사용하지 않는다. publish 대상은 특정 room Spot
+Logical Multicast는 개별 room 위치를 조회하지 않는다. Publish 대상은 특정 room Spot
 위치가 아니라 topic이다. 이 샘플의 topic은 `tictactoe.player.milestone`처럼 모든 언어에서
 같은 문자열 의미를 유지해야 한다. 각 Play 서버는 시작할 때 자기 MeshNode의 local
 `PlayEntrySpot`에 milestone topic subscribe handler를 등록한다. observer actor는
@@ -374,7 +357,7 @@ Logical Multicast에는 Redis room route store를 사용하지 않는다. publis
 여기서 observer handler는 별도 Spot lifecycle을 뜻하지 않는다. C++, Node, Kotlin, Java처럼
 파일 구조와 framework callback 표현이 다른 언어도 observer 목록 관리와 `WinMilestoneNotify`
 전송 책임을 `PlayEntrySpot` 또는 그 안의 private helper에 둔다.
-room 상태를 소유하는 `TicTacToeGame`에 observer를 등록하면 owner가 아닌 Play 서버에서
+room 상태를 소유하는 `TicTacToeGame`에 observer를 등록하면 다른 Play 서버에서
 milestone을 받는 흐름을 설명하기 어렵고, 별도 public Spot 타입을 만들면 샘플의 Spot 구조가
 언어마다 달라지므로 피한다.
 
@@ -384,8 +367,14 @@ room Spot은 이번 판의 승리 결과로 event payload의 `Wins`만 100으로
 영속 user profile 갱신을 구현하지 않는다. profile 갱신까지 보여 주면 Logical Multicast 검증보다
 외부 저장소 흐름이 더 커지기 때문이다.
 
-언어별 public API 이름은 다를 수 있지만 의미는 같아야 한다. MeshNode는 하나의 ROUTER endpoint와
-room ChannelName membership을 등록한다. local `PlayEntrySpot`은 topic subscription을 등록하고 room
+Publish terminal은 source runtime이 publish 작업을 시작했다는 뜻이다. Subscriber 수,
+remote Spot queue 수락, handler 시작이나 완료를 반환하거나 집계하지 않는다. Publish가
+시작된 뒤 개별 target 전달 실패로 전체 operation을 실패시키거나 자동 재전송하지 않는다.
+따라서 샘플은 publish 반환값으로 fan-out 성공을 판단하지 않는다. Observer가 받은
+`WinMilestoneNotify`를 별도로 기다려 이 시나리오의 업무 결과를 검증한다.
+
+언어별 public API 이름은 다를 수 있지만 의미는 같아야 한다. Object Server는 하나의 RouteMesh endpoint와
+object capability를 등록한다. Local `PlayEntrySpot`은 topic subscription을 등록하고 room
 Spot은 public Logical Multicast API로 event를 제출한다.
 
 이 흐름은 알림과 projection에 사용하는 event fan-out 예시다. turn 처리, board mutation,
@@ -400,9 +389,9 @@ actor, Spot, Domain 코드에 드러나면 안 된다.
 
 | 언어 | Redis client 기준 | 적용 위치 |
 |------|-------------------|-----------|
-| .NET | `StackExchange.Redis` | `RedisRoomRouteStore` adapter |
-| Java/Kotlin | Lettuce 또는 같은 수준의 비동기 Redis client | `RedisRoomRouteStore` adapter |
-| Node.js | `ioredis` 또는 `redis` package | `RedisRoomRouteStore` adapter |
+| .NET | `StackExchange.Redis` | 공식 Redis Location Store provider |
+| Java/Kotlin | Lettuce 또는 같은 수준의 비동기 Redis client | 공식 Redis Location Store provider |
+| Node.js | `ioredis` 또는 `redis` package | 공식 Redis Location Store provider |
 | C++ | `redis-plus-plus` | Framework `redis_location_store_t`를 등록하는 `Configuration/location_store.hpp` |
 
 C++ 샘플은 `redis-plus-plus`를 사용한다. C++ framework는 이미 C++20과 vcpkg manifest를
@@ -458,16 +447,11 @@ Server/Play/
     TicTacToe/
       TicTacToeBoard
       TicTacToeMatch
-  Application/
-    GameCreation/
-      TicTacToeGameCreator
   Infrastructure/
     ZLink/
       Actors/
         PlayActor
         PlayActorFactory
-      Handlers/
-        CreateGameHandler
       Sessions/
         PlaySession
       Spots/
@@ -491,13 +475,11 @@ Server/Play/
 |------|------|
 | `Domain/TicTacToe/TicTacToeBoard` | 9칸 board, cell 범위 검증, 이미 사용한 cell 검증, 승리 라인 판정을 소유한다. |
 | `Domain/TicTacToe/TicTacToeMatch` | player join, X/O 배정, turn, timeout, win/draw 상태 전이, snapshot 생성을 소유한다. |
-| `Application/GameCreation/TicTacToeGameCreator` | 명시적인 `RoomId`를 만들고, 그 `RoomId` 문자열에서 room Spot routing id를 만든 뒤 room을 생성한다. |
 | `Infrastructure/ZLink/Sessions/PlaySession` | stream 연결, 첫 packet 인증, actor 생성, session binding, client packet dispatch를 맡는다. |
 | `Infrastructure/ZLink/Spots/EntrySpot/PlayEntrySpot` | actor entry lifecycle, room join request dispatch, observer milestone subscription, actor destroy 진입점을 맡는다. |
 | `Infrastructure/ZLink/Spots/TicTacToeGameSpot/TicTacToeGame` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, room member push 전송을 맡는다. |
 | `Infrastructure/ZLink/Spots/EntrySpot/Handlers/*` | actor request를 받아 entry Spot에서 room Spot으로 join시킨다. |
 | `Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/*` | actor request와 timer callback을 받아 room domain operation을 호출한다. |
-| `Infrastructure/ZLink/Handlers/CreateGameHandler` | Play channel의 room 생성 request를 application use case로 연결한다. |
 
 observer milestone 처리는 `PlayEntrySpot`의 local notification responsibility다. 언어별로
 private helper, nested class, closure, actor map 같은 구현 세부 표현은 달라도 외부에서 볼 수
@@ -525,12 +507,11 @@ TicTacToe는 같은 규칙을 모든 언어 샘플에서 사용한다.
 TicTacToe client는 아래 순서로 scenario를 실행하고 각 단계의 값을 확인한다.
 
 1. HTTP `CreateGameHttpReq`에 넣은 `GameName`이 `CreateGameHttpRes.GameName`으로
-   돌아오는지 확인한다. `RoomId`, `OwnerPlayEndpoint`, `PlayEndpoints`, `PlayNodes`가 비어
+   돌아오는지 확인한다. `RoomId`, `PlayEndpoints`, `PlayNodes`가 비어
    있지 않고 `PlayEndpoints`에 서로 다른 Play endpoint가 2개 이상 있는지도 확인한다.
    `PlayNodes`에는 각 Play stream endpoint가 한 번씩 들어 있어야 하며 NodeRid는 포함하지 않는다.
-2. host는 `OwnerPlayEndpoint`로, guest는 `PlayEndpoints` 중 owner가 아닌 endpoint로
-   connector를 만든다. observer도 owner가 아닌 endpoint로 connector를 만든다. 이 조건이
-   깨지면 scale-out 검증이 되지 않으므로 실패로 처리한다.
+2. host는 첫 Play endpoint로 connector를 만든다. Guest와 observer는 다른 endpoint를
+   사용한다. 이 선택은 client ingress만 나누며 room owner를 나타내지 않는다.
 3. host, guest, observer가 각각 stream 인증을 요청하고,
    `AuthenticateRes.Player.ActorId`가 요청한 actor id와 같은지 확인한다. 응답에는 display
    name, level, wins가 함께 들어 있어야 하며, host와 guest의 level은 room 입장 조건
@@ -540,7 +521,7 @@ TicTacToe client는 아래 순서로 scenario를 실행하고 각 단계의 값�
 5. host가 `JoinGameReq(RoomId)`를 보내고 response state의 `RoomId`, `WaitingForPlayers`,
    `X` 배정을 확인한다. host는 자기 join notify를 받지 않아야 한다.
 6. guest가 다른 Play 서버에서 같은 `RoomId`로 join하고 response state의 `InProgress`,
-   `O` 배정을 확인한다. 이 join은 global route resolver가 current owner 위치를 찾는
+   `O` 배정을 확인한다. 이 join은 framework가 Location Store에서 current owner를 찾는
    경로를 통과해야 한다. join payload에는 actor id뿐 아니라 인증 때 받은 user 정보가
    들어가며, owner room Spot은 level 조건을 만족하는지 확인한다.
 7. host는 connector wait API로 `PlayerJoinedNotify`를 기다리고, payload의 `ActorId`,
@@ -554,7 +535,7 @@ TicTacToe client는 아래 순서로 scenario를 실행하고 각 단계의 값�
 10. 마지막 host move는 `Won`, winner가 host actor id, board가 deterministic final board인지
    확인한다. guest는 같은 winner를 담은 final `GameStateNotify`를 받아야 한다.
 11. host의 인증 정보는 `Wins = 99`에서 시작한다. 마지막 승리로 host의 누적 승수가 100이
-   되면 owner room Spot은 `PlayerWinMilestoneEvent`를 publish해야 한다. owner가 아닌 Play
+   되면 owner room Spot은 `PlayerWinMilestoneEvent`를 publish해야 한다. host와 다른 Play
    서버에 연결된 observer client는 connector wait API로 `WinMilestoneNotify`를 기다리고,
    `ActorId`, `DisplayName`, `Wins = 100`, `RoomId`를 확인한다. 특정 수신 NodeRid는 성공 조건이 아니다.
 12. host, guest, observer는 inbound observer 로그에 `stream-inbound` marker가 남았는지
@@ -594,20 +575,6 @@ CreateGameHttpReq {
 
 CreateGameHttpRes {
   RoomId: string
-  OwnerPlayEndpoint: string
-  PlayEndpoints: string[]
-  PlayNodes: PlayNodeInfo[]
-  GameName: string
-  RequiredLevel: int
-}
-
-CreateGameReq {
-  GameName: string
-}
-
-CreateGameRes {
-  RoomId: string
-  OwnerPlayEndpoint: string
   PlayEndpoints: string[]
   PlayNodes: PlayNodeInfo[]
   GameName: string
@@ -736,31 +703,21 @@ mark는 `O`로 표현한다. 예를 들어 `"X.O...X.."`는 0번과 6번 cell에
 sequenceDiagram
     participant C as Client
     participant API as Api Server
-    participant PLAYC as Play Route Caller
-    participant PLAYS as Owner Channel Handler
     participant ROOMS as Room Spot Manager
     participant REDIS as Redis Location Store
 
     C->>API: HTTP CreateGameHttpReq
-    API->>PLAYC: Request shared Play channel/CreateGameReq
-    PLAYC->>PLAYS: Channel request without owner NodeRid
-    PLAYS->>ROOMS: GetOrCreate with explicit global RoomId
-    ROOMS->>REDIS: Resolve or claim global room location
-    ROOMS-->>PLAYS: RoomId + public response
-    PLAYS-->>PLAYC: CreateGameRes
-    PLAYC-->>API: CreateGameRes
+    API->>ROOMS: Create(roomType) with initial settings
+    ROOMS->>REDIS: Reserve generated RoomId and select owner
+    REDIS-->>ROOMS: Ready room reference
+    ROOMS-->>API: Created RoomId
     API-->>C: HTTP CreateGameHttpRes
 ```
 
-API 서버는 HTTP 요청을 받아 shared `tictactoe.play` ChannelName으로 room 생성을 요청한다.
-API는 Play process나 owner NodeRid를 선택하지 않는다. 요청을 받은 Play 서버는 전역 `RoomId`로
-room을 찾거나 만들고 Location Store가 현재 owner route를 관리한다. 응답은 room 식별자, stream
-접속 endpoint와 최소 입장 level을 포함하지만 physical owner NodeRid를 성공 조건으로 노출하지
-않는다. API 서버는 이 값을 client가 사용할 HTTP 응답으로 바꾼다.
-`RoomId`는 client와 server가 함께 쓰는 명시적인 room 식별자다. Spot routing id는
-`RoomId` 문자열에서 만든다. 예를 들어 .NET 구현은 `RoutingId.From(roomId)`로 room
-Spot을 만들고, `JoinGameReq.RoomId`를 같은 방식으로 routing id로 바꾸어 join한다.
-`RoomId`를 core routing id의 hex 문자열로 노출하지 않는다.
+API 서버는 HTTP 요청을 받아 `IZLinkSpotManager.Create`로 room 생성을 요청한다.
+Framework는 global `RoomId`를 발급하고 owner를 선택한다. API는 Play process,
+owner NodeRid 또는 preferred endpoint를 전달하지 않는다. 응답에는 logical `RoomId`,
+client stream endpoint 목록과 최소 입장 level만 포함한다.
 
 TicTacToe 샘플의 기본 room은 `RequiredLevel = 3`을 사용한다. 이 값은 복잡한 매칭 규칙을
 보여 주려는 목적이 아니라, room Spot이 actor/user snapshot을 보고 join admission을
@@ -873,8 +830,8 @@ client는 milestone push를 기다린다. 이 Entry Spot은 `tictactoe.player.mi
 client가 host와 다른 Play server ingress에 연결되어 있었고 같은 업무 event를 받았는지 확인한다.
 현재 NodeRid는 이 검증의 입력이나 성공 조건으로 사용하지 않는다.
 
-이 시나리오는 remote join과 다른 기능을 검증한다. guest join은 Redis-backed resolver와
-MeshNode router request/reply 경로를 검증하고, milestone 알림은 Logical Multicast fan-out 경로를
+이 시나리오는 remote join과 다른 기능을 검증한다. Guest join은 Location Store 기반
+logical object request/reply를 검증하고, milestone 알림은 Logical Multicast fan-out을
 검증한다. multicast event는 알림 전달용이므로 event 수신을 게임 승패 확정 조건으로 삼으면
 안 된다. 게임 결과와 누적 승수 계산은 owner room Spot 또는 그 뒤의 application service가
 결정하고, Logical Multicast는 이미 결정된 milestone을 다른 Spot에 알리는 데만 사용한다.
@@ -959,7 +916,7 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
 
 | 항목 | TicTacToe | Bingo |
 |------|-----------|-------|
-| 연결 방식 | 수동 endpoint 설정 + Redis room route store | 공유 location store 기반 자동 연결 |
+| 연결 방식 | 수동 RouteMesh endpoint + 공식 Location Store | 공유 Location Store 기반 automatic discovery |
 | client API 요청 | API 서버로 직접 보낸다. | Session stream 하나로 보낸다. |
 | 게임 stream 연결 | API 응답의 Play endpoint 목록으로 서로 다른 Play 서버에 직접 연결한다. | Session 서버 연결 하나만 유지한다. |
 | Session 서버 | 별도 프로세스 없음. Play 서버가 session과 room을 함께 소유한다. | 별도 Session 서버가 client stream과 actor binding을 소유한다. |
@@ -971,29 +928,32 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
 
 - API 역할 2개와 Play 역할 2개가 별도 실행 모드 또는 별도 프로세스로 구분되어 있다.
 - 별도 Session 서버 프로세스는 없다.
-- location store 기반 자동 연결을 사용하지 않는다. 수동 endpoint로 MeshNode peer pipe를 구성하며,
-  ChannelName 호출은 이 peer pipe를 사용한다.
+- automatic discovery를 사용하지 않는다. Object Client와 Object Server의 RouteMesh
+  endpoint를 수동으로 연결한다.
+- Play→API 인증은 object RouteMesh와 분리한 ClientServer Channel을 사용한다.
+- API의 Object Client끼리는 연결하지 않는다.
 - Play 서버끼리는 하나의 MeshNode ROUTER endpoint를 수동으로 연결하고 remote room Spot request와
   Logical Multicast를 모두 이 peer 연결로 검증한다.
 - 공식 Redis location store를 `AddLocationStore(...)`로 등록한다. room Spot의 위치는 framework가
   spot location row로 자동 기록하며, 샘플이 자체 Redis 스키마를 만들지 않는다.
-- 모든 언어 샘플은 actor room join에 public actor/Spot API와 public **spot handle resolver**
-  계약을 사용한다(반환 값은 불투명한 `SpotHandle`). internal runtime 객체나 샘플 전용 route
-  helper로 remote join을 우회하지 않는다.
+- 모든 언어 샘플은 actor room join에 public actor/Spot API와 global `RoomId`를 사용한다.
+  internal runtime 객체나 샘플 전용 route helper로 remote join을 우회하지 않는다.
 - 모든 언어 샘플은 milestone 알림에 public Logical Multicast API를 사용한다. internal socket,
   channel publish 우회, 샘플 전용 fan-out helper로 대체하지 않는다.
 - `run_sample`은 실행마다 전용 Docker Redis container를 준비하고 종료 시 자신이 만든 container만
   정리한다.
 - client는 room 생성 같은 API 요청만 API 서버로 보낸다.
+- API는 `IZLinkSpotManager.Create`로 새 room을 만들고 Framework가 발급한 `RoomId`를
+  반환한다. Channel 기반 room 생성 request를 두지 않는다.
 - client는 API 응답으로 받은 Play 서버 stream endpoint 목록에만 직접 연결한다.
 - API 응답은 각 Play stream endpoint를 `PlayNodes`로 제공하며 NodeRid를 포함하지 않는다.
-- host는 응답이 권장한 Play stream endpoint에 연결하고, guest와 observer는 다른 Play
-  서버 stream endpoint에 연결한다.
+- host와 guest는 서로 다른 Play stream endpoint에 연결한다. Endpoint 선택은 room
+  placement 입력이나 owner 증거로 사용하지 않는다.
 - Play session은 `AuthenticateReq`에서 API 서버로 인증 request를 보낸다.
 - 인증 응답의 `PlayerInfo.ActorId`를 actor의 `ActorId`로 사용하고, display name과 level을
   actor에 설정한다.
-- `JoinGameReq` 이후 actor가 room에 join한다. guest가 owner가 아닌 Play 서버에 연결되어 있어도
-  Redis-backed resolver를 통해 owner room Spot에 join해야 한다.
+- `JoinGameReq` 이후 actor가 room에 join한다. Guest가 host와 다른 Play 서버에 연결되어 있어도
+  framework가 Location Store에서 current owner를 확인해 room Spot에 join해야 한다.
 - `JoinSpot` payload에는 `PlayerInfo`가 들어가고, owner room Spot은
   `PlayerInfo.Level >= RequiredLevel` 조건을 확인한 뒤 join을 허용한다.
 - host player는 `Wins = 99`로 인증되고, host 승리 후 room Spot은 `Wins = 100` milestone

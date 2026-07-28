@@ -11,6 +11,7 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace ResilienceLifecycle.Client.Support;
 
@@ -229,19 +230,18 @@ internal static class StormClientWorker
             .ConfigureLogging(static logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
+                services.AddSingleton(new E2eMessageFlowListener(
+                    Path.Combine(logDir, $"storm-{index}-flow.log"),
+                    $"storm-{index}"));
                 services.AddZLinkFramework(framework =>
                 {
-                    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                        .SetConnectionString(redisEndpoint)
-                        .SetKeyPrefix(redisKeyPrefix)));
-                    framework.ConfigureDispatch()
-                        .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                        .TraceLogFile(Path.Combine(logDir, $"storm-{index}-flow.log"))
-                        .TraceLabel($"storm-{index}");
+                    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = redisEndpoint; redis.KeyPrefix = redisKeyPrefix; }));
+                    framework.ConfigureDispatch().Diagnostics
+                        .SetLevel(ZLinkDiagnosticsLevel.Normal);
                     var mesh = framework.AddRouteMesh(ResilienceLifecycleNames.Channel)
                         .Listen("tcp://127.0.0.1:0")
                         .SetRoutingIdPrefix("storm");
-                    mesh.ChannelName(ResilienceLifecycleNames.ConsumerChannel);
+                    mesh.Channel(ResilienceLifecycleNames.Channel).Client();
                 });
             })
             .Build();
@@ -260,7 +260,6 @@ internal static class StormClientWorker
                 case ["REQUEST", var marker]:
                 {
                     var reply = await client.RequestToChannel(
-                            ResilienceLifecycleNames.Channel,
                             ResilienceLifecycleNames.Channel,
                             new ProfileReq("fast", marker))
                         .Timeout(TimeSpan.FromSeconds(10))
@@ -294,14 +293,15 @@ internal static class StormClientWorker
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var peer = runtime.Snapshot(ResilienceLifecycleNames.Channel).Peers
+            var status = runtime.GetStatus(ResilienceLifecycleNames.Channel);
+            var peer = status.Peers
                 .FirstOrDefault(candidate =>
-                    candidate.Ready
-                    && candidate.Rid == RoutingId.From("api-b")
+                    candidate.State == ZLinkPeerState.Ready
+                    && candidate.NodeRid == RoutingId.From("api-b")
                     && (previousGeneration is null
-                        || candidate.LifecycleGeneration != previousGeneration.Value));
+                        || status.Sequence != previousGeneration.Value));
             if (peer is not null)
-                return peer.LifecycleGeneration;
+                return status.Sequence;
             await Task.Delay(100);
         }
 

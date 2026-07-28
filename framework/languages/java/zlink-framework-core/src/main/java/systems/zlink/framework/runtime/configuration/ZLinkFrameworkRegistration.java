@@ -230,6 +230,13 @@ public final class ZLinkFrameworkRegistration {
                 }
             }
             objectRoleConfigured |= meshNode.objectRoleEnabled();
+            if (meshNode.objectRoleEnabled()
+                && !meshNode.objectServer()
+                && !meshNode.nodeHandlers().isEmpty()) {
+                throw new ZLinkConfigurationException(
+                    "Object Client cannot register application Node direct handlers: "
+                        + meshNode.meshName());
+            }
             relocationStoreRequired |= meshNode.requiresRelocationStore();
             if (!meshNode.actorFactories().isEmpty()) {
                 actorCapableNodes++;

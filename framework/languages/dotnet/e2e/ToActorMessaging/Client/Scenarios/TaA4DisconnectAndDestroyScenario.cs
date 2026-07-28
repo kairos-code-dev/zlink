@@ -24,7 +24,7 @@ internal static class TaA4DisconnectAndDestroyScenario
         await context.AssertCallAsync("TA-A4-disconnected-send", actorId, "a4-send", "sent", send: true);
         await context.DestroyActorAAsync(actorId, "TA-A4");
         await context.AssertCachedFailureAsync(
-            "TA-A4-destroyed-request", actorId, "ActorRouteNotFound");
+            "TA-A4-destroyed-request", actorId, "NotFound");
 
         var evidence = await context.GetAllActorEvidenceAsync();
         foreach (var (scenario, kind) in new[]

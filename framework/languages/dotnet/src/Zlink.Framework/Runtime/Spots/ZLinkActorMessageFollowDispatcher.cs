@@ -2,6 +2,29 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkActorMessageFollowDispatcher
 {
+    internal static bool CanFollow(
+        ZLinkActorRuntimeState actorState,
+        ZLinkBackendActorRef frameActor,
+        ZLinkBackendActorRouteContext routeContext)
+    {
+        var route = actorState.Handoff.RouteFrame(
+            actorState.NativeActorRef,
+            frameActor,
+            out var messageFollowRoute);
+        if (route != ZLinkActorFrameRoute.MessageFollow)
+            return false;
+        try
+        {
+            ValidateMessageFollowRoute(messageFollowRoute!.Value, routeContext);
+            return true;
+        }
+        catch (ZLinkFrameworkException exception)
+            when (exception.Kind == ZLinkFrameworkErrorKind.Unavailable)
+        {
+            return false;
+        }
+    }
+
     public static bool TryFollow(
         ZLinkFrameworkRuntime runtime,
         ZLinkActorRuntimeState actorState,
@@ -15,7 +38,8 @@ internal static class ZLinkActorMessageFollowDispatcher
         Message body,
         ulong sourceNodeGeneration = 0,
         ZLinkServiceWireCodec.RequestSourceFence? requestSource = null,
-        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null)
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null,
+        ReadOnlyMemory<byte> applicationMetadata = default)
     {
         var route = actorState.Handoff.RouteFrame(
             actorState.NativeActorRef,
@@ -35,7 +59,8 @@ internal static class ZLinkActorMessageFollowDispatcher
                 body,
                 sourceNodeGeneration,
                 requestSource,
-                directReply);
+                directReply,
+                applicationMetadata);
         }
         if (route is ZLinkActorFrameRoute.Stale
             or ZLinkActorFrameRoute.MessageFollowExpired)
@@ -45,7 +70,7 @@ internal static class ZLinkActorMessageFollowDispatcher
                     ? "message_follow_expired"
                     : "message_follow_rejected");
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor ref '{frameActor.ActorId}' generation '{frameActor.Generation}' is stale.");
         }
 
@@ -77,7 +102,7 @@ internal static class ZLinkActorMessageFollowDispatcher
         ZLinkActorMessageFollowRoute messageFollowRoute,
         string reason) =>
         new(
-            ZLinkFrameworkErrorKind.ActorLocationStale,
+            ZLinkFrameworkErrorKind.Unavailable,
             $"Actor ref '{messageFollowRoute.SourceActor.ActorId}' cannot use Message Follow because {reason}.");
 
 }

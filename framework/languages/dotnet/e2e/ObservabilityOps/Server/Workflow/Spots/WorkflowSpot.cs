@@ -18,8 +18,8 @@ internal sealed class WorkflowSpot(
     {
         cancellationToken.ThrowIfCancellationRequested();
         _ = request.Decode<CreateWorkflowReq>();
-        (Version, State) = await states.LoadAsync(Context.SpotRid.ToString());
-        evidence.Add($"workflow-created|rid={Context.SpotRid}|kind=owner|version={Version}|node={Context.NodeRid}");
+        (Version, State) = await states.LoadAsync(Context.SpotId.ToString());
+        evidence.Add($"workflow-created|rid={Context.SpotId}|kind=owner|version={Version}|node={Context.NodeRid}");
         return ZLinkSpotCreateResponse.Accept();
     }
 
@@ -28,18 +28,18 @@ internal sealed class WorkflowSpot(
     {
         Version++;
         State = request.Marker;
-        await states.SaveAsync(Context.SpotRid.ToString(), Version, State);
-        evidence.Add($"workflow-advanced|rid={Context.SpotRid}|version={Version}|marker={request.Marker}|node={Context.NodeRid}");
-        return new AdvanceWorkflowRes(Context.SpotRid.ToString(), Context.NodeRid.ToString(), Version, State);
+        await states.SaveAsync(Context.SpotId.ToString(), Version, State);
+        evidence.Add($"workflow-advanced|rid={Context.SpotId}|version={Version}|marker={request.Marker}|node={Context.NodeRid}");
+        return new AdvanceWorkflowRes(Context.SpotId.ToString(), Context.NodeRid.ToString(), Version, State);
     }
 
     public async ValueTask<PublishProjectionRes> PublishAsync(PublishProjectionReq request,
         CancellationToken cancellationToken)
     {
         await Context.Outbound.Publish(ObservabilityNames.WorkflowMesh, "observability.projection",
-                new ProjectionUpdatedEvent(Context.SpotRid.ToString(), Version, request.Marker))
-            .SubmitAsync(cancellationToken);
-        evidence.Add($"projection-published|rid={Context.SpotRid}|version={Version}|marker={request.Marker}");
-        return new PublishProjectionRes(Context.SpotRid.ToString(), Version);
+                new ProjectionUpdatedEvent(Context.SpotId.ToString(), Version, request.Marker))
+            .Async(cancellationToken);
+        evidence.Add($"projection-published|rid={Context.SpotId}|version={Version}|marker={request.Marker}");
+        return new PublishProjectionRes(Context.SpotId.ToString(), Version);
     }
 }

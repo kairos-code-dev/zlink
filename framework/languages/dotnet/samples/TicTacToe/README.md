@@ -7,18 +7,21 @@ This sample maps a scale-out tic-tac-toe flow onto `Zlink.Framework`:
 3. each API role has one MeshNode with manually configured Play peer endpoints,
 4. each Play role has one MeshNode, and the second Play role connects to the first,
 5. the client calls an API role over HTTP to create a room,
-6. the API role asks a Play role to create the room over a ZLink channel,
-7. the Play role records the room owner route in Redis,
+6. the API role calls `IZLinkSpotManager.Create` with the initial game settings,
+7. the framework issues the room id, selects an eligible Play node, and records the
+   room location in the configured Location Store,
 8. the API response returns the room id, `PlayEndpoints`, and `PlayNodes`,
-9. the host stream client connects to the owner Play endpoint,
+9. the host stream client connects to the first Play endpoint,
 10. the guest and observer stream clients connect to the other Play endpoint,
 11. each stream client sends `AuthenticateReq` to the Play server,
-12. the Play session asks an API role to authenticate over the `Api` channel,
+12. the Play session asks an API role to authenticate over the independent
+    `tictactoe.api` ClientServer channel,
 13. the host and guest actors join the same tic-tac-toe room,
 14. the observer actor subscribes to milestone notifications through `ObserveMilestoneReq`,
 15. the actors send `PlaceMarkReq` packets until player X wins,
 16. the room pushes `PlayerJoinedNotify` and `GameStateNotify`,
-17. the owner room publishes the win milestone and the observer receives `WinMilestoneNotify`,
+17. the owner room publishes the win milestone through the Play RouteMesh channel
+    and the observer receives `WinMilestoneNotify`,
 18. the host and guest send `LeaveGameReq`, and the server destroys both entry-spot actors.
 
 Packet type names use `Req` for request packets, `Res` for response packets,
@@ -39,12 +42,6 @@ Run the sample smoke path:
 framework/languages/dotnet/samples/TicTacToe/run_sample.sh
 ```
 
-On Windows PowerShell:
-
-```powershell
-.\framework\languages\dotnet\samples\TicTacToe\run_sample.ps1
-```
-
 The standalone client lives in [`Client`](Client). Use it when you want to
 read or run just the client side of the flow. `Program` reads the client options
 and runs `TicTacToeClientScenario`; the scenario calls HTTP `POST /games`, reads
@@ -60,10 +57,10 @@ The API and Play roles use separate executable projects. Each process receives
 only its role-specific configuration file:
 
 ```bash
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server.Play -- --config ./appsettings.play-a.json
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server.Play -- --config ./appsettings.play-b.json
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server.Api -- --config ./appsettings.api-a.json
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server.Api -- --config ./appsettings.api-b.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server/Play -- --config ./appsettings.play-a.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server/Play -- --config ./appsettings.play-b.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server/Api -- --config ./appsettings.api-a.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server/Api -- --config ./appsettings.api-b.json
 dotnet run --project framework/languages/dotnet/samples/TicTacToe/Client
 ```
 
@@ -74,12 +71,13 @@ for stream, MeshNode, HTTP, and Redis endpoints, and
 then runs the standalone client. The runner fails if the logs do not contain
 stream-inbound response and push evidence, observer milestone verification,
 `LeaveGameReq` completion for both players, entry-spot actor destroy evidence
-for both players, and framework message-flow logs.
+for both players. Framework diagnostics use the standard .NET
+`ActivitySource` and `Meter` surfaces instead of a sample-owned trace file.
 
-Redis is required for the room route store. The runner always provisions a
+Redis is required as the sample's official Location Store provider. The runner always provisions a
 dedicated Redis Docker container for the current execution, asks Docker to
 assign a free loopback host port, derives `TICTACTOE_REDIS_ENDPOINT` from that
 container, and removes only that container on success or failure. It does not
 reuse an externally supplied Redis endpoint. The runner also supplies a
 `TICTACTOE_REDIS_KEY_PREFIX` that includes the sample name and execution id so
-parallel sample runs do not share room route keys.
+parallel sample runs do not share Location Store keys.

@@ -26,9 +26,9 @@ internal sealed class ZLinkSessionActor(
             if (TryGetRoute(out var route))
                 return route;
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor '{ActorId}' session binding is stale.",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
         }
     }
 
@@ -48,7 +48,7 @@ internal sealed class ZLinkSessionActor(
         return Context.RelayActorRefAsync(this, raw, cancellationToken)
             .EnsureAcceptedAsync(
                 "Session Actor relay",
-                ZLinkFrameworkErrorKind.ActorRouteNotFound);
+                ZLinkFrameworkErrorKind.NotFound);
     }
 
     public ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken = default)

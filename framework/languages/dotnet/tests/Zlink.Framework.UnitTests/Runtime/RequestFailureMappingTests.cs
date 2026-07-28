@@ -38,14 +38,14 @@ public sealed class RequestFailureMappingTests
             "spot",
             "Lookup",
             "correlation",
-            new ZLinkFrameworkException(ZLinkFrameworkErrorKind.RequestRejected, "draining"));
+            new ZLinkFrameworkException(ZLinkFrameworkErrorKind.Rejected, "draining"));
         try
         {
             var reply = ZLinkEnvelopeCodec.DecodeHeader(parts);
-            Assert.Equal(nameof(ZLinkFrameworkErrorKind.RequestRejected), reply.ErrorCode);
+            Assert.Equal(nameof(ZLinkFrameworkErrorKind.Rejected), reply.ErrorCode);
             var error = Assert.IsType<ZLinkFrameworkException>(
                 ZLinkEnvelopeErrorMapper.CreateException(reply, "fallback"));
-            Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, error.Kind);
+            Assert.Equal(ZLinkFrameworkErrorKind.Rejected, error.Kind);
         }
         finally
         {
@@ -70,13 +70,13 @@ public sealed class RequestFailureMappingTests
             "route",
             request,
             new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestRejected,
+                ZLinkFrameworkErrorKind.Rejected,
                 "draining"));
 
-        Assert.Equal(nameof(ZLinkFrameworkErrorKind.RequestRejected), reply.ErrorCode);
+        Assert.Equal(nameof(ZLinkFrameworkErrorKind.Rejected), reply.ErrorCode);
         var error = Assert.IsType<ZLinkFrameworkException>(
             ZLinkEnvelopeErrorMapper.CreateException(reply, "fallback"));
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Rejected, error.Kind);
         Assert.Equal("draining", error.Message);
     }
 
@@ -94,7 +94,7 @@ public sealed class RequestFailureMappingTests
             "test request");
 
         var error = Assert.IsType<ZLinkFrameworkException>(observed);
-        Assert.Equal(ZLinkFrameworkErrorKind.RouteNotConnected, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
         Assert.IsType<ZlinkRequestException>(error.InnerException);
     }
 
@@ -112,7 +112,7 @@ public sealed class RequestFailureMappingTests
             "raw request");
 
         var error = Assert.IsType<ZLinkFrameworkException>(observed);
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestTargetNotFound, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.NotFound, error.Kind);
         Assert.IsType<ZlinkRequestException>(error.InnerException);
     }
 
@@ -194,7 +194,7 @@ public sealed class RequestFailureMappingTests
             (_, _, _) => throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.NotConnected));
 
         var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await task.AsTask());
-        Assert.Equal(ZLinkFrameworkErrorKind.RouteNotConnected, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
         Assert.IsType<ZlinkSubmitException>(error.InnerException);
     }
 

@@ -9,9 +9,9 @@ internal static class TdB1YieldProbeInterleaveScenario
     {
         var spot = await context.SpotAsync();
         var requestId = ExecutionTurnScenarioContext.NewId("TD-B1");
-        context.SendSpot(new AwaitMsg(requestId, 300, "TD-B1", "yield"), spot);
+        await context.SendSpotAsync(new AwaitMsg(requestId, 300, "TD-B1", "yield"), spot);
         await context.EvidenceAsync(requestId, "yield-released");
-        context.SendSpot(new ProbeMsg(requestId, "interleave-probe"), spot);
+        await context.SendSpotAsync(new ProbeMsg(requestId, "interleave-probe"), spot);
         await context.EvidenceAsync(requestId, "yield-completed");
         var evidence = await context.EvidenceAsync(requestId, "probe-completed");
         EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,

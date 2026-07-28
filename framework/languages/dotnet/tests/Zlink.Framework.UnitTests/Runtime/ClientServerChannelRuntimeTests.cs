@@ -1,13 +1,125 @@
+using System.Collections;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.UnitTests;
 
 public sealed class ClientServerChannelRuntimeTests
 {
+    [Fact]
+    public async Task GlobalClientServerMetadataFailureDisposesEachSendPartOnce()
+    {
+        await using var client = CreateClient(ReservePort());
+        var runtime = client.GetRequiredService<ZLinkFrameworkRuntime>();
+        var parts = new SingleAccessMessageParts();
+        try
+        {
+            await Assert.ThrowsAsync<NotSupportedException>(async () =>
+                await runtime.SendToChannelAsync(
+                    "work",
+                    parts,
+                    CancellationToken.None,
+                    new byte[] { 1 }));
+
+            parts.AssertDisposedOnce();
+        }
+        finally
+        {
+            parts.DisposeRemaining();
+        }
+    }
+
+    [Fact]
+    public async Task GlobalClientServerMetadataFailureDisposesEachRequestPartOnce()
+    {
+        await using var client = CreateClient(ReservePort());
+        var runtime = client.GetRequiredService<ZLinkFrameworkRuntime>();
+        var parts = new SingleAccessMessageParts();
+        try
+        {
+            await Assert.ThrowsAsync<NotSupportedException>(async () =>
+                await runtime.RequestToChannelAsync(
+                    "work",
+                    parts,
+                    TimeSpan.FromSeconds(1),
+                    CancellationToken.None,
+                    new byte[] { 1 }));
+
+            parts.AssertDisposedOnce();
+        }
+        finally
+        {
+            parts.DisposeRemaining();
+        }
+    }
+
+    [Fact]
+    public async Task CurrentSpotClientServerMetadataFailureUsesGlobalSendOwnership()
+    {
+        await using var client = CreateClient(ReservePort());
+        var runtime = client.GetRequiredService<ZLinkFrameworkRuntime>();
+        await runtime.StartAsync(CancellationToken.None);
+        var activation = new MetadataFailureSpotActivation();
+        var endpoint = new ZLinkSpotOutboundEndpoint(
+            activation,
+            outbound: null!,
+            runtime);
+        activation.OutboundEndpoint = endpoint;
+        var parts = new SingleAccessMessageParts();
+        try
+        {
+            await Assert.ThrowsAsync<NotSupportedException>(async () =>
+                await endpoint.SendToChannelAsync(
+                    "work",
+                    parts,
+                    CancellationToken.None,
+                    new byte[] { 1 }));
+
+            parts.AssertDisposedOnce();
+        }
+        finally
+        {
+            parts.DisposeRemaining();
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task CurrentSpotClientServerMetadataFailureUsesGlobalRequestOwnership()
+    {
+        await using var client = CreateClient(ReservePort());
+        var runtime = client.GetRequiredService<ZLinkFrameworkRuntime>();
+        await runtime.StartAsync(CancellationToken.None);
+        var activation = new MetadataFailureSpotActivation();
+        var endpoint = new ZLinkSpotOutboundEndpoint(
+            activation,
+            outbound: null!,
+            runtime);
+        activation.OutboundEndpoint = endpoint;
+        var parts = new SingleAccessMessageParts();
+        try
+        {
+            await Assert.ThrowsAsync<NotSupportedException>(async () =>
+                await endpoint.RequestToChannelAsync(
+                    "work",
+                    parts,
+                    TimeSpan.FromSeconds(1),
+                    CancellationToken.None,
+                    new byte[] { 1 }));
+
+            parts.AssertDisposedOnce();
+        }
+        finally
+        {
+            parts.DisposeRemaining();
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
     [Fact]
     public async Task ManualClient_RequestUsesDedicatedDealerAndServerRouter()
     {
@@ -261,24 +373,21 @@ public sealed class ClientServerChannelRuntimeTests
                 () => transport.ReadyCount == 1,
                 TimeSpan.FromSeconds(5));
 
-            var ready = monitoring.Snapshot("work");
+            var ready = monitoring.GetStatus("work");
             Assert.Equal(
                 Zlink.Framework.Contracts.Configuration
                     .ZLinkClientServerRole.ClientAndServer,
                 ready.LocalRole);
-            Assert.True(ready.Selectable);
-            var readyServer = Assert.Single(ready.Servers);
-            Assert.True(readyServer.Ready);
+            Assert.True(ready.IsReady);
+            var readyServer = Assert.Single(ready.Targets);
             Assert.Equal(
-                ZLinkClientServerServerState.Ready,
+                ZLinkPeerState.Ready,
                 readyServer.State);
-            Assert.Equal("manual", readyServer.DescriptorSource);
 
             using var timeout = new CancellationTokenSource(
                 TimeSpan.FromSeconds(8));
             await using var events = monitoring.ObserveAsync(
                     "work",
-                    capacity: 4,
                     timeout.Token)
                 .GetAsyncEnumerator(timeout.Token);
             var state = await runtime.EnsureStartedStateAsync(
@@ -289,13 +398,10 @@ public sealed class ClientServerChannelRuntimeTests
 
             Assert.True(await events.MoveNextAsync());
             Assert.Equal(
-                "zlink.runtime.client_server.server_changed",
-                events.Current.Identifier);
-            Assert.Equal(
-                ZLinkClientServerServerState.Draining,
-                events.Current.State);
-            Assert.False(events.Current.Ready);
-            Assert.False(monitoring.IsReady("work"));
+                ZLinkPeerState.Draining,
+                Assert.Single(events.Current.Targets).State);
+            Assert.False(events.Current.IsReady);
+            Assert.False(monitoring.GetStatus("work").IsReady);
         }
         finally
         {
@@ -321,7 +427,7 @@ public sealed class ClientServerChannelRuntimeTests
                 await provider.GetRequiredService<IZLinkRouteClient>()
                     .SendToChannel("work", new EchoSend("excluded"))
                     .Async());
-            Assert.Equal(ZLinkFrameworkErrorKind.RequestTargetNotFound, error.Kind);
+            Assert.Equal(ZLinkFrameworkErrorKind.NotFound, error.Kind);
         }
         finally
         {
@@ -1291,6 +1397,84 @@ public sealed class ClientServerChannelRuntimeTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         return ((IPEndPoint)listener.LocalEndpoint).Port;
+    }
+
+    private sealed class SingleAccessMessageParts : IReadOnlyList<Message>
+    {
+        private readonly int[] _accessCounts = new int[2];
+        private readonly Message[] _parts =
+        [
+            Message.From(new byte[] { 1, 2, 3 }),
+            Message.From(new byte[] { 4, 5, 6 })
+        ];
+
+        public int Count => _parts.Length;
+
+        public Message this[int index]
+        {
+            get
+            {
+                if (Interlocked.Increment(ref _accessCounts[index]) != 1)
+                    throw new InvalidOperationException(
+                        $"Message part {index} was consumed more than once.");
+                return _parts[index];
+            }
+        }
+
+        public void AssertDisposedOnce()
+        {
+            Assert.All(_accessCounts, count => Assert.Equal(1, count));
+            Assert.All(_parts, part =>
+                Assert.Throws<ObjectDisposedException>(() => _ = part.Size));
+        }
+
+        public void DisposeRemaining()
+        {
+            foreach (var part in _parts)
+            {
+                try
+                {
+                    _ = part.Size;
+                    part.Dispose();
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            }
+        }
+
+        public IEnumerator<Message> GetEnumerator()
+        {
+            for (var index = 0; index < Count; index++)
+                yield return this[index];
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class MetadataFailureSpotActivation : IZLinkCurrentSpotActivation
+    {
+        public void EnsureOperationAllowed()
+        {
+        }
+
+        public string ChannelName => "entry";
+
+        public string SpotId => "entry";
+
+        public ZLinkUserSpotExecutionMode ExecutionMode => default;
+
+        public TimeSpan DefaultRequestTimeout => TimeSpan.FromSeconds(1);
+
+        public ZLinkCodecRegistryBuilder Codecs { get; } = new();
+
+        public ZLinkMessageFlowTracer Flow => null!;
+
+        public IZLinkRuntimeFailureReporter ErrorSink => null!;
+
+        public IZLinkSpotOutbound Outbound => null!;
+
+        public ZLinkSpotOutboundEndpoint OutboundEndpoint { get; set; } = null!;
     }
 
     private sealed record EchoRequest(string Value);

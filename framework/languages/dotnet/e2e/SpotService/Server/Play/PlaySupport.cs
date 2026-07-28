@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.E2E.Configuration;
 
@@ -27,7 +26,7 @@ internal sealed class ApplicationJoinCoordinator(
             using (ExecutionContext.SuppressFlow())
                 operation = Task.Run(async () => await actors
                     .GetOrCreate(request.ActorId, SpotServiceNames.ActorType)
-                    .Request(new Spots.ScenarioActorCreateReq(request.DisplayName))
+                    .Request(new ScenarioActorCreateReq(request.DisplayName))
                     .Async());
             var actor = await operation switch
             {
@@ -50,24 +49,6 @@ internal sealed class ApplicationJoinCoordinator(
         {
             _operations.TryRemove(request.ActorId, out _);
         }
-    }
-}
-
-internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
-    : IZLinkRuntimeMessageFlowObserver
-{
-    public ValueTask OnMessageFlowAsync(
-        ZLinkRuntimeMessageFlowEvent flow,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add(
-            "dispatch-error"
-            + $"|surface={flow.Surface}"
-            + $"|reason={flow.Reason}"
-            + $"|action={flow.Action}"
-            + $"|packet={flow.PacketName ?? "<null>"}");
-        return ValueTask.CompletedTask;
     }
 }
 

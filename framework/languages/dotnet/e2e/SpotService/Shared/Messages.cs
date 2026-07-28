@@ -33,19 +33,15 @@ public sealed record JoinReq(string Key, string ActorId, string DisplayName, int
 
 public sealed record JoinRes(string SpotRid, string NodeRid, string ActorId);
 
-public sealed record EntryJoinRouteReq(string NodeRid, JoinReq Join);
-
 public sealed record NodeReadinessWaitReq(string NodeRid, int TimeoutMilliseconds = 10000);
 
-public sealed record NodeReadinessWaitRes(string NodeRid, bool PeerReady, bool EntrySpotReady);
+public sealed record NodeReadinessWaitRes(string NodeRid, bool PeerReady);
 
-public sealed record EntryReadinessReq(string Marker);
-
-public sealed record EntryReadinessRes(string NodeRid, string Marker);
-
-public sealed record EnsureActorReq(string ActorId, string DisplayName, string NodeRid);
+public sealed record EnsureActorReq(string ActorId, string DisplayName);
 
 public sealed record EnsureActorRes(string ActorId, string NodeRid, ulong Generation);
+
+public sealed record ScenarioActorCreateReq(string DisplayName);
 
 public sealed record StateReq(string Operation, int Delta);
 
@@ -174,20 +170,27 @@ public sealed record ActorMissingWaitReq(string ActorId, int TimeoutMilliseconds
 
 public sealed record ActorPushByActorRes(string ActorId, string Value, bool Delivered, string ErrorKind);
 
-public sealed record ActorRefSnapshotReq(string ActorId);
+public sealed record ActorRefReq(string ActorId);
 
-public sealed record ActorRefSnapshotRes(string ActorId, string NodeRid, ulong Generation);
+public sealed record ActorRefRes(string ActorId, string NodeRid, ulong Generation);
 
-public sealed record ActorRefRequestReq(
-    ActorRefSnapshotRes Actor,
+public sealed record ActorRequestReq(
+    string ActorId,
     string Value,
     int DelayMilliseconds = 0,
     int TimeoutMilliseconds = 3000);
 
-public sealed record ActorRefRequestRes(
+public sealed record ActorRequestRes(
     bool Succeeded,
     string ErrorKind,
     ActorPingRes? Reply);
+
+public sealed record ActorRefDestroyReq(ActorRefRes Actor);
+
+public sealed record ActorRefDestroyRes(
+    bool Succeeded,
+    bool Destroyed,
+    string ErrorKind);
 
 public sealed record ComplexActorReq(
     string DisplayName,
@@ -202,15 +205,24 @@ public sealed record ComplexActorRes(
     string[] Tags,
     Dictionary<string, string> Attributes);
 
-public sealed record AuthReq(string ActorId, string DisplayName, string NodeRid);
+public sealed record AuthReq(string ActorId, string DisplayName);
 
-public sealed record UserSpotAuthReq(string SpotRid, string ActorId, string DisplayName, string NodeRid);
+public sealed record UserSpotAuthReq(string SpotRid, string ActorId, string DisplayName);
 
 public sealed record AuthRes(string ActorId, string NodeRid);
 
-public sealed record MultiBindReq(string FirstActorId, string SecondActorId, string NodeRid);
+public sealed record MultiBindReq(string FirstActorId, string SecondActorId);
 
 public sealed record MultiBindRes(int BoundCount);
+
+public sealed record StaleBindingProbeReq(string ActorId, string Value);
+
+public sealed record StaleBindingProbeRes(
+    string ActorId,
+    bool RelayRejected,
+    string ErrorKind,
+    string RetryAdvice,
+    bool DisconnectCompleted);
 
 public sealed record NotifyBoundActorDisconnectedReq(string ActorId);
 

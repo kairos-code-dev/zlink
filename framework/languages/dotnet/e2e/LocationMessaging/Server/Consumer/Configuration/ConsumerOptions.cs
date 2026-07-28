@@ -9,7 +9,13 @@ internal sealed record ConsumerOptions(
     string TraceLabel,
     string? RedisEndpoint = null,
     string? RedisKeyPrefix = null,
-    IReadOnlyList<string>? ProviderEndpoints = null)
+    IReadOnlyList<string>? ProviderEndpoints = null,
+    string MeshName = "profile",
+    string? MeshEndpoint = null,
+    string ObjectRole = "None",
+    string RouteChannelRole = "Client",
+    int RouteChannelWeight = 100,
+    bool RegisterIndependentTopologies = false)
 {
     public static ConsumerOptions Parse(string[] args)
         => E2eConfiguration.Load<ConsumerOptions>(args);

@@ -185,6 +185,32 @@ test('RouteMesh snapshot projects typed population and activation capacity from 
   assert.equal(snapshot.applicationVersion, 9n);
 });
 
+test('RouteMesh snapshot keeps NotRequired distinct from NotConnected', () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  const node = {
+    ...fakeMeshNode(),
+    peers() {
+      return [{
+        routingId: 'client-b',
+        lifecycleGeneration: 2n,
+        descriptorRevision: 3n,
+        endpoint: 'tcp://client-b',
+        state: 6,
+        lastError: 0
+      }];
+    }
+  };
+  const snapshot = createRuntime(gate, { meshNode: node }).snapshot('game');
+
+  assert.equal(snapshot.peers.length, 1);
+  assert.equal(snapshot.peers[0].state, framework.ZLinkPeerState.NotRequired);
+  assert.equal(snapshot.peers[0].ready, false);
+  assert.notEqual(
+    snapshot.peers[0].state,
+    framework.ZLinkPeerState.NotConnected
+  );
+});
+
 test('multi-mesh drain fails before global owner cleanup can mutate another mesh', async () => {
   const gate = new framework.ZLinkRuntimeAdmissionGate();
   let published = 0;
@@ -402,7 +428,8 @@ function createRuntime(gate, overrides = {}) {
   return new framework.ZLinkRouteMeshRuntimeCoordinator({
     meshNames: ['game'],
     meshOptions: new Map([['game', { meshChannels: {} }]]),
-    meshNode: (meshName) => meshName === 'game' ? node : undefined,
+    meshNode: (meshName) =>
+      meshName === 'game' ? (overrides.meshNode ?? node) : undefined,
     meshNodeDescriptor: overrides.meshNodeDescriptor,
     admission: gate,
     publishRetiring: overrides.publishRetiring ?? (async () => {}),

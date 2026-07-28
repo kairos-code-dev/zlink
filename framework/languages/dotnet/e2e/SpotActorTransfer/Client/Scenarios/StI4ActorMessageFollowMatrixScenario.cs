@@ -1,3 +1,4 @@
+// Verifies Actor Message Follow for one-way, request, timeout, and cancellation paths.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;
@@ -80,9 +81,23 @@ internal static class StI4ActorMessageFollowMatrixScenario
 
         await context.ReleaseTransportDeliveryAsync(
             source, oneWayOperation);
+        await context.ArmReplyAdmissionAsync(source, actorId);
         await context.ReleaseTransportDeliveryAsync(
             source, requestOperation);
         await oneWay;
+        var capturedReplyAdmission =
+            await context.WaitReplyAdmissionAsync(source, actorId);
+        ZlinkStreamAssert.Ensure(
+            capturedReplyAdmission.BackpressuredCount > 0
+            && capturedReplyAdmission.DistinctRequestCount == 1,
+            $"{scenario} did not force exactly one followed request reply "
+            + "through source transport backpressure.");
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+        ZlinkStreamAssert.Ensure(
+            !request.IsCompleted,
+            $"{scenario} request completed while its source reply transport "
+            + "was still backpressured.");
+        await context.ReleaseReplyAdmissionAsync(source, actorId);
         var result = await request;
         ZlinkStreamAssert.Ensure(
             result.Succeeded && result.Reply is not null,
@@ -133,5 +148,13 @@ internal static class StI4ActorMessageFollowMatrixScenario
             && (await context.GetTransportDeliveryAsync(
                 source, requestOperation)).ReleasedCount == 1,
             $"{scenario} delivery fixture did not preserve both operations.");
+        var replyAdmission =
+            await context.GetReplyAdmissionAsync(source, actorId);
+        ZlinkStreamAssert.Ensure(
+            replyAdmission.Released
+            && replyAdmission.ReleasedAdmissionCount == 1
+            && replyAdmission.DistinctRequestCount == 1,
+            $"{scenario} source reply admission did not complete exactly once "
+            + "after backpressure release.");
     }
 }

@@ -14,12 +14,14 @@ using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace ObservabilityOps.Server.Play;
 
 internal static class PlayHostFactory
 {
     private const string RoomSpotType = "observability-room";
+    private const string InstanceSpotType = "observability-instance";
 
     public static WebApplication Create(string[] args)
     {
@@ -32,29 +34,40 @@ internal static class PlayHostFactory
         builder.Logging.AddSimpleConsole(console => console.SingleLine = true);
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton<EvidenceStore>();
-        builder.Services.AddSingleton<DrainOperation>();
+        builder.Services.AddSingleton<RelocationOperation>();
+        builder.Services.AddSingleton<ShutdownOperation>();
         builder.Services.AddSingleton<BoundedOperationGate>();
+        builder.Services.AddSingleton<SpotClosingGate>();
         if (options.MetricsEnabled) builder.Services.AddSingleton<MetricEvidenceCollector>();
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"flow-{options.Rid}.log"),
+            options.Rid));
         builder.Services.AddZLinkFramework(framework =>
         {
+            framework.ApplicationVersion = options.ApplicationVersion;
+            framework.MaintenanceWave = options.MaintenanceWave;
             framework.DefaultRequestTimeout = TimeSpan.FromSeconds(15);
-            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint).SetKeyPrefix(options.RedisKeyPrefix)));
+            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; }));
+            framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis =>
+            {
+                redis.ConnectionString = options.RedisEndpoint;
+                redis.KeyPrefix = $"{options.RedisKeyPrefix}:relocation";
+            }));
             var locations = framework.ConfigureLocations();
             locations.RouteCacheMaxAge = TimeSpan.Zero;
             locations.MessageFollowDuration = TimeSpan.FromSeconds(5);
             locations.OwnerLeaseRenewInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
             locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
             locations.PollingInterval = TimeSpan.FromMilliseconds(250);
-            framework.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
-                .TraceLabel(options.Rid);
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             framework.AddHandlersFromAssemblyOf(typeof(PlayHostFactory));
             var mesh18 = framework.AddRouteMesh(ObservabilityNames.PlayMesh)
                 .Listen(options.RouterEndpoint)
-                .SetRoutingId(RoutingId.From(options.Rid))
-                .SetEntrySpotRoutingId(RoutingId.From(options.Rid));
+                .SetPlacementWeight(options.PlacementWeight)
+                .SetActorLimit(128)
+                .SetSpotLimit(128)
+                .SetActivationConcurrency(32);
             mesh18.Objects().Server()
                 .AddEntrySpot<PlayEntrySpot>()
                 .AddActorFactory<PlayerActor, PlayerActorFactory>(
@@ -64,31 +77,124 @@ internal static class PlayHostFactory
                         .Snapshot<PlayerActorRelocationAdapter>())
                 .AddSpotFactory<RoomSpot>(
                     RoomSpotType,
-                    null,
-                    ZLinkRelocationPolicy<RoomSpot>.Disabled);
-            mesh18.ChannelName(ObservabilityNames.PlayMesh);
+                    new ZLinkUserSpotFactoryOptions { StableTypeLimit = 128 },
+                    ZLinkRelocationPolicy<RoomSpot>
+                        .Snapshot<RoomSpotRelocationAdapter>())
+                .AddInstanceSpotFactory<PlayInstanceSpot>(
+                    InstanceSpotType,
+                    new ZLinkInstanceSpotFactoryOptions { StableTypeLimit = 128 },
+                    ZLinkRelocationPolicy<PlayInstanceSpot>
+                        .Snapshot<PlayInstanceSpotRelocationAdapter>());
+            if (!string.IsNullOrWhiteSpace(options.ManualPeerEndpoint))
+                mesh18.PeerConnections.Connect(options.ManualPeerEndpoint);
+            mesh18.Channel(ObservabilityNames.PlayMesh).Client();
         });
 
         var app = builder.Build();
         if (options.MetricsEnabled) _ = app.Services.GetRequiredService<MetricEvidenceCollector>();
-        app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Rid }));
-        app.MapPost("/message-flow/off", (IZLinkMessageFlowRuntime flow) =>
+        app.MapGet("/health", () => Results.Ok(new
         {
-            flow.Mode = ZLinkRuntimeMessageFlowMode.Off;
-            return Results.Ok(new { mode = "off" });
+            status = "ready",
+            options.Rid,
+            options.ApplicationVersion
+        }));
+        app.MapGet("/identity", async (
+            IZLinkLocationRuntimeQuery locations,
+            CancellationToken cancellationToken) =>
+        {
+            var topology = await locations.ListTopologyAsync(
+                new ZLinkLocationTopologyFilter(ObservabilityNames.PlayMesh),
+                cancellationToken: cancellationToken);
+            var local = topology.Items.SingleOrDefault(row =>
+                string.Equals(
+                    row.Endpoint,
+                    options.RouterEndpoint,
+                    StringComparison.Ordinal));
+            return local is null
+                ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable)
+                : Results.Ok(new NodeIdentityRes(
+                    options.Rid,
+                    local.NodeRid.ToString()));
         });
+        app.MapGet("/relocation/readiness-evidence", async (
+            IZLinkLocationRuntimeQuery locations,
+            IZLinkRouteMeshRuntime routeMesh,
+            CancellationToken cancellationToken) =>
+        {
+            var topology = await locations.ListTopologyAsync(
+                new ZLinkLocationTopologyFilter(ObservabilityNames.PlayMesh),
+                cancellationToken: cancellationToken);
+            var status = routeMesh.GetStatus(ObservabilityNames.PlayMesh);
+            return Results.Ok(new
+            {
+                routeMesh = new
+                {
+                    status.MeshName,
+                    status.State,
+                    status.IsReady,
+                    status.ReadyPeerCount,
+                    peers = status.Peers.Select(peer => new
+                    {
+                        nodeRid = peer.NodeRid.ToString(),
+                        peer.State,
+                        peer.UnavailableReason
+                    })
+                },
+                topology = topology.Items.Select(item => new
+                {
+                    item.MeshName,
+                    nodeRid = item.NodeRid.ToString(),
+                    item.Endpoint,
+                    item.Draining,
+                    item.State,
+                    item.UpdatedAt
+                })
+            });
+        });
+        app.MapDiagnosticsControl();
         app.MapPost("/rooms", async (CreateRoomReq request, IZLinkSpotManager spots,
             CancellationToken cancellationToken) =>
         {
-            var created = await spots.GetOrCreateAsync<RoomSpot, CreateRoomReq>(
-                RoutingId.From(request.RoomRid), request, cancellationToken);
-            return Results.Ok(new CreateRoomRes(created.SpotRid.ToString(), options.Rid));
+            var created = await spots.GetOrCreate(request.RoomRid, RoomSpotType)
+                .InMesh(ObservabilityNames.PlayMesh)
+                .Request(request)
+                .Async(cancellationToken);
+            return Results.Ok(new CreateRoomRes(
+                created.Spot.SpotId,
+                created.Spot.NodeRid.ToString()));
         });
         app.MapPost("/rooms/{roomRid}/close", async (string roomRid, IZLinkSpotManager spots,
-            CancellationToken cancellationToken) => Results.Ok(new
+            CancellationToken cancellationToken) =>
+        {
+            var room = await spots.FindAsync(roomRid, cancellationToken);
+            return Results.Ok(new
             {
-                closed = await spots.CloseAsync(RoutingId.From(roomRid), cancellationToken)
-            }));
+                closed = room is not null
+                         && await spots.CloseAsync(room.Value, cancellationToken)
+            });
+        });
+        app.MapPost("/spots/{spotId}/close", async (
+            string spotId,
+            IZLinkSpotManager spots,
+            CancellationToken cancellationToken) =>
+        {
+            var spot = await spots.FindAsync(spotId, cancellationToken);
+            return Results.Ok(spot is not null
+                              && await spots.CloseAsync(
+                                  spot.Value, cancellationToken));
+        });
+        app.MapPost("/instances/{spotId}", async (
+            string spotId,
+            ActivateInstanceSpotReq request,
+            IZLinkSpotClient spots,
+            CancellationToken cancellationToken) =>
+        {
+            var response = await spots.RequestToSpot(spotId, request)
+                .InstanceSpot(InstanceSpotType)
+                .InMesh(ObservabilityNames.PlayMesh)
+                .Async<ActivateInstanceSpotRes>(cancellationToken);
+            return Results.Ok(response);
+        });
         app.MapGet("/evidence", CreateEvidenceAsync);
         app.MapPost("/evidence/wait", async (EvidenceWaitReq request, EvidenceStore evidence,
             CancellationToken cancellationToken) =>
@@ -103,29 +209,24 @@ internal static class PlayHostFactory
                 samples => MetricWait.Matches(samples, request),
                 TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000)),
                 cancellationToken)));
-        app.MapDrainOperations();
+        app.MapMaintenanceOperations();
         app.MapBoundedOperationGate();
+        app.MapSpotClosingGate();
         app.MapPost("/operation/start", async (
             PlayBoundedOperationReq request,
             IZLinkSpotClient routes,
-            IZLinkSpotHandleResolver spots,
             CancellationToken cancellationToken) =>
         {
-            var entry = await spots.ResolveSpotHandleAsync(
-                            ObservabilityNames.PlayMesh,
-                            RoutingId.From(options.Rid),
-                            cancellationToken)
-                        ?? throw new InvalidOperationException("The local Play entry spot was not found.");
-            var response = await routes.RequestToSpot(entry, request)
+            var response = await routes.RequestToSpot(request.RoomId, request)
                 .Async<PlayBoundedOperationRes>(cancellationToken);
             return Results.Ok(response);
         });
         return app;
 
         async Task<IResult> CreateEvidenceAsync(
-            IZLinkDrainControl drain,
+            IZLinkFrameworkRuntime runtime,
             IZLinkLocationRuntimeQuery locations,
-            IZLinkSpotHandleResolver spots,
+            IZLinkSpotManager spots,
             IZLinkActorManager actors,
             EvidenceStore evidence,
             IServiceProvider services,
@@ -133,31 +234,39 @@ internal static class PlayHostFactory
             string? actorId,
             CancellationToken cancellationToken)
         {
-            var peers = await locations.ListMeshNodeDescriptorsAsync(
-                ObservabilityNames.PlayMesh, cancellationToken);
-            // Spot and actor rows are resolve-only store records in 10.0.0:
-            // the operational surface enumerates MeshNode descriptors and
-            // resolves a caller-named spot rid on request.
+            var peers = await locations.ListTopologyAsync(
+                new ZLinkLocationTopologyFilter(ObservabilityNames.PlayMesh),
+                cancellationToken: cancellationToken);
+            // Topology reports nodes. Spot and Actor details are resolved
+            // through their public identity-based APIs.
             var actorRows = Array.Empty<ActorRow>();
             if (!string.IsNullOrWhiteSpace(actorId)
                 && await actors.FindAsync(actorId, cancellationToken) is { } actorRef)
                 actorRows =
                 [
-                    new ActorRow(actorId, actorRef.NodeRid.ToString(), (long)actorRef.Generation)
+                    new ActorRow(
+                        actorId,
+                        actorRef.NodeRid.ToString(),
+                        checked((long)actorRef.ObjectGeneration))
                 ];
             var spotRows = Array.Empty<SpotRow>();
             if (!string.IsNullOrWhiteSpace(spotRid)
-                && await spots.ResolveSpotHandleAsync(
-                        ObservabilityNames.PlayMesh,
-                        RoutingId.From(spotRid),
-                        cancellationToken)
-                    is { } handle)
-                spotRows = [new SpotRow(ObservabilityNames.PlayMesh, options.Rid, handle.SpotRid.ToString(), "spot", 0)];
+                && await spots.FindAsync(spotRid, cancellationToken)
+                    is { } spot)
+                spotRows =
+                [
+                    new SpotRow(
+                        spot.MeshName,
+                        spot.NodeRid.ToString(),
+                        spot.SpotId,
+                        "spot",
+                        checked((long)spot.ObjectGeneration))
+                ];
             return Results.Ok(new EvidenceSnapshot(
-                options.Rid, drain.IsReady, evidence.Snapshot(),
+                options.Rid, runtime.Status.IsReady, evidence.Snapshot(),
                 services.GetService<MetricEvidenceCollector>()?.Snapshot() ?? [],
-                peers.Select(row => new PeerRow(row.Rid.ToString(),
-                    row.Draining, (long)row.LifecycleGeneration)).ToArray(),
+                peers.Items.Select(row => new PeerRow(row.NodeRid.ToString(),
+                    row.Draining, row.UpdatedAt.UtcTicks)).ToArray(),
                 actorRows,
                 spotRows));
         }

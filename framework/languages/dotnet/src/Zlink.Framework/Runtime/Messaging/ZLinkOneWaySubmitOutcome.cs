@@ -17,7 +17,7 @@ internal static class ZLinkOneWaySubmitOutcome
     public static async ValueTask EnsureAcceptedAsync(
         this ValueTask<ZLinkOneWaySubmitResult> pending,
         string operationName,
-        ZLinkFrameworkErrorKind targetNotFoundKind = ZLinkFrameworkErrorKind.RequestTargetNotFound)
+        ZLinkFrameworkErrorKind targetNotFoundKind = ZLinkFrameworkErrorKind.NotFound)
     {
         var result = await pending.ConfigureAwait(false);
         EnsureAccepted(result, operationName, targetNotFoundKind);
@@ -26,7 +26,7 @@ internal static class ZLinkOneWaySubmitOutcome
     public static void EnsureAccepted(
         ZLinkOneWaySubmitResult result,
         string operationName,
-        ZLinkFrameworkErrorKind targetNotFoundKind = ZLinkFrameworkErrorKind.RequestTargetNotFound)
+        ZLinkFrameworkErrorKind targetNotFoundKind = ZLinkFrameworkErrorKind.NotFound)
     {
         switch (result.Status)
         {
@@ -37,19 +37,19 @@ internal static class ZLinkOneWaySubmitOutcome
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.DeadlineExceeded,
                     $"{operationName} timed out before local admission completed.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             case ZLinkOneWaySubmitStatus.TargetNotFound:
                 throw new ZLinkFrameworkException(
                     targetNotFoundKind,
                     $"{operationName} failed because the target was not found.");
             case ZLinkOneWaySubmitStatus.RouteNotConnected:
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RouteNotConnected,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"{operationName} failed because the target route is not connected.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             case ZLinkOneWaySubmitStatus.Shutdown:
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RuntimeShutdown,
+                    ZLinkFrameworkErrorKind.ShuttingDown,
                     $"{operationName} failed because the runtime is shutting down.");
             default:
                 throw new InvalidOperationException(
@@ -66,11 +66,9 @@ internal static class ZLinkMeshCallSupport
     {
         ZLinkOneWaySubmitStatus? status = failure.Kind switch
         {
-            ZLinkFrameworkErrorKind.RequestTargetNotFound => ZLinkOneWaySubmitStatus.TargetNotFound,
-            ZLinkFrameworkErrorKind.ActorRouteNotFound => ZLinkOneWaySubmitStatus.TargetNotFound,
-            ZLinkFrameworkErrorKind.ActorLocationStale => ZLinkOneWaySubmitStatus.TargetNotFound,
-            ZLinkFrameworkErrorKind.RouteNotConnected => ZLinkOneWaySubmitStatus.RouteNotConnected,
-            ZLinkFrameworkErrorKind.RuntimeShutdown => ZLinkOneWaySubmitStatus.Shutdown,
+            ZLinkFrameworkErrorKind.NotFound => ZLinkOneWaySubmitStatus.TargetNotFound,
+            ZLinkFrameworkErrorKind.Unavailable => ZLinkOneWaySubmitStatus.RouteNotConnected,
+            ZLinkFrameworkErrorKind.ShuttingDown => ZLinkOneWaySubmitStatus.Shutdown,
             _ => null
         };
         result = status is { } mapped ? new ZLinkOneWaySubmitResult(mapped) : default;

@@ -29,8 +29,8 @@ inline void scenario_runner_t::run_st_b1_scenario ()
     wait_evidence (_nodes.a, {"ST-B1|" + actor_id + "|success_reply|" + spot_id});
     assert_evidence_sequence (_nodes.b, {"ST-B1|" + actor_id + "|admission|",
                                          "transfer|" + actor_id + "|transfer_in|21",
-                                         "transfer|" + actor_id + "|joined|" + spot_id + ":21",
                                          "message_flow|" + actor_id + "|location_committed|",
+                                         "transfer|" + actor_id + "|joined|" + spot_id + ":21",
                                          "ST-B1|" + actor_id + "|packet_handler|after-transfer"});
     wait_evidence (_nodes.a, {"message_flow|" + actor_id + "|source_cleanup|"});
 

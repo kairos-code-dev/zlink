@@ -164,12 +164,12 @@ internal static class ZLinkActorRequestSourceFenceValidator
 
     private static ZLinkFrameworkException Stale(
         ZLinkServiceWireCodec.RequestSourceFence fence) => new(
-        ZLinkFrameworkErrorKind.ActorLocationStale,
+        ZLinkFrameworkErrorKind.Unavailable,
         $"Accepted request source '{fence.NodeRid}' is no longer current.",
-        isRetriable: true);
+        retryAdvice: ZLinkRetryAdvice.RetryAfterBackoff);
 
     private static ZLinkFrameworkException DeadlineExceeded() => new(
         ZLinkFrameworkErrorKind.DeadlineExceeded,
         "Accepted request source validation exceeded the relocation deadline.",
-        isRetriable: true);
+        retryAdvice: ZLinkRetryAdvice.RetryAfterBackoff);
 }

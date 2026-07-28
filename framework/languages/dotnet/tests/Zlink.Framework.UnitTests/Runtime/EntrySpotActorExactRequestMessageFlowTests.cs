@@ -19,7 +19,7 @@ public sealed partial class EntrySpotActorDispatchTests
         };
         var (runtime, actorRef) = await CreateStartedRuntimeAsync(
             node,
-            messageFlowMode: ZLinkRuntimeMessageFlowMode.KeyTransitions,
+            messageFlowMode: ZLinkDiagnosticsLevel.Normal,
             includeJoinTarget: true);
         try
         {
@@ -71,7 +71,7 @@ public sealed partial class EntrySpotActorDispatchTests
         var (runtime, actorRef) = await CreateStartedRuntimeAsync(
             node,
             observer,
-            messageFlowMode: ZLinkRuntimeMessageFlowMode.KeyTransitions);
+            messageFlowMode: ZLinkDiagnosticsLevel.Normal);
         try
         {
             var actor = RegisterProbeActor(runtime, actorRef);

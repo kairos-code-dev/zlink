@@ -236,6 +236,87 @@ class transfer_gate_store_t : public gate_store_t
 {
 };
 
+class relocation_store_activity_t
+{
+  public:
+    void record_read () noexcept
+    {
+        _reads.fetch_add (1, std::memory_order_relaxed);
+    }
+
+    void record_write () noexcept
+    {
+        _writes.fetch_add (1, std::memory_order_relaxed);
+    }
+
+    std::uint64_t reads () const noexcept
+    {
+        return _reads.load (std::memory_order_relaxed);
+    }
+
+    std::uint64_t writes () const noexcept
+    {
+        return _writes.load (std::memory_order_relaxed);
+    }
+
+  private:
+    std::atomic<std::uint64_t> _reads{0};
+    std::atomic<std::uint64_t> _writes{0};
+};
+
+class counting_relocation_store_t final : public fw::relocation_store_t
+{
+  public:
+    counting_relocation_store_t (
+      std::shared_ptr<fw::relocation_store_t> inner,
+      relocation_store_activity_t &activity) :
+        _inner (std::move (inner)), _activity (activity)
+    {
+    }
+
+    fw::task_t<fw::relocation_stored_t> put_relocation (
+      std::vector<std::byte> payload,
+      std::chrono::hours retention,
+      std::stop_token cancellation = {}) override
+    {
+        _activity.record_write ();
+        return _inner->put_relocation (
+          std::move (payload), retention, cancellation);
+    }
+
+    fw::task_t<fw::relocation_read_result_t> get_relocation (
+      std::string reference,
+      std::stop_token cancellation = {}) override
+    {
+        _activity.record_read ();
+        return _inner->get_relocation (
+          std::move (reference), cancellation);
+    }
+
+    fw::task_t<fw::relocation_renew_result_t> renew_relocation (
+      std::string reference,
+      std::chrono::hours retention,
+      std::stop_token cancellation = {}) override
+    {
+        _activity.record_write ();
+        return _inner->renew_relocation (
+          std::move (reference), retention, cancellation);
+    }
+
+    fw::task_t<fw::relocation_delete_result_t> delete_relocation (
+      std::string reference,
+      std::stop_token cancellation = {}) override
+    {
+        _activity.record_write ();
+        return _inner->delete_relocation (
+          std::move (reference), cancellation);
+    }
+
+  private:
+    std::shared_ptr<fw::relocation_store_t> _inner;
+    relocation_store_activity_t &_activity;
+};
+
 // Actor factories/adapters must be default constructible, so the e2e wires
 // its singletons through file-scope pointers set once in main.
 evidence_store_t *g_evidence = nullptr;
@@ -285,7 +366,7 @@ class transfer_actor_t final : public fw::actor_t
                 target_spot = reply.target_spot_id;
             }
             g_evidence->add (
-              scenario, actor_id, "location_committed",
+              scenario, actor_id, "authority_committed",
               target_spot);
             g_evidence->add (
               scenario, actor_id, "join_completion_accepted",
@@ -1188,6 +1269,29 @@ class shutdown_handler_t
     shutdown_flag_t &_flag;
 };
 
+class relocation_store_activity_handler_t
+{
+  public:
+    using dependency_types =
+      fw::dependency_list_t<relocation_store_activity_t>;
+
+    explicit relocation_store_activity_handler_t (
+      relocation_store_activity_t &activity) :
+        _activity (activity)
+    {
+    }
+
+    fw::http_response_t handle (const fw::http_request_t &)
+    {
+        return json_response (
+          nlohmann::json{{"reads", _activity.reads ()},
+                         {"writes", _activity.writes ()}});
+    }
+
+  private:
+    relocation_store_activity_t &_activity;
+};
+
 } // namespace
 
 int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
@@ -1215,6 +1319,8 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
     auto domain_state = std::make_unique<domain_state_store_t> (log_dir);
     auto joined_gates = std::make_unique<joined_gate_store_t> ();
     auto transfer_gates = std::make_unique<transfer_gate_store_t> ();
+    auto relocation_activity =
+      std::make_unique<relocation_store_activity_t> ();
     auto shutdown_flag = std::make_unique<shutdown_flag_t> ();
     g_evidence = evidence.get ();
     g_domain_state = domain_state.get ();
@@ -1229,6 +1335,9 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
         framework.services ().add_singleton<domain_state_store_t> (std::move (domain_state));
         framework.services ().add_singleton<joined_gate_store_t> (std::move (joined_gates));
         framework.services ().add_singleton<transfer_gate_store_t> (std::move (transfer_gates));
+        auto *relocation_activity_ptr = relocation_activity.get ();
+        framework.services ().add_singleton<relocation_store_activity_t> (
+          std::move (relocation_activity));
         framework.services ().add_singleton<shutdown_flag_t> (std::move (shutdown_flag));
 
         framework.set_default_request_timeout (std::chrono::seconds (3));
@@ -1243,6 +1352,14 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
           std::make_shared<fw::locations::redis::redis_location_store_t> (
             fw::locations::redis::redis_location_options_t{.connection_string = redis_endpoint,
                                                            .key_prefix = key_prefix}));
+        framework.add_relocation_store (
+          std::make_shared<counting_relocation_store_t> (
+            std::make_shared<
+              fw::locations::redis::redis_relocation_store_t> (
+              fw::locations::redis::redis_relocation_options_t{
+                .connection_string = redis_endpoint,
+                .key_prefix = key_prefix + ":relocation"}),
+            *relocation_activity_ptr));
         auto &locations = framework.configure_locations ();
         locations.heartbeat_interval = std::chrono::seconds (1);
         locations.owner_lease_ttl = std::chrono::seconds (3);
@@ -1332,6 +1449,8 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
               .map_post<probe_ref_handler_t> ("/actors/{actorId}/probe-ref")
               .map_post<send_ref_handler_t> ("/actors/{actorId}/send-ref")
               .map_post<bound_push_handler_t> ("/actors/{actorId}/bound-push")
+              .map_get<relocation_store_activity_handler_t> (
+                "/relocation-store/activity")
               .map_post<shutdown_handler_t> ("/shutdown");
         }
     });

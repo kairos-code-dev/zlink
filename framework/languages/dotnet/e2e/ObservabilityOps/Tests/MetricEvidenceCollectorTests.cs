@@ -1,16 +1,81 @@
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using ObservabilityOps.Server.Support;
 using ObservabilityOps.Shared;
 using Xunit;
-using Zlink.Framework.Contracts.Eventing;
+using Zlink.Framework.E2E.Diagnostics;
 
 public sealed class MetricEvidenceCollectorTests
 {
     [Fact]
+    public void MessageFlowListener_Captures_Standard_Activity_Tags_And_File_Format()
+    {
+        var path = Path.Combine(
+            Path.GetTempPath(),
+            $"zlink-message-flow-{Guid.NewGuid():N}.log");
+        E2eMessageFlow? captured = null;
+        try
+        {
+            using var listener = new E2eMessageFlowListener(
+                path,
+                "test-node",
+                flow => captured = flow);
+            using var source = new ActivitySource(
+                E2eMessageFlowListener.ActivitySourceName);
+            using (var activity = source.StartActivity("zlink.message_flow"))
+            {
+                Assert.NotNull(activity);
+                activity.SetTag("phase", "error");
+                activity.SetTag("surface", "Channel");
+                activity.SetTag("message_kind", "Request");
+                activity.SetTag("packet_name", "MissingReq");
+                activity.SetTag("flow_id", "flow-1");
+                activity.SetTag("reason", "HandlerMissing");
+                activity.SetTag("action", "ReplyError");
+            }
+
+            Assert.NotNull(captured);
+            Assert.Equal("error", captured.Phase);
+            Assert.Equal("Channel", captured.Surface);
+            Assert.Equal("Request", captured.MessageKind);
+            Assert.Equal("MissingReq", captured.PacketName);
+            Assert.Equal("flow-1", captured.FlowId);
+            var line = Assert.Single(File.ReadAllLines(path));
+            Assert.Contains("label=test-node", line, StringComparison.Ordinal);
+            Assert.Contains("packet=MissingReq", line, StringComparison.Ordinal);
+            Assert.Contains("flow=flow-1", line, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void MessageFlowListener_Isolates_Evidence_Sink_Failures()
+    {
+        using var listener = new E2eMessageFlowListener(
+            filePath: null,
+            label: null,
+            onFlow: _ => throw new InvalidOperationException("sink failure"));
+        using var source = new ActivitySource(
+            E2eMessageFlowListener.ActivitySourceName);
+
+        var error = Record.Exception(() =>
+        {
+            using var activity = source.StartActivity("zlink.message_flow");
+            Assert.NotNull(activity);
+            activity.SetTag("phase", "error");
+        });
+
+        Assert.Null(error);
+    }
+
+    [Fact]
     public void Snapshot_Preserves_Instrument_Semantics_And_Replaces_Observable_Series()
     {
         using var collector = new MetricEvidenceCollector();
-        using var meter = new Meter(ZLinkMeters.Framework);
+        using var meter = new Meter("zlink.framework");
         var counter = meter.CreateCounter<long>("test.counter");
         var active = meter.CreateUpDownCounter<long>("test.active");
         var duration = meter.CreateHistogram<double>("test.duration");
@@ -48,8 +113,8 @@ public sealed class MetricEvidenceCollectorTests
     public void Snapshot_Aggregates_Providers_And_Preserves_Long_Precision()
     {
         using var collector = new MetricEvidenceCollector();
-        using var firstMeter = new Meter(ZLinkMeters.Framework);
-        using var secondMeter = new Meter(ZLinkMeters.Framework);
+        using var firstMeter = new Meter("zlink.framework");
+        using var secondMeter = new Meter("zlink.framework");
         _ = firstMeter.CreateObservableGauge("test.aggregate", () => 2L);
         _ = secondMeter.CreateObservableGauge("test.aggregate", () => 3L);
         var exact = firstMeter.CreateCounter<long>("test.exact-long");

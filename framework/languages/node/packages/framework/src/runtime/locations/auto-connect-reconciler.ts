@@ -119,6 +119,9 @@ export class ZLinkAutoConnectReconciler {
       .map((row) => row.nodeRid)
       .filter((nodeRid): nodeRid is RoutingId => nodeRid !== undefined)
       .map((nodeRid) => encodeRoutingIdHex(nodeRid)));
+    this.executor.replaceNotRequired?.(
+      ZLinkAutoConnectPlanner.computeNotRequired(this.local, rows)
+    );
 
     const desired = new Map(ZLinkAutoConnectPlanner.computeDesired(this.local, rows));
     const desiredEndpoints = new Set([...desired.values()].map((target) => target.endpoint));

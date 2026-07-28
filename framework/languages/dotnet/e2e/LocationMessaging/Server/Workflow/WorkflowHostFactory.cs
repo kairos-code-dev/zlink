@@ -13,6 +13,7 @@ using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace LocationMessaging.Server.Workflow;
 
@@ -34,22 +35,33 @@ internal static class WorkflowHostFactory
         });
 
         builder.WebHost.UseUrls(options.HttpUrl);
-        builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
+        var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
+        builder.Services.AddSingleton(evidence);
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"{options.Rid}-flow.log"),
+            options.Rid,
+            flow =>
+            {
+                if (flow.Phase != "error") return;
+                evidence.Add(
+                    "dispatch-error"
+                    + $"|surface={flow.Surface}"
+                    + $"|kind={flow.MessageKind}"
+                    + $"|reason={flow.Reason}"
+                    + $"|action={flow.Action}"
+                    + $"|packet={flow.PacketName ?? "<null>"}"
+                    + $"|channel={flow.ChannelName ?? "<null>"}");
+            }));
 
         builder.Services.AddZLinkFramework(framework =>
         {
             // The official Redis extension registers the peer/spot/actor/route
             // stores and the owner lease store together (doc §2).
-            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint
-                    ?? throw new InvalidOperationException("Shared.RedisEndpoint is required."))
-                .SetKeyPrefix(options.RedisKeyPrefix
-                    ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
-            framework.ConfigureDispatch()
-                .SetRuntimeMessageFlowObserver<EvidenceDispatchErrorObserver>()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-                .TraceLabel(options.Rid);
+            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint
+                    ?? throw new InvalidOperationException("Shared.RedisEndpoint is required."); redis.KeyPrefix = options.RedisKeyPrefix
+                    ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."); }));
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
 
             var mesh = framework.AddRouteMesh("workflow")
                 .Listen(options.WorkflowEndpoint)

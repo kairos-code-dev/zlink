@@ -5,7 +5,6 @@ using K4os.Compression.LZ4;
 using Microsoft.Extensions.Hosting;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.AspNetCore.Monitoring;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Codecs;
 
@@ -113,100 +112,6 @@ public sealed class CoverageCriticalRuntimeTests
 
         Assert.Same(startTask, completed);
         await Assert.ThrowsAnyAsync<Exception>(async () => await startTask);
-    }
-
-    [Fact]
-    public void MonitoringEventMapper_MapsAndFiltersSocketEvents()
-    {
-        var source = new ZLinkSocketMonitoringRegistration
-        {
-            SourceName = "orders"
-        };
-        source.Events.Add(ZLinkSocketEventKind.HandshakeFailed);
-
-        var mapped = ZLinkMonitoringEventMapper.MapSocketEvent(
-            source,
-            new ZLinkBackendSocketMonitorEvent(
-                ZLinkSocketNativeEventType.HandshakeFailedAuth,
-                RoutingId.From("peer"),
-                "tcp://127.0.0.1:1",
-                "tcp://127.0.0.1:2",
-                42));
-
-        Assert.NotNull(mapped);
-        Assert.Equal("orders", mapped.Value.SourceName);
-        Assert.Equal(ZLinkSocketEventKind.HandshakeFailed, mapped.Value.Event);
-        Assert.Equal(RoutingId.From("peer"), mapped.Value.RoutingId);
-        Assert.Equal("tcp://127.0.0.1:1", mapped.Value.LocalAddr);
-        Assert.Equal("tcp://127.0.0.1:2", mapped.Value.RemoteAddr);
-
-        Assert.Null(ZLinkMonitoringEventMapper.MapSocketEvent(
-            source,
-            new ZLinkBackendSocketMonitorEvent(
-                ZLinkSocketNativeEventType.Connected,
-                null,
-                "",
-                "",
-                0)));
-
-        source.Events.Clear();
-        var internalEvent = ZLinkMonitoringEventMapper.MapSocketEvent(
-            source,
-            new ZLinkBackendSocketMonitorEvent(
-                (ZLinkSocketNativeEventType)0xDEAD,
-                null,
-                "",
-                "",
-                0));
-        Assert.Null(internalEvent);
-    }
-
-    [Fact]
-    public void SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures()
-    {
-        var descriptor = new ZLinkSpotTimerDescriptor
-        {
-            Name = "tick",
-            Period = TimeSpan.FromSeconds(1),
-            HandlerType = typeof(CoverageCriticalRuntimeTests),
-            SpotType = typeof(CoverageCriticalRuntimeTests),
-            Invoker = null!
-        };
-        var tick = new ZLinkTimerTick(
-            "tick",
-            2,
-            3,
-            TimeSpan.FromSeconds(1),
-            DateTimeOffset.UnixEpoch,
-            DateTimeOffset.UnixEpoch.AddMilliseconds(10),
-            TimeSpan.Zero,
-            TimeSpan.FromMilliseconds(10),
-            TimeSpan.FromMilliseconds(10),
-            1);
-
-        var continuing = ZLinkSpotTimerFailureEventFactory.Create(
-            "spot.events",
-            "spot",
-            true,
-            descriptor,
-            tick,
-            new InvalidOperationException("boom"),
-            false);
-        var stopped = ZLinkSpotTimerFailureEventFactory.Create(
-            "spot.events",
-            "spot",
-            false,
-            descriptor,
-            tick,
-            new ApplicationException("stop"),
-            true);
-
-        var continuingFailure = Assert.IsType<ZLinkSpotEvent.TimerHandlerFailed>(continuing);
-        var stoppedFailure = Assert.IsType<ZLinkSpotEvent.TimerStoppedAfterUnhandledException>(stopped);
-        Assert.Equal("tick", continuingFailure.Diagnostic.TimerName);
-        Assert.Equal(2UL, continuingFailure.Diagnostic.DeliveryIndex);
-        Assert.Contains("InvalidOperationException", continuingFailure.Diagnostic.ExceptionType);
-        Assert.Equal("stop", stoppedFailure.Diagnostic.ExceptionMessage);
     }
 
     private static int FindFreeTcpPort()

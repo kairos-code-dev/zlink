@@ -238,7 +238,7 @@ Actor Join call은 결과 없는 동기 `Defer()`만 제공하고 `Async(...)`·
 또는 worker call을 `Yield(...)`하면 Actor queue claim은 유지하고 User Spot gate만
 반환한다. 같은 Actor의 다음 job은 terminal continuation이 gate를 다시 얻어 현재
 job을 완료할 때까지 시작하지 않는다. Entry Spot과 `PerActor` User Spot Actor에서는
-request·worker operation submit 전에 `InvalidConfiguration`으로 완료한다.
+request·worker operation submit 전에 `InvalidOperation`으로 완료한다.
 
 `Defer()`는 현재 handler에 immutable Join intent와 비활성 barrier만 등록하며 target
 조회나 Store I/O를 시작하지 않는다. Handler가 정상적으로 끝나면 Join을 실행하고
@@ -321,11 +321,11 @@ Actor factory와 relocation policy는
 [Topology configuration](03-configuration-topology.ko.md)의 `AddActorFactory<TActor,TFactory>(...)` 한 호출에서
 등록한다. Policy를 생략하는 overload는 제공하지 않는다.
 
-Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal
-`Async(...)`를 두 번 호출하면 `AlreadySubmitted`다. Terminal 호출 시 resolve, reservation, factory와 Ready
+Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `InvalidOperation`, terminal
+`Async(...)`를 두 번 호출하면 `InvalidOperation`이다. Terminal 호출 시 resolve, reservation, factory와 Ready
 barrier 전체에 적용할 deadline 하나를 확정한다. `InMesh(...)`를 생략했을 때 object-role Mesh가 하나이면
-그 Mesh를 사용하고, 0개이면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`다. 명시한 Mesh가
-없으면 `MeshNotFound`다. Caller는 target RID, predicate와 callback을 지정하지 않는다.
+그 Mesh를 사용하고, 0개이면 `NotConfigured`, 둘 이상이면 `InvalidOperation`이다. 명시한 Mesh가
+없으면 `NotFound`다. Caller는 target RID, predicate와 callback을 지정하지 않는다.
 
 `Create`는 같은 ActorId의 [Ready](../../../../01-glossary.ko.md#ready) incarnation이 있으면 `ActorAlreadyExists`, stable type이 다르면
 `ActorTypeMismatch`다. `GetOrCreate`는 같은 type의 Ready Actor를 `Existing`으로

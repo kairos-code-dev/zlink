@@ -646,6 +646,7 @@ final class ZLinkUserSpotRetireTargetEndpoint
                         relay.relocation(),
                         relay.coordinator(),
                         relay.operation(),
+                        relay.replyRouteId(),
                         new ZLinkServiceRelocationWireCodec
                             .RequestSourceFence(
                                 route.sourceOwnerId(),
@@ -663,6 +664,7 @@ final class ZLinkUserSpotRetireTargetEndpoint
         if (!ack.relocation().equals(relay.relocation())
             || !ack.coordinator().equals(relay.coordinator())
             || !ack.operation().equals(relay.operation())
+            || ack.replyRouteId() != relay.replyRouteId()
             || !ack.requestSource().ownerId().equals(
                 completion.sourceOwnerId())
             || ack.requestSource().leaseGeneration()

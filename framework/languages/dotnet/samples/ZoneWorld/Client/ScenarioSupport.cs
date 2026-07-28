@@ -129,6 +129,39 @@ public sealed class OpsClient(IZlinkStreamConnector connector) : IAsyncDisposabl
     public ValueTask DisposeAsync() => Connector.DisposeAsync();
 }
 
+/// <summary>
+/// Runner-only operational connection to the Gateway. It reads current object
+/// locations but never uses the returned NodeRid as a message destination.
+/// </summary>
+public sealed class RelocationProbeClient(IZlinkStreamConnector connector) : IAsyncDisposable
+{
+    public static async ValueTask<RelocationProbeClient> ConnectAsync(
+        string endpoint,
+        CancellationToken cancellationToken)
+    {
+        var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(endpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(10),
+            RequestTimeout = TimeSpan.FromSeconds(10),
+            DispatchMode = ZlinkStreamDispatchMode.Immediate
+        });
+        await connector.Connect.Async(cancellationToken);
+        return new RelocationProbeClient(connector);
+    }
+
+    public ValueTask<RelocationPairRes> SelectPairAsync(CancellationToken cancellationToken) =>
+        connector.Request(new RelocationPairReq()).Async<RelocationPairRes>(cancellationToken);
+
+    public ValueTask<ActorLocationProbeRes> FindActorAsync(
+        string actorId,
+        CancellationToken cancellationToken) =>
+        connector.Request(new ActorLocationProbeReq(actorId))
+            .Async<ActorLocationProbeRes>(cancellationToken);
+
+    public ValueTask DisposeAsync() => connector.DisposeAsync();
+}
+
 public sealed record ClientOptions(string GatewayEndpoint, string OpsEndpoint)
 {
     public static ClientOptions From(ZoneWorldClientSettings settings) =>

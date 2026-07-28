@@ -129,10 +129,12 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             ? ZLinkPlacementObjectKind.InstanceSpot
             : ZLinkPlacementObjectKind.UserSpot;
         var localNodeRids = registration.SpotNodes.Values
-            .Select(static node => node.RoutingId)
+            .Select(static node => node.EffectiveRoutingId)
             .ToHashSet();
         var capacity = new ZLinkCapacityVector(
-            inventory.ActorIds.Count,
+            plan is not null || !inventory.PerActorShell
+                ? inventory.ActorIds.Count
+                : 0,
             1,
             new ZLinkSpotTypeCapacityDelta(
                 kind,
@@ -207,6 +209,29 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                    1);
     }
 
+    internal static ZLinkServiceWireCodec.RelocationObjectRecord
+        CreateCanonicalRelocationObject(
+            ZLinkPlacementObjectKind kind,
+            string stableType,
+            string spotId,
+            ulong objectGeneration,
+            ulong authorityOwnerGeneration)
+    {
+        if (kind is not (ZLinkPlacementObjectKind.UserSpot
+            or ZLinkPlacementObjectKind.InstanceSpot))
+            throw new ArgumentOutOfRangeException(nameof(kind));
+        return new ZLinkServiceWireCodec.RelocationObjectRecord(
+            (byte)kind,
+            kind == ZLinkPlacementObjectKind.InstanceSpot
+                ? stableType
+                : string.Empty,
+            spotId,
+            objectGeneration,
+            kind == ZLinkPlacementObjectKind.InstanceSpot
+                ? 0
+                : authorityOwnerGeneration);
+    }
+
     internal static bool HasHeadroom(
         ZLinkPopulationCapacity capacity,
         int required) =>
@@ -249,15 +274,21 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             var requiredBytes = checked((ulong)
                 ZLinkRelocationEnvelopeCodec.MeasureEncodedLength(
                     relocation.Envelope));
-            var idBytes = relocation.Envelope.AggregateId.ToByteArray();
+            var idBytes = relocation.Envelope.AggregateId.ToByteArray(
+                bigEndian: true);
             var relocationId = new ZLinkServiceWireCodec.RelocationWireId(
                 BinaryPrimitives.ReadUInt64BigEndian(idBytes.AsSpan(0, 8)),
                 BinaryPrimitives.ReadUInt64BigEndian(idBytes.AsSpan(8, 8)));
             if (relocationId.IsEmpty)
                 throw new InvalidDataException("Canonical relocation ID is empty.");
+            var targetAttemptGeneration =
+                relocation.Envelope.AggregateGeneration;
+            if (targetAttemptGeneration == 0)
+                throw new InvalidDataException(
+                    "Canonical relocation target attempt generation is empty.");
             var prepare = new ZLinkServiceWireCodec.RelocationPrepareRecord(
                 relocationId,
-                1,
+                targetAttemptGeneration,
                 1,
                 new ZLinkServiceWireCodec.RelocationCoordinatorFence(
                     reservation.Inventory.SourceOwner.OwnerId,
@@ -272,11 +303,9 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     reservation.TargetOwner.OwnerId,
                     checked((ulong)reservation.TargetOwner.LeaseGeneration)),
                 1,
-                new ZLinkServiceWireCodec.RelocationObjectRecord(
-                    (byte)spot.ObjectKind,
-                    reservation.Inventory.InstanceSpot
-                        ? reservation.Inventory.StableType
-                        : string.Empty,
+                CreateCanonicalRelocationObject(
+                    spot.ObjectKind,
+                    reservation.Inventory.StableType,
                     reservation.Inventory.SpotId,
                     spot.ObjectGeneration,
                     spot.AuthorityOwnerGeneration),
@@ -297,7 +326,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     .Select((job, index) =>
                         new ZLinkServiceWireCodec.RelocationDataRecord(
                             relocationId,
-                            1,
+                            targetAttemptGeneration,
                             prepare.Coordinator,
                             1,
                             participant.CanonicalParticipantId,
@@ -337,15 +366,23 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
     {
         _ = reservation;
         if (fence is { } exactFence
-            && _sourceAttempts.TryRemove(exactFence, out var prepare)
+            && _sourceAttempts.TryGetValue(exactFence, out var prepare)
             && runtime.GetSpotNodeRuntime(
                     reservation.Inventory.SourceNodeRid).Node
                 is IZLinkBackendCanonicalRelocationReservation canonical)
+        {
             canonical.CancelCanonicalRelocation(
                 reservation.TargetDescriptor.Rid,
                 prepare.RelocationId,
                 prepare.TargetAttemptGeneration,
                 prepare.Coordinator);
+            _sourceAttempts.TryRemove(
+                new KeyValuePair<
+                    ZLinkAggregateFence,
+                    ZLinkServiceWireCodec.RelocationPrepareRecord>(
+                    exactFence,
+                    prepare));
+        }
         // There is no invented wire abort. The canonical reservation owner
         // releases uncommitted aggregate/capacity fences on its bounded expiry.
         await ValueTask.CompletedTask;
@@ -423,7 +460,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.DeadlineExceeded,
                     "Canonical relocation publication could not be reconciled.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             }
             await Task.Delay(1, cancellationToken).ConfigureAwait(false);
         }
@@ -448,7 +485,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         await runtime.RelayCommittedSpotRecordsAsync(
                 reservation, relocation, held, cancellationToken)
             .ConfigureAwait(false);
-        if (!_sourceAttempts.TryRemove(relocation.Fence, out var prepare))
+        if (!_sourceAttempts.TryGetValue(relocation.Fence, out var prepare))
             return;
         if (runtime.GetSpotNodeRuntime(reservation.Inventory.SourceNodeRid).Node
             is not IZLinkBackendCanonicalRelocationReservation canonical)
@@ -469,6 +506,12 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     1),
                 cancellationToken)
             .ConfigureAwait(false);
+        _sourceAttempts.TryRemove(
+            new KeyValuePair<
+                ZLinkAggregateFence,
+                ZLinkServiceWireCodec.RelocationPrepareRecord>(
+                relocation.Fence,
+                prepare));
     }
 
     internal async ValueTask RecoverPublishedAsync(
@@ -566,7 +609,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         }
         catch (ZLinkFrameworkException exception)
             when (exception.Kind
-                  == ZLinkFrameworkErrorKind.ActorRouteNotFound)
+                  == ZLinkFrameworkErrorKind.NotFound)
         {
             return;
         }
@@ -607,7 +650,10 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 RelocationChecksum = existing.RelocationChecksum
             };
             if (!existing.Matches(stagingRequest, sourceNodeRid)
-                || !IsStagingPrefix(existing.Envelope, candidate.Envelope))
+                || !IsStagingPrefix(
+                    existing.Envelope,
+                    candidate.Envelope,
+                    existing.TargetAuthorityOwnerGenerationFor))
                 throw new ZLinkRelocationDataLostException(
                     "Recovered SPOT staging conflicts with its published aggregate.");
             await ReconcilePublishedStageAsync(
@@ -622,9 +668,9 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             candidate.Envelope);
         if (!_stageSlots.TryAcquire(out var activeSlot))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotMoving,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Inbound recovery staging is full for SPOT '{spotId}'.",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
         if (!runtime.TryAcquireInboundSpotRelocation(
                 encodedLength,
                 RequiresRestore(recoveryNode, request),
@@ -633,9 +679,9 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         {
             activeSlot.Dispose();
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotMoving,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Inbound recovery permit is unavailable for SPOT '{spotId}'.",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
         }
         TargetStage stage;
         try
@@ -645,6 +691,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     candidate.Envelope,
                     permit,
                     null,
+                    reservedTargetAuthorityOwnerGeneration: 0,
                     cancellationToken)
                 .ConfigureAwait(false);
             stage.AttachActiveSlot(activeSlot);
@@ -754,6 +801,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 spot.CompletionPayload.Span))
             throw new ZLinkRelocationDataLostException(
                 "Relocation recovery root has an unknown source-cleanup phase.");
+        cancellationToken.ThrowIfCancellationRequested();
 
         // Replay is completed while target admission remains sealed. It is
         // safe to publish Completed only after the exact source lifecycle can
@@ -774,14 +822,14 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         var targetOwner = new ZLinkLocationOwnerToken(
             spotAuthority.OwnerId,
             checked((ulong)spotAuthority.OwnerLeaseGeneration));
-        await new ZLinkAggregateRelocationCoordinator(
+        if (!await new ZLinkAggregateRelocationCoordinator(
                 registration.Locations.ResolveStore()
                 ?? throw new ZLinkConfigurationException(
                     "Location Store is not registered."),
                 registration.Locations.ResolveRelocationStore()
                 ?? throw new ZLinkConfigurationException(
                     "Relocation Store is not registered."))
-            .CompleteSourceCleanupAsync(
+            .TryCompleteSourceCleanupAsync(
                 new ZLinkAggregateRelocationPublished(
                     new ZLinkAggregateFence(
                         candidate.Envelope.AggregateId,
@@ -796,7 +844,8 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 spotAuthority.Allocation.DescriptorLifecycleGeneration,
                 targetOwner,
                 cancellationToken)
-            .ConfigureAwait(false);
+            .ConfigureAwait(false))
+            return false;
         return true;
     }
 
@@ -837,12 +886,18 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             && checked((ulong)descriptor.LeaseGeneration)
                == sourceOwnerLeaseGeneration);
 
-    private async ValueTask ReconcilePublishedStageAsync(
+    internal async ValueTask ReconcilePublishedStageAsync(
         TargetStage stage,
         ZLinkRelocationRecoveryCandidate candidate,
         CancellationToken cancellationToken)
     {
-        if (!IsStagingPrefix(stage.Envelope, candidate.Envelope))
+        // Both startup recovery and an in-process exact publication retry
+        // must derive canonical source-cleanup progress from authority state.
+        candidate = BindRecoveredCanonicalInventory(candidate);
+        if (!IsStagingPrefix(
+                stage.Envelope,
+                candidate.Envelope,
+                stage.TargetAuthorityOwnerGenerationFor))
             throw new ZLinkRelocationDataLostException(
                 "Published SPOT relocation root does not extend its staged root.");
         RestoreHeldRecords(stage, candidate.Envelope);
@@ -876,7 +931,19 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     cancellationToken)
                 .ConfigureAwait(false);
         if (!completionFinalized)
+        {
+            // Standalone Instance SPOT authority is published by the
+            // reservation owner. Materialize the staged target immediately,
+            // while keeping admission sealed until command 35 confirms source
+            // cleanup and normalizes the authority.
+            await FinalizeStageAsync(
+                    stage,
+                    normalizeAuthority: false,
+                    cancellationToken)
+                .ConfigureAwait(false);
             return;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
 
         await FinalizeStageAsync(
                 stage,
@@ -1007,7 +1074,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
     {
         if (records.Count > 1_024)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestRejected,
+                ZLinkFrameworkErrorKind.Rejected,
                 "A Spot relocation held-ingress queue cannot exceed 1,024 messages.");
         long bytes = 0;
         ulong previous = 0;
@@ -1021,7 +1088,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             bytes = checked(bytes + record.Payload.LongLength);
             if (bytes > 16L * 1024 * 1024)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestRejected,
+                    ZLinkFrameworkErrorKind.Rejected,
                     "A Spot relocation held-ingress queue cannot exceed 16 MiB.");
         }
     }
@@ -1088,13 +1155,16 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 relocationStore, root.Reference, root.ChecksumCrc32c,
                 cancellationToken)
             .ConfigureAwait(false);
-        var actors = tree.Envelope.Participants
-            .Where(static participant =>
-                participant.ObjectKind == ZLinkPlacementObjectKind.Actor)
+        var recoveries = tree.Envelope.Participants
             .Select(participant =>
+                ZLinkCanonicalParticipantRecoveryCodec.Decode(
+                    participant.RecoveryPayload.Span))
+            .ToArray();
+        var actors = recoveries
+            .Where(static recovery =>
+                recovery.ObjectKind == ZLinkPlacementObjectKind.Actor)
+            .Select(recovery =>
             {
-                var recovery = ZLinkCanonicalParticipantRecoveryCodec.Decode(
-                    participant.RecoveryPayload.Span);
                 if (!ZLinkActorAuthorityPayloadCodec.TryDecodeRelocating(
                         recovery.AuthorityPayload.Span, out var actor))
                     throw new InvalidDataException(
@@ -1104,11 +1174,9 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     recovery.AuthorityPayload.ToArray());
             })
             .ToArray();
-        var spot = tree.Envelope.Participants.Single(static participant =>
-            participant.ObjectKind is ZLinkPlacementObjectKind.UserSpot
+        var spotRecovery = recoveries.Single(static recovery =>
+            recovery.ObjectKind is ZLinkPlacementObjectKind.UserSpot
                 or ZLinkPlacementObjectKind.InstanceSpot);
-        var spotRecovery = ZLinkCanonicalParticipantRecoveryCodec.Decode(
-            spot.RecoveryPayload.Span);
         var context = new ZLinkCanonicalSpotStageContext(
             tree.Envelope.AggregateId,
             tree.Envelope.AggregateGeneration,
@@ -1130,11 +1198,15 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             root.Reference,
             root.ChecksumCrc32c,
             actors);
-        if (!await StageInboundAsync(context, sourceNodeRid, cancellationToken)
-                .ConfigureAwait(false))
+        var staged = await StageInboundAsync(
+                context,
+                sourceNodeRid,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!staged)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotMoving,
-                "Canonical target staging was rejected.", true);
+                ZLinkFrameworkErrorKind.Unavailable,
+                "Canonical target staging was rejected.", ZLinkRetryAdvice.RetryAfterBackoff);
     }
 
     internal async ValueTask PublishCanonicalInboundAsync(
@@ -1157,8 +1229,8 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     tree.Envelope.AggregateGeneration),
                 sourceNodeRid, cancellationToken).ConfigureAwait(false))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotMoving,
-                "Canonical target publication was rejected.", true);
+                ZLinkFrameworkErrorKind.Unavailable,
+                "Canonical target publication was rejected.", ZLinkRetryAdvice.RetryAfterBackoff);
     }
 
     internal async ValueTask CompleteCanonicalInboundAsync(
@@ -1166,6 +1238,8 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         RoutingId sourceNodeRid,
         CancellationToken cancellationToken)
     {
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"aggregate_target_complete_begin relocation={prepare.RelocationId.High:x16}{prepare.RelocationId.Low:x16}");
         var root = prepare.Root
             ?? throw new InvalidDataException(
                 "Canonical SPOT relocation requires an immutable root.");
@@ -1183,37 +1257,51 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             tree.Envelope.AggregateGeneration);
         if (!_staged.TryGetValue(fence, out var entry))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotMoving,
+                ZLinkFrameworkErrorKind.Unavailable,
                 "Canonical target completion has no staged relocation.",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
         if (entry is TargetStageTombstone terminal)
         {
             if (terminal.SourceNodeRid != sourceNodeRid
                 || terminal.Outcome
                    != TargetStageTerminalOutcome.Completed)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     "Canonical target completion conflicts with its terminal relocation.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             return;
         }
         if (entry is not TargetStage stage
             || stage.SourceNodeRid != sourceNodeRid
             || Volatile.Read(ref stage.Published) == 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotMoving,
+                ZLinkFrameworkErrorKind.Unavailable,
                 "Canonical target completion overtook target publication.",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
 
         await stage.PublishGate.WaitAsync(cancellationToken)
             .ConfigureAwait(false);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"aggregate_target_complete_gate relocation={prepare.RelocationId.High:x16}{prepare.RelocationId.Low:x16}");
         try
         {
             if (!await IsAuthorityNormalizedAsync(stage, cancellationToken)
                     .ConfigureAwait(false))
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"aggregate_target_normalize_begin relocation={prepare.RelocationId.High:x16}{prepare.RelocationId.Low:x16}");
                 await NormalizeAuthorityAsync(stage, cancellationToken)
                     .ConfigureAwait(false);
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"aggregate_target_normalize_end relocation={prepare.RelocationId.High:x16}{prepare.RelocationId.Low:x16}");
+            }
+            await runtime.CompleteInboundSpotAggregateAsync(
+                    stage,
+                    cancellationToken)
+                .ConfigureAwait(false);
             CompleteStage(stage, TargetStageTerminalOutcome.Completed);
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"aggregate_target_complete_end relocation={prepare.RelocationId.High:x16}{prepare.RelocationId.Low:x16}");
         }
         finally
         {
@@ -1287,7 +1375,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             return false;
         if (!_stageSlots.TryAcquire(out var activeSlot))
             return false;
-        var aggregateBytes = request.AggregateId.ToByteArray();
+        var aggregateBytes = request.AggregateId.ToByteArray(bigEndian: true);
         var canonicalRelocationId =
             new ZLinkServiceWireCodec.RelocationWireId(
                 BinaryPrimitives.ReadUInt64BigEndian(
@@ -1302,7 +1390,8 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 request.TargetAttemptGeneration,
                 tree.LogicalLength,
                 out var inboundPermit,
-                out var preparedAggregate))
+                out var preparedAggregate,
+                out var targetAuthorityOwnerGeneration))
         {
             activeSlot.Dispose();
             return false;
@@ -1315,6 +1404,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     envelope,
                     inboundPermit,
                     preparedAggregate,
+                    targetAuthorityOwnerGeneration,
                     cancellationToken)
                 .ConfigureAwait(false);
             stage.AttachActiveSlot(activeSlot);
@@ -1791,14 +1881,26 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
 
     internal static bool IsStagingPrefix(
         ZLinkRelocationEnvelope staging,
-        ZLinkRelocationEnvelope authoritative)
+        ZLinkRelocationEnvelope authoritative,
+        Func<ZLinkRelocationParticipantEnvelope, ulong>?
+            targetAuthorityOwnerGeneration = null)
     {
         if (staging.AggregateId != authoritative.AggregateId
             || !staging.InventoryDigest.Span.SequenceEqual(
                 authoritative.InventoryDigest.Span)
             || staging.Participants.Count
-               != authoritative.Participants.Count)
+               != authoritative.Participants.Count
+            || staging.CanonicalLogicalStream.IsEmpty
+               != authoritative.CanonicalLogicalStream.IsEmpty
+            || !staging.CanonicalLogicalStream.IsEmpty
+               && (staging.CanonicalRelocationHigh
+                       != authoritative.CanonicalRelocationHigh
+                   || staging.CanonicalRelocationLow
+                       != authoritative.CanonicalRelocationLow
+                   || staging.CanonicalApplicationVersion
+                       != authoritative.CanonicalApplicationVersion))
             return false;
+        var canonical = !staging.CanonicalLogicalStream.IsEmpty;
         var stagedSpot = staging.Participants.Single(
             static participant => participant.ObjectKind
                 is ZLinkPlacementObjectKind.UserSpot
@@ -1833,8 +1935,10 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     out var actual)
                 || expected.ObjectKind != actual.ObjectKind
                 || expected.ObjectGeneration != actual.ObjectGeneration
-                || expected.AuthorityOwnerGeneration
-                   != actual.AuthorityOwnerGeneration
+                || !AuthorityGenerationMatches(
+                    expected,
+                    actual,
+                    targetAuthorityOwnerGeneration)
                 || !expected.ApplicationState.Span.SequenceEqual(
                     actual.ApplicationState.Span)
                 || !expected.RecoveryPayload.Span.SequenceEqual(
@@ -1855,6 +1959,18 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                    && actual.AcceptedJobs.Count
                       != expected.AcceptedJobs.Count)
                 return false;
+            if (canonical
+                && (expected.CanonicalParticipantId
+                        != actual.CanonicalParticipantId
+                    || expected.AcceptedBoundary
+                        != actual.AcceptedBoundary
+                    || actual.ReplayCursor < expected.ReplayCursor
+                    || actual.ReplayCursor > actual.AcceptedBoundary
+                    || !TerminalCompletionsExtend(
+                        expected,
+                        actual,
+                        authoritative.Participants)))
+                return false;
             for (var index = 0;
                  index < expected.AcceptedJobs.Count;
                  index++)
@@ -1872,6 +1988,110 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     return false;
         }
         return true;
+
+        static bool AuthorityGenerationMatches(
+            ZLinkRelocationParticipantEnvelope expected,
+            ZLinkRelocationParticipantEnvelope actual,
+            Func<ZLinkRelocationParticipantEnvelope, ulong>?
+                targetAuthorityOwnerGeneration)
+        {
+            if (targetAuthorityOwnerGeneration is not null)
+                return actual.AuthorityOwnerGeneration
+                       == targetAuthorityOwnerGeneration(expected);
+            return expected.AuthorityOwnerGeneration
+                   == actual.AuthorityOwnerGeneration;
+        }
+
+        static bool TerminalCompletionsExtend(
+            ZLinkRelocationParticipantEnvelope expected,
+            ZLinkRelocationParticipantEnvelope actual,
+            IReadOnlyList<ZLinkRelocationParticipantEnvelope> participants)
+        {
+            if (actual.TerminalCompletions.Count
+                < expected.TerminalCompletions.Count)
+                return false;
+            var actualByOperation = new Dictionary<
+                (ulong High, ulong Low, string OwnerId,
+                    ulong OwnerLeaseGeneration, string NodeRid,
+                    ulong NodeGeneration),
+                ZLinkCanonicalTerminalCompletion>();
+            foreach (var completion in actual.TerminalCompletions)
+            {
+                var key = CompletionKey(completion);
+                if (!actualByOperation.TryAdd(key, completion)
+                    || !MatchesAcceptedRequest(completion, participants))
+                    return false;
+            }
+            foreach (var previous in expected.TerminalCompletions)
+            {
+                if (!actualByOperation.TryGetValue(
+                        CompletionKey(previous),
+                        out var current)
+                    || !SameTerminal(previous, current)
+                    || previous.DeliveryState != 0
+                       && current.DeliveryState != previous.DeliveryState)
+                    return false;
+            }
+            return true;
+        }
+
+        static bool MatchesAcceptedRequest(
+            ZLinkCanonicalTerminalCompletion completion,
+            IReadOnlyList<ZLinkRelocationParticipantEnvelope> participants)
+        {
+            var participant = participants.SingleOrDefault(candidate =>
+                candidate.CanonicalParticipantId == completion.ParticipantId);
+            if (participant is null)
+                return false;
+            var request = participant.AcceptedJobs
+                .SingleOrDefault(job =>
+                    job.AcceptedSequence == completion.AcceptedSequence)
+                ?.CanonicalRequest;
+            return request is not null
+                   && request.OperationHigh == completion.OperationHigh
+                   && request.OperationLow == completion.OperationLow
+                   && request.Source.OwnerId == completion.SourceOwnerId
+                   && request.Source.OwnerLeaseGeneration
+                      == completion.SourceOwnerLeaseGeneration
+                   && request.Source.NodeRid == completion.SourceNodeRid
+                   && request.Source.NodeGeneration
+                      == completion.SourceNodeGeneration;
+        }
+
+        static bool SameTerminal(
+            ZLinkCanonicalTerminalCompletion expected,
+            ZLinkCanonicalTerminalCompletion actual) =>
+            expected.ParticipantId == actual.ParticipantId
+            && expected.AcceptedSequence == actual.AcceptedSequence
+            && expected.TerminalResult == actual.TerminalResult
+            && expected.ErrorCode == actual.ErrorCode
+            && SamePayload(expected.Payload, actual.Payload);
+
+        static bool SamePayload(
+            ZLinkCanonicalApplicationPayload? expected,
+            ZLinkCanonicalApplicationPayload? actual) =>
+            expected is null
+                ? actual is null
+                : actual is not null
+                  && expected.PacketName == actual.PacketName
+                  && expected.ContentType == actual.ContentType
+                  && expected.Payload.Span.SequenceEqual(actual.Payload.Span);
+
+        static (
+            ulong High,
+            ulong Low,
+            string OwnerId,
+            ulong OwnerLeaseGeneration,
+            string NodeRid,
+            ulong NodeGeneration)
+            CompletionKey(ZLinkCanonicalTerminalCompletion completion) =>
+            (
+                completion.OperationHigh,
+                completion.OperationLow,
+                completion.SourceOwnerId,
+                completion.SourceOwnerLeaseGeneration,
+                completion.SourceNodeRid,
+                completion.SourceNodeGeneration);
 
         static bool SameTimers(
             IReadOnlyList<ZLinkRelocationLogicalTimer> expected,
@@ -2073,9 +2293,9 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 throw new ZLinkAuthorityGenerationExhaustedException(
                     "preparing SPOT steady authority normalization"),
             _ => throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotMoving,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"SPOT '{stage.Spot.Activation.SpotId}' steady authority normalization conflicted.",
-                true)
+                ZLinkRetryAdvice.RetryAfterBackoff)
         };
         await ReleaseFinalRootAfterNormalizationAsync(
                 stage,
@@ -2108,9 +2328,9 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     ZLinkAggregateCommitResult.Committed
                     or ZLinkAggregateCommitResult.AlreadyCommitted))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     "SPOT steady authority normalization failed.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
         }
         var root = stage.GetFinalRoot()
                    ?? throw new ZLinkRelocationDataLostException(
@@ -2594,6 +2814,8 @@ internal sealed record TargetStage(
     ZLinkSpotRelocationSeal TargetAdmissionSeal,
     IDisposable InboundPermit,
     ZLinkPreparedAggregateRelocation? PreparedAggregate,
+    IReadOnlyDictionary<string, ulong>
+        ActorTargetAuthorityOwnerGenerations,
     ulong SourceAuthorityOwnerGeneration,
     ulong TargetAuthorityOwnerGeneration,
     string TargetMeshName,
@@ -2603,8 +2825,10 @@ internal sealed record TargetStage(
 {
     public int AuthorityPublished;
     public int Published;
+    public int AdmissionOpened;
     public int ReplayedJobCount;
     public int LocalCatalogPublished;
+    public int RelocationReadyCompletionDelivered;
     public SemaphoreSlim PublishGate { get; } = new(1, 1);
     public object HeldGate { get; } = new();
     public byte[]? HeldDigest;
@@ -2624,6 +2848,30 @@ internal sealed record TargetStage(
     {
         get => (TargetStageAbortState)Volatile.Read(ref _abortState);
         set => Volatile.Write(ref _abortState, (int)value);
+    }
+
+    internal ulong TargetActorAuthorityOwnerGeneration(string actorId) =>
+        ActorTargetAuthorityOwnerGenerations.TryGetValue(
+            actorId,
+            out var generation)
+            ? generation
+            : throw new ZLinkRelocationDataLostException(
+                $"Actor '{actorId}' does not have a prepared target authority generation.");
+
+    internal ulong TargetAuthorityOwnerGenerationFor(
+        ZLinkRelocationParticipantEnvelope participant)
+    {
+        if (participant.ObjectKind is ZLinkPlacementObjectKind.UserSpot
+            or ZLinkPlacementObjectKind.InstanceSpot)
+            return TargetAuthorityOwnerGeneration;
+        var actor = ActorTargetAuthorityOwnerGenerations.SingleOrDefault(
+            candidate =>
+                ZLinkActorAuthorityPayloadCodec.AuthorityKey(candidate.Key)
+                == participant.AuthorityKey);
+        return actor.Key is not null
+            ? actor.Value
+            : throw new ZLinkRelocationDataLostException(
+                $"Actor authority '{participant.AuthorityKey.Value}' does not have a prepared target generation.");
     }
 
     internal async ValueTask<bool> RunAbortCleanupAsync(

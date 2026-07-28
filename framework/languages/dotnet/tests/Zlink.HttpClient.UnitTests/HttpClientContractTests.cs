@@ -317,7 +317,8 @@ public sealed class HttpClientContractTests
         var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await client.Get("/players/0").Async<Player>());
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, ex.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.InternalFailure, ex.Kind);
+        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, ex.RetryAdvice);
     }
 
     [Fact]
@@ -330,7 +331,8 @@ public sealed class HttpClientContractTests
         var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await client.Get("/players/7").Async<Player>());
 
-        Assert.Equal(ZLinkFrameworkErrorKind.PayloadDecodeFailed, ex.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, ex.Kind);
+        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, ex.RetryAdvice);
     }
 
     [Fact]
@@ -386,8 +388,8 @@ public sealed class HttpClientContractTests
         var exception = Assert.Throws<ZLinkFrameworkException>(() =>
             HttpRedirectPolicy.ResolveLocation(new Uri("http://127.0.0.1/start"), "http://["));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, exception.Kind);
-        Assert.False(exception.IsRetriable);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, exception.Kind);
+        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, exception.RetryAdvice);
     }
 
     [Fact]
@@ -486,7 +488,8 @@ public sealed class HttpClientContractTests
         var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await client.Get("/loop").AsyncRaw());
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, ex.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, ex.Kind);
+        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, ex.RetryAdvice);
     }
 
     [Fact]
@@ -503,6 +506,27 @@ public sealed class HttpClientContractTests
     }
 
     [Fact]
+    public async Task Retry_exhausted_transport_failure_is_unavailable()
+    {
+        using var server = new FlakyRawServer(10);
+        using var client = ZLinkHttpClient.Create(server.BaseUrl)
+            .Retry(1)
+            .Build();
+
+        var failure = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+            async () => await client.Get("/unavailable").AsyncRaw());
+
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, failure.Kind);
+        Assert.Equal(
+            ZLinkRetryAdvice.RetryAfterBackoff,
+            failure.RetryAdvice);
+        Assert.True(
+            failure.InnerException is HttpRequestException
+                or System.Net.Sockets.SocketException,
+            failure.InnerException?.GetType().FullName);
+    }
+
+    [Fact]
     public async Task Retry_exhausted_surfaces_timeout()
     {
         // Every attempt times out; the retry loop runs until attempts are exhausted, then throws.
@@ -516,8 +540,8 @@ public sealed class HttpClientContractTests
 
         var failure = await Assert.ThrowsAsync<ZLinkFrameworkException>(
             async () => await client.Get("/slow").AsyncRaw());
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, failure.Kind);
-        Assert.True(failure.IsRetriable);
+        Assert.Equal(ZLinkFrameworkErrorKind.DeadlineExceeded, failure.Kind);
+        Assert.Equal(ZLinkRetryAdvice.RetryAfterBackoff, failure.RetryAdvice);
         Assert.IsType<TimeoutException>(failure.InnerException);
     }
 
@@ -591,8 +615,8 @@ public sealed class HttpClientContractTests
 
         var failure = await Assert.ThrowsAsync<ZLinkFrameworkException>(
             async () => await client.Get("/slow").AsyncRaw());
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, failure.Kind);
-        Assert.True(failure.IsRetriable);
+        Assert.Equal(ZLinkFrameworkErrorKind.DeadlineExceeded, failure.Kind);
+        Assert.Equal(ZLinkRetryAdvice.RetryAfterBackoff, failure.RetryAdvice);
         Assert.IsType<TimeoutException>(failure.InnerException);
     }
 
@@ -606,7 +630,8 @@ public sealed class HttpClientContractTests
         var ex =
             await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await client.Get("/big").AsyncRaw());
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, ex.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.CapacityExceeded, ex.Kind);
+        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, ex.RetryAdvice);
     }
 
     [Fact]
@@ -661,7 +686,8 @@ public sealed class HttpClientContractTests
 
         var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await client.Post("/r").Body("a", "text/plain").Form("b", "c").AsyncRaw());
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, ex.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, ex.Kind);
+        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, ex.RetryAdvice);
     }
 
     [Fact]
@@ -739,7 +765,8 @@ public sealed class HttpClientContractTests
         var ex =
             await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await client.Get("/bad").AsyncRaw());
 
-        Assert.Equal(ZLinkFrameworkErrorKind.PayloadDecodeFailed, ex.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, ex.Kind);
+        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, ex.RetryAdvice);
     }
 
     [Fact]
@@ -853,7 +880,7 @@ public sealed class HttpClientContractTests
     {
         Assert.Null(typeof(ZLinkHttpRequestBuilder).GetMethod("Yield"));
         Assert.Null(typeof(ZLinkHttpRequestBuilder).GetMethod("Submit"));
-        Assert.NotNull(typeof(ZLinkHttpServerRequestBuilder).GetMethod("Yield"));
+        Assert.Null(typeof(ZLinkHttpServerRequestBuilder).GetMethod("Yield"));
         Assert.Contains(
             typeof(ZLinkHttpServerRequestBuilder).GetMethods(),
             method => method.Name == "Async"
@@ -891,21 +918,6 @@ public sealed class HttpClientContractTests
         Assert.Empty(turn.Errors);
     }
 
-    [Fact]
-    public async Task Server_yield_uses_the_captured_execution_turn()
-    {
-        using var server = new TestHttpServer(async ctx =>
-            await ctx.Response.WriteAsync(200, """{"id":12,"name":"Yield"}"""));
-        var turn = new CapturedExecutionTurn();
-        using var client = ZLinkHttpClient.Create(server.BaseUrl)
-            .BuildServer(new FixedExecutionScheduler(turn));
-
-        var response = await client.Get("/yield").Yield<Player>();
-
-        Assert.True(turn.Yielded);
-        Assert.Equal(12, response.Body.Id);
-    }
-
     private static byte[] Compress(byte[] input, string encoding)
     {
         using var output = new MemoryStream();
@@ -940,13 +952,10 @@ public sealed class HttpClientContractTests
 
         public List<Exception> Errors { get; } = [];
 
-        public bool Yielded { get; private set; }
-
         public ValueTask<TResult> YieldAsync<TResult>(
             Func<CancellationToken, ValueTask<TResult>> operation,
             CancellationToken cancellationToken = default)
         {
-            Yielded = true;
             return operation(cancellationToken);
         }
 

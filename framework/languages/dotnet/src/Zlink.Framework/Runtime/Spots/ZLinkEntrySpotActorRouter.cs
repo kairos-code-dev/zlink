@@ -61,6 +61,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
         ZlinkStreamHeader header,
         Message body,
         bool callerOwnsDispatchTurn,
+        bool relocationReplay,
         CancellationToken cancellationToken)
     {
         foreach (var node in state.SpotNodes.Values)
@@ -98,10 +99,11 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
                                 descriptor,
                                 actor,
                                 header,
-                                body,
-                                ct),
+                            body,
+                            ct),
                             countAsPendingRequest: true,
-                            cancellationToken)
+                            cancellationToken: cancellationToken,
+                            allowRelocationReplay: relocationReplay)
                         .ConfigureAwait(false);
                 flow.Trace(_dispatchErrors, ZLinkMessageFlowOutcome.Replied);
                 return new EntrySpotActorReplyDispatchResult(true, reply);

@@ -6,6 +6,7 @@ using TicTacToe.Server.Configuration;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Locations.Redis;
 using Zlink.Samples.Logging;
 
 namespace TicTacToe.Server.Api;
@@ -23,17 +24,22 @@ internal sealed class ApiServer(SampleSettings settings)
         builder.Services.AddZLinkFramework(options =>
         {
             options.DisableImplicitHandlerAutoRegistration();
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = settings.RedisEndpoint;
+                redis.KeyPrefix = settings.RedisKeyPrefix;
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(settings.LogDirectory, settings.InstanceName))
-                .TraceLabel(settings.InstanceName);
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
+            options.AddClientServerChannel(SampleChannels.Api)
+                .Server()
+                .Listen()
+                .AddRequestHandler<AuthenticatePlayerHandler, AuthenticatePlayerReq, AuthenticatePlayerRes>();
+
             var mesh = options.AddRouteMesh(SampleNodes.Mesh)
                 .Listen(settings.MeshEndpoint)
                 .SetRoutingIdPrefix("tictactoe-api");
-            mesh.ChannelName(SampleChannels.Api)
-                .AddRequestHandler<AuthenticatePlayerHandler, AuthenticatePlayerReq, AuthenticatePlayerRes>();
-            mesh.ChannelName(SampleChannels.Play).SetWeight(0);
-            mesh.ChannelName(SampleTopics.PlayerMilestoneChannel).SetWeight(0);
+            mesh.Objects().Client();
             foreach (var endpoint in settings.PeerMeshEndpoints)
                 mesh.PeerConnections.Connect(endpoint);
         });

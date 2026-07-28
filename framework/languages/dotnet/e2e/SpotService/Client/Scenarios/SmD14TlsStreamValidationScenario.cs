@@ -34,7 +34,7 @@ internal static class SmD14TlsStreamValidationScenario
             SkipServerCertificateValidation = true
         });
         await tls.Connect.Async();
-        await tls.Request(new AuthReq("actor-sm-d14-tls", "stream tls", "play-a"))
+        await tls.Request(new AuthReq("actor-sm-d14-tls", "stream tls"))
             .PacketName("AuthReq")
             .Async<AuthRes>();
 

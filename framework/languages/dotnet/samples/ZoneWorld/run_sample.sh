@@ -41,8 +41,8 @@ scenario_selected() {
   [[ "$SCENARIO" == "all" || ",${SCENARIO}," == *",$1,"* ]]
 }
 
-# A crash leaves a lease behind, whereas ZW-G3 deliberately releases its slot. Run those
-# ownership histories in different processes and Redis scopes so G4 never inherits G3 state.
+# Run the crash replacement in a separate process and Redis scope so its stale descriptor
+# history cannot affect the normal replacement scenario.
 if [[ "$G4_CHILD" == "0" ]] && scenario_selected ZW-G4; then
   "$0" --g4-child ZW-G4
   G4_PROVEN=1
@@ -147,9 +147,8 @@ for index in (1, 2, 3):
         "subscriberOnly": index == 3,
     })
 
-# The replacement uses zone-node-2's application identity with different socket endpoints.
-# It can therefore start while the old process still owns slot 2 without creating bind races:
-# allocation completes before framework sockets are created.
+# The replacement reuses the application NodeId but has a different socket endpoint.
+# Framework gives every process lifecycle a new prefix-based RID.
 write("zone-node-replacement", "zoneNode", {
     "nodeId": "zone-node-2",
     "meshEndpoint": f"tcp://127.0.0.1:{ports[3]}",
@@ -226,25 +225,15 @@ graceful_stop_node() {
   unset "NODE_PID[$name]"
 }
 
-allocation_field() {
-  local log="$1" field="$2" first_line="${3:-1}"
-  tail -n +"$first_line" "$LOG_DIR/$log.log" \
-    | sed -nE "s/.*${field}=([^ ,]+).*/\\1/p" \
+routing_id_of() {
+  local node_id="$1" first_line="${2:-1}"
+  tail -n +"$first_line" "$LOG_DIR/ops.log" \
+    | sed -nE "s/.*node status observed\\. node=${node_id}, rid=([^ ,]+).*/\\1/p" \
     | tail -1
 }
 
-assert_no_allocation_while_running() {
-  local name="$1" first_line="$2" attempts="${3:-20}"
-  local pid="${NODE_PID[$name]:-}"
-  [[ -n "$pid" ]] || return 1
-  for ((i = 0; i < attempts; i++)); do
-    kill -0 "$pid" 2>/dev/null || return 1
-    if tail -n +"$first_line" "$LOG_DIR/$name.log" 2>/dev/null \
-      | grep -q "zone node allocation ready"; then
-      return 1
-    fi
-    sleep 0.1
-  done
+is_zone_node_rid() {
+  [[ "$1" =~ ^zn-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]
 }
 
 start_zone_node() {
@@ -254,8 +243,8 @@ start_zone_node() {
   first_new_ops_line=$(($(wc -l <"$LOG_DIR/ops.log" 2>/dev/null || printf '0') + 1))
   : >"$LOG_DIR/$name.restart.marker"
   start "$name" "$SERVER_BIN" --config "$CONFIG_DIR/$name.json"
-  # A crashed owner keeps its allocated slot until the 30-second lease expires. Wait for that
-  # contract plus reconcile time instead of treating the old three-second test lease as current.
+  # A restarted process gets a new RID. Wait for application readiness and the two independent
+  # observations that prove Ops has received its report and accepted its new connection.
   wait_for_log_after "$name" "topology=ready" "$first_new_line" 450
   # These two independent observations replace a fixed convergence delay: the restarted node
   # has submitted a status report, and Ops has observed the new socket connection.
@@ -366,66 +355,63 @@ wait_for_log ops "Application started."
 echo "==> zone nodes"
 # ZW-C4 needs a real spot runtime event, so zone-node-1's role configuration selects zone-nw
 # as the one faulting tick. The other node configurations do not select a faulting zone.
-# ZW-G2 starts the second application identity first. Allocation order decides the routing id;
-# the application NodeId must remain zone-node-2 even when this process receives zn1.
+# ZW-G2 starts the second application identity first. Each process receives an independent
+# prefix-based RID, while the application NodeId remains unchanged.
 if scenario_selected ZW-G2 && [[ "$G4_CHILD" == "0" ]]; then
   start zone-node-2 "$SERVER_BIN" --config "$CONFIG_DIR/zone-node-2.json"
   wait_for_log zone-node-2 "topology=ready"
-  wait_for_log zone-node-2 "zone node allocation ready. node=zone-node-2"
   start zone-node-1 "$SERVER_BIN" --config "$CONFIG_DIR/zone-node-1.json"
   wait_for_log zone-node-1 "topology=ready"
-  wait_for_log zone-node-1 "zone node allocation ready. node=zone-node-1"
 else
   start zone-node-1 "$SERVER_BIN" --config "$CONFIG_DIR/zone-node-1.json"
   wait_for_log zone-node-1 "topology=ready"
-  wait_for_log zone-node-1 "zone node allocation ready. node=zone-node-1"
   start zone-node-2 "$SERVER_BIN" --config "$CONFIG_DIR/zone-node-2.json"
   wait_for_log zone-node-2 "topology=ready"
-  wait_for_log zone-node-2 "zone node allocation ready. node=zone-node-2"
 fi
+wait_for_log ops "node status observed. node=zone-node-1, rid=zn-"
+wait_for_log ops "node status observed. node=zone-node-2, rid=zn-"
 
-G_RUNNER_LOG="$LOG_DIR/allocation-self-check.log"
+G_RUNNER_LOG="$LOG_DIR/routing-id-self-check.log"
 : >"$G_RUNNER_LOG"
 g_pass() { echo "scenario $1 passed" | tee -a "$G_RUNNER_LOG"; }
 g_fail() { echo "scenario $1 FAILED: $2" >&2; exit 1; }
 if [[ "$G4_PROVEN" == "1" ]]; then g_pass ZW-G4; fi
 
-node2_slot="$(allocation_field zone-node-2 slot)"
-node2_generation="$(allocation_field zone-node-2 generation)"
+node1_mesh_rid="$(routing_id_of zone-node-1)"
+node2_mesh_rid="$(routing_id_of zone-node-2)"
 if scenario_selected ZW-G1 && [[ "$G4_CHILD" == "0" ]]; then
-  node2_mesh_rid="$(allocation_field zone-node-2 meshRid)"
-  if [[ "$(allocation_field zone-node-2 group)" == "zoneworld.zone-node" \
-        && -n "$node2_mesh_rid" ]]; then
+  if is_zone_node_rid "$node1_mesh_rid" \
+      && is_zone_node_rid "$node2_mesh_rid" \
+      && [[ "$node1_mesh_rid" != "$node2_mesh_rid" ]]; then
     g_pass ZW-G1
   else
-    g_fail ZW-G1 "zone, bridge, and report members did not share one allocation group"
+    g_fail ZW-G1 "ZoneNode RIDs were not distinct canonical zn-UUIDv4 values"
   fi
 fi
 if scenario_selected ZW-G2 && [[ "$G4_CHILD" == "0" ]]; then
-  node2_mesh_rid="$(allocation_field zone-node-2 meshRid)"
-  if [[ "$node2_slot" == "1" && "$node2_mesh_rid" == "zn1" ]]; then
-    g_pass ZW-G2-allocation
+  if is_zone_node_rid "$node2_mesh_rid"; then
+    g_pass ZW-G2-rid
   else
-    g_fail ZW-G2 "reverse-started zone-node-2 did not keep its NodeId while receiving zn1"
+    g_fail ZW-G2 "reverse-started zone-node-2 did not publish a canonical zn-UUIDv4 RID"
   fi
 fi
 
-# ZW-G4 has its own process and store scope. Crash the original owner, then start the same
-# application identity on different endpoints and prove that lease expiry gates allocation.
+# ZW-G4 has its own process and Store scope. Crash the original process, then start the same
+# application identity at a different endpoint and prove that it receives a different RID.
 if [[ "$G4_CHILD" == "1" ]]; then
+  old_rid="$node2_mesh_rid"
   stop_node zone-node-2
+  first_replacement_line=1
+  first_replacement_ops_line=$(($(wc -l <"$LOG_DIR/ops.log" 2>/dev/null || printf '0') + 1))
   start zone-node-replacement "$SERVER_BIN" --config "$CONFIG_DIR/zone-node-replacement.json"
-  assert_no_allocation_while_running zone-node-replacement 1 \
-  || g_fail ZW-G4 "post-crash process exited or acquired the slot before lease expiry"
-  wait_for_log zone-node-replacement "zone node allocation ready. node=zone-node-2" 600
-  wait_for_log zone-node-replacement "topology=ready" 600
-  crash_slot="$(allocation_field zone-node-replacement slot)"
-  crash_generation="$(allocation_field zone-node-replacement generation)"
-  if [[ "$crash_slot" == "$node2_slot" \
-        && "$crash_generation" -gt "$node2_generation" ]]; then
+  wait_for_log_after zone-node-replacement "topology=ready" "$first_replacement_line" 600
+  wait_for_log_after ops "node status observed. node=zone-node-2, rid=zn-" \
+    "$first_replacement_ops_line" 600
+  crash_rid="$(routing_id_of zone-node-2 "$first_replacement_ops_line")"
+  if is_zone_node_rid "$crash_rid" && [[ "$crash_rid" != "$old_rid" ]]; then
     g_pass ZW-G4
   else
-    g_fail ZW-G4 "crashed slot was not reassigned with a newer generation"
+    g_fail ZW-G4 "crash replacement did not publish a new canonical zn-UUIDv4 RID"
   fi
   exit 0
 fi
@@ -434,7 +420,7 @@ if scenario_selected ZW-G5; then
   set +e
   fixed_rid_hits="$(grep -R -nE \
     --include='*.cs' --include='*.json' --exclude-dir=bin --exclude-dir=obj \
-    'SetRoutingId\(|SetEntrySpotRoutingId\(|(^|[^[:alnum:]])zn[12]([^[:alnum:]]|$)' \
+    'SetRoutingId\(|(^|[^[:alnum:]])zn[12]([^[:alnum:]]|$)' \
     "$ROOT_DIR/Server/ZoneNode" "$ROOT_DIR/Server/Configuration" "$CONFIG_DIR" 2>&1)"
   fixed_rid_scan_status=$?
   set -e
@@ -656,29 +642,26 @@ runner_scenario ZW-D2 "zone-node-3 never received a world announcement" \
   zone-node-3.log "fanout subscriber received announcement"
 
 # ZW-F2: a bot crossed to the other node. The bots run with no client attached, so a
-# transfer recorded here proves the actor moved without a bound session.
-runner_scenario ZW-F2 "no bot transferred across nodes" \
+# relocation recorded here proves the actor moved without a bound session.
+runner_scenario ZW-F2 "no bot relocated across nodes" \
   zone-node-2.log "player entered. zone=zone-ne, player=bot-nw-x, bot=True, from=zone-node-1"
 
-# ZW-G3 replaces an allocated node. Run this destructive ownership check after every normal
-# topology scenario, so its replacement process cannot become an accidental dependency of the
+# ZW-G3 replaces a normally stopped node. Run this destructive ownership check after every
+# normal topology scenario so the replacement cannot become an accidental dependency of the
 # sample behavior that G3 is supposed to be independent from.
 if scenario_selected ZW-G3 && [[ "$G4_CHILD" == "0" ]]; then
-  start zone-node-replacement "$SERVER_BIN" --config "$CONFIG_DIR/zone-node-replacement.json"
-  assert_no_allocation_while_running zone-node-replacement 1 \
-    || g_fail ZW-G3 "replacement exited or acquired a slot before an old owner stopped"
-  echo "runner inferred allocation wait node=zone-node-replacement evidence=process-alive,no-allocation" \
-    | tee -a "$G_RUNNER_LOG"
+  old_rid="$node2_mesh_rid"
   graceful_stop_node zone-node-2
-  wait_for_log zone-node-replacement "zone node allocation ready. node=zone-node-2" 600
+  first_replacement_ops_line=$(($(wc -l <"$LOG_DIR/ops.log") + 1))
+  start zone-node-replacement "$SERVER_BIN" --config "$CONFIG_DIR/zone-node-replacement.json"
   wait_for_log zone-node-replacement "topology=ready" 600
-  replacement_slot="$(allocation_field zone-node-replacement slot)"
-  replacement_generation="$(allocation_field zone-node-replacement generation)"
-  if [[ "$replacement_slot" == "$node2_slot" \
-        && "$replacement_generation" -gt "$node2_generation" ]]; then
+  wait_for_log_after ops "node status observed. node=zone-node-2, rid=zn-" \
+    "$first_replacement_ops_line" 600
+  replacement_rid="$(routing_id_of zone-node-2 "$first_replacement_ops_line")"
+  if is_zone_node_rid "$replacement_rid" && [[ "$replacement_rid" != "$old_rid" ]]; then
     g_pass ZW-G3
   else
-    g_fail ZW-G3 "replacement did not acquire the released slot with a newer generation"
+    g_fail ZW-G3 "normal replacement did not publish a new canonical zn-UUIDv4 RID"
   fi
 fi
 
@@ -707,7 +690,10 @@ phase() {
 
 # Only a full run can claim a phase. A selective run proves one scenario, not a capability.
 if [[ "$SCENARIO" == "all" ]]; then
-  phase "zoneworld-transfer=completed"        ZW-B2 ZW-B3 ZW-F2
+  # ZW-B6 remains withheld until the framework exposes a supported operational
+  # route-injection harness for the previous owner route. Global Actor APIs always
+  # resolve the current owner and therefore cannot exercise bounded Message Follow.
+  phase "zoneworld-relocation=completed"      ZW-B2 ZW-B3 ZW-B5 ZW-B6 ZW-F2
   phase "zoneworld-border-sync=completed"     ZW-B1 ZW-B4
   phase "zoneworld-ops-observe=completed"     ZW-C1 ZW-C2 ZW-C3 ZW-C4
   phase "zoneworld-ops-announce=completed"    ZW-D1 ZW-D1-subscribers ZW-D1-spots ZW-D2
@@ -717,12 +703,12 @@ if [[ "$SCENARIO" == "all" ]]; then
   # a scenario can fail without its id ever reaching the log.
   phase "zoneworld=completed" \
     ZW-A1 ZW-A2 ZW-A3 ZW-A4 ZW-A5 \
-    ZW-B1 ZW-B2 ZW-B3 ZW-B4 \
+    ZW-B1 ZW-B2 ZW-B3 ZW-B4 ZW-B5 ZW-B6 \
     ZW-C1 ZW-C2 ZW-C3 ZW-C4 \
     ZW-D1 ZW-D1-subscribers ZW-D1-spots ZW-D2 \
     ZW-E1 ZW-E2 ZW-E3 ZW-E4 ZW-E5 ZW-E5-arm ZW-E6 \
     ZW-F1 ZW-F1-population ZW-F2 ZW-F3 ZW-F3-no-push ZW-F4 \
-    ZW-G1 ZW-G2-allocation ZW-G2 ZW-G3 ZW-G4 ZW-G5
+    ZW-G1 ZW-G2-rid ZW-G2 ZW-G3 ZW-G4 ZW-G5
 fi
 
 echo "==> logs: $LOG_DIR"

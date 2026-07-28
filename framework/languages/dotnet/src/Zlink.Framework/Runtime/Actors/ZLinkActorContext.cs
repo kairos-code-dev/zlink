@@ -118,7 +118,7 @@ internal sealed class ZLinkActorJoinCall :
     {
         if (Interlocked.Exchange(ref _submitted, 1) != 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.AlreadySubmitted,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "Actor Join was already deferred.");
 
         var snapshot = _request.Snapshot(_runtime.Registration.Codecs);
@@ -129,7 +129,7 @@ internal sealed class ZLinkActorJoinCall :
             _actor,
             actorState.NativeActorRef?.Generation
             ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                ZLinkFrameworkErrorKind.NotFound,
                 $"Actor '{_actor.Context.ActorId}' does not have a current object generation."),
             _targetSpotId,
             snapshot,
@@ -143,7 +143,7 @@ internal sealed class ZLinkActorJoinCall :
     {
         if (Volatile.Read(ref _submitted) != 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.AlreadySubmitted,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "Actor Join options cannot change after Defer.");
         ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
         _timeout = timeout;

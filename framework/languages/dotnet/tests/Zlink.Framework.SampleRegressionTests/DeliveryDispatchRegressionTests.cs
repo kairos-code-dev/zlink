@@ -28,6 +28,12 @@ public sealed partial class RegressionTests
             sampleRoot, "Server", "Tracking", "TrackingServerHostFactory.cs"));
         Assert.Contains("AddHandlerGroup(SampleNames.DispatchChannel)", dispatch, StringComparison.Ordinal);
         Assert.Contains("AddHandlerGroup(SampleNames.TrackingRouteChannel)", tracking, StringComparison.Ordinal);
+        Assert.Contains("mesh.Objects().Client()", dispatch, StringComparison.Ordinal);
+        Assert.Contains("mesh.Objects().Client()", tracking, StringComparison.Ordinal);
+        Assert.Contains("AddClientServerChannel(SampleNames.DispatchChannel).Server()", dispatch,
+            StringComparison.Ordinal);
+        Assert.Contains("AddClientServerChannel(SampleNames.TrackingRouteChannel).Server()", tracking,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -69,11 +75,9 @@ public sealed partial class RegressionTests
         Assert.Contains("deliverydispatch-reassignment=completed", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("deliverydispatch-server-evidence=completed", shellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch-runner-evidence=completed", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("grep -Rq \"message flow\" \"${FLOW_LOG_DIR}\"", shellRunner,
-            StringComparison.Ordinal);
-        Assert.Contains("FLOW_LOG_DIR=\"${RUN_DIR}/flow-logs\"", shellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("FLOW_LOG_DIR=\"${SCRIPT_DIR}/logs\"", shellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("rm -f \"${FLOW_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("message flow", shellRunner, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("SAMPLE_LOG_DIR=\"${RUN_DIR}/sample-logs\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("FLOW_LOG_DIR", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_SETTLE_SECONDS", shellRunner, StringComparison.Ordinal);
 
@@ -87,12 +91,10 @@ public sealed partial class RegressionTests
         Assert.Contains("deliverydispatch-reassignment=completed", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("deliverydispatch-server-evidence=completed", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch-runner-evidence=completed", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("Wait-SampleLogContains \"message flow\" \"DeliveryDispatch message-flow evidence\"",
-            powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("$SampleLogDir = Join-Path $RunDir \"flow-logs\"", powershellRunner,
+        Assert.DoesNotContain("message flow", powershellRunner, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("$SampleLogDir = Join-Path $RunDir \"sample-logs\"", powershellRunner,
             StringComparison.Ordinal);
         Assert.DoesNotContain("Join-Path $ScriptDir \"logs\"", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("Select-String -Pattern $Pattern -List", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_DELAY_SECONDS", powershellRunner,
             StringComparison.Ordinal);
         Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_SETTLE_SECONDS", powershellRunner,
@@ -125,35 +127,50 @@ public sealed partial class RegressionTests
         var powershellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.ps1"));
         var topology = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "SampleTopology.cs"));
         var messages = File.ReadAllText(Path.Combine(sampleRoot, "Shared", "Contracts", "Messages.cs"));
-        var courierRoutes = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CourierActorNode", "RouteHandlers.cs"));
+        var courierBinder = File.ReadAllText(Path.Combine(
+            sampleRoot, "Server", "CourierSession", "CourierSessionBinder.cs"));
+        var courierOffers = File.ReadAllText(Path.Combine(
+            sampleRoot, "Server", "Dispatch", "DispatchZLinkAdapters.cs"));
         var customerSession = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CustomerGateway",
             "SubscribeDeliverySessionHandler.cs"));
         var customerStatusHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CustomerGateway",
             "Spots", "EntrySpot", "Handlers", "DeliveryStatusUpdatedHandler.cs"));
         var customerAccess = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CustomerGateway",
             "CustomerActorAccess.cs"));
+        var courierEntrySpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CourierActorNode",
+            "Spots", "EntrySpot", "EntrySpot.cs"));
+        var customerEntrySpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CustomerGateway",
+            "Spots", "EntrySpot", "CustomerEntrySpot.cs"));
         var clientScenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "DeliveryDispatchClientScenario.cs"));
 
         Assert.Contains("record AssignDeliveryMsg", messages, StringComparison.Ordinal);
-        Assert.Contains("record FindCourierActorReq", messages, StringComparison.Ordinal);
-        Assert.Contains("record FindCustomerActorReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("record FindCourierActorReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("record FindCustomerActorReq", messages, StringComparison.Ordinal);
         Assert.Contains("record DeliveryStatusUpdatedMsg", messages, StringComparison.Ordinal);
         Assert.Contains("record BindCourierSessionReq", messages, StringComparison.Ordinal);
         Assert.Contains("record BindCourierSessionRes", messages, StringComparison.Ordinal);
-        Assert.Contains("ActorRefSnapshot? Actor = null", messages, StringComparison.Ordinal);
-        Assert.Contains("string? SessionRoute = null", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("ActorRef", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("record DeliveryStatusUpdatedRes", messages, StringComparison.Ordinal);
-        Assert.Contains("record BindCourierReq", messages, StringComparison.Ordinal);
-        Assert.Contains("record BindCourierRes", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("record BindCourierReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("record BindCourierRes", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("record ReassignDelivery", messages, StringComparison.Ordinal);
-        Assert.Contains("FindAsync(request.CourierId", courierRoutes, StringComparison.Ordinal);
-        Assert.Contains("FindAsync(request.CustomerId", customerAccess, StringComparison.Ordinal);
+        Assert.Contains(".GetOrCreate(courierId, SampleNames.CourierActorType)", courierBinder,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("RequestToNode(", courierBinder, StringComparison.Ordinal);
+        Assert.Contains(".SendToActor(", courierOffers, StringComparison.Ordinal);
+        Assert.Contains("FindAsync(customerId", customerAccess, StringComparison.Ordinal);
         Assert.Contains("GetOrCreate(", customerAccess, StringComparison.Ordinal);
-        Assert.Contains("new FindCustomerActorReq(CustomerId)", customerSession, StringComparison.Ordinal);
-        Assert.Contains("new EnsureCustomerActorReq(CustomerId)", customerSession, StringComparison.Ordinal);
+        Assert.DoesNotContain("CustomerActorDirectory", customerAccess, StringComparison.Ordinal);
+        Assert.DoesNotContain("RequireRef(", customerAccess, StringComparison.Ordinal);
+        Assert.DoesNotContain("FindAsync(", courierEntrySpot, StringComparison.Ordinal);
+        Assert.DoesNotContain("FindAsync(", customerEntrySpot, StringComparison.Ordinal);
+        Assert.Contains("actors.Register(actor)", courierEntrySpot, StringComparison.Ordinal);
+        Assert.Contains("actors.Register(actor)", customerEntrySpot, StringComparison.Ordinal);
+        Assert.Contains("actors.FindAsync(CustomerId", customerSession, StringComparison.Ordinal);
+        Assert.Contains("actors.EnsureAsync(CustomerId", customerSession, StringComparison.Ordinal);
         Assert.Contains("IZLinkSpotPacketHandler<CustomerEntrySpot, DeliveryStatusUpdatedMsg>",
             customerStatusHandler, StringComparison.Ordinal);
-        Assert.Contains(".Actor.NodeRid", clientScenario, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Actor.ObjectGeneration", clientScenario, StringComparison.Ordinal);
         Assert.Contains("WaitForSequence<DeliveryStatusNotify>()", clientScenario, StringComparison.Ordinal);
         Assert.Contains("ExpectNone<OfferDeliveryNotify>()", clientScenario, StringComparison.Ordinal);
         Assert.Contains("ZlinkStreamAssert.Ensure", clientScenario, StringComparison.Ordinal);
@@ -186,7 +203,8 @@ public sealed partial class RegressionTests
         var courierSessionHost = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CourierSession",
             "CourierSessionHostFactory.cs"));
 
-        Assert.Contains("new FindCourierActorReq(courierId)", courierSessionBinder, StringComparison.Ordinal);
+        Assert.Contains(".GetOrCreate(courierId, SampleNames.CourierActorType)", courierSessionBinder,
+            StringComparison.Ordinal);
         Assert.Contains("new EnsureCourierActorReq(courierId)", courierSessionBinder, StringComparison.Ordinal);
         Assert.Contains("context.Actors.BindOrGetAsync", courierSessionBinder, StringComparison.Ordinal);
         Assert.Contains("builder.Services.AddSingleton<CourierSessionBinder>()", courierSessionHost,
@@ -219,14 +237,13 @@ public sealed partial class RegressionTests
         // the offer store, swept by a timer. It *may* catch around the sweeper and the queue pump,
         // because a supervision loop that dies on one bad delivery stops sweeping every other one.
         Assert.DoesNotContain("courier timeout", dispatchWorker, StringComparison.Ordinal);
-        // Dispatch addresses the courier's node, not the actor: it resolves that node's entry spot
-        // and sends the offer there. Finding the actor is the node's job, and doing it from here
-        // would put a request in front of a message that does not need one.
-        Assert.Contains("ResolveSpotHandleAsync", dispatchAdapters, StringComparison.Ordinal);
+        // Actor location is resolved by the framework. Dispatch does not select a physical node.
+        Assert.Contains("SendToActor(", dispatchAdapters, StringComparison.Ordinal);
         // The offer is one-way and the decision comes back as its own message (common sample spec
         // §7.4). A request/reply offer would hold the courier node's serial queue open for as long
         // as the courier takes to answer, so the shape is asserted here, not just the behaviour.
-        Assert.Contains("SendToSpot(", dispatchAdapters, StringComparison.Ordinal);
+        Assert.Contains("SendToActor(", dispatchAdapters, StringComparison.Ordinal);
+        Assert.DoesNotContain("SendToSpot(", dispatchAdapters, StringComparison.Ordinal);
         Assert.DoesNotContain("OfferDeliveryReq", dispatchAdapters, StringComparison.Ordinal);
         Assert.DoesNotContain("OfferDeliveryRes ", dispatchAdapters, StringComparison.Ordinal);
         Assert.Contains("DeliveryOfferStore", dispatchWorker, StringComparison.Ordinal);

@@ -35,3 +35,7 @@
 `ZLinkHandlerContext.contentType()`으로 검증한다. E2E handler는 raw frame이나 private runtime에
 접근하지 않고, request/send handler context에 들어온 content-type을 evidence로 남긴다. Client
 scenario는 RC-B1~RC-B4에서 JSON, Protobuf, MessagePack content-type이 기대값과 일치하는지 확인한다.
+
+## 공통 scenario parity gap — 2026-07-29
+
+- `RC-B6`: 공통 scenario는 추가됐지만 Java actual fixture와 runner selector가 없다.

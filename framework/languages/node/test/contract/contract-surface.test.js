@@ -187,6 +187,7 @@ test('runtime topology and supporting exact names are declared by their producti
     'ZLinkFrameworkRuntimeStatus',
     'ZLinkFrameworkRuntime',
     'ZLinkMeshNodeState',
+    'ZLinkPeerState',
     'ZLinkMeshPeerSnapshot',
     'ZLinkMeshChannelSnapshot',
     'ZLinkMeshClaimSnapshot',

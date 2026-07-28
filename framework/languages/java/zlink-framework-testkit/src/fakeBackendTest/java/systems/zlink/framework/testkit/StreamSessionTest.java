@@ -20,7 +20,6 @@ import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
@@ -1190,7 +1189,7 @@ final class StreamSessionTest {
 
     private static ZLinkMessageSerializer serializerWith(
         systems.zlink.framework.configuration.ZLinkCodecExtension extension) {
-        ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
+        PublicCodecTestRegistry registration = new PublicCodecTestRegistry();
         registration.use(extension);
         return registration.serializerWithFallback(new ZLinkJsonMessageSerializer());
     }

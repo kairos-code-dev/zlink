@@ -1142,6 +1142,7 @@ raw_relocation_replay_coordinator_t::process_reply_relay (
       relay.relocation,
       relay.coordinator,
       relay.operation,
+      relay.reply_route_id,
       request_source,
       duplicate
         ? protocol::reply_relay_ack_status_t::already_terminal
@@ -1179,6 +1180,7 @@ raw_relocation_replay_coordinator_t::process_reply_relay_ack (
         if (ack.relocation != registration.relay.relocation
             || ack.coordinator != registration.relay.coordinator
             || ack.operation != registration.relay.operation
+            || ack.reply_route_id != registration.relay.reply_route_id
             || ack.request_source != registration.request_source
             || record.source_routing_id
                  != registration.request_source.node_routing_id

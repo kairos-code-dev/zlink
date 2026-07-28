@@ -101,38 +101,36 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| actor factory without SpotNode | `unit` | actor factory 만 등록하면 startup validation 예외 |
-| actor manager without SpotNode | `unit` | SpotNode 없는 구성에서는 `IZLinkActorManager` 가 DI 에 없다 |
-| actor manager with SpotNode only | `unit` | SpotNode 만 있고 actor factory 가 없으면 `IZLinkActorManager` 가 DI 에 없다 |
-| actor manager with SpotNode and actor factory | `unit` | SpotNode 와 actor factory 가 모두 있으면 `IZLinkActorManager` 가 DI 에 등록된다 |
-| Spot service without SpotNode | `unit` | SpotNode 없는 구성에서는 `IZLinkSpotManager` 가 DI 에 없다 |
-| Spot service with SpotNode | `unit` | SpotNode 가 있으면 Spot service 가 DI 에 등록된다 |
-| Spot publisher without publisher 역할 | `unit` | SpotNode 가 있어도 publisher 역할이 없으면 Spot publisher service 는 DI 에 없다 |
+| Object Server 없는 actor factory | `unit` | actor factory는 Object Server 등록 안에서만 추가할 수 있다 |
+| actor manager without Object runtime | `unit` | Object Client·Server 구성이 없으면 `IZLinkActorManager`가 DI에 없다 |
+| actor manager without actor factory | `unit` | Object runtime만 있고 actor factory가 없으면 `IZLinkActorManager`가 DI에 없다 |
+| actor manager with actor factory | `unit` | Object runtime과 actor factory가 모두 있으면 `IZLinkActorManager`가 DI에 등록된다 |
+| Spot service without Object runtime | `unit` | Object Client·Server 구성이 없으면 `IZLinkSpotManager`가 DI에 없다 |
+| Spot service with Object runtime | `unit` | Object runtime이 있으면 Spot service가 DI에 등록된다 |
+| Spot publisher without publisher 역할 | `unit` | Object runtime이 있어도 publisher 역할이 없으면 Spot publisher service는 DI에 없다 |
 | Spot publisher with publisher 역할 | `unit` | Spot publisher 역할이 있으면 `IZLinkSpotPublisherClient` 가 DI 에 등록된다 |
 | bound session factory registration | `unit` | `IZLinkBoundSessionFactory` 는 framework runtime 과 함께 등록된다 |
-| Spot handle resolver without SpotNode | `unit` | location store가 있는 서버는 SpotNode 없이 `IZLinkSpotHandleResolver`를 제공할 수 있다. |
-| Spot outbound with resolver only | `unit` | Spot ref resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotOutbound` 는 DI 에 없다 |
-| ChannelName 송신 경로 누락 | `unit`, `contract` | `IZLinkRouteClient.SendToChannel(...)`과 `RequestToChannel(...)`은 MeshName 인자 없이 ChannelName만 받고, 등록된 process-local 송신 경로가 없으면 `RequestTargetNotFound`로 끝난다 |
+| ChannelName 송신 경로 누락 | `unit`, `contract` | `IZLinkRouteClient.SendToChannel(...)`과 `RequestToChannel(...)`은 MeshName 인자 없이 ChannelName만 받고, 등록된 process-local 송신 경로가 없으면 `NotFound`로 끝난다 |
 
 ## 5. Spot Regression 항목
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | duplicate Spot factory type | `unit` | startup validation 예외 |
-| duplicate `AddEntrySpot<TEntrySpot>()` | `unit` | 같은 `SpotNode` 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
-| `AddRouteMesh` 호출 | `integration-single-process` | MeshNode builder 한 개가 ChannelName, node와 Spot factory 등록을 함께 소유한다 |
-| location store 없이 local-only spot factory | `integration-single-process` | store endpoint 없이 단일 local SpotNode runtime을 시작한다 |
-| `CreateAsync<TSpot>()` | `integration-single-process` | `SpotId`, create `State`, create reply 값이 일관되게 유지된다 |
-| `CreateAsync<TSpot>()` empty create payload | `integration-single-process` | payload 없는 생성도 빈 `ZLinkMessage`로 `IZLinkSpot.OnCreateAsync(...)`를 한 번 호출한다 |
-| `CreateAsync<TSpot>(request)` payload | `integration-single-process` | create request `ZLinkMessage`가 `IZLinkSpot.OnCreateAsync(...)`로 한 번 전달된다 |
-| `GetOrCreateAsync<TSpot>(spotRid, request)` existing | `integration-single-process` | 같은 `spotId`가 이미 ready 상태면 `State = Existing`이고 새 `request`는 `OnCreateAsync(...)`로 전달되지 않는다 |
-| `GetOrCreateAsync(...)` concurrent create payload | `integration-single-process` | 같은 `spotId` 동시 생성에서는 첫 생성 요청의 `ZLinkMessage`만 `OnCreateAsync(...)`로 전달되고 callback은 한 번만 실행된다 |
-| `GetOrCreateAsync<TSpot>(...)` same type | `integration-single-process` | 같은 `spotId`를 같은 Spot 타입으로 다시 확보하면 기존 spot을 반환하고 새 `OnCreateAsync(...)`를 호출하지 않는다 |
-| `CreateAsync<TSpot>(request)` create rejected | `integration-single-process` | `OnCreateAsync(...)` reject는 `State = Rejected`와 reply `ZLinkMessage`로 반환되고 spot은 등록되지 않는다 |
-| spot create lifecycle failure | `integration-single-process` | `OnCreateAsync(...)` reject는 `State = Rejected`로 반환되고, `OnCreateAsync(...)` 또는 `OnInitializeAsync(...)` 예외는 `SpotCreateFailed`로 전파되며 failed entry는 제거되어 다음 생성 요청이 재시도할 수 있다 |
-| `GetAsync(...)`, `ListAsync(...)` | `integration-single-process` | manager 조회 결과가 일관된다 |
-| `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddHandler(...)`, `Context.AddActorPacket(...)`, `Context.AddSubscribe(...)` 등의 등록과 Spot 멤버 lifecycle callback 이 descriptor에 반영된다 |
-| Entry Spot handler registration | `integration-single-process` | `AddEntrySpot<TEntrySpot>()`로 등록한 `Context.AddPacket(...)`, `AddSubscribe(...)`, `AddHandler(...)`, `AddActorPacket(...)`, `OnDisconnectActorAsync(...)`와 Entry Spot 멤버 lifecycle callback 이 Entry Spot registry에 반영된다 |
+| duplicate `AddEntrySpot<TEntrySpot>()` | `unit` | 같은 RouteMesh Object Server에 Entry Spot을 중복 등록하면 startup validation 예외 |
+| `AddRouteMesh` 호출 | `integration-single-process` | MeshNode builder가 Channel membership과 Object Client·Server 등록을 함께 소유한다 |
+| location store 없이 local-only spot factory | `integration-single-process` | store endpoint 없이 단일 process의 Object Server runtime을 시작한다 |
+| `IZLinkSpotManager.Create(stableType).Async()` | `StatefulServiceRuntimeTests.PublicSpotManagerUsesReserveAndRemoteUserSpotCommands` | Framework가 eligible Object Server를 선택하고 전역 SpotId를 발급한다. 결과의 `SpotRef`, create `State`와 reply가 authority 결과와 일치한다 |
+| payload 없는 `Create(stableType).Async()` | `integration-single-process` | payload 없는 생성도 빈 `ZLinkMessage`로 `IZLinkSpot.OnCreateAsync(...)`를 한 번 호출한다 |
+| `Create(stableType).Request(request).Async()` | `integration-single-process` | create request `ZLinkMessage`가 `IZLinkSpot.OnCreateAsync(...)`로 한 번 전달된다 |
+| `GetOrCreate(spotId, stableType).Async()` existing | `integration-single-process` | 같은 SpotId가 이미 Ready이면 `State = Existing`이고 새 request는 `OnCreateAsync(...)`로 전달되지 않는다 |
+| concurrent `GetOrCreate(spotId, stableType).Async()` | `integration-single-process` | 같은 SpotId의 동시 생성은 하나의 authority 생성만 commit한다. 각 caller는 해당 operation의 terminal 결과를 받는다 |
+| 같은 stable type의 `GetOrCreate(...)` | `integration-single-process` | 기존 SpotRef를 반환하고 새 `OnCreateAsync(...)`를 호출하지 않는다 |
+| `Create(stableType).Request(request).Async()` rejected | `integration-single-process` | `OnCreateAsync(...)` reject는 `State = Rejected`와 reply `ZLinkMessage`로 반환되고 Spot authority는 Ready로 등록되지 않는다 |
+| spot create lifecycle failure | `integration-single-process` | `OnCreateAsync(...)` reject는 `State = Rejected`로 반환되고, `OnCreateAsync(...)` 또는 `OnInitializeAsync(...)` 예외는 `InternalFailure`로 전파되며 failed entry는 제거되어 다음 생성 요청이 재시도할 수 있다 |
+| `FindAsync(spotId)` | `StatefulServiceRuntimeTests.FrameworkHostAutomaticallyExecutesRemoteUserSpotCreateAndCloseAgainstAuthorityStore` | global SpotId의 current SpotRef를 반환하고 close 뒤에는 `null`을 반환한다 |
+| `Configure()` handler registration | `integration-single-process` | `Context.Handlers.AddPacket(...)`, `AddActorPacket(...)`, `AddSubscribe(...)` 등록이 frozen handler catalog에 반영된다 |
+| Entry Spot handler registration | `integration-single-process` | `AddEntrySpot<TEntrySpot>()`로 등록한 `Context.Handlers`와 actor membership lifecycle callback이 Entry Spot catalog에 반영된다 |
 | Entry Spot packet callback concurrency | `integration-single-process` | Entry Spot 일반 packet handler는 user Spot과 같은 등록 표면을 쓰지만 Entry Spot 전체 실행 줄에 직렬화되지 않는다 |
 | `OnInitializeAsync(...)` handler resolve | `integration-single-process` | spot마다 분리된 DI scope가 정상 동작한다 |
 | `OnClosingAsync(...)` 정상 close callback | `integration-single-process` | `CloseAsync(...)` 호출 시 spot 실행 문맥에서 한 번 호출된다 |
@@ -145,20 +143,20 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | Entry Spot timer execution context | `integration-single-process` | Entry Spot timer 정합성은 actor packet mailbox 작업과 분리해 검증한다. 같은 timer callback은 겹쳐 실행하지 않는다 |
 | SPOT timer cancel | `integration-single-process` | `CancelAsync()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다 |
 | outbound 전용 외부 publish client | `integration-multi-process` | target SPOT[^spot] channel에 publish가 성공한다 |
-| Spot route channel acceptance | `unit` | fanout/dealer mesh/ambiguous/missing router/missing peer source 구성을 startup validation에서 거부한다 |
-| Spot route channel transport | `unit` | caller가 명시한 local egress channel이 channel type에 맞는 ROUTER 또는 DEALER socket을 bridge endpoint로 사용해 target Spot으로 routed send/request를 보낸다 |
-| route mesh Spot egress target peer 선택 | `unit` | source process가 target route channel 을 local registration 으로 갖지 않아도, 수동 연결과 registry metadata 의 target SpotNode ingress channel / ROUTER `RoutingId`로 route mesh egress target peer 를 선택한다 |
-| Spot route egress 역할 validation | `unit` | routed Spot egress 는 client-server client 역할 또는 route mesh transport 에서만 켤 수 있고 fanout/dealer mesh 에서는 startup validation 오류다 |
+| Spot route authority 조회 | `unit`, `integration-multi-process` | caller는 global SpotId만 넘기고 Framework는 Location Store에서 current owner와 generation을 조회한다 |
+| Spot route transport | `unit` | Framework가 resolved owner의 RouteMesh connection으로 send/request를 전송한다. Application은 egress channel이나 target NodeRid를 지정하지 않는다 |
+| Instance Spot cold activation | `integration-multi-process` | authority가 없을 때 `InstanceSpot(type)`을 지정한 send/request만 eligible Object Server를 선택해 Spot을 만들고 최초 메시지를 같은 Spot queue에서 처리한다 |
+| Spot route Object Client 역할 validation | `unit` | 외부 Spot send/request를 사용하는 process는 해당 Mesh에 Object Client 역할을 등록한다 |
 | spot 종료 후 scope 정리 | `integration-single-process` | 이후 callback이 발생하지 않고 dispose도 정상 완료된다 |
-| actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddHandler(...)`로 등록한 actor handler가 join된 `Spot` 실행 문맥에서 실행된다 |
+| actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.Handlers.AddActorPacket(...)`으로 등록한 actor handler가 join된 Spot 실행 문맥에서 실행된다 |
 | Entry Spot actor mailbox dispatch | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot actor packet이 actor별 입력 순서를 보존하고, 서로 다른 actor handler 시작은 Entry Spot 실행 queue에 막히지 않는다 |
 | local actor mailbox dispatch | `integration-single-process` | user Spot에 들어가지 않은 actor packet도 actor별 mailbox 순서를 따른다 |
 | user Spot actor dispatch serialization | `integration-single-process` | 같은 user Spot 안의 여러 actor packet이 Spot 실행 queue에서 순서대로 처리되어 Spot 상태가 보호된다 |
 | runtime task exception observation | `unit` | detached runtime task와 fire-and-forget handler에서 발생한 예외가 unobserved exception으로 묻히지 않고 runtime error sink 또는 logger로 관찰된다 |
 | execution queue cancellation semantics | `unit` | queue enqueue/wait cancellation이 이미 queue에 들어간 work item의 순서를 깨거나 중간에 제거하지 않는다 |
-| explicit egress channel Spot route 경로 | `integration-single-process` | routed Spot 호출은 target 정보만으로 egress transport를 고르지 않고, caller가 명시한 local egress channel, egress 설정의 target SpotNode ingress channel, `RoutingId` target으로 routed message를 보낸다 |
-| actor manager 생성 중복/타입 충돌 | `integration-single-process` | `IZLinkActorManager.CreateAsync(...)` 중복 생성은 `ActorAlreadyExists`, `GetOrCreateAsync(...)` actor type 충돌은 `ActorTypeMismatch` 로 실패한다 |
-| local actor bind 생성 금지 | `integration-single-process` | `BindAsync(...)` 는 local actor 가 없을 때 factory 를 호출하지 않고 `ActorRouteNotFound` 로 실패한다 |
+| Spot message follow | `integration-multi-process` | relocation 중 이전 owner에 도착한 Spot·Actor message를 current owner로 relay하고 stale route를 application에 노출하지 않는다 |
+| actor manager 생성 중복/타입 충돌 | `integration-single-process` | `IZLinkActorManager.Create(actorId, actorType).Async(...)` 중복 생성과 `GetOrCreate(actorId, actorType).Async(...)` type 충돌이 public result·typed error 계약을 지킨다 |
+| local actor bind 생성 금지 | `integration-single-process` | `BindAsync(...)`는 local actor가 없을 때 factory를 호출하지 않고 `NotFound`로 실패한다 |
 | session actor bind resolver fallback 없음 | `integration-single-process` | `BindAsync(...)` 는 application resolver fallback 없이 logical actor handle 을 등록한다 |
 | remote actor dispatch 생성 금지 | `integration-single-process` | routed actor dispatch 수신 경로는 local actor 가 없을 때 factory 를 호출하지 않고 dispatch 를 실패시킨다 |
 | session actor relay bridge | `integration-single-process` | `BindAsync(...)` 와 `IZLinkSessionActor.RelayAsync(...)` 가 public session 표면에서 동작한다 |
@@ -169,10 +167,10 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | session actor reconnect 재사용 | `integration-single-process` | 같은 actor id가 새 stream session에서 다시 bind되면 기존 actor 인스턴스와 spot membership을 유지하고, session binding token[^binding-token]만 갱신된다 |
 | session actor binding rollback | `integration-single-process` | actor-session binding 갱신이 실패하면 helper도 실패하고, local binding table의 같은 token entry도 제거된다 |
 | stale session binding token guard | `integration-single-process` | 이전 stream에서 늦게 도착한 unbind나 stale bound session 메시지가 새 binding을 지우거나 사용하지 못한다 |
-| Spot route resolver 등록 | `unit` | custom resolver 등록 없이 제거된 registry-backed resolver API가 다시 노출되지 않는다 |
+| Spot route location 조회 | `unit` | 별도 public resolver SPI 없이 Framework가 Location Store에서 global SpotId의 current authority를 조회한다 |
 | actor-bound session route 등록 | `integration-single-process` | actor-session route 는 session bind 시 actor runtime state 에 저장된다 |
-| location store resolver 대체 | `unit` | custom resolver 를 등록하면 기본 location store resolver 대신 custom resolver 가 DI 에 노출된다 |
-| location store Spot RID route | `integration-single-process` | `IZLinkSpotManager.CreateAsync(...)` 으로 만든 Spot 을 resolver 경로로 찾고 종료 후 not found 를 반환한다 |
+| Location Store provider 대체 | `unit`, `contract` | application이 등록한 `IZLinkLocationStore`를 Framework가 두 public Store SPI 중 authority 저장 구현으로 사용하며 별도 resolver SPI를 노출하지 않는다 |
+| Location Store SpotId route | `StatefulServiceRuntimeTests.FrameworkHostAutomaticallyExecutesRemoteUserSpotCreateAndCloseAgainstAuthorityStore` | `IZLinkSpotManager.Create(stableType).Async(...)`가 만든 Spot을 global SpotId로 찾고 종료 후 not found를 반환한다 |
 | stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
 | actor-session store 없이 동작 | `unit` | Bingo 샘플이 actor-session store 없이 actor-bound session 을 사용한다 |
 | SessionGateway 변형 없음 | `unit` | TicTacToe SessionGateway 변형이 sample tree 와 solution 에 남아 있지 않다 |
@@ -184,7 +182,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |
 | spot context channel request 경로 | `unit` | `Spot.Context.Outbound.RequestToChannel(channelName, ...)`이 MeshName 인자 없이 process-local ChannelName 송신 경로를 사용한다 |
-| spot context routed send/request 표면 | `contract`, `integration-single-process` | `IZLinkSpotOutbound`가 `SendToSpot`, `RequestToSpot`, `Publish`, `SendToChannel`, `RequestToChannel`을 모두 노출한다. `Publish`·channel send/request는 ChannelName만으로 송신 경로를 고르고, Spot direct는 `SpotHandle`의 route를 사용한다 |
+| spot context routed send/request 표면 | `contract`, `integration-single-process` | `IZLinkSpotOutbound`가 `SendToSpot`, `RequestToSpot`, `Publish`, `SendToChannel`, `RequestToChannel`을 모두 노출한다. `Publish`·channel send/request는 ChannelName을 사용하고, Spot direct는 global SpotId의 current authority를 조회한다 |
 | actor bound session send API | `integration-single-process` | actor는 `Context.BoundSession.Send(...)`로 client stream에 push하고, `IZLinkStream`을 직접 노출받지 않는다 |
 | actor request handler reply | `unit` | actor request packet은 actor request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
 | Spot actor request handler reply | `unit` | Entry Spot/user Spot actor request packet은 request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
@@ -279,6 +277,7 @@ backend gate 와 별도로 유지한다.
 - `regression-test-matrix.ko.md`
 - `runtime-lifecycle.ko.md`
 - `runtime-execution.ko.md`
+- `public-symbol-delta-v11.ko.md`
 - `backend-dependency-policy.ko.md`
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
@@ -290,8 +289,8 @@ backend gate 와 별도로 유지한다.
 [^backpressure]: backpressure 는 송신 측이 수신 측의 처리 속도를 넘어 메시지를 밀어 넣지 못하도록 흐름을 조절하는 메커니즘이다.
 [^hwm]: HWM(High Water Mark) 은 송신 큐에 쌓을 수 있는 최대 메시지 수를 가리키며, 이 한계에 도달하면 backpressure 가 발동한다.
 [^wire-multipart]: wire multipart 는 한 논리 메시지를 header, payload 등 여러 message part 로 나누어 전송하는 방식이다. 한쪽만 떼어 살펴봐도 라우팅이 가능해진다.
-[^entry-spot]: Entry Spot 은 SpotNode 가 접속한 actor 를 가장 먼저 받아들이는 진입용 spot 이다. 이후 user Spot 으로 옮겨 가기 전 단계 역할을 한다.
-[^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
+[^entry-spot]: Entry Spot은 Object Server process가 시작할 때 만드는 stateless 진입 Spot이다. 아직 User Spot에 속하지 않은 Actor를 actor별 mailbox로 처리한다.
+[^spot]: `SPOT`은 동적으로 생성·소멸되는 논리적 실행 단위다. room, stage와 zone이 대표 예다.
 [^binding-token]: session binding token 은 actor 와 stream session 의 연결 상태를 식별하는 토큰으로, 재연결 시 어느 binding 이 최신인지 구분하는 데 쓰인다.
 
 ---
@@ -320,7 +319,7 @@ backend gate 와 별도로 유지한다.
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes` | 같은 Spot factory 타입을 중복 등록하면 startup validation 예외가 난다. |
-| `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | location store 없이도 local-only SpotNode 구성은 시작할 수 있다. |
+| `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | 현재 테스트 이름의 `SpotNode`는 내부 Object runtime을 뜻한다. Location Store 없는 local-only Object Server 구성이 시작되는지 검증한다. |
 | `E2E:SM-A6` | Spot initialize와 명시적 close lifecycle이 실제 runtime에서 한 번씩 완료된다. |
 | `E2E:SM-E2` | Spot timer tick이 등록된 handler에 전달된다. |
 | `E2E:SM-E3` | idle timer가 Spot을 닫고 이후 요청이 실패해 timer와 lifecycle 종료를 함께 검증한다. |
@@ -362,33 +361,32 @@ backend gate 와 별도로 유지한다.
 | `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures` | timer handler 예외가 계속 실행되는 실패와 timer 중단 실패를 구분해 typed event 로 만들어진다. |
 | `MonitoringTests.AddZLinkMonitoring_RequiresPositivePollingIntervals` | Spot과 location runtime polling interval이 0보다 커야 한다. |
 | `MonitoringTests.MonitoringSourceValidator_RequiresLocationRuntimeForLocationSources` | location source를 등록했지만 location runtime이 없으면 시작 전에 거부한다. |
-| `MonitoringTests.AddZLinkMonitoring_Throws_WhenSpotSourceDoesNotMatchRegisteredSpotNode` | Spot source 이름이 등록된 SpotNode 이름과 정확히 일치하지 않으면 시작 전에 거부한다. |
-| `MonitoringTests.AddZLinkMonitoring_UsesExplicitSpotSourceWithoutAutoDiscovery` | Spot source는 자동으로 추가되지 않으며 명시한 SpotNode 이름만 등록한다. |
+| `MonitoringTests.AddZLinkMonitoring_Throws_WhenSpotSourceDoesNotMatchRegisteredSpotNode` | 현재 테스트 이름의 `SpotNode`는 내부 Object runtime을 뜻한다. Spot source 이름이 등록된 runtime과 다르면 시작 전에 거부한다. |
+| `MonitoringTests.AddZLinkMonitoring_UsesExplicitSpotSourceWithoutAutoDiscovery` | Spot source는 자동으로 추가되지 않으며 명시한 Object runtime만 등록한다. |
 | `MonitoringTests.SpotPollingEventDiff_EmitsSealedVariantsOnlyForChangedSnapshotParts` | 최초 snapshot과 후속 차이를 sealed Spot event variant로 정확히 발행한다. |
 | 공통 개념 | `.NET` 타입 / 멤버 |
-| 관측 모드 | `ZLinkRuntimeMessageFlowMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose` } |
-| outcome | `ZLinkMessageFlowOutcome` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived`, `Error` } |
-| event | `ZLinkMessageFlowEvent`(record): `Outcome`, `Surface`, `MessageKind`, `PacketName`, `ChannelName`, `Topic`, `CorrelationId`, `SourceRid`, `LocalRid`, `PeerRid`, `SocketRole`, `SpotRid`, `ActorId`, `MessageSize`, `FlowId`, nullable `FlowOrigin`, 오류 필드 |
-| observer | `IZLinkRuntimeMessageFlowObserver.OnMessageFlowAsync(ZLinkRuntimeMessageFlowEvent, CancellationToken)` |
-| 진단 옵션(read-only) | `IZLinkDispatchOptions.Diagnostics` → `IZLinkDiagnosticsOptions` { `MessageFlow`, `EffectiveMessageFlow`, `SampleRate`, `IncludeMessageSizes`, `LogFile`, `Label` } |
-| 런타임 토글 | `IZLinkMessageFlowRuntime.Mode` (DI singleton) |
+| 관측 level | `ZLinkDiagnosticsLevel` { `Off`, `Errors`(기본), `Normal`, `Detailed` } |
+| 내부 event | `ZLinkMessageFlowEvent`는 runtime 내부 record이며 public callback argument가 아니다. |
+| 진단 옵션 | `IZLinkDispatchOptions.Diagnostics` → `IZLinkDiagnosticsOptions.SetLevel(...)`, `SetSampleRate(...)`, `IncludeMessageSizes(...)` |
+| 런타임 토글 | `IZLinkDiagnosticsRuntime.Level` (DI singleton) |
+| 표준 출력 | `ActivitySource("Zlink.Framework")`, `ILogger` structured log |
 | 공통 개념 | `.NET` |
-| meter 이름(상수) | `ZLinkMeters.Framework` = `"zlink.framework"` (meter/scope 이름은 언어 간 바이트 동일, 공통 §11) |
+| meter 이름(상수) | `ZLinkMeters.Framework` = `"zlink.framework"`이며 [공통 metrics 계약](../../common/spec/25-runtime-metrics.ko.md)과 byte-exact로 일치한다 |
 | 계기 방출 | `System.Diagnostics.Metrics.Meter("zlink.framework")` — `Counter`/`UpDownCounter`/`ObservableGauge`/`Histogram` |
 | 앱 연결(공통 케이스) | OTel `MeterProviderBuilder.AddMeter(ZLinkMeters.Framework)` — 이게 전부다 |
 | 비-OTel/테스트 수집 | .NET 표준 `MeterListener`가 `ZLinkMeters.Framework`를 직접 구독 — zlink 전용 listener interface 없음 |
 | 공통 개념 | `.NET` |
-| 생성 gate | 기존 `MessageFlow` mode가 `Off`가 아니면 create-if-absent 자동 생성 |
-| event 필드(추가) | `string ZLinkMessageFlowEvent.FlowId`, `ZLinkFlowOrigin? ZLinkMessageFlowEvent.FlowOrigin` — dispatch 오류 이벤트에도 동일 |
+| 생성 gate | diagnostics level이 `Off`가 아니고 현재 처리 단계가 level·sampling 조건을 통과할 때만 Flow 상관 정보를 만든다. |
+| 내부 event 필드 | `ZLinkMessageFlowEvent`의 `FlowId`와 `FlowOrigin`은 public DTO가 아니라 표준 trace·log attribute를 만드는 내부 입력이다. |
 | 공통 개념 | `.NET` |
 | 자동 Shutdown | framework hosted service가 `IHostApplicationLifetime` 종료에 참여하고 `StopAsync`에서 host `ShutdownAsync(...)` terminal result를 기다린다 |
-| Retire 순서 | all-or-none preflight → admission seal → current turn completion → queue·journal·timer freeze → Actor·Spot relocation → STREAM barrier → authority·descriptor → listener·raw socket cleanup |
+| Relocate 순서 | all-or-none preflight → admission seal → current turn completion → queue·journal·timer freeze → Actor·Spot relocation → STREAM barrier → authority commit |
 | User Spot aggregate | User Spot과 소속 Actor를 하나의 aggregate로 relocation하며 participant 전체와 generation을 Location Store commit에서 검증한다 |
 | Spot 생성 경계 | direct Spot send/request의 fluent builder에 Instance marker를 지정한다. Missing Instance는 marker가 정확히 한 factory type을 선택할 때만 cold placement를 시작한다 |
-| terminal result | `ZLinkFrameworkTerminationResult(EffectiveIntent, Outcome, Reason)`의 enum 숫자와 허용 조합이 공통 54와 일치한다 |
-| 명시 제어 | DI singleton `IZLinkFrameworkRuntime`의 `RetireAsync(...)`와 `ShutdownAsync(...)`가 host shared operation을 제공하고 `deadline == null`은 30초다 |
-| first intent | `Draining` 이후 cross-intent waiter는 first operation의 `EffectiveIntent`, deadline과 terminal result를 공유한다. `Blocked`는 terminal cache에 넣지 않는다 |
-| readiness probe | `IZLinkFrameworkRuntime.IsReady`는 host `Serving`에서만 true이고 기존 component `IsReady(...)`는 host state projection을 포함한다 |
+| terminal result | `ZLinkFrameworkRelocationResult`와 `ZLinkFrameworkTerminationResult`의 enum 숫자와 허용 조합이 [graceful drain 계약](../../common/spec/28-graceful-drain-handoff.ko.md)과 일치한다 |
+| 명시 제어 | `FrameworkRuntimeContracts.Relocation_and_shutdown_are_separate_host_operations`: DI singleton `IZLinkFrameworkRuntime`은 `RelocateAsync(options, ...)`와 `ShutdownAsync(...)`를 분리한다. Relocation deadline은 options에 두며 두 operation의 `deadline == null`은 30초다 |
+| concurrent caller | `Relocating` 이후 같은 relocation caller는 shared operation의 mode, deadline과 terminal result를 공유한다. `Blocked`는 terminal cache에 넣지 않는다 |
+| readiness probe | `IZLinkFrameworkRuntime.Status.IsReady`는 host `Serving`에서만 true이고 component readiness는 host state projection을 포함한다 |
 | transport liveness | public option 없이 RouteMesh·ClientServer는 5초 probe·ACK과 15초 inbound deadline을 적용한다. Classic fanout은 publisher별 전용 SUB socket에서 5초 단방향 beacon과 15초 inbound deadline을 적용하고 첫 valid receive 뒤에 ready가 된다 |
 
 ### Session actor dispatch
@@ -413,11 +411,11 @@ backend gate 와 별도로 유지한다.
 | `SerialExecutorTests.ActorDispatchCancellation_Does_Not_Stop_Current_Or_Later_Dispatch` | actor dispatch 대기를 취소해도 현재 실행 중인 dispatch나 이후 dispatch가 중단되지 않는다. |
 | `RegressionTests.DotNetRegressionMatrix_Includes_ExecutionSerialization_Guards` | 중앙 regression matrix가 실행 직렬화 관련 회귀 항목을 유지한다. |
 
-### SpotNode
+### Entry Spot
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `E2E:SM-A1` | Entry Spot routing id를 사용한 request가 실제 Entry Spot handler에 도달한다. |
+| `E2E:SM-A1` | Framework가 발급한 Entry SpotId를 사용한 request가 실제 Entry Spot handler에 도달한다. |
 | `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | 제거된 route 계약이 public API 표면으로 다시 노출되지 않고 actor/session 계약은 유지된다. |
 
 ### Stage wrapper

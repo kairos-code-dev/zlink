@@ -37,12 +37,16 @@ public sealed class ContractSurfaceCoverage
         Assert.DoesNotContain(typeof(IZLinkActorSendCall).GetMethods(), method => method.Name == "PacketName");
         Assert.Contains(typeof(IZLinkActorSendCall).GetMethods(), method => method.Name == "Async");
         Assert.DoesNotContain(typeof(IZLinkActorRequestCall).GetMethods(), method => method.Name == "PacketName");
+        Assert.Contains(typeof(IZLinkActorCreateCall).GetMethods(), method => method.Name == "Yield");
+        Assert.Contains(typeof(IZLinkActorGetOrCreateCall).GetMethods(), method => method.Name == "Yield");
         Assert.Equal(
             new[] { "Defer" },
             typeof(IZLinkActorDeferredJoinCall).GetMethods().Select(method => method.Name).ToArray());
         Assert.DoesNotContain(typeof(IZLinkActorContext).GetMembers(), member => member.Name is "IsJoined" or "GetSpot");
         Assert.Contains(typeof(IZLinkWorkerCall<>).GetMethods(), method => method.Name == "Yield");
         Assert.Contains(typeof(IZLinkWorkerCall<>).GetMethods(), method => method.Name == "Submit");
+        Assert.Contains(typeof(IZLinkSpotCreateCall).GetMethods(), method => method.Name == "Yield");
+        Assert.Contains(typeof(IZLinkSpotGetOrCreateCall).GetMethods(), method => method.Name == "Yield");
         Assert.DoesNotContain(typeof(IZLinkDispatchOptions).GetProperties(), property => property.Name.EndsWith("DispatchMode", StringComparison.Ordinal));
 
         Assert.True(typeof(ZLinkActorJoinCompletion).IsAbstract);
@@ -59,12 +63,7 @@ public sealed class ContractSurfaceCoverage
     [Fact]
     public void Closed_result_and_event_roots_cannot_be_subclassed_outside_the_framework_assembly()
     {
-        Type[] roots =
-        [
-            typeof(ZLinkActorJoinCompletion),
-            typeof(ZLinkLocationRuntimeEvent),
-            typeof(ZLinkSpotEvent)
-        ];
+        Type[] roots = [typeof(ZLinkActorJoinCompletion)];
 
         foreach (var root in roots)
         {

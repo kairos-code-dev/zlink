@@ -20,7 +20,7 @@ internal static class ActorNodeEndpoints
         app.MapPost("/placement-weight", async (
             PlacementWeightReq request,
             IZLinkRouteMeshRuntimeOptions runtimeOptions,
-            IZLinkLocationRuntimeQuery locations,
+            IZLinkRouteMeshRuntime meshRuntime,
             CancellationToken cancellationToken) =>
         {
             runtimeOptions.Mesh(SpotActorTransferNames.Mesh).PlacementWeight =
@@ -28,14 +28,9 @@ internal static class ActorNodeEndpoints
             var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
             while (DateTimeOffset.UtcNow < deadline)
             {
-                var page = await locations.ListMeshNodeDescriptorsAsync(
-                    SpotActorTransferNames.Mesh,
-                    cancellationToken: cancellationToken);
-                if (page.Items.Any(descriptor =>
-                        descriptor.Rid.ToString().StartsWith(
-                            options.Rid + "-",
-                            StringComparison.Ordinal)
-                        && descriptor.PlacementWeight == request.Weight))
+                if (meshRuntime.GetStatus(SpotActorTransferNames.Mesh).IsReady
+                    && runtimeOptions.Mesh(SpotActorTransferNames.Mesh)
+                        .PlacementWeight == request.Weight)
                 {
                     return Results.Ok(new PlacementWeightRes(request.Weight));
                 }
@@ -46,18 +41,18 @@ internal static class ActorNodeEndpoints
         app.MapGet("/mesh/ready", (
             IZLinkRouteMeshRuntime meshRuntime) =>
         {
-            var snapshot = meshRuntime.Snapshot(SpotActorTransferNames.Mesh);
+            var status = meshRuntime.GetStatus(SpotActorTransferNames.Mesh);
             return Results.Ok(new MeshReadyRes(
-                snapshot.Rid.ToString(),
-                snapshot.Peers
-                    .Where(static peer => peer.Ready)
-                    .Select(static peer => peer.Rid.ToString())
+                options.Rid,
+                status.Peers
+                    .Where(static peer => peer.State == ZLinkPeerState.Ready)
+                    .Select(static peer => peer.NodeRid.ToString())
                     .ToArray(),
-                snapshot.ObjectCapabilities
-                    .Where(static capability =>
-                        capability.ObjectKind == ZLinkPlacementObjectKind.UserSpot)
-                    .Select(static capability => capability.StableType)
-                    .ToArray()));
+                [
+                    SpotActorTransferNames.UserSpotType,
+                    SpotActorTransferNames.RelocationPayloadUserSpotType,
+                    SpotActorTransferNames.RelocationPayloadPerActorUserSpotType
+                ]));
         });
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapGet(
@@ -216,27 +211,37 @@ internal static class ActorNodeEndpoints
                     var created = await spotManager
                         .GetOrCreate(
                             spotIds[index],
-                            SpotActorTransferNames
-                                .RelocationPayloadUserSpotType)
+                            request.PerActor
+                                ? SpotActorTransferNames
+                                    .RelocationPayloadPerActorUserSpotType
+                                : SpotActorTransferNames
+                                    .RelocationPayloadUserSpotType)
                         .InMesh(SpotActorTransferNames.Mesh)
                         .Request(payload)
                         .Async(token);
                     nodeRids[index] =
                         created.Spot.NodeRid.ToString();
+                    // Membership commits for one Spot share one authority
+                    // aggregate. Set up that aggregate in order; the outer
+                    // Spot loop still creates independent Spots in parallel.
                     for (var actorIndex = 0;
                          actorIndex < request.ActorsPerSpot;
                          actorIndex++)
                     {
                         var actorId =
-                            $"{request.SpotIdPrefix}-actor-{index:D6}-{actorIndex:D3}";
+                            $"{request.SpotIdPrefix}-actor-"
+                            + $"{index:D6}-{actorIndex:D6}";
                         _ = await actorManager
                             .GetOrCreate(
                                 actorId,
-                                SpotActorTransferNames.ActorTypeStateful)
+                                SpotActorTransferNames
+                                    .ActorTypeStateful)
                             .Request(new ActorCreateReq(
                                 actorId,
-                                SpotActorTransferNames.ActorTypeStateful,
-                                actorIndex))
+                                SpotActorTransferNames
+                                    .ActorTypeStateful,
+                                actorIndex,
+                                request.ActorApplicationStateBytes))
                             .Async(token);
                         var joined = await actorClient
                             .RequestToActor(
@@ -248,7 +253,8 @@ internal static class ActorNodeEndpoints
                             .Async<JoinTargetRes>(token);
                         if (!joined.Accepted)
                             throw new InvalidOperationException(
-                                $"Bulk Spot member Actor '{actorId}' was rejected.");
+                                $"Bulk Spot member Actor '{actorId}' "
+                                + "was rejected.");
                         actorIds.Add(actorId);
                     }
                 });
@@ -353,6 +359,22 @@ internal static class ActorNodeEndpoints
                 cancellationToken);
             return Results.Ok(snapshot);
         });
+        app.MapPost("/relocation-interruption/wait", async (
+            RelocationInterruptionWaitReq request,
+            RelocationInterruptionEvidenceStore evidence,
+            CancellationToken cancellationToken) =>
+        {
+            var snapshot = await evidence.WaitUntilAsync(
+                request.UnitKind,
+                request.ExecutionMode,
+                Math.Clamp(request.MinimumCount, 1, 10_000),
+                TimeSpan.FromMilliseconds(Math.Clamp(
+                    request.TimeoutMilliseconds,
+                    1,
+                    30_000)),
+                cancellationToken);
+            return Results.Ok(snapshot);
+        });
         app.MapPost("/joined-gates/{spotId}/release", (string spotId, JoinedGateStore gates) =>
             Results.Ok(new GateReleaseRes(spotId, gates.Release(spotId))));
         app.MapPost("/transfer-gates/{actorId}/release", (string actorId, TransferGateStore gates) =>
@@ -386,6 +408,26 @@ internal static class ActorNodeEndpoints
             string operationId,
             TransportDeliveryGate gate) =>
             Results.Ok(gate.GetSnapshot(operationId)));
+        app.MapPost("/reply-admission/{actorId}/arm", (
+            string actorId,
+            TransportDeliveryGate gate) =>
+            Results.Ok(gate.ArmReplyAdmission(actorId)));
+        app.MapPost("/reply-admission/{actorId}/wait", async (
+            string actorId,
+            TransportDeliveryGate gate,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await gate.WaitReplyAdmissionCapturedAsync(
+                actorId,
+                TimeSpan.FromSeconds(10),
+                cancellationToken)));
+        app.MapPost("/reply-admission/{actorId}/release", (
+            string actorId,
+            TransportDeliveryGate gate) =>
+            Results.Ok(gate.ReleaseReplyAdmission(actorId)));
+        app.MapGet("/reply-admission/{actorId}", (
+            string actorId,
+            TransportDeliveryGate gate) =>
+            Results.Ok(gate.GetReplyAdmissionSnapshot(actorId)));
         app.MapPost("/spots", async (CreateSpotReq request, IZLinkSpotManager spots,
             CancellationToken cancellationToken) =>
         {
@@ -416,7 +458,7 @@ internal static class ActorNodeEndpoints
             CancellationToken cancellationToken) =>
         {
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
-            return Results.Ok(new ActorRefSnapshotRes(
+            return Results.Ok(new ActorRefRes(
                 actor.ActorId, actor.NodeRid.ToString(), checked((long)actor.ObjectGeneration)));
         });
         app.MapPost("/actors/{actorId}/destroy", async (
@@ -440,7 +482,7 @@ internal static class ActorNodeEndpoints
             CancellationToken cancellationToken) =>
         {
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
-            var snapshot = new ActorRefSnapshotRes(
+            var snapshot = new ActorRefRes(
                 actor.ActorId, actor.NodeRid.ToString(), checked((long)actor.ObjectGeneration));
             evidence.Add(scenario, actorId, marker,
                 $"node={snapshot.NodeRid};generation={snapshot.Generation}");

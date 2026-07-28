@@ -1,6 +1,7 @@
 namespace DeliveryDispatch.Shared.Contracts;
 
 using System.Text.Json.Serialization;
+using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 
 [JsonConverter(typeof(JsonStringEnumConverter<DeliveryStatus>))]
@@ -27,49 +28,14 @@ public sealed record CreateDeliveryRes(
 public sealed record EnsureCustomerActorReq(
     string CustomerId);
 
-public sealed record EnsureCustomerActorRes(
-    string CustomerId,
-    ActorRefSnapshot Actor);
-
-public sealed record FindCustomerActorReq(
-    string CustomerId);
-
-public sealed record FindCustomerActorRes(
-    string CustomerId,
-    ActorRefSnapshot? Actor);
-
 public sealed record BindCourierSessionReq(
-    string CourierId,
-    ActorRefSnapshot? Actor = null,
-    string? SessionRoute = null);
+    string CourierId);
 
 public sealed record BindCourierSessionRes(
-    string CourierId,
-    ActorRefSnapshot Actor,
-    string SessionRoute);
-
-public sealed record BindCourierReq(
-    string CourierId,
-    string SessionRoute);
-
-public sealed record BindCourierRes(
-    string CourierId,
-    ActorRefSnapshot Actor,
-    string SessionRoute);
+    string CourierId);
 
 public sealed record EnsureCourierActorReq(
     string CourierId);
-
-public sealed record EnsureCourierActorRes(
-    string CourierId,
-    ActorRefSnapshot Actor);
-
-public sealed record FindCourierActorReq(
-    string CourierId);
-
-public sealed record FindCourierActorRes(
-    string CourierId,
-    ActorRefSnapshot? Actor);
 
 public sealed record SubscribeDeliveryReq(
     string DeliveryId);

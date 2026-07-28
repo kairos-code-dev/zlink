@@ -57,19 +57,17 @@ internal sealed class ZLinkSpotPublisherClientService(ZLinkFrameworkRuntime runt
     : IZLinkSpotPublisherClient
 {
     public IZLinkPublishCall Publish<TEvent>(
-        string meshName,
         string channelName,
         string topic,
         TEvent message)
     {
         return new ZLinkExternalSpotPublishCall<TEvent>(
-            runtime, meshName, channelName, topic, message);
+            runtime, channelName, topic, message);
     }
 }
 
 internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
     ZLinkFrameworkRuntime runtime,
-    string meshName,
     string channelName,
     string topic,
     TEvent message) : IZLinkPublishCall
@@ -98,7 +96,7 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
             ZLinkFlowOrigin.Application,
             runtime.Flow.CaptureEnabled);
-        var bundle = runtime.GetSpotPublisherBundle(meshName);
+        var bundle = runtime.GetSpotPublisherBundle(channelName);
         var packetName = _messageName;
         var parts = ZLinkSpotPublishEnvelope.EncodeParts(
             channelName,
@@ -300,10 +298,10 @@ internal static class ZLinkLogicalMulticastOutcome
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.DeadlineExceeded,
                     "Logical Multicast timed out before worker admission completed.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             case SubmitResult.Terminated:
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RuntimeShutdown,
+                    ZLinkFrameworkErrorKind.ShuttingDown,
                     "Logical Multicast was rejected because the runtime is shutting down.");
             default:
                 throw new InvalidOperationException(

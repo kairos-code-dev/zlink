@@ -1,127 +1,71 @@
 using Systems.Zlink;
-using Zlink.Framework.Contracts.Locations;
 
 namespace Zlink.Framework.Contracts.Configuration;
 
-public enum ZLinkMeshNodeState
+public enum ZLinkTopologyState
 {
     Starting = 0,
-    Serving = 1,
+    Ready = 1,
+    Degraded = 2,
+    Stopping = 3,
+    Stopped = 4,
+    Failed = 5
+}
+
+public enum ZLinkTopologyReason
+{
+    RuntimeNotReady = 0,
+    NoReadyPeer = 1,
+    NoReadyTarget = 2,
+    LocationUnavailable = 3,
+    CapacityExceeded = 4,
+    Draining = 5,
+    InternalFailure = 6
+}
+
+public enum ZLinkPeerState
+{
+    Connecting = 0,
+    Ready = 1,
     Draining = 2,
-    Drained = 3,
-    ForceStopping = 4,
-    Stopped = 5,
-    Faulted = 6
+    NotConnected = 3,
+    NotRequired = 4
 }
 
-public sealed record ZLinkMeshPeerSnapshot(
-    RoutingId Rid,
-    ulong LifecycleGeneration,
-    ulong DescriptorRevision,
-    string Endpoint,
-    string AdmissionState,
-    bool Ready,
-    string DrainState,
-    IReadOnlyList<string> ChannelNames,
-    string? LastFailure);
-
-public sealed record ZLinkMeshChannelSnapshot(
+public sealed record ZLinkChannelStatus(
     string ChannelName,
-    int LocalWeight,
-    int ReadyMemberCount,
-    bool Selectable);
+    bool IsReady,
+    int ReadyTargetCount);
 
-public sealed record ZLinkMeshClaimSnapshot(
-    bool ApplicationActive,
-    ulong PendingApplicationWork,
-    bool InfrastructureActive,
-    ulong PendingInfrastructureWork);
+public sealed record ZLinkPeerStatus(
+    RoutingId NodeRid,
+    ZLinkPeerState State,
+    ZLinkTopologyReason? UnavailableReason);
 
-public sealed record ZLinkLocationRuntimeSnapshot(
-    string State,
-    DateTimeOffset? LastSuccessAt,
-    DateTimeOffset? LastFailureAt);
+public sealed record ZLinkPlacementStatus(
+    bool IsAvailable,
+    int ActiveActorCount,
+    int ActiveSpotCount,
+    ZLinkTopologyReason? UnavailableReason);
 
-public sealed record ZLinkInstanceSpotTypeSnapshot(
-    string InstanceSpotType,
-    ulong ActiveCount,
-    ulong ActivatingCount,
-    ulong ClosingCount,
-    ulong PendingMessageCount,
-    ulong PendingByteCount,
-    string? LastActivationOutcome);
-
-public sealed record ZLinkMeshNodeSnapshot(
+public sealed record ZLinkRouteMeshStatus(
     string MeshName,
-    RoutingId Rid,
-    ulong LifecycleGeneration,
-    ulong DescriptorRevision,
-    string Endpoint,
-    ZLinkMeshNodeState State,
+    ZLinkTopologyState State,
+    bool IsReady,
+    int ReadyPeerCount,
+    IReadOnlyList<ZLinkChannelStatus> Channels,
+    IReadOnlyList<ZLinkPeerStatus> Peers,
+    ZLinkPlacementStatus Placement,
     ulong Sequence,
-    DateTimeOffset ObservedAt,
-    IReadOnlyList<string> DescriptorSources,
-    IReadOnlyList<ZLinkMeshPeerSnapshot> Peers,
-    IReadOnlyList<ZLinkMeshChannelSnapshot> Channels,
-    ZLinkMeshClaimSnapshot Claims,
-    ZLinkLocationRuntimeSnapshot Location)
-{
-    public long ApplicationVersion { get; init; }
-    public ZLinkMeshNodeObjectRole ObjectRole { get; init; }
-    public int PlacementWeight { get; init; } = 100;
-    public ZLinkPlacementCapacity PopulationCapacity { get; init; }
-        = new(
-            new ZLinkPopulationCapacity(0, 0, 0),
-            new ZLinkPopulationCapacity(0, 0, 0),
-            Array.Empty<ZLinkSpotTypeCapacity>());
-    public ZLinkActivationConcurrency ActivationConcurrency { get; init; }
-        = new(0, 128);
-    public ulong PlacementReservationFailureCount { get; init; }
-    public string? LastPlacementReservationFailure { get; init; }
-    public IReadOnlyList<ZLinkObjectCapability> ObjectCapabilities { get; init; }
-        = Array.Empty<ZLinkObjectCapability>();
-    public IReadOnlyList<ZLinkInstanceSpotTypeSnapshot> InstanceSpots { get; init; }
-        = Array.Empty<ZLinkInstanceSpotTypeSnapshot>();
-}
+    DateTimeOffset ObservedAt);
 
-public sealed record ZLinkMeshRuntimeEvent(
-    string Identifier,
-    ulong Sequence,
-    DateTimeOffset Timestamp,
-    string MeshName,
-    RoutingId SourceRid,
-    RoutingId? PeerRid,
-    ulong? LifecycleGeneration,
-    ulong? DescriptorRevision,
-    string? ChannelName,
-    string? ClaimDomain,
-    string? MessageKind,
-    string? PlacementOutcome,
-    ZLinkCapacityVector? Capacity,
-    ZLinkPlacementCapacity? PopulationCapacity,
-    ZLinkActivationConcurrency? ActivationConcurrency,
-    string? Reason,
-    ZLinkMeshNodeState? State) : Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEvent
-{
-    /// <summary>The runtime event source is the observed mesh.</summary>
-    public string SourceName => MeshName;
-}
-
-/// <summary>
-/// Runtime monitoring service for registered RouteMesh nodes (spec 50):
-/// one consistent MeshNode snapshot per MeshName and an ordered event stream.
-/// Host termination is owned exclusively by <see cref="IZLinkFrameworkRuntime"/>.
-/// </summary>
 public interface IZLinkRouteMeshRuntime
 {
-    ZLinkMeshNodeSnapshot Snapshot(string meshName);
+    ZLinkRouteMeshStatus GetStatus(string meshName);
 
-    IAsyncEnumerable<ZLinkMeshRuntimeEvent> ObserveAsync(
+    IAsyncEnumerable<ZLinkRouteMeshStatus> ObserveAsync(
         string meshName,
-        int capacity = 1024,
         CancellationToken cancellationToken = default);
-
-    bool IsReady(string meshName);
 }
 
 public enum ZLinkClientServerRole
@@ -131,60 +75,27 @@ public enum ZLinkClientServerRole
     ClientAndServer = 3
 }
 
-public enum ZLinkClientServerServerState
-{
-    Configured = 0,
-    Connecting = 1,
-    Ready = 2,
-    Draining = 3,
-    Disconnected = 4,
-    Rejected = 5
-}
-
-public sealed record ZLinkClientServerServerSnapshot(
-    RoutingId ServerRid,
-    ulong LifecycleGeneration,
-    ulong DescriptorRevision,
-    string Endpoint,
+public sealed record ZLinkClientServerTargetStatus(
+    RoutingId NodeRid,
     int Weight,
-    bool Ready,
-    ZLinkClientServerServerState State,
-    string DescriptorSource,
-    string? LastFailure);
+    ZLinkPeerState State,
+    ZLinkTopologyReason? UnavailableReason);
 
-public sealed record ZLinkClientServerChannelSnapshot(
+public sealed record ZLinkClientServerStatus(
     string ChannelName,
     ZLinkClientServerRole LocalRole,
-    bool Selectable,
-    int ReadyServerCount,
-    int ConnectionIntentCount,
-    int PendingRequestCount,
+    ZLinkTopologyState State,
+    bool IsReady,
+    int ReadyTargetCount,
+    IReadOnlyList<ZLinkClientServerTargetStatus> Targets,
     ulong Sequence,
-    DateTimeOffset ObservedAt,
-    IReadOnlyList<ZLinkClientServerServerSnapshot> Servers,
-    ZLinkLocationRuntimeSnapshot Location);
-
-public sealed record ZLinkClientServerRuntimeEvent(
-    string Identifier,
-    ulong Sequence,
-    DateTimeOffset Timestamp,
-    string ChannelName,
-    RoutingId? ServerRid,
-    ulong? LifecycleGeneration,
-    ulong? DescriptorRevision,
-    int? Weight,
-    bool? Ready,
-    ZLinkClientServerServerState? State,
-    string? Reason);
+    DateTimeOffset ObservedAt);
 
 public interface IZLinkClientServerRuntime
 {
-    ZLinkClientServerChannelSnapshot Snapshot(string channelName);
+    ZLinkClientServerStatus GetStatus(string channelName);
 
-    IAsyncEnumerable<ZLinkClientServerRuntimeEvent> ObserveAsync(
+    IAsyncEnumerable<ZLinkClientServerStatus> ObserveAsync(
         string channelName,
-        int capacity = 1024,
         CancellationToken cancellationToken = default);
-
-    bool IsReady(string channelName);
 }

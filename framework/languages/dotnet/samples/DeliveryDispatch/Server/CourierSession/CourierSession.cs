@@ -33,7 +33,7 @@ internal sealed class CourierSession(
         logger.LogError(
             "deliverydispatch courier-session: stream error code={Code} message={Message} session={SessionId}",
             error.Error,
-            error.Diagnostic?.Message,
+            error.Message,
             Context.SessionId);
         return ValueTask.CompletedTask;
     }

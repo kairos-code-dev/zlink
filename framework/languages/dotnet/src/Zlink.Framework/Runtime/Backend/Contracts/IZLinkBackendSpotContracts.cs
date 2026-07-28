@@ -8,6 +8,8 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     void SetRoutingId(RoutingId routingId);
 
+    void SetObjectRole(ZLinkMeshNodeObjectRole objectRole);
+
     void SetPublisherRoutingId(RoutingId routingId);
 
     void SetSubscriberRoutingId(RoutingId routingId);

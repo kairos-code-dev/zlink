@@ -64,7 +64,7 @@ public sealed interface ZLinkRelocationPolicy<TInstance>
 [Spot 인터페이스](spots.ko.md)가 소유한다. `Class<?>`를 받는 것은 Java type erasure 때문에 policy value를
 공통으로 유지하기 위한 표현이며, Framework는 factory type과 adapter generic target이 일치하는지 socket bind
 전에 검사한다. Mismatch는 startup configuration error다.
-`snapshot(null)`과 null adapter class를 가진 policy도 socket bind 전에 `InvalidConfiguration`으로 거부한다.
+`snapshot(null)`과 null adapter class를 가진 policy도 socket bind 전에 startup configuration error로 거부한다.
 
 Actor adapter는 application state를 최대 64 MiB의 opaque `byte[]`로 capture·restore한다. Public state DTO, `TState`,
 `stateContractId`, state class와 `ZLinkMessage`를 relocation surface에 두지 않는다. Framework는 capture가 정상

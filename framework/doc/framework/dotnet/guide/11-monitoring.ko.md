@@ -238,130 +238,66 @@ timer 정책은 [06-spot](06-spot.ko.md) §3을 참고한다.
   mesh, location runtime event source를 등록할 뿐 HTTP endpoint를 만들지 않는다.
   health check 나 metric은 이벤트와 runtime query를 읽어 앱이 직접 노출한다
   ([10-location](10-location.ko.md) §3).
-- **등록되지 않은 메시지를 알고 싶다** → `ConfigureDispatch()`에
-  `IZLinkRuntimeMessageFlowObserver`를 등록한다. request 실패는 error reply로 돌아가고,
-  send/subscription/actor send 실패는 drop 되지만 로그, metric, observer event로 남는다.
-  Publish는 subscriber별 결과를 확인하지 않으므로 message-flow event를 만들지 않는다.
-  observer는 관측용이므로 callback이 실패해도 원래 dispatch 결과를 바꾸지 않는다.
+- **등록되지 않은 메시지를 알고 싶다** → `ConfigureDispatch().Diagnostics`의 level을
+  `Errors` 이상으로 설정하고 application의 `ILogger` 또는 `ActivitySource` exporter를
+  확인한다. Request 실패는 error reply로 돌아가며, send 실패는 diagnostic record로
+  확인할 수 있다. Publish는 subscriber별 결과를 확인하지 않으므로 target별 record를
+  만들지 않는다.
 - **handler payload의 정확한 필드** → 가이드는 자주 쓰는 필드만 보였다. 전체는
   [spec/aspnet-core-monitoring](../../common/spec/server/languages/dotnet/01-system-structure.ko.md) 참고.
 
-## 5. 메시지 흐름 추적 — 메시지 생애주기 관찰
+## 5. 메시지 흐름 추적
 
-monitoring이 socket/mesh/location의 **상태 변화**를 본다면, 메시지 흐름 추적은 메시지
-하나가 **도착했는지 / handler로 전달됐는지 / 응답이 나갔는지**를 dispatch 경로에서 기록한다.
-로그를 `corr=`로 grep 하면 한 요청의 생애주기를 노드 간에 이어서 추적할 수 있다. dispatch를
-제어하는 게 아니라 관측만 한다.
+메시지 흐름 추적은 메시지의 수신, handler 전달과 terminal 결과를 기록한다.
+`CorrelationId`는 한 request와 reply를 연결하고, `FlowId`는 그 request가 시작한
+후속 Spot·Actor·Channel 호출까지 연결한다.
 
-`ConfigureDispatch()` 체인으로만 활성화한다(진단 필드는 read-only).
+Application은 기록 수준, 정상 흐름의 sampling 비율과 message byte 크기 포함 여부만
+설정한다. Log 저장 위치와 trace exporter는 application의 표준 logging·telemetry
+설정이 소유한다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ConfigureDispatch()
-        // Off → ErrorsOnly(기본) → KeyTransitions → Verbose
-        .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-        .TraceLogFile("logs/flow-api.log")   // 지정=전용 파일, 미지정=앱 ILogger 통합, 둘 다 없으면 stderr
-        .TraceLabel("api");                 // 구조화 필드 label=
+    options.ConfigureDispatch().Diagnostics
+        .SetLevel(ZLinkDiagnosticsLevel.Normal) // 오류와 주요 처리 경계를 기록한다.
+        .SetSampleRate(0.1)                     // 정상 흐름의 10%를 Flow 단위로 선택한다.
+        .IncludeMessageSizes(false);            // Payload 내용과 byte 크기를 기록하지 않는다.
 });
 ```
 
-- 모드 게이팅: `Dropped`·에러는 `ErrorsOnly` 이상, 성공 전이(`Received`/`Dispatched`/`Replied`/
-  `Sent`/`ReplyReceived`)는 `KeyTransitions` 이상. `Off` 면 이벤트 생성 자체가 없어 제로코스트다.
-- 운영 중 켜고 끄기: `IZLinkMessageFlowRuntime`을 DI에서 받아 `Mode`를 바꾼다(재시작
-  불필요, 모든 surface 즉시 반영).
-- 콜렉터/OTel 연동: `IZLinkRuntimeMessageFlowObserver`를 등록해 구조화 이벤트를 받는다(앱 레이어).
-  framework는 OTel에 의존하지 않고 `CorrelationId` + 구조화 필드 + observer 훅까지만 제공한다
-  (작성법은 바로 아래 "observer로 흐름 이벤트 받기").
-- 정식 계약은 [spec/aspnet-core-monitoring §9](../../common/spec/server/languages/dotnet/01-system-structure.ko.md), 공통 의미는
-  [공통 스펙 메시지 흐름 추적](../../common/spec/26-message-flow-tracing.ko.md) 참고.
+| Level | 기록 범위 |
+|---|---|
+| `Off` | Message flow와 dispatch error를 만들지 않는다. |
+| `Errors` | Error, backpressure와 drop만 기록한다. |
+| `Normal` | Error와 주요 처리 경계를 기록한다. |
+| `Detailed` | `Normal`에 byte 크기와 terminal 경과 시간을 추가할 수 있다. |
 
-> **샘플에서 보기 — 전 샘플.** [Bingo](../../common/sample/bingo/README.ko.md) ·
-> [TicTacToe](../../common/sample/tictactoe/README.ko.md) ·
-> [SupportChat](../../common/sample/supportchat/README.ko.md) ·
-> [ShoppingMall](../../common/sample/event/shoppingmall.ko.md) ·
-> [DeliveryDispatch](../../common/sample/deliverydispatch/README.ko.md) ·
-> [GameQuest](../../common/sample/event/gamequest.ko.md)가 **모두 위 세 줄을 그대로 켠다** —
-> 서버마다 `MessageFlow(KeyTransitions)` + `TraceLogFile(...)` + `TraceLabel(...)`이다.
-> 이유는 E2E 규약이다: 시나리오가 실패하면 노드별 flow 로그를 evidence로 남겨
-> `corr=`로 요청 하나의 생애주기를 노드 간에 이어 원인 레이어를 좁힌다. 여러 서버가
-> 도는 샘플에서 `TraceLabel`이 어느 노드의 로그인지 구분해 준다.
+기본값은 `Errors`다. `Off`에서는 trace event, attribute, 문자열과 sampling hash를
+만들지 않는다. 출력만 버리는 logger filter는 이 조건을 만족하지 않는다.
 
-### observer로 흐름 이벤트 받기
-
-로그 파일만으로는 부족하고 흐름 이벤트를 코드로 받고 싶을 때(metric 집계, OTel 전송,
-에러 알림) `IZLinkRuntimeMessageFlowObserver`를 구현한다. 등록은 같은 `ConfigureDispatch()`
-체인의 `SetRuntimeMessageFlowObserver<T>()`로 하고, observer는 **DI에서 resolve** 되므로
-생성자에 필요한 서비스를 주입받을 수 있다.
+운영 중에는 DI에서 process singleton인 `IZLinkDiagnosticsRuntime`을 얻어 이후
+처리의 level을 바꾼다.
 
 ```csharp
-options.ConfigureDispatch()
-    .SetRuntimeMessageFlowObserver<MetricFlowObserver>() // DI에서 생성 — 생성자 주입 가능
-    .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions);
-```
-
-```csharp
-public sealed class MetricFlowObserver(IMetricSink metrics) : IZLinkRuntimeMessageFlowObserver
+public sealed class DiagnosticsSwitch(IZLinkDiagnosticsRuntime diagnostics)
 {
-    public ValueTask OnMessageFlowAsync(ZLinkRuntimeMessageFlowEvent flow, CancellationToken ct)
-    {
-        // 실패만 추려서 집계한다. 값은 공통 spec의 lowercase 문자열이다.
-        if (flow.Outcome == "failed")
-        {
-            metrics.CountError(
-                surface: flow.Surface,            // 어느 dispatch 표면에서
-                kind: flow.MessageKind,           // request/send/publish 중 무엇이
-                reason: flow.Reason,              // 왜 실패했는지
-                packet: flow.PacketName);
-        }
-        return ValueTask.CompletedTask;
-    }
+    public void Disable() =>
+        diagnostics.Level = ZLinkDiagnosticsLevel.Off; // 이후 처리부터 trace 생성 비용을 제거한다.
+
+    public void EnableNormal() =>
+        diagnostics.Level = ZLinkDiagnosticsLevel.Normal;
 }
 ```
 
-`OnMessageFlowAsync`가 매 전이마다 받는 `ZLinkRuntimeMessageFlowEvent`의 주요 필드:
+.NET runtime은 trace를 `ActivitySource` 이름 `Zlink.Framework`로 내보낸다.
+`ILogger`의 structured log를 사용할 때는 `corr`와 `flow` field로 각각 request와
+업무 흐름을 검색한다. Publish는 subscriber별 결과를 확인하지 않으므로 target별
+trace나 count를 만들지 않는다.
 
-| 필드 | 의미 |
-|------|------|
-| `EventId` / `Phase` / `Outcome` | Event 종류, 처리 단계와 `succeeded`·`failed`·`backpressured`·`dropped`·`cancelled`·`shutdown` 결과 |
-| `Surface` | dispatch 표면(채널/spot/stream 등 어느 경로에서 일어났는지) |
-| `MessageKind` | request·send·response·error·control 중 메시지 종류. Publish는 이 event를 만들지 않는다. |
-| `PacketName` / `ChannelName` / `Topic` | 어떤 packet이, 어느 channel·topic에서 |
-| `CorrelationId` | 노드 간 한 요청을 잇는 추적 ID(로그의 `corr=`) |
-| `FlowId` | request/reply 경계를 넘어 이어지는 상위 흐름 ID(아래 flow_id 절 참고) |
-| `FlowOrigin` | 이 흐름이 시작된 지점. `inbound`·`timer`·`application`·`lifecycle` |
-| `SpotId` / `ActorId` | 관련된 spot·actor(해당될 때만) |
-| `SourceRid` / `TargetRid` / `ServerRid` | Routed hop과 ClientServer target의 routing id |
-| `Reason` / `Action` | 실패 원인과 reply·caller completion·drop 처리(해당될 때만) |
-| `MessageSizeBytes` | payload 크기(`IncludeMessageSizes(true)`와 `Verbose` mode일 때) |
-
-전체 필드는 spec 또는 record 정의(`ZLinkRuntimeMessageFlowEvent`)를 확인한다.
-
-- **`MessageFlow(...)` 모드는 로그와 observer 양쪽의 이벤트 생성 범위를 함께 정한다.**
-  observer가 모든 전이를 받는 게 아니다 — `Off` 면 이벤트를 아예 만들지 않고, `ErrorsOnly`
-  는 drop/error 중심, `KeyTransitions` 이상이면 성공 전이까지 전달한다. 성공 전이는
-  `TraceSampleRate(...)`로 샘플링될 수도 있다. 즉 observer는 이 게이팅·샘플링을 통과한
-  이벤트만 받으므로, 모든 에러를 빠짐없이 받으려면 모드를 `ErrorsOnly` 이상으로 둔다.
-- observer는 **관측 전용**이고 dispatch와 분리된 fire-and-forget으로 호출되므로,
-  `OnMessageFlowAsync`가 예외를 던져도 원래 dispatch 결과는 바뀌지 않는다(흐름이 막히지
-  않는다).
-
-### flow_id — 경계를 넘는 상위 상관 키
-
-`CorrelationId`는 **한 request와 그 reply**를 짝짓는 전송 계층 키다. 그런데 실제
-업무 흐름은 request 하나로 끝나지 않는다 — 예를 들어 client 요청 하나가 spot으로
-relay되고, spot이 actor를 호출하고, actor가 다른 channel로 send를 이어 갈 수 있다.
-이 전체 사슬을 하나로 묶는 상위 키가 `FlowId`다.
-
-- **설정이 없다.** `MessageFlow(...)` 모드가 `Off`가 아니면 framework가 흐름의 첫
-  지점에서 자동으로 생성하고(create-if-absent), spot·actor·channel 경계를 넘어
-  그대로 전파한다.
-- `FlowOrigin`은 흐름이 어디서 시작됐는지 알려준다. 외부 메시지(`Inbound`), timer
-  callback(`Timer`), 앱이 시작한 호출(`Application`), lifecycle callback(`Lifecycle`).
-- 같은 `FlowId`로 여러 `CorrelationId`가 지나갈 수 있다. "요청 하나"를 볼 때는
-  `corr=`, "업무 흐름 하나"를 볼 때는 flow id로 grep 한다.
-- 공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../common/spec/27-flow-correlation.ko.md)가
-  다룬다.
+정확한 attribute와 전파 규칙은
+[메시지 흐름 추적](../../common/spec/26-message-flow-tracing.ko.md)과
+[Flow 상관관계](../../common/spec/27-flow-correlation.ko.md)를 참고한다.
 
 ## 6. 더 보기
 

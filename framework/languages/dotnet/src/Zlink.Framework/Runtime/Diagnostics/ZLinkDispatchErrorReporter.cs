@@ -5,8 +5,7 @@ namespace Zlink.Framework.Runtime.Diagnostics;
 internal sealed class ZLinkDispatchErrorReporter(
     ZLinkDispatchOptionsModel options,
     ILogger? logger = null,
-    ZLinkFrameworkRuntime? runtime = null,
-    ZLinkMessageFlowObserverPump? observerPump = null)
+    ZLinkFrameworkRuntime? runtime = null)
 {
     // Success-path tracer companion: every surface already receives a reporter, so
     // exposing the flow tracer here wires all dispatch sites without threading a new
@@ -15,8 +14,7 @@ internal sealed class ZLinkDispatchErrorReporter(
         options,
         logger,
         runtime,
-        observerPump,
-        observerPump?.ErrorSink);
+        runtime is null ? null : runtime.ErrorSink);
 
     public void Report(ZLinkDispatchFailure error)
     {

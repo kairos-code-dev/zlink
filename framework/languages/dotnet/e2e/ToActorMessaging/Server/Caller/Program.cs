@@ -22,14 +22,11 @@ var cachedActors = new ConcurrentDictionary<string, ActorRef>(StringComparer.Ord
 IZLinkMeshPeerConnections? actorConnections = null;
 builder.Services.AddZLinkFramework(framework =>
 {
-    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-        .SetConnectionString(options.RedisEndpoint)
-        .SetKeyPrefix(options.RedisKeyPrefix)));
+    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; }));
     var spot = framework.AddRouteMesh("to-actor")
         .Listen(options.RouterEndpoint)
-        .SetRoutingId(RoutingId.From(options.Rid))
-        .SetEntrySpotRoutingId(RoutingId.From(options.Rid));
-    spot.ChannelName("to-actor");
+        .SetRoutingId(RoutingId.From(options.Rid));
+    spot.Channel("to-actor").Client();
     if (options.ConnectActorRoutes)
     {
         spot.PeerConnections.Connect(RoutingId.From(options.ActorRid), options.ActorRouterEndpoint);
@@ -49,8 +46,8 @@ app.MapPost("/send", async (
     try
     {
         var actor = await ResolveActorAsync(request, actorDirectory, ct);
-        await actors.SendToActor("to-actor", actor, new ActorNotify(request.Scenario, request.ActorId, request.Value))
-            .SubmitAsync(ct);
+        await actors.SendToActor(actor.ActorId, new ActorNotify(request.Scenario, request.ActorId, request.Value))
+            .Async(ct);
         return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, "sent"));
     }
     catch (ZLinkFrameworkException error)
@@ -68,7 +65,7 @@ app.MapPost("/request", async (
     {
         var actor = await ResolveActorAsync(request, actorDirectory, ct);
         var reply = await actors.RequestToActor(
-                "to-actor", actor, new ActorAsk(request.Scenario, request.ActorId, request.Value))
+                actor.ActorId, new ActorAsk(request.Scenario, request.ActorId, request.Value))
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<ActorReply>(ct);
         return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, reply.Value));
@@ -84,11 +81,10 @@ app.MapPost("/refs/{actorId}/capture", async (
     CancellationToken ct) =>
 {
     var actor = await actorDirectory.FindAsync(actorId, ct)
-                ?? throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                ?? throw new InvalidOperationException(
                     $"Actor route '{actorId}' was not found.");
     cachedActors[actorId] = actor;
-    return Results.Ok(ActorRefSnapshot.From(actor));
+    return Results.Ok(actor);
 });
 app.MapGet("/directory/{actorId}", async (
     string actorId,
@@ -108,7 +104,7 @@ app.MapPost("/cached/request", async (
         if (!cachedActors.TryGetValue(request.ActorId, out var actor))
             throw new InvalidOperationException($"Actor ref '{request.ActorId}' was not captured.");
         var reply = await actors.RequestToActor(
-                "to-actor", actor, new ActorAsk(request.Scenario, request.ActorId, request.Value))
+                actor.ActorId, new ActorAsk(request.Scenario, request.ActorId, request.Value))
             .Timeout(TimeSpan.FromSeconds(2))
             .Async<ActorReply>(ct);
         return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, reply.Value));
@@ -149,11 +145,14 @@ static async ValueTask<ActorRef> ResolveActorAsync(
 {
     if (!string.IsNullOrWhiteSpace(request.TargetNodeRid)
         && request.TargetGeneration is { } generation)
-        return new ActorRef(RoutingId.From(request.TargetNodeRid), request.ActorId, generation);
+        return new ActorRef(
+            request.ActorId,
+            generation,
+            "to-actor",
+            RoutingId.From(request.TargetNodeRid));
 
     return await actorDirectory.FindAsync(request.ActorId, cancellationToken)
-           ?? throw new ZLinkFrameworkException(
-               ZLinkFrameworkErrorKind.ActorRouteNotFound,
+           ?? throw new InvalidOperationException(
                $"Actor route '{request.ActorId}' was not found.");
 }
 

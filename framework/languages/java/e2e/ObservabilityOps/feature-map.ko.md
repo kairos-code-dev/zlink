@@ -29,3 +29,7 @@ framework 프로세스가 남긴 증거만 읽으며, 런타임 증거를 임의
 뜻한다. 이전 drain 계약으로 통과했던 C track 결과는 현행 Config 11의 PASS가 아니다. OBS-A1은
 비공개 환경 변수로 connector trace를 켜지 않고도 같은 flow를 확인할 수 있어야 완료된다. C5의 serving과
 zero-target 분기는 같은 프로세스를 임의로 재사용하지 않고 각각 새 토폴로지에서 검증한다.
+
+## 공통 scenario parity gap — 2026-07-29
+
+- `OBS-A5`, `OBS-C12`: 공통 scenario는 추가됐지만 Java actual fixture와 runner selector가 없다.

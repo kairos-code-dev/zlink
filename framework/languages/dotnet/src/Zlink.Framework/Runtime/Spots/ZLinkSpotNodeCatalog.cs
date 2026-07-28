@@ -2,6 +2,12 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Zlink.Framework.Runtime.Spots;
 
+internal enum ZLinkSpotRelocationPhase
+{
+    PerActorShells,
+    Aggregates
+}
+
 internal sealed class ZLinkSpotNodeCatalog(
     IServiceProvider services,
     ZLinkFrameworkRuntime runtime,
@@ -102,6 +108,7 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     internal async ValueTask<ZLinkSpotDrainResult> TryRelocateForRetireAsync(
         ZLinkRelocationTargetSelection selection,
+        ZLinkSpotRelocationPhase phase,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -114,10 +121,20 @@ internal sealed class ZLinkSpotNodeCatalog(
                 return new ZLinkSpotDrainResult(false, 0);
             units = _spots.Values
                 .Select(activation => (
-                    activation,
-                    _instanceSpotTypes.ContainsKey(activation.SpotId)))
+                    Activation: activation,
+                    Instance: _instanceSpotTypes.ContainsKey(
+                        activation.SpotId)))
+                .Where(unit => phase == ZLinkSpotRelocationPhase.PerActorShells
+                    ? !unit.Instance
+                      && unit.Activation.ExecutionMode
+                      == ZLinkUserSpotExecutionMode.PerActor
+                    : unit.Instance
+                      || unit.Activation.ExecutionMode
+                      != ZLinkUserSpotExecutionMode.PerActor)
                 .ToArray();
         }
+        if (units.Length == 0)
+            return new ZLinkSpotDrainResult(true, 0);
 
         var deadline = DateTimeOffset.UtcNow
                        + units.Select(static unit =>
@@ -153,8 +170,11 @@ internal sealed class ZLinkSpotNodeCatalog(
             {
                 throw;
             }
-            catch
+            catch (Exception exception)
             {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"relocation_failed spot={unit.Activation.SpotId} "
+                    + $"error={exception}");
                 return false;
             }
         }
@@ -174,39 +194,49 @@ internal sealed class ZLinkSpotNodeCatalog(
             _instanceSpotTypes.Remove(activation.SpotId);
             _closing.Remove(activation.SpotId);
         }
-        var messageFollowRemaining = activation.MessageFollowRemaining;
-        if (messageFollowRemaining <= TimeSpan.Zero)
+        var waitForPerActorMembers =
+            activation.PerActorShellRelocationPlan is not null;
+        if (!runtime.TryRunDetached(
+                waitForPerActorMembers
+                    ? "per-actor-shell-message-follow"
+                    : "spot-message-follow-duration",
+                async detachedCancellationToken =>
+                {
+                    try
+                    {
+                        var messageFollowRemaining =
+                            activation.MessageFollowRemaining;
+                        var messageFollow = messageFollowRemaining
+                                            > TimeSpan.Zero
+                            ? Task.Delay(
+                                messageFollowRemaining,
+                                detachedCancellationToken)
+                            : Task.CompletedTask;
+                        var members = waitForPerActorMembers
+                            ? activation.WaitForPerActorMembersDrainedAsync(
+                                detachedCancellationToken)
+                            : Task.CompletedTask;
+                        await Task.WhenAll(messageFollow, members)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        "message_follow_route_removed");
+                    await activation.DisposeAsync().ConfigureAwait(false);
+                    ZLinkRuntimeMetrics.RecordSpotClosed(
+                        activation.Spot is IZLinkInstanceSpot
+                            ? "instance"
+                            : "user");
+                }))
         {
             ZLinkFrameworkDebugLog.SpotDiscovery(
                 "message_follow_route_removed");
             await activation.DisposeAsync().ConfigureAwait(false);
+            ZLinkRuntimeMetrics.RecordSpotClosed(
+                activation.Spot is IZLinkInstanceSpot ? "instance" : "user");
         }
-        else if (!runtime.TryRunDetached(
-                     "spot-message-follow-duration",
-                     async cancellationToken =>
-                     {
-                         try
-                         {
-                             await Task.Delay(
-                                     messageFollowRemaining,
-                                     cancellationToken)
-                                 .ConfigureAwait(false);
-                         }
-                         catch (OperationCanceledException)
-                         {
-                         }
-                         ZLinkFrameworkDebugLog.SpotDiscovery(
-                             "message_follow_route_removed");
-                         await activation.DisposeAsync()
-                             .ConfigureAwait(false);
-                     }))
-        {
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                "message_follow_route_removed");
-            await activation.DisposeAsync().ConfigureAwait(false);
-        }
-        ZLinkRuntimeMetrics.RecordSpotClosed(
-            activation.Spot is IZLinkInstanceSpot ? "instance" : "user");
     }
 
     private static ZLinkSpotRetireScheduler? CreateRetireScheduler(
@@ -223,7 +253,8 @@ internal sealed class ZLinkSpotNodeCatalog(
                 location,
                 relocation,
                 target,
-                runtime.RelocationPermits);
+                runtime.RelocationPermits,
+                runtime);
     }
 
     internal void RequestStop()
@@ -383,7 +414,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             nativeSpot = node.GetOrCreateSpot(spotId, out var created);
             if (!created)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotIdConflict,
+                    ZLinkFrameworkErrorKind.AlreadyExists,
                     $"Generated User Spot ID '{spotId}' is already active.");
             var creation = await _activationFactory.CreateAsync(
                 spotType,
@@ -504,7 +535,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 nativeSpot = null;
                 await existingNativeSpot.DisposeAsync();
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotCreateFailed,
+                    ZLinkFrameworkErrorKind.InternalFailure,
                     $"SPOT routing id '{requestedSpotId}' already exists in core but no framework SPOT is registered.");
             }
 
@@ -600,9 +631,9 @@ internal sealed class ZLinkSpotNodeCatalog(
             }
             if (_pending.ContainsKey(requestedSpotId))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"SPOT '{requestedSpotId}' is already being materialized.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
 
             BeginCreationLocked();
             _pending.Add(requestedSpotId, pending);
@@ -619,7 +650,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 out var created);
             if (!created)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"SPOT '{requestedSpotId}' is already materialized.");
             ZLinkSpotCreateResponse? response;
             if (invokeCreate)
@@ -676,14 +707,15 @@ internal sealed class ZLinkSpotNodeCatalog(
         string requestedSpotId,
         ulong objectGeneration,
         ulong authorityOwnerGeneration,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool restoreLogicalTimers = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!registration.InstanceSpotFactories.TryGetValue(
                 stableType,
                 out var factory))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotTypeMismatch,
+                ZLinkFrameworkErrorKind.TypeMismatch,
                 $"Instance Spot type '{stableType}' is not registered.");
 
         var pending = new PendingSpotCreation(factory.SpotType);
@@ -704,9 +736,9 @@ internal sealed class ZLinkSpotNodeCatalog(
             }
             if (_pending.ContainsKey(requestedSpotId))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Instance Spot '{requestedSpotId}' is already being materialized.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
 
             BeginCreationLocked();
             _pending.Add(requestedSpotId, pending);
@@ -724,13 +756,14 @@ internal sealed class ZLinkSpotNodeCatalog(
                 out var created);
             if (!created)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Instance Spot '{requestedSpotId}' is already materialized.");
             activation = await _activationFactory.CreateInstanceAsync(
                     factory.SpotType,
                     nativeSpot,
                     requestedSpotId,
-                    cancellationToken)
+                    cancellationToken,
+                    restoreLogicalTimers)
                 .ConfigureAwait(false);
             lock (_gate)
             {
@@ -779,7 +812,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             if (_spots.ContainsKey(prepared.Activation.SpotId))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"SPOT '{prepared.Activation.SpotId}' became visible before publication.");
             _spots.Add(prepared.Activation.SpotId, prepared.Activation);
         }
@@ -828,9 +861,9 @@ internal sealed class ZLinkSpotNodeCatalog(
             .ConfigureAwait(false);
         if (status != ZLinkLocationWriteStatus.Stored)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotMoving,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"SPOT '{activation.SpotId}' relocation authority is not published for this target.",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
     }
 
     internal void PublishRelocatedReserved(PreparedReservedSpot prepared)
@@ -840,7 +873,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             if (_spots.ContainsKey(prepared.Activation.SpotId))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"SPOT '{prepared.Activation.SpotId}' became visible before relocation publication.");
             _spots.Add(prepared.Activation.SpotId, prepared.Activation);
             if (prepared.Activation.Spot is IZLinkInstanceSpot)
@@ -863,7 +896,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             if (_spots.ContainsKey(prepared.Activation.SpotId))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Instance Spot '{prepared.Activation.SpotId}' became visible before publication.");
             _spots.Add(prepared.Activation.SpotId, prepared.Activation);
             _instanceSpotTypes.Add(
@@ -890,6 +923,34 @@ internal sealed class ZLinkSpotNodeCatalog(
                     stableType,
                     out var factory)
                 && factory.SpotType.IsInstanceOfType(existing.Spot))
+            {
+                activation = existing;
+                return true;
+            }
+        }
+
+        activation = null!;
+        return false;
+    }
+
+    internal bool TryGetPerActorRelocationShell(
+        string spotId,
+        ulong objectGeneration,
+        RoutingId nodeRid,
+        ulong nodeLifecycleGeneration,
+        ZLinkLocationOwnerToken owner,
+        out ZLinkSpotActivation activation)
+    {
+        lock (_gate)
+        {
+            if (_spots.TryGetValue(spotId, out var existing)
+                && existing.Spot is not IZLinkInstanceSpot
+                && existing.ExecutionMode == ZLinkUserSpotExecutionMode.PerActor
+                && existing.ObjectGeneration == objectGeneration
+                && existing.NodeRid == nodeRid
+                && existing.SourceNodeLifecycleGeneration
+                   == nodeLifecycleGeneration
+                && existing.SourceOwnerToken == owner)
             {
                 activation = existing;
                 return true;
@@ -1099,7 +1160,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         if (status == ZLinkLocationWriteStatus.Stored) return;
 
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.SpotCreateFailed,
+            ZLinkFrameworkErrorKind.InternalFailure,
             status == ZLinkLocationWriteStatus.RejectedConflict
                 ? $"SPOT '{spotId}' location in mesh '{spotChannelName}' is owned by another node."
                 : $"SPOT '{spotId}' location claim failed because the location store is unavailable.");
@@ -1264,7 +1325,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         if (existingSpotType == requestedSpotType) return;
 
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.SpotTypeMismatch,
+            ZLinkFrameworkErrorKind.TypeMismatch,
             $"SPOT routing id '{spotId}' already belongs to '{existingSpotType}'.");
     }
 
@@ -1276,7 +1337,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         if (error is ZLinkFrameworkException frameworkError) return frameworkError;
 
         return new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.SpotCreateFailed,
+            ZLinkFrameworkErrorKind.InternalFailure,
             $"SPOT '{spotType}' creation failed.",
             innerException: error);
     }

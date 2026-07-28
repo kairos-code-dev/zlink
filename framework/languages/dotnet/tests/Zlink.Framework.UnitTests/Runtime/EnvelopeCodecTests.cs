@@ -152,7 +152,7 @@ public sealed class EnvelopeCodecTests
                 "application/x-unregistered",
                 new ZLinkCodecRegistryBuilder()));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.PayloadDecodeFailed, exception.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, exception.Kind);
         Assert.Null(exception.InnerException);
     }
 
@@ -224,7 +224,7 @@ public sealed class EnvelopeCodecTests
                 "failed",
                 null));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, exception.Kind);
     }
 
     [Fact]
@@ -241,7 +241,7 @@ public sealed class EnvelopeCodecTests
                 "failed",
                 null));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, exception.Kind);
     }
 
     [Fact]
@@ -268,7 +268,7 @@ public sealed class EnvelopeCodecTests
                 "failed",
                 new ZLinkCodecRegistryBuilder()));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.PayloadDecodeFailed, exception.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, exception.Kind);
         Assert.Null(exception.InnerException);
     }
 
@@ -296,7 +296,7 @@ public sealed class EnvelopeCodecTests
                 "failed",
                 null));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, exception.Kind);
     }
 
     [Fact]
@@ -321,7 +321,7 @@ public sealed class EnvelopeCodecTests
                 "failed",
                 null));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, exception.Kind);
     }
 
     [Fact]
@@ -346,7 +346,7 @@ public sealed class EnvelopeCodecTests
                 "failed",
                 null));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, exception.Kind);
     }
 
 }

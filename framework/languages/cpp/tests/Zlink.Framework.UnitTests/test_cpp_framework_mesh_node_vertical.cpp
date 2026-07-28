@@ -194,6 +194,45 @@ bool wait_until_admitted (zlink::framework::detail::mesh_node_runtime_t &node)
     return false;
 }
 
+std::shared_ptr<zlink::framework::detail::mesh_node_builder_state_t>
+make_node (std::string endpoint, std::string routing_id);
+
+void verify_object_client_registration_boundary ()
+{
+    auto client_state =
+      make_node ("tcp://127.0.0.1:*", "object-client");
+    client_state->object_role =
+      zlink::framework::object_role_t::client;
+    client_state->channels.clear ();
+    zlink::framework::detail::mesh_node_runtime_t client (
+      client_state);
+    client.start ();
+    const auto descriptor =
+      client.native_node ().transport ().topology ().local_descriptor ();
+    assert (
+      descriptor.object_role
+      == zlink::framework::runtime::mesh::
+           service_object_role_t::client);
+    assert (descriptor.channels.empty ());
+    client.stop ();
+
+    auto invalid_state =
+      make_node ("tcp://127.0.0.1:*", "invalid-object-client");
+    invalid_state->object_role =
+      zlink::framework::object_role_t::client;
+    invalid_state->has_node_direct_handler = true;
+    zlink::framework::detail::mesh_node_runtime_t invalid (
+      invalid_state);
+    bool rejected = false;
+    try {
+        invalid.start ();
+    }
+    catch (const zlink::framework::framework_exception_t &) {
+        rejected = true;
+    }
+    assert (rejected);
+}
+
 bool wait_until_admitted_count (zlink::framework::detail::mesh_node_runtime_t &node,
                                 std::size_t expected)
 {
@@ -1071,6 +1110,7 @@ int run_cross_process_delivery ()
 int main ()
 {
     verify_public_runtime_surface ();
+    verify_object_client_registration_boundary ();
     verify_fixed_drain_callback_barrier ();
     verify_descriptor_retire_order_and_pre_seal_rollback ();
     verify_local_node_submit_bridge ();

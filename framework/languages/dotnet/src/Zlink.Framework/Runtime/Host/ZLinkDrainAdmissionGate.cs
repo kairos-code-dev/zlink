@@ -67,18 +67,18 @@ internal sealed class ZLinkDrainAdmissionGate
     {
         if (IsDraining)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestRejected,
+                ZLinkFrameworkErrorKind.Rejected,
                 "The framework runtime is draining and does not accept new SPOT assignments.",
-                false);
+                ZLinkRetryAdvice.DoNotRetry);
     }
 
     public void RequireActorAdmission()
     {
         if (IsDraining)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorCreateRejected,
+                ZLinkFrameworkErrorKind.Rejected,
                 "The framework runtime is draining and does not accept new actor assignments.",
-                false);
+                ZLinkRetryAdvice.DoNotRetry);
     }
 
     private void ExitActorAdmission()

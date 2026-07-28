@@ -174,14 +174,14 @@ internal sealed class ZLinkActorClient(
             as ZLinkStoreLocationResolvers;
         if (rows is null)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "Actor direct messaging requires a Location Store.");
         var row = await rows.ResolveActorRowAsync(
                 new ZLinkActorLocationKey(actorId),
                 cancellationToken)
             .ConfigureAwait(false)
             ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                ZLinkFrameworkErrorKind.NotFound,
                 $"Actor route '{actorId}' was not found.");
         return new ResolvedActorRoute(
             row.MeshName,
@@ -267,8 +267,8 @@ internal sealed class ZLinkActorClient(
     }
 
     private static bool IsStaleRoute(ZLinkFrameworkException failure) =>
-        failure.Kind is ZLinkFrameworkErrorKind.ActorRouteNotFound
-            or ZLinkFrameworkErrorKind.ActorLocationStale;
+        failure.Kind is ZLinkFrameworkErrorKind.NotFound
+            or ZLinkFrameworkErrorKind.Unavailable;
 
     private void TraceSent(
         ActorRef actor,
@@ -345,9 +345,9 @@ internal sealed class ZLinkActorClient(
             return;
 
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.RouteNotConnected,
+            ZLinkFrameworkErrorKind.Unavailable,
             $"Actor route to node '{actor.NodeRid}' is not connected.",
-            true);
+            ZLinkRetryAdvice.RetryAfterBackoff);
     }
 
     private static IReadOnlyList<Message> CreatePacketParts<TMessage>(
@@ -385,12 +385,12 @@ internal sealed class ZLinkActorClient(
         return error.Result switch
         {
             ZlinkSubmitException.ErrorCode.NotConnected => new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RouteNotConnected,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"{operationName} failed because the target route is not connected.",
-                true,
+                ZLinkRetryAdvice.RetryAfterBackoff,
                 error),
             ZlinkSubmitException.ErrorCode.NotFound => new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                ZLinkFrameworkErrorKind.NotFound,
                 $"{operationName} failed because the actor route was not found.",
                 innerException: error),
             _ => ZLinkRequestFailureMapper.CreateSubmitException(error, operationName)
@@ -404,18 +404,18 @@ internal sealed class ZLinkActorClient(
         return error.Result switch
         {
             ZlinkRequestException.ErrorCode.NotConnected => new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RouteNotConnected,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"{operationName} failed because the target route is not connected.",
-                true,
+                ZLinkRetryAdvice.RetryAfterBackoff,
                 error),
             ZlinkRequestException.ErrorCode.NotFound => new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                ZLinkFrameworkErrorKind.NotFound,
                 $"{operationName} failed because the actor route was not found.",
                 innerException: error),
             ZlinkRequestException.ErrorCode.Conflict => new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"{operationName} failed because the actor location is stale.",
-                true,
+                ZLinkRetryAdvice.RetryAfterBackoff,
                 error),
             _ => ZLinkRequestFailureMapper.CreateCompletionException(
                 (RequestResult)(int)error.Result,
@@ -454,7 +454,7 @@ internal sealed class ZLinkActorClient(
                 _metadata,
                 cancellationToken).EnsureAcceptedAsync(
                     "Actor send",
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound);
+                    ZLinkFrameworkErrorKind.NotFound);
         }
     }
 

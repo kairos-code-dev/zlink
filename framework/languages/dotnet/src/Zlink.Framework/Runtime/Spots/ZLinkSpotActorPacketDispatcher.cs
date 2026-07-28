@@ -113,7 +113,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
             }
 
         var error = new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound,
+            ZLinkFrameworkErrorKind.NotFound,
             $"No Spot actor request handler is registered for '{header.Name}'.");
         scope.HandlerMissing(
             logger,

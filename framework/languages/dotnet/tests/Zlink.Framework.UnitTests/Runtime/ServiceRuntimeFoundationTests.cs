@@ -127,6 +127,23 @@ public sealed class ServiceRuntimeFoundationTests
     }
 
     [Fact]
+    public void RouteAdmission_Preserves_Object_Role()
+    {
+        var encoded = ZLinkServiceWireCodec.EncodeRouteAdmission(
+            ServiceWireConstants.Command.Hello,
+            "orders",
+            "tcp://127.0.0.1:7070",
+            17,
+            23,
+            new Dictionary<string, uint>(StringComparer.Ordinal),
+            (byte)ZLinkMeshNodeObjectRole.Client);
+
+        var admission = DecodeAdmission(encoded);
+
+        Assert.Equal((byte)ZLinkMeshNodeObjectRole.Client, admission.ObjectRole);
+    }
+
+    [Fact]
     public void AdmissionGuard_ValidatesRevisionAndImmutableFieldsBeforeMutation()
     {
         var channels = new Dictionary<string, uint>(StringComparer.Ordinal)
@@ -354,6 +371,21 @@ public sealed class ServiceRuntimeFoundationTests
     }
 
     [Fact]
+    public async Task ManagedNode_AdvertisesTheActualEndpointAssignedForPortZero()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var node = new ZLinkManagedMeshNode(context, "orders");
+        node.SetRoutingId(RoutingId.From("orders-port-zero"));
+        node.SetBind("tcp://127.0.0.1:0");
+
+        node.Start();
+
+        var endpoint = node.Status().LocalEndpoint;
+        Assert.StartsWith("tcp://127.0.0.1:", endpoint, StringComparison.Ordinal);
+        Assert.False(endpoint.EndsWith(":0", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ManagedNode_LocalAndTransportOperationsShareOneIdNamespace()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();
@@ -474,6 +506,174 @@ public sealed class ServiceRuntimeFoundationTests
         Assert.Equal(MeshRecordKind.ChannelSend, received[0].Kind);
         Assert.Equal("worker", received[0].ChannelName);
         Assert.Equal(sourceRid, received[0].SourceNodeRid);
+    }
+
+    [Fact]
+    public async Task Manual_Object_Client_Pair_Without_Server_Channel_Ends_As_NotRequired()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var left = new ZLinkManagedMeshNode(context, "orders");
+        await using var right = new ZLinkManagedMeshNode(context, "orders");
+        var suffix = Guid.NewGuid().ToString("N");
+        var leftEndpoint = $"inproc://orders-client-left-{suffix}";
+        var rightEndpoint = $"inproc://orders-client-right-{suffix}";
+
+        left.SetRoutingId(RoutingId.From("orders-client-left"));
+        left.SetObjectRole(ZLinkMeshNodeObjectRole.Client);
+        left.SetBind(leftEndpoint);
+        left.ConnectPeer(rightEndpoint, RoutingId.From("orders-client-right"));
+        right.SetRoutingId(RoutingId.From("orders-client-right"));
+        right.SetObjectRole(ZLinkMeshNodeObjectRole.Client);
+        right.SetBind(rightEndpoint);
+        right.ConnectPeer(leftEndpoint, RoutingId.From("orders-client-left"));
+        await using var leftMonitor = left.OpenMonitor();
+        await using var rightMonitor = right.OpenMonitor();
+        right.Start();
+        left.Start();
+
+        await WaitUntilAsync(() =>
+            left.Peers().Any(static peer =>
+                peer.State == MeshPeerState.NotRequired)
+            && right.Peers().Any(static peer =>
+                peer.State == MeshPeerState.NotRequired));
+
+        Assert.Equal(0u, left.Status().AdmittedPeerCount);
+        Assert.Equal(0u, right.Status().AdmittedPeerCount);
+        await Task.Delay(TimeSpan.FromMilliseconds(1100));
+        Assert.Single(left.Peers());
+        Assert.Single(right.Peers());
+        Assert.All(
+            left.Peers().Concat(right.Peers()),
+            static peer => Assert.Equal(MeshPeerState.NotRequired, peer.State));
+        Assert.Equal(0UL, leftMonitor.Status().PeerRejected);
+        Assert.Equal(0UL, rightMonitor.Status().PeerRejected);
+        Assert.Contains(
+            Drain(leftMonitor).Concat(Drain(rightMonitor)),
+            static meshEvent =>
+                meshEvent.Kind == MeshMonitorEventKind.PeerNotRequired);
+    }
+
+    [Fact]
+    public async Task Manual_Object_Client_Pair_With_Zero_Weight_Server_Channel_Is_Admitted()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var left = new ZLinkManagedMeshNode(context, "orders");
+        await using var right = new ZLinkManagedMeshNode(context, "orders");
+        var suffix = Guid.NewGuid().ToString("N");
+        var leftEndpoint = $"inproc://orders-channel-left-{suffix}";
+        var rightEndpoint = $"inproc://orders-channel-right-{suffix}";
+
+        left.SetRoutingId(RoutingId.From("orders-channel-left"));
+        left.SetObjectRole(ZLinkMeshNodeObjectRole.Client);
+        left.AddChannel("orders");
+        left.SetChannelWeight("orders", 0);
+        left.SetBind(leftEndpoint);
+        left.ConnectPeer(rightEndpoint, RoutingId.From("orders-channel-right"));
+        right.SetRoutingId(RoutingId.From("orders-channel-right"));
+        right.SetObjectRole(ZLinkMeshNodeObjectRole.Client);
+        right.SetBind(rightEndpoint);
+        right.Start();
+        left.Start();
+
+        await WaitUntilAsync(() =>
+            left.Peers().Any(static peer => peer.State == MeshPeerState.Admitted)
+            && right.Peers().Any(static peer => peer.State == MeshPeerState.Admitted));
+
+        Assert.Equal(1u, left.Status().AdmittedPeerCount);
+        Assert.Equal(1u, right.Status().AdmittedPeerCount);
+        Assert.DoesNotContain(
+            left.Peers().Concat(right.Peers()),
+            static peer => peer.State == MeshPeerState.NotRequired);
+    }
+
+    [Fact]
+    public async Task Repeated_Client_Hello_Without_Reading_Admit_Keeps_One_NotRequired_Peer()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var target = new ZLinkManagedMeshNode(context, "orders");
+        var suffix = Guid.NewGuid().ToString("N");
+        var targetEndpoint = $"inproc://orders-client-target-{suffix}";
+        var sourceEndpoint = $"inproc://orders-client-source-{suffix}";
+        var sourceRid = RoutingId.From("orders-client-source");
+
+        target.SetRoutingId(RoutingId.From("orders-client-target"));
+        target.SetObjectRole(ZLinkMeshNodeObjectRole.Client);
+        target.SetBind(targetEndpoint);
+        target.Start();
+
+        using var source = context.CreateDealerSocket();
+        source.SetRoutingId(sourceRid);
+        source.Connect(targetEndpoint);
+        var encodedHello = ZLinkServiceWireCodec.EncodeRouteAdmission(
+            ServiceWireConstants.Command.Hello,
+            "orders",
+            sourceEndpoint,
+            lifecycleGeneration: 1,
+            descriptorRevision: 1,
+            new Dictionary<string, uint>(StringComparer.Ordinal),
+            objectRole: (byte)ZLinkMeshNodeObjectRole.Client);
+        using (var firstHello = Message.From(encodedHello))
+            Assert.True(source.Send().Message(firstHello).Submit());
+        using (var repeatedHello = Message.From(encodedHello))
+            Assert.True(source.Send().Message(repeatedHello).Submit());
+
+        await WaitUntilAsync(() =>
+            target.Peers().Length == 1
+            && target.Peers()[0].State == MeshPeerState.NotRequired);
+        await Task.Delay(TimeSpan.FromMilliseconds(1100));
+
+        var peer = Assert.Single(target.Peers());
+        Assert.Equal(sourceRid, peer.RoutingId);
+        Assert.Equal(MeshPeerState.NotRequired, peer.State);
+    }
+
+    [Fact]
+    public async Task Framework_Node_Relay_To_ObjectClient_Uses_The_Admitted_Connection()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var server = new ZLinkManagedMeshNode(context, "orders");
+        await using var client = new ZLinkManagedMeshNode(context, "orders");
+        var suffix = Guid.NewGuid().ToString("N");
+        var serverEndpoint = $"inproc://orders-server-{suffix}";
+        var clientEndpoint = $"inproc://orders-client-{suffix}";
+        var clientRid = RoutingId.From("orders-client");
+
+        server.SetRoutingId(RoutingId.From("orders-server"));
+        server.SetObjectRole(ZLinkMeshNodeObjectRole.Server);
+        server.SetBind(serverEndpoint);
+        server.ConnectPeer(clientEndpoint, clientRid);
+        client.SetRoutingId(clientRid);
+        client.SetObjectRole(ZLinkMeshNodeObjectRole.Client);
+        client.SetBind(clientEndpoint);
+        client.Start();
+        server.Start();
+
+        await WaitUntilAsync(() =>
+            server.Peers().Any(static peer => peer.State == MeshPeerState.Admitted)
+            && client.Peers().Any(static peer => peer.State == MeshPeerState.Admitted));
+        var peerCount = server.Peers().Length;
+        using var payload = Message.From(new byte[] { 1 });
+
+        Assert.Equal(SubmitResult.Ok, server.SendToNode(clientRid, [payload]));
+        Assert.Equal(peerCount, server.Peers().Length);
+
+        using var ready = new MeshReadyBatch();
+        await WaitUntilAsync(() =>
+        {
+            ready.Reset();
+            client.DrainReady(
+                MeshReadyDomains.Application,
+                ready,
+                RecvFlags.DontWait);
+            return ready.Count > 0;
+        });
+        using var claim = ready.TakeClaim(0);
+        using var received = new MeshReceiveBatch();
+        Assert.True(claim.Receive(received, RecvFlags.DontWait));
+        Assert.Contains(
+            MeshRecordKind.NodeSend,
+            Enumerable.Range(0, received.Count)
+                .Select(index => received[index].Kind));
     }
 
     [Fact]
@@ -674,6 +874,15 @@ public sealed class ServiceRuntimeFoundationTests
         monitor.Publish(MeshMonitorEventKind.StateChanged, MeshNodeState.Stopped);
         Assert.Null(monitor.Recv(RecvFlags.DontWait));
         Assert.Equal(MeshNodeState.Stopped, monitor.Status().State);
+    }
+
+    private static IReadOnlyList<MeshMonitorEvent> Drain(
+        IMeshNodeMonitor monitor)
+    {
+        var events = new List<MeshMonitorEvent>();
+        while (monitor.Recv(RecvFlags.DontWait) is { } meshEvent)
+            events.Add(meshEvent);
+        return events;
     }
 
     private static MeshReceiveRecord Completion(MeshOperationId operation) =>

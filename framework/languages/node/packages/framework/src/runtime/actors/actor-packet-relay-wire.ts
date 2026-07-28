@@ -2,6 +2,10 @@ import type { ActorRef, RoutingId, ZLinkSessionActor } from '../../contracts';
 import { ZLinkSpotKind } from '../../contracts';
 import { decodeRoutingId, routingIdWireHex } from '../routing-id';
 import type { ZLinkRemoteActorPacketTarget } from './actor-runtime-state';
+import {
+  decodeActorMessageFollowContext,
+  type ZLinkActorMessageFollowContext
+} from './actor-message-follow-context';
 
 export const ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET = '__zlink.actor.packet.relay';
 export const ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET = 'zlink.framework.actor.session_disconnected';
@@ -41,6 +45,8 @@ export function encodeRemoteActorPacketRelayPayload(input: {
   readonly header: Uint8Array;
   readonly payload: Uint8Array;
   readonly bindingActorRef?: ActorRef;
+  readonly returnResponse?: boolean;
+  readonly messageFollowContext?: ZLinkActorMessageFollowContext;
 }): Record<string, unknown> {
   return {
     packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
@@ -53,6 +59,8 @@ export function encodeRemoteActorPacketRelayPayload(input: {
       ? undefined
       : routingIdWireHex(input.bindingActorRef.nodeRid),
     bindingActorGeneration: input.bindingActorRef?.objectGeneration.toString(),
+    returnResponse: input.returnResponse,
+    messageFollowContext: input.messageFollowContext,
     header: Buffer.from(input.header).toString('base64'),
     payload: Buffer.from(input.payload).toString('base64')
   };
@@ -67,12 +75,8 @@ export function encodeMessageFollowRemoteActorPacketRelayPayload(input: {
   readonly payload: string;
   readonly actorNodeRid: string;
   readonly actorGeneration: string;
-  readonly handoffTargetSpotId: string;
-  readonly operationId: string;
-  readonly messageFollowHopCount: number;
-  readonly deadlineUnixMs?: number;
-  readonly authorityOwnerGeneration?: string;
-  readonly ownerLeaseGeneration?: string;
+  readonly returnResponse: boolean;
+  readonly messageFollowContext: ZLinkActorMessageFollowContext;
 }): Record<string, unknown> {
   return { packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET, ...input };
 }
@@ -145,15 +149,11 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
   readonly actorNodeRid?: string;
   readonly actorNodeRidHex?: string;
   readonly actorGeneration?: string;
-  readonly handoffTargetSpotId?: string;
-  readonly operationId?: string;
-  readonly messageFollowHopCount?: number;
-  readonly deadlineUnixMs?: number;
-  readonly authorityOwnerGeneration?: string;
-  readonly ownerLeaseGeneration?: string;
   readonly bindingActorNodeRid?: string;
   readonly bindingActorNodeRidHex?: string;
   readonly bindingActorGeneration?: string;
+  readonly returnResponse?: boolean;
+  readonly messageFollowContext?: ZLinkActorMessageFollowContext;
 } {
   if (
     typeof payload !== 'object' ||
@@ -175,39 +175,14 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
     actorNodeRid: optionalString(payload, 'actorNodeRid'),
     actorNodeRidHex: optionalString(payload, 'actorNodeRidHex'),
     actorGeneration: optionalString(payload, 'actorGeneration'),
-    handoffTargetSpotId: optionalString(payload, 'handoffTargetSpotId'),
-    operationId: optionalString(payload, 'operationId'),
-    messageFollowHopCount: optionalBoundedInteger(payload, 'messageFollowHopCount', 0, 8),
-    deadlineUnixMs: optionalPositiveSafeInteger(payload, 'deadlineUnixMs'),
-    authorityOwnerGeneration: optionalString(payload, 'authorityOwnerGeneration'),
-    ownerLeaseGeneration: optionalString(payload, 'ownerLeaseGeneration'),
     bindingActorNodeRid: optionalString(payload, 'bindingActorNodeRid'),
     bindingActorNodeRidHex: optionalString(payload, 'bindingActorNodeRidHex'),
-    bindingActorGeneration: optionalString(payload, 'bindingActorGeneration')
+    bindingActorGeneration: optionalString(payload, 'bindingActorGeneration'),
+    returnResponse: (payload as { returnResponse?: unknown }).returnResponse === true,
+    messageFollowContext: decodeActorMessageFollowContext(
+      (payload as { messageFollowContext?: unknown }).messageFollowContext
+    )
   };
-}
-
-function optionalPositiveSafeInteger(value: object, key: string): number | undefined {
-  const field = (value as Record<string, unknown>)[key];
-  if (field === undefined) return undefined;
-  if (!Number.isSafeInteger(field) || (field as number) <= 0) {
-    throw new Error(`Remote actor packet relay ${key} is invalid.`);
-  }
-  return field as number;
-}
-
-function optionalBoundedInteger(
-  value: object,
-  key: string,
-  min: number,
-  max: number
-): number | undefined {
-  const field = (value as Record<string, unknown>)[key];
-  if (field === undefined) return undefined;
-  if (!Number.isSafeInteger(field) || (field as number) < min || (field as number) > max) {
-    throw new Error(`Remote actor packet relay ${key} is invalid.`);
-  }
-  return field as number;
 }
 
 function optionalString(value: object, key: string): string | undefined {

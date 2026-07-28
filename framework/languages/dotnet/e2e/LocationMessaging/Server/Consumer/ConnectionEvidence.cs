@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Eventing;
 
 namespace LocationMessaging.Server.Consumer;
 
@@ -59,46 +58,39 @@ internal sealed class ConnectionEvidence
 internal sealed class MeshConnectionEventObserver(
     ConnectionEvidence evidence,
     IZLinkRouteMeshRuntime meshRuntime,
+    Configuration.ConsumerOptions options,
     ILogger<MeshConnectionEventObserver> logger)
-    : IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>
+    : BackgroundService
 {
-    private static readonly ConcurrentDictionary<string, string> LastKnownEndpoints =
-        new(StringComparer.Ordinal);
-
-    public ValueTask HandleAsync(ZLinkMeshRuntimeEvent @event, CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var peer = @event.PeerRid?.ToString() ?? string.Empty;
-        var endpoint = string.Empty;
-        if (peer.Length > 0)
+        var previous = new HashSet<string>(StringComparer.Ordinal);
+        await foreach (var status in meshRuntime
+                           .ObserveAsync(options.MeshName, stoppingToken)
+                           .ConfigureAwait(false))
         {
-            try
+            var current = status.Peers
+                .Where(static peer => peer.State == ZLinkPeerState.Ready)
+                .Select(static peer => peer.NodeRid.ToString())
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var peer in current.Except(previous))
             {
-                endpoint = meshRuntime.Snapshot(@event.MeshName).Peers
-                    .FirstOrDefault(candidate => candidate.Rid.ToString() == peer)?.Endpoint
-                    ?? string.Empty;
+                Add("ConnectionReady", peer, status.Sequence);
             }
-            catch (Exception)
+            foreach (var peer in previous.Except(current))
             {
-                // Shutdown can close the mesh before the final event is
-                // dispatched. The last ready snapshot still names the peer.
+                Add("Disconnected", peer, status.Sequence);
             }
-
-            if (endpoint.Length > 0) LastKnownEndpoints[peer] = endpoint;
-            else LastKnownEndpoints.TryGetValue(peer, out endpoint!);
+            previous = current;
         }
+    }
 
-        var kind = @event.Reason switch
-        {
-            "ready" => "ConnectionReady",
-            "disconnected" => "Disconnected",
-            _ => @event.Reason ?? @event.Identifier
-        };
+    private void Add(string kind, string peer, ulong sequence)
+    {
         var entry =
-            $"monitor-mesh|source={@event.MeshName}|kind={kind}"
-            + $"|remote={endpoint}|routing={peer}|sequence={@event.Sequence}";
+            $"monitor-mesh|source=profile|kind={kind}"
+            + $"|remote=|routing={peer}|sequence={sequence}";
         evidence.Add(entry);
         logger.LogInformation("location connection evidence: {Entry}", entry);
-        return ValueTask.CompletedTask;
     }
 }

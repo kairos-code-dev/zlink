@@ -38,21 +38,22 @@ public static class DispatchServerHostFactory
         builder.Services.AddHostedService<OfferDeadlineSweeper>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(configuration.FlowLogPath)
-                .TraceLabel("dispatch");
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(DispatchServerHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
                 .SetRoutingIdPrefix("delivery-dispatch");
-            mesh.ChannelName(SampleNames.DispatchChannel)
+            mesh.Objects().Client();
+            options.AddClientServerChannel(SampleNames.DispatchChannel).Server()
+                .Listen()
                 .AddHandlerGroup(SampleNames.DispatchChannel);
-            mesh.ChannelName(SampleNames.TrackingRouteChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
+            options.AddClientServerChannel(SampleNames.TrackingRouteChannel).Client();
         });
 
         var app = builder.Build();
@@ -81,7 +82,7 @@ public static class DispatchServerHostFactory
                 request.CustomerId,
                 request.PickupAddress,
                 request.DropoffAddress);
-            await channels.SendToChannel(SampleNames.MeshName, SampleNames.DispatchChannel, assign)
+            await channels.SendToChannel(SampleNames.DispatchChannel, assign)
                 .Async(cancellationToken);
             loggerFactory.CreateLogger("DeliveryDispatch.Server.Dispatch")
                 .LogInformation("deliverydispatch api: created delivery={DeliveryId}", request.DeliveryId);

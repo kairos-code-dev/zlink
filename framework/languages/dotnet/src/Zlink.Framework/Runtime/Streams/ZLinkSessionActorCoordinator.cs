@@ -110,10 +110,13 @@ internal sealed class ZLinkSessionActorCoordinator(
                     existingActor.BindingToken,
                     out var previousEntry))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                    ZLinkFrameworkErrorKind.InvalidOperation,
                     $"Actor '{existing.ActorId}' replacement lost its previous binding identity.");
             var previousIdentity = new ZLinkActorBoundSession(
-                null,
+                runtime.IsStarted
+                    ? runtime.GetMeshNodeRuntime(previousEntry.MeshName)
+                        .Node.RoutingId
+                    : null,
                 existingActor.SessionRid,
                 previousEntry.BindingToken,
                 previousEntry.BindingGeneration,
@@ -135,6 +138,9 @@ internal sealed class ZLinkSessionActorCoordinator(
                         actor,
                         new ZLinkRemoteSessionPreviousBinding(
                             existing.Ref.NodeRid.ToBytes().ToArray(),
+                            previousIdentity.SessionNodeRid?.ToBytes().ToArray()
+                            ?? Array.Empty<byte>(),
+                            previousIdentity.SessionRid.ToBytes().ToArray(),
                             previousIdentity.BindingToken,
                             previousIdentity.BindingGeneration,
                             previousIdentity.ObjectGeneration,
@@ -142,7 +148,8 @@ internal sealed class ZLinkSessionActorCoordinator(
                             previousIdentity.TargetNodeGeneration,
                             previousIdentity.AuthorityOwnerGeneration,
                             previousIdentity.OwnerLeaseGeneration,
-                            previousIdentity.SessionOwnerNodeGeneration),
+                            previousIdentity.SessionOwnerNodeGeneration,
+                            previousIdentity.AcceptedHighWater),
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -213,33 +220,18 @@ internal sealed class ZLinkSessionActorCoordinator(
                     identity.TargetNodeGeneration,
                     identity.OwnerLeaseGeneration,
                     identity.SessionOwnerNodeGeneration,
-                    cancellationToken).ConfigureAwait(false);
+                    // Remote acknowledgement publishes the Actor owner's
+                    // terminal binding. The source table must finish the
+                    // matching local commit even if caller cancellation races
+                    // that acknowledgement.
+                    CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception bindingFailure)
             {
                 try
                 {
-                    if (runtime.IsStarted
-                        && confirmedIdentity is { } identity)
-                        await RevokeBindingAsync(
-                                actor,
-                                new ZLinkActorBoundSession(
-                                    null,
-                                    context.RoutingId
-                                    ?? throw new InvalidOperationException(
-                                        "Actor session binding requires a stream routing id."),
-                                    identity.BindingToken,
-                                    identity.BindingGeneration,
-                                    actor.ObjectGeneration,
-                                    identity.AuthorityOwnerGeneration,
-                                    identity.MeshName,
-                                    identity.TargetNodeGeneration,
-                                    identity.OwnerLeaseGeneration,
-                                    identity.SessionOwnerNodeGeneration,
-                                    AcceptedHighWater: 0),
-                                CancellationToken.None)
-                            .ConfigureAwait(false);
-                    else if (confirmedIdentity is { } localIdentity)
+                    if (!runtime.IsStarted
+                        && confirmedIdentity is { } localIdentity)
                         runtime.UnbindActorSession(
                             actor.ActorId,
                             localIdentity.BindingToken);
@@ -311,7 +303,7 @@ internal sealed class ZLinkSessionActorCoordinator(
         var sessionOwnerNodeGeneration = sessionNode.MeshStatus().LifecycleGeneration;
         if (sessionOwnerNodeGeneration == 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "Session owner lifecycle generation is unavailable.");
         var bindingToken = Guid.NewGuid().ToString("N");
         var request = new ZLinkRemoteSessionBindRequest(
@@ -349,8 +341,8 @@ internal sealed class ZLinkSessionActorCoordinator(
                 break;
             }
             catch (ZLinkFrameworkException failure)
-                when ((failure.IsRetriable
-                       || failure.Kind == ZLinkFrameworkErrorKind.ActorRouteNotFound)
+                when ((failure.RetryAdvice != ZLinkRetryAdvice.DoNotRetry
+                       || failure.Kind == ZLinkFrameworkErrorKind.NotFound)
                       && DateTime.UtcNow < deadline)
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken)
@@ -360,7 +352,7 @@ internal sealed class ZLinkSessionActorCoordinator(
 
         if (!response.Acknowledged)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor '{actor.ActorId}' did not acknowledge its remote session binding.");
         var responseTargetNodeRid = RoutingId.From(response.TargetNodeRid);
         if (response.ObjectGeneration != actor.ObjectGeneration
@@ -370,7 +362,7 @@ internal sealed class ZLinkSessionActorCoordinator(
             || response.AuthorityOwnerGeneration == 0
             || response.OwnerLeaseGeneration == 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{actor.ActorId}' returned a different route during session bind.");
         return new ZLinkSessionBindingIdentity(
             bindingToken,
@@ -380,39 +372,6 @@ internal sealed class ZLinkSessionActorCoordinator(
             response.OwnerLeaseGeneration,
             response.AuthorityOwnerGeneration,
             sessionOwnerNodeGeneration);
-    }
-
-    private async ValueTask RevokeBindingAsync(
-        ActorRef actor,
-        ZLinkActorBoundSession identity,
-        CancellationToken cancellationToken)
-    {
-        var request = new ZLinkRemoteSessionUnbindRequest(
-            actor.ActorId,
-            actor.NodeRid.ToBytes().ToArray(),
-            identity.BindingToken,
-            identity.BindingGeneration,
-            actor.ObjectGeneration,
-            actor.MeshName,
-            identity.TargetNodeGeneration,
-            identity.AuthorityOwnerGeneration,
-            identity.OwnerLeaseGeneration,
-            identity.SessionOwnerNodeGeneration);
-        var localNodeRid = runtime.GetMeshNodeRuntime(actor.MeshName).Node.RoutingId;
-        var response = actor.NodeRid == localNodeRid
-            ? await runtime.UnbindRemoteBoundSessionRouteAsync(
-                    request,
-                    cancellationToken)
-                .ConfigureAwait(false)
-            : await runtime.Services.GetRequiredService<IZLinkRouteClient>()
-                .RequestToNode(actor.MeshName, actor.NodeRid, request)
-                .Timeout(runtime.Registration.DefaultRequestTimeout)
-                .Async<ZLinkRemoteSessionUnbindResponse>(cancellationToken)
-                .ConfigureAwait(false);
-        if (!response.Acknowledged)
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorSessionNotBound,
-                $"Actor '{actor.ActorId}' did not invalidate its previous session binding.");
     }
 
     public IZLinkSessionActor? FindActor(string actorId)
@@ -436,9 +395,9 @@ internal sealed class ZLinkSessionActorCoordinator(
                 out var currentContext)
             || !ReferenceEquals(currentContext, actorRef.Context))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor '{actorRef.ActorId}' session binding is stale.",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
         var isBindingControlFrame = string.Equals(
             header.Name,
             ZLinkRemoteSessionBindingProtocol.PacketName,
@@ -450,9 +409,9 @@ internal sealed class ZLinkSessionActorCoordinator(
                 actorRef.BindingToken,
                 out _))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor '{actorRef.ActorId}' session binding changed before frame admission.",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
         if (!isBindingControlFrame)
             acceptedFrame = true;
 
@@ -490,6 +449,8 @@ internal sealed class ZLinkSessionActorCoordinator(
                         if (requestId is { } failedRequestId)
                             runtime.CompleteRemoteSessionActorRequest(
                                 actorRef.ActorId,
+                                actorRef.Ref.ObjectGeneration,
+                                actorRef.BindingToken,
                                 failedRequestId.Value);
                         throw;
                     }
@@ -666,9 +627,9 @@ internal sealed class ZLinkSessionActorCoordinator(
     {
         if (actor.NodeRid.IsEmpty || actor.ObjectGeneration == 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                ZLinkFrameworkErrorKind.NotFound,
                 "Actor ref requires a target SpotNode routing id and concrete actor generation.",
-                false);
+                ZLinkRetryAdvice.DoNotRetry);
     }
 
     private async ValueTask BindNativeActorAsync(

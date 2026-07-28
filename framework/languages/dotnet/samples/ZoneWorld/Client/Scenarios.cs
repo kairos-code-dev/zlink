@@ -22,8 +22,9 @@ public static class Scenarios
             ["ZW-A4"] = A4DiagonalCrossing,
             ["ZW-A5"] = A5SameZonePositionUpdate,
             ["ZW-B1"] = B1BorderSync,
-            ["ZW-B2"] = B2CrossNodeTransfer,
+            ["ZW-B2"] = B2CrossNodeRelocation,
             ["ZW-B3"] = B3IntraNodeZoneChange,
+            ["ZW-B5"] = B5ActorGenerationPreserved,
             ["ZW-C1"] = C1WatchNodes,
             ["ZW-C4"] = C4SpotEventReported,
             ["ZW-D1"] = D1AnnounceAllNodes,
@@ -181,7 +182,7 @@ public static class Scenarios
         ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthWest, me.ZoneId), "the zone did not change");
     }
 
-    // --- Track B: borders and transfer ---------------------------------------
+    // --- Track B: borders and relocation -------------------------------------
 
     /// <summary>
     /// A player inside the border band is visible from the zone across that edge — and only
@@ -300,68 +301,156 @@ public static class Scenarios
     private const int BorderObservationTicks = ZoneWorldSpec.BorderSnapshotExpiryTicks * 2;
 
     /// <summary>
-    /// Crossing the X boundary moves the player onto the other node. The actor transfers,
-    /// and the client's WebSocket stays up throughout — that is the whole point (ZW-B2).
+    /// Selects adjacent zones with different current owners, crosses their shared
+    /// boundary, and proves that the client connection remains usable (ZW-B2).
     /// </summary>
-    private static async ValueTask B2CrossNodeTransfer(ClientOptions options, CancellationToken ct)
+    private static async ValueTask B2CrossNodeRelocation(ClientOptions options, CancellationToken ct)
     {
         var playerId = Unique("b2");
+        await using var probes = await RelocationProbeClient.ConnectAsync(
+            options.GatewayEndpoint,
+            ct);
+        var pair = await probes.SelectPairAsync(ct);
+        ZlinkStreamAssert.Ensure(
+            pair.Error is null,
+            "a release run requires adjacent Zone Spots with different current owners");
+
         await using (var player = await GameClient.ConnectAsync(options.GatewayEndpoint, playerId, ct))
         {
             await player.JoinWorldAsync(ct);
-            foreach (var step in player.PlanWalkWithinZone(48, 25))
-            {
-                var arrived = player.Connector.WaitFor<ZoneStateNotify>()
-                    .Where(message => message.Payload.Players.Any(p =>
-                        p.PlayerId == player.PlayerId && p.X == step.X && p.Y == step.Y))
-                    .Timeout(TimeSpan.FromSeconds(15))
-                    .Async(ct);
-                await player.MoveAsync(step.X, step.Y);
-                await arrived;
-                player.Position = step;
-            }
+            var source = ZoneCenter(pair.SourceZoneId);
+            var target = ZoneCenter(pair.TargetZoneId);
+            await MoveToAsync(player, source.X, source.Y, ct);
+            var before = await probes.FindActorAsync(playerId, ct);
+            ZlinkStreamAssert.Ensure(
+                before.Error is null && before.OwnerNodeRid == pair.SourceOwnerNodeRid,
+                "the selected source zone owns the actor before relocation");
 
-            var changedWait = player.Connector.WaitFor<ZoneChangedNotify>()
-                .Timeout(TimeSpan.FromSeconds(15))
-                .Async(ct);
-            await player.MoveAsync(52, 25);
-            var changed = (await changedWait).Payload;
-            player.Position = (52, 25);
-
-            ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, changed.ZoneId), "the X boundary leads into zone-ne");
+            await MoveToAsync(player, target.X, target.Y, ct);
+            var after = await probes.FindActorAsync(playerId, ct);
+            ZlinkStreamAssert.Ensure(
+                after.Error is null
+                && after.OwnerNodeRid == pair.TargetOwnerNodeRid
+                && after.OwnerNodeRid != before.OwnerNodeRid,
+                "the actor moved to the selected adjacent zone's different owner");
 
             // The same connection keeps working: the bound session followed the actor.
+            var continuedX = target.X + (target.X < ZoneWorldSpec.ZoneSplit ? 1 : -1);
             var stateWait = player.Connector.WaitFor<ZoneStateNotify>()
                 .Where(message => message.Payload.Players.Any(p =>
-                    p.PlayerId == player.PlayerId && p.X == 55 && p.Y == 25))
+                    p.PlayerId == player.PlayerId && p.X == continuedX && p.Y == target.Y))
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            await player.MoveAsync(55, 25);
+            await player.MoveAsync(continuedX, target.Y);
             var state = (await stateWait).Payload;
-            player.Position = (55, 25);
-            ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, state.ZoneId), "the client keeps playing on the new node");
+            player.Position = (continuedX, target.Y);
+            ZlinkStreamAssert.Ensure(
+                object.Equals(pair.TargetZoneId, state.ZoneId),
+                "the client keeps playing on the new owner");
         }
 
-        // Global player identity outlives the connection and the node that created the actor.
-        // Rejoining with the same id must bind the transferred actor instead of trying to
-        // create another one on the spawn node.
+        // Global player identity outlives the connection and its original owner.
         await using var rejoined = await GameClient.ConnectAsync(options.GatewayEndpoint, playerId, ct);
         var resumed = await rejoined.JoinWorldAsync(ct);
-        ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, resumed.ZoneId), "rejoin keeps the transferred actor's zone");
-        ZlinkStreamAssert.Ensure(resumed.X == 55 && resumed.Y == 25, "rejoin keeps the transferred actor's coordinate");
-
-        var resumedWait = rejoined.Connector.WaitFor<ZoneStateNotify>()
-            .Where(message => message.Payload.Players.Any(p =>
-                p.PlayerId == rejoined.PlayerId && p.X == 60 && p.Y == 25))
-            .Timeout(TimeSpan.FromSeconds(15))
-            .Async(ct);
-        await rejoined.MoveAsync(60, 25);
-        var resumedState = (await resumedWait).Payload;
-        rejoined.Position = (60, 25);
-        ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, resumedState.ZoneId), "the rejoined client controls the same actor");
+        ZlinkStreamAssert.Ensure(
+            object.Equals(pair.TargetZoneId, resumed.ZoneId),
+            "rejoin keeps the relocated actor's zone");
     }
 
-    /// <summary>The Y boundary stays inside one node, so no transfer happens (§2.6).</summary>
+    private static async ValueTask B5ActorGenerationPreserved(
+        ClientOptions options,
+        CancellationToken ct)
+    {
+        var playerId = Unique("b5");
+        await using var probes = await RelocationProbeClient.ConnectAsync(
+            options.GatewayEndpoint,
+            ct);
+        var pair = await probes.SelectPairAsync(ct);
+        ZlinkStreamAssert.Ensure(
+            pair.Error is null,
+            "a release run requires adjacent Zone Spots with different current owners");
+
+        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, playerId, ct);
+        await player.JoinWorldAsync(ct);
+        var source = ZoneCenter(pair.SourceZoneId);
+        var target = ZoneCenter(pair.TargetZoneId);
+        await MoveToAsync(player, source.X, source.Y, ct);
+        var before = await probes.FindActorAsync(playerId, ct);
+        await MoveToAsync(player, target.X, target.Y, ct);
+        var after = await probes.FindActorAsync(playerId, ct);
+
+        ZlinkStreamAssert.Ensure(
+            before.Error is null && after.Error is null,
+            "the operational probe resolves the actor on both sides of relocation");
+        ZlinkStreamAssert.Ensure(
+            before.ObjectGeneration == after.ObjectGeneration,
+            "relocation preserves ObjectGeneration");
+        ZlinkStreamAssert.Ensure(
+            before.OwnerNodeRid != after.OwnerNodeRid,
+            "relocation changes the current owner");
+    }
+
+    private static (int X, int Y) ZoneCenter(string zoneId) => zoneId switch
+    {
+        ZoneIds.NorthWest => (25, 25),
+        ZoneIds.NorthEast => (75, 25),
+        ZoneIds.SouthWest => (25, 75),
+        ZoneIds.SouthEast => (75, 75),
+        _ => throw new ScenarioFailure($"Unknown ZoneId '{zoneId}'.")
+    };
+
+    private static async ValueTask MoveToAsync(
+        GameClient player,
+        int targetX,
+        int targetY,
+        CancellationToken cancellationToken)
+    {
+        while (player.Position.X != targetX || player.Position.Y != targetY)
+        {
+            // Move one axis at a time so one command cannot cross two boundaries.
+            var nextX = player.Position.X != targetX
+                ? player.Position.X + Math.Clamp(
+                    targetX - player.Position.X,
+                    -ZoneWorldSpec.MaxStepPerAxis,
+                    ZoneWorldSpec.MaxStepPerAxis)
+                : player.Position.X;
+            var nextY = player.Position.X == targetX
+                ? player.Position.Y + Math.Clamp(
+                    targetY - player.Position.Y,
+                    -ZoneWorldSpec.MaxStepPerAxis,
+                    ZoneWorldSpec.MaxStepPerAxis)
+                : player.Position.Y;
+            var oldZone = ZoneWorldSpec.ZoneOf(player.Position.X, player.Position.Y);
+            var newZone = ZoneWorldSpec.ZoneOf(nextX, nextY);
+
+            if (!string.Equals(oldZone, newZone, StringComparison.Ordinal))
+            {
+                var changed = player.Connector.WaitFor<ZoneChangedNotify>()
+                    .Where(message => message.Payload.PlayerId == player.PlayerId
+                                      && message.Payload.ZoneId == newZone)
+                    .Timeout(TimeSpan.FromSeconds(15))
+                    .Async(cancellationToken);
+                await player.MoveAsync(nextX, nextY);
+                await changed;
+            }
+            else
+            {
+                var arrived = player.Connector.WaitFor<ZoneStateNotify>()
+                    .Where(message => message.Payload.Players.Any(candidate =>
+                        candidate.PlayerId == player.PlayerId
+                        && candidate.X == nextX
+                        && candidate.Y == nextY))
+                    .Timeout(TimeSpan.FromSeconds(15))
+                    .Async(cancellationToken);
+                await player.MoveAsync(nextX, nextY);
+                await arrived;
+            }
+
+            player.Position = (nextX, nextY);
+        }
+    }
+
+    /// <summary>The Y boundary stays inside one node, so no relocation happens (§2.6).</summary>
     private static async ValueTask B3IntraNodeZoneChange(ClientOptions options, CancellationToken ct)
     {
         await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("b3"), ct);
@@ -912,7 +1001,7 @@ public static class Scenarios
         Console.WriteLine("scenario ZW-B4 checkpoint=west-in-border-band");
 
         // Prepare the cross-border observation only after the western setup walk. The east
-        // transfer below is the trigger; unrelated setup must not consume its timeout budget.
+        // relocation below is the trigger; unrelated setup must not consume its timeout budget.
         var eastVisible = west.Connector.WaitFor<ZoneStateNotify>()
             .Where(message => message.Payload.Players.Any(p =>
                 p.PlayerId == eastId && p.ZoneId == ZoneIds.NorthEast))
@@ -941,7 +1030,7 @@ public static class Scenarios
         Console.WriteLine("scenario ZW-B4 checkpoint=east-in-zone-ne");
 
         // Wait until east is visible *as a zone-ne player*, not merely visible. Right after the
-        // transfer there is a tick or two where east is still in zone-nw's own copy — the spot
+        // relocation there is a tick or two where east is still in zone-nw's own copy — the spot
         // holds a copy of a coordinate the actor owns (§2.1), and the copy lags the actor by a
         // turn. "Visible" is satisfied by that stale copy, and a test that starts from there is
         // watching the wrong player: it would then see the copy disappear and call it expiry.
@@ -962,7 +1051,7 @@ public static class Scenarios
         //
         // Expiry has to be waited for as *both* facts at once: east is gone, and the zone it was
         // in is gone with it — a snapshot is replaced whole, never merged (§2.4). Neither alone
-        // is sound. "east is gone" is briefly true of the wrong thing: right after the transfer
+        // is sound. "east is gone" is briefly true of the wrong thing: right after the relocation
         // the source zone still holds its copy of east (§2.1 — the spot's copy lags the actor by
         // a turn), so east is on screen as a zone-nw player while zone-ne has yet to report it.
         // And "zone-ne is gone" is true before zone-ne's first snapshot ever lands. Requiring

@@ -160,10 +160,8 @@ public sealed partial class StreamConnectorTests
             _ => ValueTask.FromException(new TimeoutException("wait timed out")));
         await ZlinkStreamAssert.ExpectTimeoutAsync(
             _ => ValueTask.FromException(
-                new Zlink.Framework.Contracts.Errors.ZLinkFrameworkException(
-                    Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind.RequestFailed,
+                new InvalidOperationException(
                     "HTTP request exceeded timeout",
-                    true,
                     new TimeoutException("HTTP request exceeded timeout"))));
         using var callerCanceled = new CancellationTokenSource();
         callerCanceled.Cancel();

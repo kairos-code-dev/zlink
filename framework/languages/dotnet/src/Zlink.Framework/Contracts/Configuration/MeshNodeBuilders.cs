@@ -117,12 +117,21 @@ public enum ZLinkUserSpotExecutionMode
     PerActor = 1
 }
 
+public enum ZLinkSpotRelocationReadinessMode
+{
+    AnyTurnBoundary = 0,
+    ApplicationSignaled = 1
+}
+
 public sealed record ZLinkUserSpotFactoryOptions
 {
     public int StableTypeLimit { get; init; }
 
     public ZLinkUserSpotExecutionMode ExecutionMode { get; init; }
         = ZLinkUserSpotExecutionMode.SpotWide;
+
+    public ZLinkSpotRelocationReadinessMode RelocationReadiness { get; init; }
+        = ZLinkSpotRelocationReadinessMode.AnyTurnBoundary;
 }
 
 public interface IZLinkMeshNodeBuilder

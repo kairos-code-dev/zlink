@@ -38,7 +38,7 @@ public sealed class RegressionTests
         "11-monitoring.ko.md",
         "12-operations.ko.md",
         "13-interface-catalog.ko.md",
-        "14-grpc-alternative.ko.md"
+        "14-alternative.ko.md"
     ];
 
     [Fact]
@@ -372,6 +372,79 @@ public sealed class RegressionTests
     }
 
     [Fact]
+    public void CommonE2EConfigsHaveCompleteDotNetFeatureMapInventories()
+    {
+        var commonE2ERoot = Path.GetFullPath(Path.Combine(
+            GetDotNetDocRoot(),
+            "..",
+            "common",
+            "e2e"));
+        var dotNetE2ERoot = Path.GetFullPath(Path.Combine(
+            GetDotNetDocRoot(),
+            "..",
+            "..",
+            "..",
+            "languages",
+            "dotnet",
+            "e2e"));
+        var fixtureByConfig = new Dictionary<int, string>
+        {
+            [1] = "LocationMessaging",
+            [2] = "SpotService",
+            [3] = "PubSub",
+            [4] = "RegistrationCodec",
+            [5] = "ResilienceLifecycle",
+            [6] = "StoreFailure",
+            [7] = "RuntimeMonitoring",
+            [8] = "AutomaticTurnDispatch",
+            [9] = "ToActorMessaging",
+            [10] = "SpotActorTransfer",
+            [11] = "ObservabilityOps",
+            [12] = "ChannelEgressRouting",
+            [13] = "SubmitAdmission"
+        };
+
+        foreach (var pair in fixtureByConfig)
+        {
+            var document = Directory.GetFiles(
+                    commonE2ERoot,
+                    $"config-{pair.Key}-*.ko.md",
+                    SearchOption.TopDirectoryOnly)
+                .Single();
+            var featureMap = Path.Combine(
+                dotNetE2ERoot,
+                pair.Value,
+                "feature-map.ko.md");
+            Assert.True(
+                File.Exists(featureMap),
+                $"Missing .NET feature map for Config {pair.Key}: {featureMap}");
+
+            var documentIds = Regex.Matches(
+                    File.ReadAllText(document),
+                    @"(?m)^(?:#{2,5}\s+(?<id>[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+)\b|\|\s+`?(?<tableId>CH-REG-[0-9]+)`?\s+\|)")
+                .Select(static match =>
+                    match.Groups["id"].Success
+                        ? match.Groups["id"].Value
+                        : match.Groups["tableId"].Value)
+                .ToHashSet(StringComparer.Ordinal);
+            var featureMapIds = Regex.Matches(
+                    File.ReadAllText(featureMap),
+                    @"(?m)^\| (?<id>[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+) \|")
+                .Select(static match => match.Groups["id"].Value)
+                .ToHashSet(StringComparer.Ordinal);
+            var missing = documentIds
+                .Except(featureMapIds, StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+
+            Assert.True(
+                missing.Length == 0,
+                $"Config {pair.Key} scenarios missing from {pair.Value} feature map: "
+                + string.Join(", ", missing));
+        }
+    }
+
+    [Fact]
     public void SpotNodeContractsUseTheLocationStoreAsTheAddressSourceOfTruth()
     {
         // Location Store 요구 조건은 언어별 configuration exact interface가 소유한다.
@@ -442,7 +515,7 @@ public sealed class RegressionTests
             "doc",
             "principal",
             "documentation",
-            "00-spec-writing-guide.ko.md"));
+            "spec-writing-guide.ko.md"));
 
         Assert.False(Directory.Exists(deletedSpecRoot));
         Assert.All(required, file => Assert.True(File.Exists(Path.Combine(specRoot, file)), file));

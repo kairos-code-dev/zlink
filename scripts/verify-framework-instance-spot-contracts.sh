@@ -92,14 +92,14 @@ const formalFixtures = [
   {
     path: 'framework/doc/framework/common/spec/21-location-runtime.ko.md',
     required: [
-      'Actor와 User Spot은 Manager의 명시적인 `Create` 또는 `GetOrCreate`로 생성한다.',
-      'User Spot의 `Create`는 Framework가 lowercase canonical UUID v4 string SpotId를 발급하고,',
-      'Instance Spot은 Manager create family를 제공하지 않으며 §6.1의',
-      'call은 기본적으로 existing-only다. Instance intent가 없는 call은 Missing authority에서 target-not-found로 끝난다.',
-      'Stable type을 생략했을 때 선택한 Mesh의 serving descriptor에 등록된 distinct Instance type이 하나면 자동 선택한다.',
-      'Source는 전송 전에 owner claim, Missing→Reserved reservation 또는 synthetic generation을 만들지 않는다.',
-      '생성 권한을 얻은 target만 factory와 initialize를 실행한다.',
-      'creation intent와 target reserved capacity bundle을 하나의 atomic transaction으로',
+      'Actor와 User Spot은 Manager의 `Create` 또는 `GetOrCreate`로 만든다.',
+      'Framework가 소문자 표준 UUID v4 문자열을 SpotId로 발급한다.',
+      'Instance Spot은 별도 생성 API를 사용하지 않는다.',
+      'Instance Spot 요청임을 표시했고 Spot이 없을 때만, message를 받은 target node가 Spot을 만든다.',
+      '사용 가능한 Instance Spot type이 하나면 선택한다. 0개면 target-not-found, 둘 이상이면 `InvalidConfiguration`이다.',
+      'Source는 owner나 generation을 미리 만들지 않는다.',
+      '동시에 여러 target이 시도해도 성공한 하나만 factory를 실행한다.',
+      'Record가 없을 때만 최초 message를 Relocation Store에 저장하고 `Creating` record와 수용 공간을 함께 확보한다.',
     ],
   },
 ];
@@ -127,8 +127,8 @@ const projections = {
     'ExplicitClose = 0, HostShutdown = 1, RelocationOut = 2',
     'public readonly record struct ZLinkSpotClosingContext( ZLinkSpotCloseReason Reason, DateTimeOffset Deadline);',
     'ValueTask OnClosingAsync( ZLinkSpotClosingContext context, CancellationToken cleanupCancellationToken)',
-    'Source는 placement reservation을 만들지 않는다.',
-    '같은 Spot의 local instance가 없을 때만 Target이 자신을 owner로 하는 `Creating` row와 reserved capacity를',
+    'Source는 owner claim이나 수용 공간을 미리 확보하지 않는다.',
+    'Target에 같은 Spot의 local instance가 없을 때만 자신을 owner로 하는 `Creating` record와 수용 공간을 함께 확보한다.',
   ],
   cpp: [
     'using spot_id_t = std::string;',

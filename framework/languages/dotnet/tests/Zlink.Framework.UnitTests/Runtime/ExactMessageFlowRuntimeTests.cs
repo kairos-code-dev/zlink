@@ -1,218 +1,167 @@
-using Microsoft.Extensions.DependencyInjection;
-using Systems.Zlink.Framework.Runtime.Protocol;
+using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol;
+using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Dispatch;
-using Zlink.Framework.Runtime.Service;
-using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.UnitTests;
 
-[Collection(RuntimeMetricsCollection.Name)]
 public sealed class ExactMessageFlowRuntimeTests
 {
     [Fact]
-    public async Task RuntimeStreamIsBoundedAndSharesTheLiveModeCell()
+    public void RuntimeLevelSharesTheConfiguredLiveCell()
     {
+        var options = new ZLinkDiagnosticsOptionsModel();
+        options.SetLevel(ZLinkDiagnosticsLevel.Errors);
+        options.LiveLevel = new ZLinkDiagnosticsLevelCell(options.ConfiguredLevel);
+        var runtime = new ZLinkDiagnosticsRuntimeService(options);
+
+        Assert.Equal(ZLinkDiagnosticsLevel.Errors, runtime.Level);
+
+        runtime.Level = ZLinkDiagnosticsLevel.Detailed;
+
+        Assert.Equal(ZLinkDiagnosticsLevel.Detailed, options.EffectiveLevel);
+    }
+
+    [Fact]
+    public void OffLevelDoesNotCreateSubmitOperationIdentityEvenWithListener()
+    {
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == ZLinkTelemetry.ActivitySourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllDataAndRecorded
+        };
+        ActivitySource.AddActivityListener(listener);
+        var options = new ZLinkDiagnosticsOptionsModel();
+        var runtime = new ZLinkDiagnosticsRuntimeService(options);
+
+        runtime.Level = ZLinkDiagnosticsLevel.Off;
+
+        Assert.Equal(string.Empty, ZLinkTelemetry.CaptureSubmitOperationId());
+    }
+
+    [Fact]
+    public void EnabledLevelCreatesSubmitOperationIdentityWhenListenerExists()
+    {
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == ZLinkTelemetry.ActivitySourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllDataAndRecorded
+        };
+        ActivitySource.AddActivityListener(listener);
+        var runtime = new ZLinkDiagnosticsRuntimeService(new ZLinkDiagnosticsOptionsModel());
+        runtime.Level = ZLinkDiagnosticsLevel.Normal;
+
+        Assert.NotEmpty(ZLinkTelemetry.CaptureSubmitOperationId());
+    }
+
+    [Fact]
+    public void OffLevelSkipsDispatchLoggerAndActivityBeforeEventConstruction()
+    {
+        var activities = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == ZLinkTelemetry.ActivitySourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activities.Add
+        };
+        ActivitySource.AddActivityListener(listener);
         var options = new ZLinkDispatchOptionsModel();
-        options.Diagnostics.LiveMode = new ZLinkMessageFlowModeCell(
-            ZLinkRuntimeMessageFlowMode.ErrorsOnly);
-        var runtime = new ZLinkMessageFlowRuntimeService(options);
-
-        Assert.Equal(
-            ZLinkRuntimeMessageFlowMode.ErrorsOnly,
-            runtime.Mode);
-        runtime.Mode = ZLinkRuntimeMessageFlowMode.Verbose;
-        Assert.Equal(
-            ZLinkRuntimeMessageFlowMode.Verbose,
-            options.Diagnostics.EffectiveMessageFlow);
-
-        using var timeout = new CancellationTokenSource(
-            TimeSpan.FromSeconds(2));
-        await using var observer = runtime.ObserveAsync(
-                capacity: 1,
-                timeout.Token)
-            .GetAsyncEnumerator(timeout.Token);
-        var pending = observer.MoveNextAsync().AsTask();
-        runtime.Publish(Projected("first"));
-
-        Assert.True(await pending);
-        Assert.Equal("first", observer.Current.PacketName);
-    }
-
-    [Fact]
-    public void ProjectionUsesExactClosedValuesAndExcludesPublish()
-    {
-        var dispatch = new ZLinkMessageFlowEvent(
-            ZLinkMessageFlowOutcome.Error,
-            ZLinkDispatchErrorSurface.RouteMeshChannel,
-            ZLinkDispatchMessageKind.Request,
-            PacketName: "find",
-            ChannelName: "orders",
-            ErrorReason: ZLinkDispatchErrorReason.HandlerMissing,
-            ErrorAction: ZLinkDispatchErrorAction.ReplyError);
-
-        Assert.True(
-            ZLinkRuntimeMessageFlowProjection.TryProject(
-                dispatch,
-                out var projected));
-        Assert.Equal("zlink.dispatch_error", projected.EventId);
-        Assert.Null(projected.Phase);
-        Assert.Equal("channel", projected.Surface);
-        Assert.Equal("route_mesh", projected.ChannelRouteKind);
-        Assert.Equal("failed", projected.Outcome);
-        Assert.Equal("no_handler", projected.Reason);
-        Assert.Equal("reply_error", projected.Action);
-
-        Assert.False(
-            ZLinkRuntimeMessageFlowProjection.TryProject(
-                dispatch with
-                {
-                    MessageKind = ZLinkDispatchMessageKind.Publish
-                },
-                out _));
-    }
-
-    [Fact]
-    public async Task ExactObserverFailureUsesSeparateSinkAndLaterEventContinues()
-    {
-        var observer = new FailOnceObserver();
-        var sink = new RecordingRuntimeErrorSink();
-        var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off)
-            .SetRuntimeMessageFlowObserver(observer)
-            .SetRuntimeErrorSink(sink);
-        await using var services =
-            new ServiceCollection().BuildServiceProvider();
-        var internalSink = new ZLinkRuntimeErrorSink();
-        var runner = new ZLinkRuntimeTaskRunner(
-            internalSink,
-            CancellationToken.None);
-        await using var pump =
-            new ZLinkMessageFlowObserverPump(options, services, runner);
-        var tracer = new ZLinkMessageFlowTracer(
-            options,
-            observerPump: pump);
-
-        tracer.Trace(Legacy("first"));
-        tracer.Trace(Legacy("second"));
-
-        var error = await sink.Error.Task.WaitAsync(
-            TimeSpan.FromSeconds(2));
-        Assert.Equal("zlink.runtime_error", error.EventId);
-        Assert.Equal("observer_failed", error.Kind);
-        Assert.Equal("message_flow_observer", error.Source);
-        Assert.True(error.Reason.Length <= 1024);
-        Assert.Equal(
-            "second",
-            await observer.Second.Task.WaitAsync(TimeSpan.FromSeconds(2)));
-
-        await runner.StopAsync();
-        internalSink.Dispose();
-    }
-
-    [Fact]
-    public async Task InstanceSpotMonitoringCountsDuplicateOperationOnce()
-    {
-        var monitoring = new ZLinkInstanceSpotMonitoring();
-        var release = new TaskCompletionSource<InstanceSpotActivationTerminal>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var first = monitoring.ObserveAsync(
-            "operation-1",
-            "lobby",
-            128,
-            () => release.Task);
-        var duplicate = monitoring.ObserveAsync(
-            "operation-1",
-            "lobby",
-            128,
-            () => release.Task);
-
-        var pending = monitoring.Snapshot("lobby");
-        Assert.Equal(1UL, pending.PendingMessageCount);
-        Assert.Equal(128UL, pending.PendingByteCount);
-
-        release.SetResult(new InstanceSpotActivationTerminal(
-            RequestResult.Ok,
-            ServiceWireConstants.FrameworkErrorCode.None,
-            Array.Empty<ReadOnlyMemory<byte>>()));
-        await Task.WhenAll(first, duplicate);
-
-        var completed = monitoring.Snapshot("lobby");
-        Assert.Equal(0UL, completed.PendingMessageCount);
-        Assert.Equal(0UL, completed.PendingByteCount);
-        Assert.Equal("ready", completed.LastActivationOutcome);
-    }
-
-    private static ZLinkMessageFlowEvent Legacy(string packetName) =>
-        new(
-            ZLinkMessageFlowOutcome.Received,
+        options.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Off);
+        _ = new ZLinkDiagnosticsRuntimeService(options.Diagnostics);
+        var logger = new CountingLogger();
+        var reporter = new ZLinkDispatchErrorReporter(options);
+        var scope = new ZLinkDispatchFlowScope(
             ZLinkDispatchErrorSurface.Channel,
-            ZLinkDispatchMessageKind.Request,
-            PacketName: packetName,
-            ChannelName: "orders");
+            "Channel",
+            ZLinkDispatchMessageKind.Send,
+            "Send",
+            "packet");
 
-    private static ZLinkRuntimeMessageFlowEvent Projected(
-        string packetName) =>
-        new(
-            "zlink.message_flow",
-            DateTimeOffset.UtcNow,
-            "received",
-            "channel",
-            "request",
-            "succeeded",
-            Reason: null,
-            Action: null,
-            MeshName: null,
-            ChannelName: "orders",
-            ChannelRouteKind: "client_server",
-            SourceRid: null,
-            TargetRid: null,
-            ServerRid: null,
-            packetName,
-            Topic: null,
-            SpotId: null,
-            InstanceSpotType: null,
-            ActivationState: null,
-            ActorId: null,
-            CorrelationId: null,
-            FlowId: null,
-            FlowOrigin: null,
-            MessageSizeBytes: null,
-            DurationSeconds: null);
+        scope.HandlerMissing(
+            logger,
+            reporter,
+            LogLevel.Warning,
+            ZLinkDispatchErrorAction.Drop);
 
-    private sealed class FailOnceObserver :
-        IZLinkRuntimeMessageFlowObserver
-    {
-        private int _first = 1;
-
-        internal TaskCompletionSource<string> Second { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public ValueTask OnMessageFlowAsync(
-            ZLinkRuntimeMessageFlowEvent flow,
-            CancellationToken cancellationToken)
-        {
-            _ = cancellationToken;
-            if (Interlocked.Exchange(ref _first, 0) != 0)
-                throw new InvalidOperationException("expected");
-            Second.TrySetResult(flow.PacketName!);
-            return ValueTask.CompletedTask;
-        }
+        Assert.Equal(0, logger.CallCount);
+        Assert.Empty(activities);
     }
 
-    private sealed class RecordingRuntimeErrorSink :
-        Zlink.Framework.Contracts.Dispatch.IZLinkRuntimeErrorSink
+    [Fact]
+    public void DispatchTerminalTraceKeepsTheFlowCapturedAtReceiveBoundary()
     {
-        internal TaskCompletionSource<ZLinkRuntimeErrorEvent> Error { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public ValueTask OnRuntimeErrorAsync(
-            ZLinkRuntimeErrorEvent error,
-            CancellationToken cancellationToken)
+        var activities = new List<Activity>();
+        using var listener = new ActivityListener
         {
-            _ = cancellationToken;
-            Error.TrySetResult(error);
-            return ValueTask.CompletedTask;
+            ShouldListenTo = source =>
+                source.Name == ZLinkTelemetry.ActivitySourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activities.Add
+        };
+        ActivitySource.AddActivityListener(listener);
+        var options = new ZLinkDispatchOptionsModel();
+        options.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
+        options.Diagnostics.SetSampleRate(1);
+        _ = new ZLinkDiagnosticsRuntimeService(options.Diagnostics);
+        var reporter = new ZLinkDispatchErrorReporter(options);
+        var requestFlowId = ZlinkStreamFlowId.Create();
+
+        ZLinkDispatchFlowScope scope;
+        using (ZLinkFlowContext.Enter(
+                   requestFlowId,
+                   ZLinkFlowOrigin.Inbound,
+                   createIfAbsent: true,
+                   ZLinkFlowOrigin.Inbound))
+        {
+            scope = new ZLinkDispatchFlowScope(
+                ZLinkDispatchErrorSurface.SpotRoute,
+                "Spot",
+                ZLinkDispatchMessageKind.Request,
+                "Request",
+                "request",
+                correlationId: "correlation-1",
+                spotId: "spot-1");
+            scope.Trace(reporter, ZLinkMessageFlowOutcome.Received);
         }
+
+        using (ZLinkFlowContext.Enter(
+                   ZlinkStreamFlowId.Create(),
+                   ZLinkFlowOrigin.Application,
+                   createIfAbsent: true,
+                   ZLinkFlowOrigin.Application))
+            scope.Trace(reporter, ZLinkMessageFlowOutcome.Replied);
+
+        var traces = activities
+            .Where(activity =>
+                activity.OperationName == "zlink.message_flow")
+            .ToArray();
+        Assert.Equal(2, traces.Length);
+        Assert.All(traces, activity =>
+            Assert.Equal(
+                requestFlowId,
+                activity.GetTagItem("flow_id")));
+    }
+
+    private sealed class CountingLogger : ILogger
+    {
+        public int CallCount { get; private set; }
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            CallCount++;
     }
 }

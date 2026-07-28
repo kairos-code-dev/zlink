@@ -213,6 +213,5 @@ wait_log "status=WaitingForAgent" "${LOG_DIR}/support.log"
 wait_log "status=Active" "${LOG_DIR}/support.log"
 wait_log "status=WaitingForClose" "${LOG_DIR}/support.log"
 wait_log "status=Closed" "${LOG_DIR}/support.log"
-grep -Rq "message flow" "${SUPPORTCHAT_LOG_DIR}"
 echo "supportchat-server-evidence=completed"
 RUN_SUCCEEDED=1

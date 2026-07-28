@@ -89,6 +89,18 @@ namespace SpotActorTransfer.ActorNode
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (actor.ActorId.StartsWith(
+                    "actor-st-g5-slow-capture-",
+                    StringComparison.Ordinal))
+            {
+                evidence.Add(
+                    "ST-G5",
+                    actor.ActorId,
+                    "slow_capture_started",
+                    "1250ms");
+                await Task.Delay(1_250, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             if (actor.ActorType == SpotActorTransferNames.ActorTypeFailTransferOut)
             {
                 evidence.Add("ST-C3", actor.ActorId, "transfer_out_failed", actor.StateVersion.ToString());
@@ -101,6 +113,11 @@ namespace SpotActorTransfer.ActorNode
                 return [];
             }
 
+            evidence.Add(
+                "transfer",
+                actor.ActorId,
+                "application_capture_started",
+                "actor");
             var payload = TransferActorStateCodec.Encode(actor);
             evidence.Add(
                 "transfer",
@@ -122,18 +139,42 @@ namespace SpotActorTransfer.ActorNode
             return payload;
         }
 
-        public ValueTask RestoreAsync(
+        public async ValueTask RestoreAsync(
             TransferActor actor,
             ReadOnlyMemory<byte> payload,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var actorId = actor.Context.ActorId;
+            evidence.Add(
+                "transfer",
+                actorId,
+                "application_restore_started",
+                "actor");
+            evidence.Add(
+                "transfer",
+                actorId,
+                "relocation_payload_restored",
+                $"bytes={payload.Length};sha256="
+                + TransferActorStateCodec.Sha256(payload.Span));
+            if (actorId.StartsWith(
+                    "actor-st-g5-slow-restore-",
+                    StringComparison.Ordinal))
+            {
+                evidence.Add(
+                    "ST-G5",
+                    actorId,
+                    "slow_restore_started",
+                    "1250ms");
+                await Task.Delay(1_250, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             if (payload.IsEmpty)
             {
                 evidence.Add("transfer", actorId, "transfer_in_empty", "custom-adapter");
-                actor.ActorType = SpotActorTransferNames.ActorTypeEmptyState;
-                return ValueTask.CompletedTask;
+                actor.ActorType =
+                    SpotActorTransferNames.ActorTypeEmptyState;
+                return;
             }
 
             var state = TransferActorStateCodec.Decode(actorId, payload.Span);
@@ -157,7 +198,6 @@ namespace SpotActorTransfer.ActorNode
                 "application_state_restored",
                 $"bytes={actor.ApplicationState.Length};sha256="
                 + TransferActorStateCodec.Sha256(actor.ApplicationState));
-            return ValueTask.CompletedTask;
         }
     }
 
@@ -210,11 +250,23 @@ namespace SpotActorTransfer.ActorNode
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask OnLeaveActorAsync(
+        public async ValueTask OnLeaveActorAsync(
             TransferActor actor,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (actor.ActorId.StartsWith(
+                    "actor-st-g5-slow-cleanup-",
+                    StringComparison.Ordinal))
+            {
+                evidence.Add(
+                    "ST-G5",
+                    actor.ActorId,
+                    "slow_source_cleanup_started",
+                    "1250ms");
+                await Task.Delay(1_250, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             if (actor.ActorType == SpotActorTransferNames.ActorTypeNoAdapter)
                 evidence.Add("transfer", actor.ActorId, "transfer_out_empty_default", "no-adapter");
             if (actor.ActorType == SpotActorTransferNames.ActorTypeFailLeave)
@@ -224,7 +276,6 @@ namespace SpotActorTransfer.ActorNode
             }
 
             evidence.Add("transfer", actor.ActorId, "leave", actor.StateVersion.ToString());
-            return ValueTask.CompletedTask;
         }
     }
 
@@ -682,6 +733,55 @@ namespace SpotActorTransfer.ActorNode
 
     }
 
+    internal sealed class RelocationPayloadPerActorUserSpot(
+        IZLinkSpotContext context) : IZLinkSpot<TransferActor>
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        internal string Scenario { get; private set; } = "ST-G3";
+        internal byte[] ApplicationState { get; set; } = [];
+
+        public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+            ZLinkMessage request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var profile = request.Decode<RelocationPayloadSpotReq>();
+            Scenario = profile.Scenario;
+            ApplicationState = TransferActorStateCodec.CreateState(
+                Context.SpotId,
+                profile.ApplicationStateBytes);
+            return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
+        }
+
+        public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+            string actorId,
+            ZLinkMessage request,
+            CancellationToken cancellationToken)
+        {
+            _ = actorId;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(
+                ZLinkSpotActorJoinResult.Accept(request));
+        }
+
+        public ValueTask OnJoinedActorAsync(
+            TransferActor actor,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnLeaveActorAsync(
+            TransferActor actor,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
+        }
+    }
+
     internal sealed class RelocationPayloadInstanceSpotHandler
         : IZLinkSpotRequestHandler<
             RelocationPayloadInstanceSpot,
@@ -721,6 +821,11 @@ namespace SpotActorTransfer.ActorNode
             evidence.Add(
                 spot.Scenario,
                 spot.Context.SpotId,
+                "spot_application_capture_started",
+                "spotwide");
+            evidence.Add(
+                spot.Scenario,
+                spot.Context.SpotId,
                 "spot_application_payload",
                 $"kind=spotwide;bytes={spot.ApplicationState.Length};sha256="
                 + TransferActorStateCodec.Sha256(spot.ApplicationState));
@@ -733,6 +838,11 @@ namespace SpotActorTransfer.ActorNode
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            evidence.Add(
+                "ST-I1",
+                spot.Context.SpotId,
+                "spot_application_restore_started",
+                "spotwide");
             spot.ApplicationState = payload.ToArray();
             evidence.Add(
                 "ST-I1",
@@ -774,6 +884,42 @@ namespace SpotActorTransfer.ActorNode
                 spot.Context.SpotId,
                 "spot_application_state_restored",
                 $"kind=instance;bytes={payload.Length};sha256="
+                + TransferActorStateCodec.Sha256(payload.Span));
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    internal sealed class RelocationPayloadPerActorUserSpotAdapter(
+        EvidenceStore evidence)
+        : IZLinkSpotRelocationAdapter<
+            RelocationPayloadPerActorUserSpot>
+    {
+        public ValueTask<byte[]> CaptureAsync(
+            RelocationPayloadPerActorUserSpot spot,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            evidence.Add(
+                spot.Scenario,
+                spot.Context.SpotId,
+                "spot_application_payload",
+                $"kind=peractor;bytes={spot.ApplicationState.Length};sha256="
+                + TransferActorStateCodec.Sha256(spot.ApplicationState));
+            return ValueTask.FromResult(spot.ApplicationState);
+        }
+
+        public ValueTask RestoreAsync(
+            RelocationPayloadPerActorUserSpot spot,
+            ReadOnlyMemory<byte> payload,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            spot.ApplicationState = payload.ToArray();
+            evidence.Add(
+                "ST-G3",
+                spot.Context.SpotId,
+                "spot_application_state_restored",
+                $"kind=peractor;bytes={payload.Length};sha256="
                 + TransferActorStateCodec.Sha256(payload.Span));
             return ValueTask.CompletedTask;
         }

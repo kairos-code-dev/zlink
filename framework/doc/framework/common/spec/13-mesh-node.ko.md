@@ -66,7 +66,7 @@ identity로 해석하지 않는다.
 
 MeshNode descriptor의 owner를 확정하는 CAS는 같은 `(MeshName, RID)`를 현재 다른
 owner가 사용하고 있는지 확인한다. Active conflict가 확인되면 기존 descriptor를 변경하지 않고 두 번째
-UUID나 claim을 만들지 않는다. Startup은 즉시 `RoutingIdConflict`로 끝난다.
+UUID나 claim을 만들지 않는다. Startup은 즉시 configuration error로 끝난다.
 
 Replacement lifecycle은 이전 lifecycle의 RID를 재사용하지 않고 새 RID를 만든다.
 
@@ -82,7 +82,7 @@ Entry Spot ID: <prefix>-entry-<lowercase-canonical-uuid-v4>
 MeshNode와 Entry Spot은 각각 별도의 UUID v4를 생성한다. 두 UUID 값의 비교로 관계를 판정하지 않는다.
 Entry Spot ID는 같은 MeshNode lifecycle 동안 유지하고 replacement lifecycle에서는 새로 발급한다. Global
 Spot ID authority의 active conflict가 확인되면 두 번째 UUID나 reservation을 만들지 않고 startup을 즉시
-`SpotIdConflict`로 끝낸다.
+configuration error로 끝낸다.
 
 Full Entry Spot ID는 UTF-8 255 bytes 이하여야 한다. Prefix를 생략하면 MeshNode automatic RID에 선택한
 기본 diagnostic prefix를 Entry Spot에도 사용한다.
@@ -113,6 +113,15 @@ MeshNode마다 object role을 한 번 선택한다.
 manager, factory, placement 기능이나 숨겨진 local object runtime을 만들지 않는다.
 Factory와 Entry Spot은 `Server` builder에서만 등록할 수 있다. Entry Spot ID는
 Framework가 발급하며 caller가 생성하거나 fixed RID를 지정할 수 없다.
+
+Object Client는 Spot·Actor factory와 application Node direct handler를 등록할 수
+없다. Object 기능과 독립된 RouteMesh Channel Server는 같은 MeshNode에 등록할 수
+있다. 이 조합은 object placement target이 아니지만 Channel target은 된다.
+
+두 MeshNode가 모두 Object Client이고 양쪽 모두 RouteMesh Channel Server membership이
+없을 때만 peer connection을 만들지 않는다. 어느 한쪽에 Server membership이 있으면
+weight가 `0`이어도 연결한다. Channel Client membership만 있는 pair는 연결하지
+않는다.
 
 다음 .NET 발췌는 공통 role 선택과 factory 등록을 이해하기 위한 예시다. 다른 언어에
 같은 signature를 요구하지 않으며, 정확한 .NET 계약은
@@ -197,7 +206,7 @@ MeshNode를 선택한다. Placement weight가 `0`인 MeshNode는 이 두 작업�
 
 Framework는 Active count와 reserved slot을 합해 설정한 Actor·Spot limit을 먼저
 검사하고 그 뒤에 weight를 적용한다. Limit `0`은 검사를 생략한다. Capacity 조건을
-만족하는 node가 하나도 없으면 `PlacementCapacityExhausted`다. Descriptor의 count는
+만족하는 node가 하나도 없으면 `CapacityExceeded`다. Descriptor의 count는
 후보 선택용 projection이며 Location Store의 atomic reservation이 최종 판정이다.
 남은 후보의 positive placement weight 합계는 최소 64-bit 정수로 계산하여
 overflow하지 않게 한다.
@@ -290,7 +299,7 @@ node-wide placement weight도 바꾸지 않는다.
 
 | 메시징 방식 | Target을 선택하고 전달하는 방법 |
 |---|---|
-| Node direct | Caller가 지정한 `MeshName` 안에서 exact target RID로 한 번 제출한다. |
+| Node direct | Caller가 지정한 `MeshName` 안에서 exact target RID로 한 번 제출한다. Object Client RID는 application Node direct target이 아니다. |
 | Channel | Process-local `ChannelName` index가 RouteMesh를 정한다. 그 Mesh에서 ready 상태이고 Channel weight가 0보다 큰 Server 중 하나를 weight 비율에 따라 선택한다. |
 | Logical Multicast | 먼저 해당 ChannelName에 참여하고 ready 상태이며 Channel weight가 0보다 큰 remote MeshNode를 모두 선택한다. 각 수신 MeshNode는 자신의 local Spot 중에서 ChannelName과 topic 조건이 일치하는 subscription에 message를 전달한다. |
 | Actor direct | Global ActorId의 current authority와 ObjectGeneration을 확인한 뒤 current owner route로 제출한다. |
@@ -371,7 +380,7 @@ RID와 endpoint는 진단 정보로만 사용하며 metric label로 사용하지
 - `None`, `Client`, `Server`가 manager, factory와 placement capability를 계약대로 제한한다.
 - Object role과 Location Store, automatic discovery와 fixed RID의 잘못된 조합이 startup에서 실패한다.
 - Automatic RID가 prefix와 lowercase canonical UUID v4 형식을 따르고 active conflict에서 두 번째 claim
-  없이 `RoutingIdConflict`로 실패한다.
+  없이 startup configuration error로 실패한다.
 - Replacement lifecycle이 새 RID를 사용한다.
 - Entry Spot ID가 MeshNode와 같은 diagnostic prefix, 별도로 생성한 UUID v4를 사용하며 descriptor가 exact
   lifecycle mapping을 게시한다.

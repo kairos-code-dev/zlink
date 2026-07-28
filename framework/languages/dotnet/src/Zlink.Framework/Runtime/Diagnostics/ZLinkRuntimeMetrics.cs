@@ -44,6 +44,10 @@ internal static class ZLinkRuntimeMetrics
         Meter.CreateHistogram<long>("zlink.relocation.journal.messages", "{message}");
     private static readonly Histogram<long> RelocationBytes =
         Meter.CreateHistogram<long>("zlink.relocation.bytes", "By");
+    private static readonly Histogram<double> RelocationInterruption =
+        Meter.CreateHistogram<double>(
+            "zlink.relocation.interruption",
+            "s");
 
     private static readonly Histogram<double> ChannelRequestDuration =
         Meter.CreateHistogram<double>("zlink.channel.request.duration", "s");
@@ -146,6 +150,31 @@ internal static class ZLinkRuntimeMetrics
 
     public static void RecordActorCreated() => SafeAdd(ActorCount, 1);
     public static void RecordActorClosed() => SafeAdd(ActorCount, -1);
+    internal static bool RelocationInterruptionEnabled =>
+        RelocationInterruption.Enabled;
+
+    internal static void RecordRelocationInterruption(
+        TimeSpan duration,
+        string unitKind,
+        string? executionMode)
+    {
+        if (!RelocationInterruption.Enabled) return;
+        if (executionMode is null)
+            SafeRecord(
+                RelocationInterruption,
+                Math.Max(0, duration.TotalSeconds),
+                "unit_kind",
+                unitKind);
+        else
+            SafeRecord(
+                RelocationInterruption,
+                Math.Max(0, duration.TotalSeconds),
+                "unit_kind",
+                unitKind,
+                "execution_mode",
+                executionMode);
+    }
+
     public static ZLinkRelocationMetricOperation CreateRelocation(
         string meshName,
         ZLinkRelocationMetricObjectKind objectKind,

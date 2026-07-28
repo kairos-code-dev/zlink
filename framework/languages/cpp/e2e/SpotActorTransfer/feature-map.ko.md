@@ -12,10 +12,10 @@ context는 HTTP·connector 연결과 반복되는 evidence 조회만 제공한�
 
 | 시나리오 | 상태 | 현재 검증 |
 |----------|------|----------------------|
-| ST-A1 | `implemented` | local admission부터 성공 응답까지의 순서를 client가 검사한다. |
+| ST-A1 | `implemented` | Actor와 Spot이 모두 `actor-a`에 있는 same-node join으로 고정한다. `admission -> authority_committed -> leave -> joined -> success_reply` 순서와 Relocation Store read/write·Message Follow 0건을 검사한다. |
 | ST-A2 | `implemented` | local admission 거절과 joined side effect 부재를 검사한다. |
 | ST-A3 | `implemented` | joined gate가 유지되는 동안 actor packet이 완료되지 않는지 검사한다. |
-| ST-B1 | `implemented` | stateful remote transfer와 target state를 검사하고, source·target 역할 evidence의 `commit_request`, `location_committed`, `commit_ack`, `source_cleanup`이 같은 transfer id와 message-flow correlation을 공유하는지 확인한다. |
+| ST-B1 | `implemented` | stateful remote transfer와 target state를 검사한다. Target authority commit이 `joined`보다 먼저 완료되는지 확인하고, source·target 역할 evidence의 `commit_request`, `location_committed`, `commit_ack`, `source_cleanup`이 같은 transfer id와 message-flow correlation을 공유하는지 확인한다. |
 | ST-B2 | `implemented` | commit ack 뒤 success reply를 확인하고 source cleanup evidence가 아직 없을 때 source를 중단한 뒤 target generation과 packet 처리가 유지되는지 검사한다. |
 | ST-B3 | `implemented` | adapter 미등록 시 빈 state transfer와 source·target callback 순서를 검사하고, commit 경계 marker가 같은 transfer id와 message-flow correlation을 공유하는지 확인한다. |
 | ST-B4 | `implemented` | 명시적인 빈 state transfer 뒤 target state를 검사한다. |
@@ -36,7 +36,7 @@ context는 HTTP·connector 연결과 반복되는 evidence 조회만 제공한�
 | ST-G1 | `미구현` | yielded continuation과 모든 실행 lane을 포함한 relocation barrier process E2E가 없다. |
 | ST-G2 | `미구현` | 큰 participant inventory와 typed capacity aggregate all-or-none E2E가 없다. |
 | ST-G3 | `미구현` | PerActor Spot authority 선전환과 Actor별 source·target route 분할 E2E가 없다. |
-| ST-G4 | `미구현` | relocation 중 stale `ToActor` relay와 target queue 순서를 검증하는 E2E가 없다. |
+| ST-G4 | `미구현` | relocation 중 stale `ToActor` Message Follow와 target queue 순서를 검증하는 E2E가 없다. |
 | ST-G5 | `미구현` | Entry·PerActor Actor relocation interruption 목표와 초과 시 계속 진행을 검증하지 않는다. |
 | ST-G6 | `미구현` | `ApplicationSignaled` readiness와 completion callback의 source·target owner를 검증하지 않는다. |
 | ST-H1 | `component only` | `test_cpp_framework_execution`은 handler terminal 뒤 deferred activation과 handler failure 시 폐기를 검증한다. 실제 process의 immutable request와 Actor queue barrier E2E는 없다. |

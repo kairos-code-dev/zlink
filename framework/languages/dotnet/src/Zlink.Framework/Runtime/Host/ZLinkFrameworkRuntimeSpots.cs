@@ -20,10 +20,10 @@ internal sealed partial class ZLinkFrameworkRuntime
                 InstanceSpotType = types[0]
             },
             0 => throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestTargetNotFound,
+                ZLinkFrameworkErrorKind.NotFound,
                 $"Mesh '{meshName}' has no registered Instance Spot type."),
             _ => throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "InstanceSpot(instanceSpotType) is required when a Mesh registers multiple Instance Spot types.")
         };
     }
@@ -32,7 +32,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         var state = _state
                     ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.InvalidConfiguration,
+                        ZLinkFrameworkErrorKind.InvalidOperation,
                         "Framework runtime is not started.");
         var candidates = state.SpotNodes.Values
             .Where(node => node.Registration.ObjectRoleSelected
@@ -48,9 +48,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         throw new ZLinkFrameworkException(
             candidates.Length == 0
                 ? meshName is null
-                    ? ZLinkFrameworkErrorKind.ObjectClientNotConfigured
-                    : ZLinkFrameworkErrorKind.MeshNotFound
-                : ZLinkFrameworkErrorKind.MeshSelectionRequired,
+                    ? ZLinkFrameworkErrorKind.NotConfigured
+                    : ZLinkFrameworkErrorKind.NotFound
+                : ZLinkFrameworkErrorKind.InvalidOperation,
             candidates.Length == 0
                 ? meshName is null
                     ? "No object client MeshNode is registered."
@@ -115,8 +115,9 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
-    internal ZLinkSpotPublisherBundle GetSpotPublisherBundle(string meshName)
+    internal ZLinkSpotPublisherBundle GetSpotPublisherBundle(string channelName)
     {
+        var meshName = ResolveRouteMeshForChannel(channelName);
         return _spots.GetPublisherBundle(GetOrStartState(), meshName);
     }
 
@@ -210,7 +211,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             || System.Text.Encoding.UTF8.GetByteCount(value) > byte.MaxValue
             || value.Contains('\0'))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "Spot type must be 1..255 UTF-8 bytes without NUL.");
         return value;
     }
@@ -287,13 +288,21 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZlinkStreamHeader header,
         Message payload,
         bool callerOwnsDispatchTurn,
+        bool relocationReplay,
         CancellationToken cancellationToken = default)
     {
         return ExecuteOperationAsync(() =>
         {
             var state = GetOrStartState();
             return _spots.EntrySpotActors.TrySubmitForReplyAsync(
-                state, actor, runtimeState, header, payload, callerOwnsDispatchTurn, cancellationToken);
+                state,
+                actor,
+                runtimeState,
+                header,
+                payload,
+                callerOwnsDispatchTurn,
+                relocationReplay,
+                cancellationToken);
         });
     }
 

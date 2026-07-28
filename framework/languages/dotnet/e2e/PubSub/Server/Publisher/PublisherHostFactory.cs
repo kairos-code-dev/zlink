@@ -4,7 +4,7 @@ using PubSub.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Eventing;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace PubSub.Server.Publisher;
 
@@ -15,28 +15,35 @@ internal static class PublisherHostFactory
         var options = PublisherOptions.Parse(args);
         var builder = HostFactorySupport.CreateBuilder(args, options.HttpUrl, options.LogDir);
         builder.Services.AddSingleton(options);
-        builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
-        builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEvidenceRecorder>();
+        var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
+        builder.Services.AddSingleton(evidence);
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"{options.Rid}-flow.log"),
+            options.Rid,
+            flow =>
+            {
+                if (flow.Phase != "error") return;
+                evidence.Add(
+                    "dispatch-error"
+                    + $"|surface={flow.Surface}"
+                    + $"|kind={flow.MessageKind}"
+                    + $"|reason={flow.Reason}"
+                    + $"|action={flow.Action}"
+                    + $"|packet={flow.PacketName ?? "<null>"}"
+                    + $"|channel={flow.ChannelName ?? "<null>"}"
+                    + $"|topic={flow.Topic ?? "<null>"}");
+            }));
         builder.Services.AddZLinkFramework(framework =>
         {
-            ConfigureFlow(framework.ConfigureDispatch(), options.LogDir, options.Rid);
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             framework.AddFanoutChannel(PubSubNames.Channel)
                 .EnablePublisher(options.PublisherEndpoint);
         });
-        builder.Services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(
-            PubSubNames.PublisherSocketSource,
-            ZLinkSocketEventKind.Disconnected));
         var app = builder.Build();
         app.MapOperationalEndpoints("publisher", options.Rid);
         app.MapPublisherEndpoints();
         return app;
     }
 
-    private static void ConfigureFlow(IZLinkDispatchOptions dispatch, string logDir, string rid)
-    {
-        dispatch.SetRuntimeMessageFlowObserver<EvidenceDispatchErrorObserver>()
-            .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-            .TraceLogFile(Path.Combine(logDir, $"{rid}-flow.log"))
-            .TraceLabel(rid);
-    }
 }

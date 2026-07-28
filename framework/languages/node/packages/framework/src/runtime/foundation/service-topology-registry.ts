@@ -1,3 +1,5 @@
+import { descriptorConnectionNotRequired } from './route-mesh-connection-policy';
+
 export type ServiceNodeState =
   | 'preparing'
   | 'serving'
@@ -40,6 +42,7 @@ export interface AdmittedServicePeer {
 
 export type PeerAdmissionResult =
   | 'admitted'
+  | 'notRequired'
   | 'meshMismatch'
   | 'invalidDescriptor'
   | 'staleDescriptor';
@@ -51,6 +54,7 @@ const MAX_CAPACITY = 0x7fff_ffff;
 export class ServiceTopologyRegistry {
   private local: ServiceNodeDescriptor;
   private readonly peersByRid = new Map<string, AdmittedServicePeer>();
+  private readonly notRequiredByRid = new Map<string, ServiceNodeDescriptor>();
   private readonly selectionCursor = new Map<string, bigint>();
 
   constructor(local: ServiceNodeDescriptor) {
@@ -75,6 +79,11 @@ export class ServiceTopologyRegistry {
       throw new RangeError('Published descriptor revision must increase.');
     }
     this.local = cloneDescriptor(descriptor);
+    for (const [nodeRoutingId, remote] of this.notRequiredByRid) {
+      if (!descriptorConnectionNotRequired(this.local, remote)) {
+        this.notRequiredByRid.delete(nodeRoutingId);
+      }
+    }
   }
 
   admit(descriptor: ServiceNodeDescriptor, connectionId: string): PeerAdmissionResult {
@@ -86,6 +95,15 @@ export class ServiceTopologyRegistry {
     }
     if (descriptor.meshName !== this.local.meshName) return 'meshMismatch';
     if (descriptor.nodeRoutingId === this.local.nodeRoutingId) return 'invalidDescriptor';
+    if (descriptorConnectionNotRequired(this.local, descriptor)) {
+      this.peersByRid.delete(descriptor.nodeRoutingId);
+      this.notRequiredByRid.set(
+        descriptor.nodeRoutingId,
+        cloneDescriptor(descriptor)
+      );
+      return 'notRequired';
+    }
+    this.notRequiredByRid.delete(descriptor.nodeRoutingId);
 
     const current = this.peersByRid.get(descriptor.nodeRoutingId);
     if (
@@ -124,6 +142,58 @@ export class ServiceTopologyRegistry {
     return [...this.peersByRid.values()]
       .sort((left, right) => left.descriptor.nodeRoutingId.localeCompare(right.descriptor.nodeRoutingId))
       .map(clonePeer);
+  }
+
+  notRequiredPeers(): readonly ServiceNodeDescriptor[] {
+    return [...this.notRequiredByRid.values()]
+      .sort((left, right) => left.nodeRoutingId.localeCompare(right.nodeRoutingId))
+      .map(cloneDescriptor);
+  }
+
+  replaceDiscoveredNotRequired(
+    descriptors: readonly ServiceNodeDescriptor[]
+  ): void {
+    const next = new Map<string, ServiceNodeDescriptor>();
+    for (const descriptor of descriptors) {
+      validateDescriptor(descriptor);
+      if (
+        descriptor.meshName === this.local.meshName
+        && descriptor.nodeRoutingId !== this.local.nodeRoutingId
+        && descriptorConnectionNotRequired(this.local, descriptor)
+      ) {
+        next.set(descriptor.nodeRoutingId, cloneDescriptor(descriptor));
+      }
+    }
+    this.notRequiredByRid.clear();
+    for (const [nodeRoutingId, descriptor] of next) {
+      this.notRequiredByRid.set(nodeRoutingId, descriptor);
+    }
+  }
+
+  markNotRequired(descriptor: ServiceNodeDescriptor): void {
+    validateDescriptor(descriptor);
+    if (
+      descriptor.meshName !== this.local.meshName
+      || descriptor.nodeRoutingId === this.local.nodeRoutingId
+      || !descriptorConnectionNotRequired(this.local, descriptor)
+    ) {
+      return;
+    }
+    this.peersByRid.delete(descriptor.nodeRoutingId);
+    this.notRequiredByRid.set(
+      descriptor.nodeRoutingId,
+      cloneDescriptor(descriptor)
+    );
+  }
+
+  forgetNotRequired(nodeRoutingId: string): void {
+    this.notRequiredByRid.delete(nodeRoutingId);
+  }
+
+  knownDescriptor(nodeRoutingId: string): ServiceNodeDescriptor | undefined {
+    const admitted = this.peersByRid.get(nodeRoutingId)?.descriptor;
+    const descriptor = admitted ?? this.notRequiredByRid.get(nodeRoutingId);
+    return descriptor === undefined ? undefined : cloneDescriptor(descriptor);
   }
 
   selectChannel(channelName: string): AdmittedServicePeer | undefined {

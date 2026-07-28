@@ -41,7 +41,8 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     internal ZLinkCodecRegistryBuilder Codecs => Runtime.Registration.Codecs;
     internal IZlinkStreamCompressionCodec? CompressionCodec => Runtime.Registration.StreamCompressionCodec;
 
-    internal ZlinkStreamHeader? CurrentDispatchHeader => _currentDispatch?.Header;
+    internal ZlinkStreamHeader? CurrentDispatchHeader =>
+        _currentDispatch?.RuntimeState as ZlinkStreamHeader;
     internal ZLinkSessionDispatchContext? CurrentDispatchContext => _currentDispatch;
 
     public string SessionId => _stream.SessionId;
@@ -76,7 +77,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         var dispatch = _currentDispatch
                        ?? throw new InvalidOperationException(
                            "Session actor relay requires an active stream dispatch.");
-        var header = dispatch.Header
+        var header = dispatch.RuntimeState as ZlinkStreamHeader
                      ?? throw new InvalidOperationException("Session actor relay requires runtime dispatch state.");
 
         try
@@ -121,7 +122,17 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
 
     internal ZLinkSessionDispatchContext EnterDispatch(ZlinkStreamHeader header)
     {
-        _currentDispatch = new ZLinkSessionDispatchContext(header);
+        var metadata = header.Metadata.Count == 0
+            ? ZLinkMessageMetadata.Empty
+            : new ZLinkMessageMetadata(
+                new Dictionary<string, string>(
+                    header.Metadata.Values,
+                    StringComparer.Ordinal));
+        _currentDispatch = new ZLinkSessionDispatchContext(
+            header.Name,
+            metadata,
+            header.RequestSeq.HasValue,
+            header);
         return _currentDispatch;
     }
 

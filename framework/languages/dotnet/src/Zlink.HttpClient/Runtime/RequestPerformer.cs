@@ -64,7 +64,10 @@ internal sealed class RequestPerformer(
             if (options.FollowRedirects > 0 && HttpRedirectPolicy.IsRedirectStatus(status) &&
                 !string.IsNullOrEmpty(location))
             {
-                if (redirectsLeft == 0) throw RequestError("HTTP request exceeded the redirect limit");
+                if (redirectsLeft == 0)
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ProtocolError,
+                        "HTTP request exceeded the redirect limit");
 
                 --redirectsLeft;
                 (method, body) = HttpRedirectPolicy.RewriteForRedirect(status, method, body);
@@ -182,8 +185,4 @@ internal sealed class RequestPerformer(
         };
     }
 
-    private static ZLinkFrameworkException RequestError(string message)
-    {
-        return new ZLinkFrameworkException(ZLinkFrameworkErrorKind.RequestFailed, message);
-    }
 }

@@ -111,6 +111,21 @@ public sealed class SpotHandlerInvokerTests
         Assert.False(descriptor.PassSpotArgument);
     }
 
+    [Fact]
+    public void CreateSpotLifecycleDescriptors_Accepts_Exact_EntryActorCreation_Hook()
+    {
+        var descriptor = ZLinkSpotActorAttributedDescriptorFactory
+            .CreateSpotLifecycleDescriptors(
+                ZLinkSpotActorHandlerSurface.EntrySpot,
+                typeof(EntryLifecycleSpot))
+            .Single(item => item.Created is not null)
+            .Created!;
+
+        Assert.Equal(typeof(EntryLifecycleSpot), descriptor.HandlerType);
+        Assert.Equal(typeof(MemberLifecycleActor), descriptor.ActorType);
+        Assert.True(descriptor.PassRequestArgument);
+    }
+
     private sealed class MemberLifecycleSpot : IZLinkSpot<MemberLifecycleActor>
     {
         public string? JoinedActorId { get; private set; }
@@ -148,6 +163,40 @@ public sealed class SpotHandlerInvokerTests
         public string ActorId { get; } = actorId;
 
         public IZLinkActorContext Context { get; } = new TestActorContext(actorId);
+    }
+
+    private sealed class EntryLifecycleSpot : IZLinkEntrySpot<MemberLifecycleActor>
+    {
+        public IZLinkEntrySpotContext Context => throw new NotSupportedException();
+
+        public ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
+            MemberLifecycleActor actor,
+            ZLinkMessage createRequest,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            _ = createRequest;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
+        }
+
+        public ValueTask OnJoinedActorAsync(
+            MemberLifecycleActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnLeaveActorAsync(
+            MemberLifecycleActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed record HandlerMessage;

@@ -1,3 +1,4 @@
+using Zlink.Framework.Contracts.Handlers;
 using SupportChat.Server.Configuration;
 using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
@@ -9,25 +10,21 @@ namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot.Handle
 
 internal sealed class SetAgentAvailableHandler(
     AgentAssignmentService assignment,
-    IZLinkActorManager actorManager,
     SupportActorDirectory actors)
     : IZLinkEntrySpotActorRequestHandler<SupportEntrySpot, SupportUserActor, SetAgentAvailableReq, SetAgentAvailableRes>
 {
-    public async ValueTask<SetAgentAvailableRes> HandleAsync(
+    public ValueTask<SetAgentAvailableRes> HandleAsync(
         SupportEntrySpot entrySpot,
         SupportUserActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         SetAgentAvailableReq message,
         CancellationToken cancellationToken)
     {
         if (!string.Equals(actor.Role, SupportChatRoles.Agent, StringComparison.Ordinal))
             throw new InvalidOperationException("Only agent actors can set availability.");
 
-        var actorRef = await actorManager.FindAsync(actor.ActorId, cancellationToken)
-                       ?? throw new InvalidOperationException(
-                           $"Support actor ref is not available. actor={actor.ActorId}");
-        actors.AddOrUpdate(actor, actorRef);
+        actors.AddOrUpdate(actor);
         assignment.SetAvailable(actor.ActorId, actor.DisplayName, message.IsAvailable);
-        return new SetAgentAvailableRes(message.IsAvailable);
+        return ValueTask.FromResult(new SetAgentAvailableRes(message.IsAvailable));
     }
 }

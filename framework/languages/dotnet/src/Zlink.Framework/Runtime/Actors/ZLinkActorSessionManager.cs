@@ -7,7 +7,10 @@ internal sealed partial class ZLinkActorSessionManager(
     ZLinkLocationLifecycle? locationLifecycle,
     IZLinkBoundSessionService boundSessionService)
 {
-    private readonly ZLinkActorSessionRegistry _actorSessions = new(runtime.LogActorHandoff);
+    private readonly ZLinkActorSessionRegistry _actorSessions = new(
+        runtime.LogActorHandoff,
+        runtime.Registration.DefaultRequestTimeout
+        + runtime.Registration.DefaultRequestTimeout);
 
     private ZLinkLocationLifecycle? LocationLifecycle { get; } = locationLifecycle;
 
@@ -208,7 +211,7 @@ internal sealed partial class ZLinkActorSessionManager(
         if (existingState.ActorType is not null
             && !string.Equals(existingState.ActorType, actorType, StringComparison.Ordinal))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorTypeMismatch,
+                ZLinkFrameworkErrorKind.TypeMismatch,
                 $"Actor '{actorId}' already uses actor type '{existingState.ActorType}', not '{actorType}'.");
 
         state = existingState;

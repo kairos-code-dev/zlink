@@ -30,7 +30,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                     local.Activation?.MeshName
                     ?? local.Context?.MeshName
                     ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        ZLinkFrameworkErrorKind.NotFound,
                         $"Actor '{actorId}' does not have an owner Mesh."))
                 : null;
         var read = await store.ReadAuthorityAsync(
@@ -42,7 +42,12 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
             || !ZLinkActorAuthorityPayloadCodec.TryDecode(
                 found.Snapshot.Payload.Span,
                 out var authority)
-            || authority.State != ZLinkActorAuthorityState.Ready)
+            || authority.State != ZLinkActorAuthorityState.Ready
+            || !await HasLiveOwnerAsync(
+                    store,
+                    found.Snapshot,
+                    cancellationToken)
+                .ConfigureAwait(false))
             return null;
         return new ActorRef(
             actorId,
@@ -74,7 +79,12 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
             || !ZLinkActorAuthorityPayloadCodec.TryDecode(
                 found.Snapshot.Payload.Span,
                 out var authority)
-            || authority.State != ZLinkActorAuthorityState.Ready)
+            || authority.State != ZLinkActorAuthorityState.Ready
+            || !await HasLiveOwnerAsync(
+                    store,
+                    found.Snapshot,
+                    cancellationToken)
+                .ConfigureAwait(false))
             return null;
         return new SpotRef(
             authority.CurrentSpotId,
@@ -98,7 +108,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                 return false;
             if (current.Generation != actor.ObjectGeneration)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorGenerationStale,
+                    ZLinkFrameworkErrorKind.InvalidOperation,
                     $"Actor '{actor.ActorId}' generation is stale.");
             await runtime.DestroyActorAsync(
                     state.LiveActivation?.NodeRid ?? current.NodeRid,
@@ -118,7 +128,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
         var snapshot = ((ZLinkAuthorityReadResult.Found)read).Snapshot;
         if (snapshot.ObjectGeneration != actor.ObjectGeneration)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorGenerationStale,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor '{actor.ActorId}' generation is stale.");
         if (snapshot.Allocation.State != ZLinkPlacementAllocationState.Active
             || snapshot.Allocation.ObjectKind != ZLinkPlacementObjectKind.Actor
@@ -127,9 +137,9 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                 out var authority)
             || authority.State != ZLinkActorAuthorityState.Ready)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorMoving,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{actor.ActorId}' is moving.",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
 
         // MeshName and NodeRid in ActorRef are route snapshots. Exact destroy
         // fences the logical incarnation by ActorId + ObjectGeneration and
@@ -153,9 +163,9 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                 .ConfigureAwait(false);
             return local.Completion?.Destroyed
                    ?? throw new ZLinkFrameworkException(
-                       ZLinkFrameworkErrorKind.ActorLocationStale,
+                       ZLinkFrameworkErrorKind.Unavailable,
                        $"Actor '{actor.ActorId}' local destroy did not produce a terminal result.",
-                       true);
+                       ZLinkRetryAdvice.RetryAfterBackoff);
         }
 
         return await source.Node.DestroyActorRemoteAsync(
@@ -183,7 +193,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
         var source = runtime.ResolveActorCreationSource(meshName);
         var store = runtime.Registration.Locations.ResolveStore()
                     ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.InvalidConfiguration,
+                        ZLinkFrameworkErrorKind.InvalidOperation,
                         "Actor creation requires a Location Store.");
         var selectedMesh = source.Registration.SpotMeshChannelName
                            ?? source.Registration.SpotNodeName;
@@ -201,16 +211,38 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
         var applicationHash = System.Security.Cryptography.SHA256.HashData(applicationPayload);
         var contentReference = ZLinkInlineCreationIntentCodec.Encode(applicationPayload);
         var key = ZLinkActorAuthorityPayloadCodec.AuthorityKey(actorId);
+        var reservationRefreshAttempt = 0;
         while (true)
         {
             var target = ZLinkWeightedSelector.Select(
                     eligible,
                     static candidate => candidate.PlacementWeight,
-                    ref _nextPlacementSelection)
-                ?? throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
+                    ref _nextPlacementSelection);
+            if (target is null && reservationRefreshAttempt == 0)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.CapacityExceeded,
                     $"No Ready Actor target is available for '{actorType}'.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
+            if (target is null)
+            {
+                var backoffMilliseconds =
+                    1 << Math.Min(reservationRefreshAttempt++, 6);
+                await Task.Delay(
+                        TimeSpan.FromMilliseconds(backoffMilliseconds),
+                        deadline.Token)
+                    .ConfigureAwait(false);
+                descriptors = await store.ListAllMeshNodesAsync(
+                        selectedMesh,
+                        deadline.Token)
+                    .ConfigureAwait(false);
+                eligible = descriptors
+                    .Where(candidate => IsEligibleCandidate(candidate, actorType))
+                    .OrderBy(
+                        static candidate => candidate.Rid.ToHex(),
+                        StringComparer.Ordinal)
+                    .ToList();
+                continue;
+            }
             var owner = new ZLinkLocationOwnerToken(target.OwnerId, target.LeaseGeneration);
             var creating = ZLinkActorAuthorityPayloadCodec.Encode(
                 new ZLinkActorAuthorityPayload(
@@ -247,13 +279,13 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
             }
             if (reserve is ZLinkObjectReserveResult.TypeMismatch)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorTypeMismatch,
+                    ZLinkFrameworkErrorKind.TypeMismatch,
                     $"Actor '{actorId}' is not registered as '{actorType}'.");
             if (reserve is ZLinkObjectReserveResult.AlreadyExists existing)
             {
                 if (createOnly)
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorAlreadyExists,
+                        ZLinkFrameworkErrorKind.AlreadyExists,
                         $"Actor '{actorId}' already exists.");
                 var joined = await JoinExistingAsync(
                         store,
@@ -283,11 +315,32 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                     return joined;
                 continue;
             }
+            if (reserve is ZLinkObjectReserveResult.Conflict(
+                ZLinkAuthorityReadResult.Missing))
+            {
+                var backoffMilliseconds =
+                    1 << Math.Min(reservationRefreshAttempt++, 6);
+                await Task.Delay(
+                        TimeSpan.FromMilliseconds(backoffMilliseconds),
+                        deadline.Token)
+                    .ConfigureAwait(false);
+                descriptors = await store.ListAllMeshNodesAsync(
+                        selectedMesh,
+                        deadline.Token)
+                    .ConfigureAwait(false);
+                eligible = descriptors
+                    .Where(candidate => IsEligibleCandidate(candidate, actorType))
+                    .OrderBy(
+                        static candidate => candidate.Rid.ToHex(),
+                        StringComparer.Ordinal)
+                    .ToList();
+                continue;
+            }
             if (reserve is not ZLinkObjectReserveResult.Reserved reserved)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorLocationStale,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' creation reservation changed.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
 
             var reservation = reserved.Reservation;
             try
@@ -363,11 +416,17 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
     {
         while (true)
         {
+            if (!await HasLiveOwnerAsync(
+                    store,
+                    current,
+                    cancellationToken)
+                .ConfigureAwait(false))
+                return null;
             if (current.Allocation.ObjectKind != ZLinkPlacementObjectKind.Actor
                 || !string.Equals(current.Allocation.StableType, actorType, StringComparison.Ordinal)
                 || !ZLinkActorAuthorityPayloadCodec.TryDecode(current.Payload.Span, out var authority))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorTypeMismatch,
+                    ZLinkFrameworkErrorKind.TypeMismatch,
                     $"Actor '{actorId}' does not use type '{actorType}'.");
             if (current.Allocation.State == ZLinkPlacementAllocationState.Active
                 && authority.State == ZLinkActorAuthorityState.Ready)
@@ -379,9 +438,9 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                         authority.NodeRid));
             if (authority.State != ZLinkActorAuthorityState.Creating)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorLocationStale,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' creation state is invalid.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
 
             await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken)
                 .ConfigureAwait(false);
@@ -394,6 +453,22 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
             }
             return null;
         }
+    }
+
+    private static async ValueTask<bool> HasLiveOwnerAsync(
+        IZLinkLocationRepository store,
+        ZLinkAuthoritySnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        var lease = await store.ReadOwnerLeaseAsync(
+                snapshot.OwnerId,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return lease is ZLinkOwnerLeaseReadResult.Found found
+               && found.Token == new ZLinkLocationOwnerToken(
+                   snapshot.OwnerId,
+                   snapshot.OwnerLeaseGeneration)
+               && found.LeaseExpiresAt > found.StoreNow;
     }
 
     private ZLinkActorCreateResult DecodeRemoteResult(
@@ -450,7 +525,7 @@ internal abstract class ZLinkActorCreateCallBase
         if (_meshName is not null) Duplicate("InMesh");
         if (string.IsNullOrWhiteSpace(meshName))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "MeshName is required.");
         _meshName = meshName;
     }
@@ -468,7 +543,7 @@ internal abstract class ZLinkActorCreateCallBase
         if (_timeout is not null) Duplicate("Timeout");
         if (timeout <= TimeSpan.Zero)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "Timeout must be positive.");
         _timeout = timeout;
     }
@@ -479,14 +554,14 @@ internal abstract class ZLinkActorCreateCallBase
     {
         if (Interlocked.Exchange(ref _submitted, 1) != 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.AlreadySubmitted,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "The Actor create call was already submitted.");
         return _submit(_meshName, _request, _timeout ?? defaultTimeout, cancellationToken);
     }
 
     private static void Duplicate(string option) =>
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.InvalidConfiguration,
+            ZLinkFrameworkErrorKind.InvalidOperation,
             $"{option} was already configured.");
 }
 
@@ -496,6 +571,8 @@ internal sealed class ZLinkActorCreateCall(
         ValueTask<ZLinkActorCreateResult>> submit)
     : ZLinkActorCreateCallBase(submit), IZLinkActorCreateCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
+
     public IZLinkActorCreateCall InMesh(string meshName) { SetMesh(meshName); return this; }
     public IZLinkActorCreateCall Request(ZLinkMessage request) { SetRequest(request); return this; }
     public IZLinkActorCreateCall Request<TRequest>(TRequest request)
@@ -506,6 +583,14 @@ internal sealed class ZLinkActorCreateCall(
     public IZLinkActorCreateCall Timeout(TimeSpan timeout) { SetTimeout(timeout); return this; }
     public ValueTask<ZLinkActorCreateResult> Async(CancellationToken cancellationToken = default) =>
         SubmitAsync(defaultTimeout, cancellationToken);
+
+    public ValueTask<ZLinkActorCreateResult> Yield(
+        CancellationToken cancellationToken = default) =>
+        ZLinkApplicationExecutionContext
+            .RequireYieldTurn(_turn, "Actor creation")
+            .YieldFrameworkCallAsync(
+                token => SubmitAsync(defaultTimeout, token),
+                cancellationToken);
 }
 
 internal sealed class ZLinkActorGetOrCreateCall(
@@ -514,6 +599,8 @@ internal sealed class ZLinkActorGetOrCreateCall(
         ValueTask<ZLinkActorCreateResult>> submit)
     : ZLinkActorCreateCallBase(submit), IZLinkActorGetOrCreateCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
+
     public IZLinkActorGetOrCreateCall InMesh(string meshName) { SetMesh(meshName); return this; }
     public IZLinkActorGetOrCreateCall Request(ZLinkMessage request) { SetRequest(request); return this; }
     public IZLinkActorGetOrCreateCall Request<TRequest>(TRequest request)
@@ -524,4 +611,12 @@ internal sealed class ZLinkActorGetOrCreateCall(
     public IZLinkActorGetOrCreateCall Timeout(TimeSpan timeout) { SetTimeout(timeout); return this; }
     public ValueTask<ZLinkActorCreateResult> Async(CancellationToken cancellationToken = default) =>
         SubmitAsync(defaultTimeout, cancellationToken);
+
+    public ValueTask<ZLinkActorCreateResult> Yield(
+        CancellationToken cancellationToken = default) =>
+        ZLinkApplicationExecutionContext
+            .RequireYieldTurn(_turn, "Actor get-or-create")
+            .YieldFrameworkCallAsync(
+                token => SubmitAsync(defaultTimeout, token),
+                cancellationToken);
 }

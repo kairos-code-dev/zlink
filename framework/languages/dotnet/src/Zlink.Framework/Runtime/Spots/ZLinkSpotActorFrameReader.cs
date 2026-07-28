@@ -12,7 +12,8 @@ internal sealed class ZLinkSpotActorFrame(
     Message body,
     ulong sourceNodeGeneration = 0,
     ZLinkServiceWireCodec.RequestSourceFence? requestSource = null,
-    Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null) : IDisposable
+    Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null,
+    ReadOnlyMemory<byte> applicationMetadata = default) : IDisposable
 {
     private Message? _body = body;
 
@@ -37,6 +38,9 @@ internal sealed class ZLinkSpotActorFrame(
 
     public Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? DirectReply { get; private set; } =
         directReply;
+
+    public ReadOnlyMemory<byte> ApplicationMetadata { get; } =
+        applicationMetadata;
 
     public ulong RelocationReplyRouteId { get; private set; }
 
@@ -143,7 +147,8 @@ internal static class ZLinkSpotActorFrameReader
             body,
             headerPart.SourceNodeGeneration,
             headerPart.RequestSource,
-            headerPart.DirectReply);
+            headerPart.DirectReply,
+            headerPart.ApplicationMetadata);
         return true;
     }
 

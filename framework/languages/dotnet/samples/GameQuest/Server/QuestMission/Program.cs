@@ -8,6 +8,7 @@ using GameQuest.Server.Configuration;
 using GameQuest.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Spots;
@@ -36,29 +37,33 @@ internal static class Program
         builder.Services.AddSingleton(instance);
         builder.Services.AddSingleton<QuestStore>();
         builder.Services.AddSingleton<IQuestStore>(sp => sp.GetRequiredService<QuestStore>());
-        builder.Services.AddSingleton<PlayerQuestOwnerProvisioner>();
         builder.Services.AddSingleton<IGameApiSnapshotClient, HttpGameApiSnapshotClient>();
         builder.Services.AddSingleton<IQuestProgressNotifier, ZLinkQuestProgressNotifier>();
         builder.Services.AddSingleton(new QuestProcessorIdentity(missionName));
         builder.Services.AddScoped<QuestEventProcessor>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            }));
+            options.AddRelocationStore(new ZLinkRedisRelocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = $"{topology.RedisKeyPrefix}relocation:";
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(configuration.LogDirectory, missionName))
-                .TraceLabel(missionName);
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(Program));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(instance.MeshEndpoint)
-                .SetRoutingIdPrefix("quest-mission")
-                .AddSpotFactory<PlayerQuestSpot>();
-            mesh.ChannelName(SampleNames.GameApiChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.QuestOwnerChannel)
-                .AddHandlerGroup(SampleNames.QuestOwnerHandlerGroup);
-            mesh.ChannelName(SampleNames.MeshName);
+                .SetRoutingIdPrefix("quest-mission");
+            mesh.Objects().Server().AddInstanceSpotFactory<PlayerQuestSpot>(
+                SampleNames.PlayerQuestSpotType,
+                null,
+                ZLinkRelocationPolicy<PlayerQuestSpot>.Recreate);
+            mesh.Channel(SampleNames.GameApiChannel).Client();
         });
 
         var app = builder.Build();
@@ -71,13 +76,12 @@ internal static class Program
             });
         app.MapPost("/self-check/owner/{playerId}/close", async (
             string playerId,
-            IZLinkSpotManager spots,
+            IZLinkSpotClient spots,
             CancellationToken cancellationToken) =>
         {
-            var spotRid = RoutingId.From(System.Text.Encoding.UTF8.GetBytes($"player:{playerId}"));
-            return await spots.CloseAsync(spotRid, cancellationToken)
-                ? Results.Ok()
-                : Results.Conflict();
+            await spots.SendToSpot(playerId, new ClosePlayerQuestMsg())
+                .Async(cancellationToken);
+            return Results.Ok();
         });
         await app.RunAsync();
     }

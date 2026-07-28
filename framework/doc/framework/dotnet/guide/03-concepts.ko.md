@@ -164,10 +164,10 @@ store 없이 endpoint를 역할 등록에 직접 적는 수동 연결도 그대�
 >
 > | 개념 | TicTacToe에서 |
 > |---|---|
-> | channel | Api 서버가 `IZLinkRouteClient`로 Play mesh의 `ChannelName`에 방 생성 요청을 보낸다 |
+> | channel | Play 서버가 독립 `tictactoe.api` ClientServer Channel로 인증 정보를 조회한다 |
 > | spot | 대국 한 판이 `TicTacToeGame` spot 하나 — 두 플레이어의 수가 이 안에서 직렬 처리된다 |
 > | actor | 플레이어가 actor이고, 재접속해도 같은 actor로 이어져 두던 판을 계속한다 |
-> | stream | client가 Play 서버의 STREAM endpoint에 직접 연결해 수를 두고 push를 받는다 |
+> | stream | client가 API 응답의 Play STREAM endpoint에 직접 연결해 수를 두고 push를 받는다 |
 > | location | Redis location store가 Api↔Play 연결을 자동으로 잇는다 — 주소가 코드에 없다 |
 >
 > 다섯 개념이 각각 어떤 문제를 푸는지는 위에서 봤고, **함께 놓이면 어떤 모양인지**는

@@ -7,6 +7,12 @@ internal interface IZLinkRelocationRepository
         TimeSpan retention,
         CancellationToken cancellationToken = default);
 
+    ValueTask<ZLinkRelocationStored> PutRelocationAtAsync(
+        string reference,
+        ReadOnlyMemory<byte> payload,
+        TimeSpan retention,
+        CancellationToken cancellationToken = default);
+
     ValueTask<ZLinkRelocationReadResult> GetRelocationAsync(
         string reference,
         CancellationToken cancellationToken = default);

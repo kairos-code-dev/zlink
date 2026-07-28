@@ -4,49 +4,35 @@
 
 ## 무엇인가
 
-`Zlink.HttpClient`는 .NET 애플리케이션이 HTTP API를 호출할 때 쓰는 client-side
-산출물이다. .NET 표준 라이브러리에는 `System.Net.Http.HttpClient`가 있지만 핸들러
-구성·redirect·cookie·압축·재시도 같은 설정이 호출부에 흩어진다. 이 client는 그
-복잡성을 fluent builder 뒤로 숨기고 zlink framework의 에러·코덱 모델과 맞춘다.
+`Zlink.HttpClient`는 .NET 애플리케이션이 HTTP API를 호출할 때 쓰는 client package다.
+Client 설정과 request 설정을 fluent builder로 구성하며, redirect·cookie·압축·재시도
+정책을 호출부마다 다시 작성하지 않아도 된다.
 
 ```csharp
-// HttpClient 직접 사용: SocketsHttpHandler, CookieContainer, AutomaticDecompression ...
-// Zlink.HttpClient: 아래 한 문장
+// Client 설정과 request를 한 흐름에서 구성한다.
 var profile = await client.Get("/players/7281").Async<PlayerProfile>();
 ```
 
 JSON 전용 client가 아니다. 일반 HTTP client이며 typed 경로
 (`Body(dto)` / `Async<T>()`)는 그 위에 얹은 편의 계층이다.
 
-## 설계 원칙
+## 사용 원칙
 
-- **fluent builder.** client 구성과 request 구성 모두 메서드 체인으로 쓴다.
-- **공개 표면에 핸들러 없음.** `SocketsHttpHandler`, `HttpClientHandler`,
-  `HttpRequestMessage` 같은 타입은 공개 API에 드러나지 않는다. `System.Net.Http`
-  의존은 runtime 구현(internal) 안에 갇힌다.
-- **네이티브 래핑.** 전송은 `System.Net.Http`에 위임하되, zlink 계약과 의미론이
-  다른 부분(cookie jar, redirect 루프, retry, 압축 통제)은 얇은 래퍼에서 직접
-  구현한다.
-
-## 산출물 경계
-
-| 역할 | 위치 | 공개 여부 |
-|------|------|-----------|
-| 공개 contract | `src/Zlink.HttpClient/*.cs`, `Contracts/*` | public |
-| runtime 구현 | `src/Zlink.HttpClient/Runtime/*` | internal |
-| 회귀 테스트 | `tests/Zlink.HttpClient.UnitTests/*` | private |
-| 프로젝트 | `Zlink.HttpClient` | public package |
+- Client 구성과 request 구성은 메서드 체인으로 작성한다.
+- Client는 한 번 만들고 재사용한다. 단발 요청에만 one-shot builder를 사용한다.
+- Typed body와 response는 기본 JSON codec을 사용한다. 다른 codec이 필요하면 client를
+  만들 때 `.NET` codec extension을 등록한다.
 
 ## 실행 모델
 
 요청 실행은 .NET의 비동기 기본형 위에서 동작한다.
 
 - `AsyncRaw()` / `Async<T>()` / `DownloadAsync(sink)`는 `ValueTask<T>`를
-  돌려준다. `await`하는 동안 HTTP I/O는 `SocketsHttpHandler`의 비동기 소켓
-  (epoll/IOCP)에서 처리되고 **호출 스레드(handler 스레드)는 점유되지 않는다.**
+  돌려준다.
 - 완료 값을 동기로 꺼내는 blocking terminator는 제공하지 않는다.
 - standalone client는 `Async`와 callback을 제공한다. DI로 주입받는 server client는
-  여기에 one-way `Submit`을 추가한다. HTTP request builder에는 `Yield`가 없다.
+  정상 완료 값이 없는 one-way `Async()`도 제공한다. HTTP request builder에는
+  Spot 실행 권한을 반납하는 `Yield`가 없다.
 
 이 모델의 실용적 결론 하나만 기억하면 된다:
 

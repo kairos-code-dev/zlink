@@ -2,28 +2,27 @@
 
 # 3. Client 구성
 
-builder는 client 전역 설정을 모은다. 옵션은 네이티브 `SocketsHttpHandler` 설정으로
-매핑되거나, 의미론이 다른 경우 래퍼에서 직접 처리된다.
+Builder는 client에서 공통으로 사용할 URL, timeout, 인증과 전송 정책을 모은다.
 
 ## builder 옵션
 
 기본값은 [공통 spec 2장](../../common/spec/http-client/02-client-builder.ko.md)이 정본이다.
 
-| 옵션 | 효과 | 기본값 | 구현 |
-| --- | --- | --- | --- |
-| `BaseUrl(url)` | 모든 요청의 기준 URL | 없음(필수) | 래퍼 |
-| `Timeout(span)` | 시도당 timeout(요청별 override 가능) | **3000ms** | `CancellationToken` |
-| `DefaultHeader(n, v)` | 모든 요청에 붙는 기본 헤더 | 없음 | 래퍼 |
-| `BasicAuth(u, p)` / `BearerToken(t)` | `Authorization` 헤더 | off | 래퍼 |
-| `MaxResponseBodySize(bytes)` | 응답 본문 상한(decoded 기준) | **16 MiB** | 래퍼 |
-| `TrustCertificateFile(path)` | 신뢰 인증서 추가 | 시스템 root | `SslClientAuthenticationOptions` |
-| `ClientCertificateFile(cert, key)` | mTLS client 인증서 | off | `SslClientAuthenticationOptions` |
-| `FollowRedirects(max)` | redirect 추적(무인자 시 **5회**) | off | **래퍼 redirect 루프** |
-| `Retry(attempts)` | transport 실패 재시도(총 1+n회 시도) | off | **래퍼 retry 루프** |
-| `Cookies()` | cookie jar 활성화 | off | **래퍼 cookie jar** |
-| `Proxy(url)` / `ProxyBasicAuth(u, p)` | HTTP proxy | off | `WebProxy` |
-| `Compression()` | gzip/deflate 투명 해제 | off | **래퍼 해제** |
-| `Codecs(configure)` | framework codec extension 등록(.NET 고유) | JSON | 래퍼 |
+| 옵션 | 효과 | 기본값 |
+| --- | --- | --- |
+| `BaseUrl(url)` | 모든 요청의 기준 URL | 없음(필수) |
+| `Timeout(span)` | 시도당 timeout(요청별 override 가능) | **3000ms** |
+| `DefaultHeader(n, v)` | 모든 요청에 붙는 기본 헤더 | 없음 |
+| `BasicAuth(u, p)` / `BearerToken(t)` | `Authorization` 헤더 | off |
+| `MaxResponseBodySize(bytes)` | 응답 본문 상한(decoded 기준) | **16 MiB** |
+| `TrustCertificateFile(path)` | 신뢰 인증서 추가 | 시스템 root |
+| `ClientCertificateFile(cert, key)` | mTLS client 인증서 | off |
+| `FollowRedirects(max)` | redirect 추적(무인자 시 **5회**) | off |
+| `Retry(attempts)` | transport 실패 재시도(총 1+n회 시도) | off |
+| `Cookies()` | cookie jar 활성화 | off |
+| `Proxy(url)` / `ProxyBasicAuth(u, p)` | HTTP proxy와 인증 | off |
+| `Compression()` | gzip/deflate 투명 해제 | off |
+| `Codecs(configure)` | `.NET` codec extension 등록 | JSON |
 
 ## framework 서버에 등록
 
@@ -37,23 +36,13 @@ services.AddZLinkHttpClient("player-api", http => http
 ```
 
 handler는 같은 이름의 `ZLinkHttpServerClient`를 주입받는다. 정적 팩토리로 만든
-`ZLinkHttpClient`는 client-side 코드용이므로 `Submit`을 제공하지 않는다. 두 client 모두 HTTP
-request builder에 `Yield`를 제공하지 않는다.
-
-## 네이티브 위임 vs 래퍼 구현
-
-`SocketsHttpHandler`에서 **auto-redirect, auto-decompression, cookie container는 끈다.**
-이는 네이티브 기본 동작이 zlink 계약과 의미론이 다르기 때문이다(예: .NET auto-redirect는 same-origin에서도
-`Authorization`을 보존하지 않고 네이티브 cookie container는 RFC 6265 전체를 구현해
-default path/domain/만료가 다르다). 대신 래퍼가 redirect 루프·cookie jar·압축 해제를
-직접 수행해 의미론을 zlink 계약대로 맞춘다. connection pool·proxy·TLS는 네이티브에
-위임한다.
+`ZLinkHttpClient`는 client-side 코드용이므로 one-way `Async()`를 제공하지 않는다.
+두 client 모두 HTTP request builder에 `Yield`를 제공하지 않는다.
 
 ## client 재사용과 connection pool
 
-client는 내부 `HttpClient` 하나를 감싸며 connection pool을 공유한다. 요청마다 client를
-새로 만들지 말고 **한 번 만들어 재사용**한다. 단발 한 줄 요청(§2)은 편의를 위해 내부
-client를 만들지만 반복 호출에는 재사용이 낫다.
+요청마다 client를 새로 만들지 말고 **한 번 만들어 재사용**한다. 단발 한 줄 요청(§2)은
+반복 호출에 사용하지 않는다.
 
 ## 요청별 timeout override
 

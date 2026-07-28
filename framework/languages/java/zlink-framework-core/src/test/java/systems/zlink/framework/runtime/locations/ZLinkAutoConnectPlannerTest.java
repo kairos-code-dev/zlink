@@ -10,6 +10,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeer;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 
@@ -59,6 +60,47 @@ final class ZLinkAutoConnectPlannerTest {
             ZLinkLocationRole.ROUTER,
             "route-other",
             "inproc://route-a"))).containsKey(targetKey(ZLinkLocationRole.ROUTER, "route-other")));
+    }
+
+    @Test
+    void routeMeshSkipsOnlyObjectClientPairWithoutServerMembership() {
+        var clientOnly = new ZLinkAutoConnectPlanner.Local(
+            ZLinkAutoConnectType.ROUTE_MESH,
+            "mesh",
+            ZLinkLocationRole.ROUTER,
+            RoutingId.from("route-a"),
+            "inproc://route-a",
+            ZLinkMeshNodeObjectRole.CLIENT,
+            false);
+        var remoteClientOnly = routeMeshPeer(
+            "route-z",
+            ZLinkMeshNodeObjectRole.CLIENT,
+            false);
+        var remoteClientServerChannel = routeMeshPeer(
+            "route-y",
+            ZLinkMeshNodeObjectRole.CLIENT,
+            true);
+        var remoteObjectServer = routeMeshPeer(
+            "route-x",
+            ZLinkMeshNodeObjectRole.SERVER,
+            false);
+
+        assertFalse(hasTarget(clientOnly, remoteClientOnly));
+        assertTrue(hasTarget(clientOnly, remoteClientServerChannel));
+        assertTrue(hasTarget(clientOnly, remoteObjectServer));
+
+        var localWeightZeroServerMembership =
+            new ZLinkAutoConnectPlanner.Local(
+                ZLinkAutoConnectType.ROUTE_MESH,
+                "mesh",
+                ZLinkLocationRole.ROUTER,
+                RoutingId.from("route-a"),
+                "inproc://route-a",
+                ZLinkMeshNodeObjectRole.CLIENT,
+                true);
+        assertTrue(hasTarget(
+            localWeightZeroServerMembership,
+            remoteClientOnly));
     }
 
     @Test
@@ -261,5 +303,27 @@ final class ZLinkAutoConnectPlannerTest {
             "owner-" + rid,
             1,
             Instant.EPOCH);
+    }
+
+    private static ZLinkAutoConnectPeer routeMeshPeer(
+        String rid,
+        ZLinkMeshNodeObjectRole objectRole,
+        boolean hasServerChannel) {
+        return new ZLinkAutoConnectPeer(
+            ZLinkAutoConnectType.ROUTE_MESH,
+            "mesh",
+            RoutingId.from(rid),
+            ZLinkLocationRole.ROUTER,
+            "inproc://" + rid,
+            100,
+            false,
+            1,
+            Map.of(),
+            List.of(),
+            "owner-" + rid,
+            1,
+            Instant.EPOCH,
+            objectRole,
+            hasServerChannel);
     }
 }

@@ -19,9 +19,7 @@ internal static class SessionGatewayHostFactory
         builder.Services.AddSingleton(new GatewayEvidenceStore(options.Rid, options.EvidenceFile));
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint)
-                .SetKeyPrefix(options.RedisKeyPrefix)));
+            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; }));
             var mesh27 = framework.AddRouteMesh(SpotActorTransferNames.Mesh)
                 .Listen(options.RouterEndpoint)
                 .SetRoutingIdPrefix(options.Rid);

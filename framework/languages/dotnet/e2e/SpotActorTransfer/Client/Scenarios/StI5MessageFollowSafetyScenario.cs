@@ -1,3 +1,4 @@
+// Verifies Message Follow rejects unsafe loops, stale ownership, and exhausted bounds.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;
@@ -29,6 +30,8 @@ internal static class StI5MessageFollowSafetyScenario
         var correlationB = Guid.NewGuid().ToString("N");
         var expiredOperation = Guid.NewGuid().ToString("N");
         var deadlineOperation = Guid.NewGuid().ToString("N");
+        var replyBackpressureDeadlineOperation =
+            Guid.NewGuid().ToString("N");
         await context.ArmTransportDeliveryAsync(
             source, correlationA, actorId, "Request");
         await context.ArmTransportDeliveryAsync(
@@ -37,6 +40,11 @@ internal static class StI5MessageFollowSafetyScenario
             source, expiredOperation, actorId, "Request");
         await context.ArmTransportDeliveryAsync(
             source, deadlineOperation, actorId, "Request");
+        await context.ArmTransportDeliveryAsync(
+            source,
+            replyBackpressureDeadlineOperation,
+            actorId,
+            "Request");
 
         var first = context.ProbeFromNodeAsync(
             source,
@@ -62,10 +70,19 @@ internal static class StI5MessageFollowSafetyScenario
             new ProbeReq(scenario, "deadline"),
             TimeSpan.FromSeconds(5),
             deadlineOperation);
+        var replyBackpressureDeadline = context.ProbeFromNodeAsync(
+            source,
+            actorId,
+            new ProbeReq(scenario, "reply-backpressure-deadline"),
+            TimeSpan.FromSeconds(2),
+            replyBackpressureDeadlineOperation);
         await context.WaitTransportDeliveryAsync(source, correlationA);
         await context.WaitTransportDeliveryAsync(source, correlationB);
         await context.WaitTransportDeliveryAsync(source, expiredOperation);
         await context.WaitTransportDeliveryAsync(source, deadlineOperation);
+        await context.WaitTransportDeliveryAsync(
+            source,
+            replyBackpressureDeadlineOperation);
 
         ZlinkStreamAssert.Ensure(
             (await context.JoinAsync(
@@ -90,8 +107,6 @@ internal static class StI5MessageFollowSafetyScenario
         var secondReply = await second;
         await context.ReleaseTransportDeliveryAsync(source, correlationA);
         var firstReply = await first;
-        await context.ReleaseTransportDeliveryAsync(
-            source, deadlineOperation);
         var replies = new[] { firstReply, secondReply };
         ZlinkStreamAssert.Ensure(
             replies[0].Succeeded
@@ -127,6 +142,55 @@ internal static class StI5MessageFollowSafetyScenario
                 $"{scenario} request '{marker}' was not handled exactly once.");
         }
 
+        await context.ArmReplyAdmissionAsync(source, actorId);
+        await context.ReleaseTransportDeliveryAsync(
+            source,
+            replyBackpressureDeadlineOperation);
+        var capturedReplyAdmission =
+            await context.WaitReplyAdmissionAsync(source, actorId);
+        ZlinkStreamAssert.Ensure(
+            capturedReplyAdmission.BackpressuredCount > 0
+            && capturedReplyAdmission.DistinctRequestCount == 1,
+            $"{scenario} reply deadline case did not enter source transport "
+            + "backpressure exactly once.");
+        var backpressuredDeadlineResult = await replyBackpressureDeadline;
+        ZlinkStreamAssert.Ensure(
+            !backpressuredDeadlineResult.Succeeded
+            && backpressuredDeadlineResult.ErrorKind
+                == nameof(TimeoutException),
+            $"{scenario} backpressured reply did not preserve the original "
+            + $"deadline: {backpressuredDeadlineResult.ErrorKind}");
+        var admissionAtDeadline =
+            await context.GetReplyAdmissionAsync(source, actorId);
+        ZlinkStreamAssert.Ensure(
+            admissionAtDeadline.BackpressuredCount > 0
+            && admissionAtDeadline.ReleasedAdmissionCount == 0,
+            $"{scenario} admitted a followed reply while transport remained "
+            + "backpressured.");
+        await context.ReleaseReplyAdmissionAsync(source, actorId);
+        await Task.Delay(TimeSpan.FromMilliseconds(250));
+        ZlinkStreamAssert.Ensure(
+            !backpressuredDeadlineResult.Succeeded
+            && backpressuredDeadlineResult.ErrorKind
+                == nameof(TimeoutException),
+            $"{scenario} late reply changed the completed timeout terminal.");
+        var backpressureEvidence = await context.WaitEvidenceAsync(
+            target,
+            [
+                $"{scenario}|{actorId}|packet_handler|"
+                + "reply-backpressure-deadline"
+            ]);
+        ZlinkStreamAssert.Ensure(
+            backpressureEvidence.Count(item =>
+                item.Scenario == scenario
+                && item.ActorId == actorId
+                && item.Kind == "packet_handler"
+                && item.Value == "reply-backpressure-deadline") == 1,
+            $"{scenario} backpressured request handler did not execute "
+            + "exactly once.");
+
+        await context.ReleaseTransportDeliveryAsync(
+            source, deadlineOperation);
         var deadlineResult = await deadline;
         ZlinkStreamAssert.Ensure(
             !deadlineResult.Succeeded
@@ -163,7 +227,7 @@ internal static class StI5MessageFollowSafetyScenario
         var expiredResult = await expired;
         ZlinkStreamAssert.Ensure(
             !expiredResult.Succeeded
-            && expiredResult.ErrorKind == "ActorLocationStale",
+            && expiredResult.ErrorKind == "InvalidOperation",
             $"{scenario} expired delivery was not rejected as stale: "
             + expiredResult.ErrorKind);
         ZlinkStreamAssert.Ensure(
@@ -178,6 +242,7 @@ internal static class StI5MessageFollowSafetyScenario
                  {
                      "correlation-a",
                      "correlation-b",
+                     "reply-backpressure-deadline",
                      "deadline",
                      "expired"
                  })
@@ -194,6 +259,7 @@ internal static class StI5MessageFollowSafetyScenario
                  {
                      correlationA,
                      correlationB,
+                     replyBackpressureDeadlineOperation,
                      expiredOperation,
                      deadlineOperation
                  })

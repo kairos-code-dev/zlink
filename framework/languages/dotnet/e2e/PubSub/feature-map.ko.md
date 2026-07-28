@@ -27,6 +27,11 @@ Redis 없이 manual endpoint로만 연결하므로 아래 PS-A1~C1은 manual 회
 | PS-D7 | 미구현 | capacity 1 observer의 bounded coalescing·sequence gap 후 public snapshot resync, `CancellationToken` 격리, 정상 observer·dispatch 지속과 manual endpoint mutation의 automatic snapshot·event 격리 |
 | PS-E1 | 구현 | 현재 PS-A1~C1 manual endpoint runner를 store 없는 별도 회귀로 유지 |
 | PS-E2 | 미구현 | automatic subscriber store 누락, automatic/manual mode 혼합, 고정 Publisher RID와 자동 할당 둘 다 누락, fixed/allocated RID 동시 설정의 typed startup 오류와 store 없는 manual 조합 성공 |
+| PS-F1 | 미구현 | Automatic·manual subscriber가 첫 valid application record 또는 liveness beacon 전에는 Ready가 되지 않는지 검증하는 selector가 없다. |
+| PS-F2 | 미구현 | Publisher 하나의 단방향 packet blackhole과 publisher별 timeout·reconnect 격리를 검증하는 selector가 없다. |
+| PS-F3 | 미구현 | Reserved beacon topic의 public 거부, prefix 비충돌과 malformed beacon fail-closed 처리를 검증하는 selector가 없다. |
+| PS-F4 | 미구현 | Orderly disconnect 즉시 반영과 subscriber 종료 뒤 reconnect·beacon resource 정리를 검증하는 selector가 없다. |
+| PS-F5 | 미구현 | 구독하지 않는 application topic 트래픽과 periodic beacon readiness가 독립적인지 30초 동안 검증하는 selector가 없다. |
 
 ## 검증 경로 판정
 

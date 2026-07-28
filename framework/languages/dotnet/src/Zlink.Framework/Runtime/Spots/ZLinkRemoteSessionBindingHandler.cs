@@ -22,26 +22,26 @@ internal static class ZLinkRemoteSessionBindingHandler
             || frame.Header.RequestSeq is null
             || state.NativeActorRef is not { } nativeActorRef)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "Remote actor session binding requires a request and a concrete actor ref.");
 
         var request = JsonSerializer.Deserialize<ZLinkRemoteSessionBindRequest>(
                           frame.Body.AsReadOnlySpan(),
                           ZLinkJsonSerializerOptions.Default)
                       ?? throw new ZLinkFrameworkException(
-                          ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                          ZLinkFrameworkErrorKind.ProtocolError,
                           "Remote actor session binding payload was empty.");
         var sessionNodeRid = RoutingId.From(request.SessionNodeRid);
         if (frame.SourceNodeRid != sessionNodeRid)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "Remote actor session binding source did not match the declared session node.");
 
         if (!string.Equals(request.ActorId, actor.Context.ActorId, StringComparison.Ordinal)
             || RoutingId.From(request.TargetNodeRid) != nativeActorRef.NodeRid
             || request.ObjectGeneration != nativeActorRef.Generation)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.Unavailable,
                 "Remote actor session binding request did not match the addressed Actor.");
         var response = await runtime.BindRemoteBoundSessionRouteAsync(
                 request,

@@ -178,7 +178,7 @@ Host가 새 작업 수락을 중단하고 이미 받은 작업과 resource를 �
 | `zlink.host.state` | observable | `{runtime}` | `state` | 현재 Framework runtime state 하나에 값 1을 기록한다. |
 | `zlink.host.relocation.duration` | histogram | `s` | `mode`, `outcome` | Host `Relocate` 시작부터 `Relocated` 또는 `Blocked` result까지 걸린 시간을 기록한다. |
 | `zlink.host.relocation.blocked` | counter | `{operation}` | `mode`, `reason` | `Blocked`로 끝난 host `Relocate` 수를 누적한다. |
-| `zlink.actor.relocation.interruption` | histogram | `s` | `membership_kind` | Entry Spot 또는 `PerActor` User Spot Actor의 queue seal부터 target admission 개방까지 걸린 시간을 기록한다. 1초 초과를 relocation failure로 바꾸지 않는다. |
+| `zlink.relocation.interruption` | histogram | `s` | `unit_kind`, 선택형 `execution_mode` | Actor, Instance Spot 또는 User Spot 한 unit의 admission seal부터 target admission-open ACK까지 걸린 시간을 기록한다. `unit_kind`는 `actor`, `instance_spot`, `user_spot`이다. 1초 초과를 relocation failure로 바꾸지 않는다. |
 | `zlink.host.shutdown.duration` | histogram | `s` | `outcome` | Host `Shutdown` 시작부터 terminal result까지 걸린 시간을 기록한다. |
 | `zlink.host.shutdown.forced` | counter | `{operation}` | `reason` | 제한 시간 안에 정리를 끝내려고 남은 작업을 강제로 종료한 host `Shutdown` 수를 누적한다. |
 

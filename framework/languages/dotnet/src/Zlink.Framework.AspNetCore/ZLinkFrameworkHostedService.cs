@@ -7,7 +7,6 @@ namespace Zlink.Framework.AspNetCore;
 internal sealed class ZLinkFrameworkHostedService(
     ZLinkFrameworkRuntime runtime,
     ZLinkRouteMeshRuntimeService routeMeshRuntime,
-    ZLinkMonitoringRegistration? monitoringRegistration,
     ZLinkLocationRuntime? locationRuntime,
     ZLinkAutoConnectLifecycleCoordinator autoConnectLifecycle,
     ZLinkLocationLifecycle? locationLifecycle,
@@ -15,9 +14,6 @@ internal sealed class ZLinkFrameworkHostedService(
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        if (monitoringRegistration is not null)
-            new ZLinkMonitoringSourceValidator(monitoringRegistration).PreflightFrameworkSources(runtime);
-
         try
         {
             if (locationRuntime is not null)

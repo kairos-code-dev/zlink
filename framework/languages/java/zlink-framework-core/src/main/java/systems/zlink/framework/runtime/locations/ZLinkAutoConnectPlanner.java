@@ -6,6 +6,7 @@ import java.util.Map;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeer;
 
 final class ZLinkAutoConnectPlanner {
@@ -17,7 +18,25 @@ final class ZLinkAutoConnectPlanner {
         String meshName,
         ZLinkLocationRole role,
         RoutingId nodeRid,
-        String endpoint) {
+        String endpoint,
+        ZLinkMeshNodeObjectRole objectRole,
+        boolean hasRouteMeshServerChannel) {
+
+        Local(
+            ZLinkAutoConnectType type,
+            String meshName,
+            ZLinkLocationRole role,
+            RoutingId nodeRid,
+            String endpoint) {
+            this(
+                type,
+                meshName,
+                role,
+                nodeRid,
+                endpoint,
+                ZLinkMeshNodeObjectRole.NONE,
+                false);
+        }
     }
 
     record Target(
@@ -147,6 +166,7 @@ final class ZLinkAutoConnectPlanner {
         return switch (local.type()) {
             case ROUTE_MESH -> local.role() == ZLinkLocationRole.ROUTER
                 && peer.role() == ZLinkLocationRole.ROUTER
+                && !isRouteMeshConnectionNotRequired(local, peer)
                 && localIsInitiator(local, peer);
             case CLIENT_SERVER -> local.role() == ZLinkLocationRole.DEALER
                 && peer.role() == ZLinkLocationRole.ROUTER;
@@ -159,6 +179,15 @@ final class ZLinkAutoConnectPlanner {
                 && peer.role() == ZLinkLocationRole.SPOT;
             default -> false;
         };
+    }
+
+    static boolean isRouteMeshConnectionNotRequired(
+        Local local,
+        ZLinkAutoConnectPeer peer) {
+        return local.objectRole() == ZLinkMeshNodeObjectRole.CLIENT
+            && !local.hasRouteMeshServerChannel()
+            && peer.objectRole() == ZLinkMeshNodeObjectRole.CLIENT
+            && !peer.hasRouteMeshServerChannel();
     }
 
     private static boolean localIsInitiator(Local local, ZLinkAutoConnectPeer peer) {

@@ -2,7 +2,8 @@ using Zlink.Framework.E2E.Configuration;
 namespace ObservabilityOps.Client.Support;
 
 internal sealed record ClientOptions(
-    string PlayAUrl, string PlayBUrl, string SessionUrl, string SessionEndpoint,
+    string PlayAUrl, string PlayBUrl, string PlayCUrl, string PlayDUrl,
+    string SessionUrl, string SessionEndpoint,
     string WorkflowAUrl, string WorkflowBUrl, string RedisEndpoint, string Scenario, string LogDir,
     string C5Phase)
 {

@@ -8,6 +8,14 @@ internal static class TdF3SessionRelayYieldScenario
     public static async Task RunAsync(ExecutionTurnScenarioContext context)
     {
         var actors = await context.ActorsAsync();
+        await context.EnsureActorInSpotAsync(
+            actors.ActorA,
+            actors.SpotRid,
+            "TD-F3-prepare-a");
+        await context.EnsureActorInSpotAsync(
+            actors.ActorB,
+            actors.SpotRid,
+            "TD-F3-prepare-b");
         var requestId = ExecutionTurnScenarioContext.NewId("TD-F3");
         var pending = context.ActorRequest(actors.ActorA, new ActorAwaitReq(requestId, 300, "yield"))
             .Async<ActorAwaitRes>();

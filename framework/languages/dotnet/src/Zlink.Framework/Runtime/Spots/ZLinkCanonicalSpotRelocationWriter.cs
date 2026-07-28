@@ -70,25 +70,46 @@ internal static class ZLinkCanonicalSpotRelocationWriter
             state.Position = 0;
             state.CopyTo(stream);
         }
-        var spotIdValue = 1UL;
-        var acceptedBoundary = spot.AcceptedJobs
-            .Select(static job => job.AcceptedSequence)
-            .Concat(spot.LogicalTimers.Select(static timer => timer.PendingAcceptedSequence))
-            .DefaultIfEmpty(0UL)
-            .Max();
         U32(stream, checked((uint)ordered.Length));
         for (var index = 0; index < ordered.Length; index++)
         {
+            var participant = ordered[index];
+            var acceptedBoundary = participant.AcceptedJobs
+                .Select(static job => job.AcceptedSequence)
+                .Concat(participant.LogicalTimers.Select(
+                    static timer => timer.PendingAcceptedSequence))
+                .DefaultIfEmpty(0UL)
+                .Max();
             U64(stream, checked((ulong)index + 1));
-            U64(stream, index == 0 ? acceptedBoundary : 0);
+            U64(stream, acceptedBoundary);
             U64(stream, 0);
         }
-        U32(stream, checked((uint)spot.AcceptedJobs.Count));
-        foreach (var job in spot.AcceptedJobs.OrderBy(static job => job.AcceptedSequence))
+        U32(stream, checked((uint)ordered.Sum(
+            static participant => participant.AcceptedJobs.Count)));
+        for (var index = 0; index < ordered.Length; index++)
         {
-            U64(stream, spotIdValue);
-            U64(stream, job.AcceptedSequence);
-            WriteAcceptedRequest(stream, job, spotId, spot, targetNodeRid);
+            var participant = ordered[index];
+            foreach (var job in participant.AcceptedJobs.OrderBy(
+                         static job => job.AcceptedSequence))
+            {
+                U64(stream, checked((ulong)index + 1));
+                U64(stream, job.AcceptedSequence);
+                if (index == 0)
+                {
+                    WriteAcceptedRequest(
+                        stream,
+                        job,
+                        spotId,
+                        spot,
+                        targetNodeRid);
+                    continue;
+                }
+                if (!ZLinkRelocationEnvelopeCodec.TryValidateCanonicalFrozenRecord(
+                        job.Payload.Span))
+                    throw new ZLinkRelocationDataLostException(
+                        $"Actor participant '{participant.AuthorityKey.Value}' accepted journal is malformed.");
+                stream.Write(job.Payload.Span);
+            }
         }
         var snapshots = spot.LogicalTimers
             .Select(timer => (Timer: timer,
@@ -99,7 +120,7 @@ internal static class ZLinkCanonicalSpotRelocationWriter
                      StringComparer.Ordinal))
         {
             var timer = item.Snapshot.Timer;
-            U64(stream, spotIdValue);
+            U64(stream, 1);
             Text8(stream, timer.Name);
             Text8(stream, item.Snapshot.HandlerType.AssemblyQualifiedName
                           ?? item.Snapshot.HandlerType.FullName
@@ -122,7 +143,7 @@ internal static class ZLinkCanonicalSpotRelocationWriter
         foreach (var item in pending)
         {
             var tick = item.Snapshot.Timer.PendingTick!.Value;
-            U64(stream, spotIdValue);
+            U64(stream, 1);
             U64(stream, item.Timer.PendingAcceptedSequence);
             Text8(stream, item.Timer.TimerId);
             U64(stream, tick.DeliveryIndex);
@@ -139,8 +160,8 @@ internal static class ZLinkCanonicalSpotRelocationWriter
             var state = canonical.Participants[index];
             return participant with
             {
-                AcceptedJobs = index == 0 ? state.AcceptedJobs : [],
-                LogicalTimers = index == 0 ? state.LogicalTimers : [],
+                AcceptedJobs = state.AcceptedJobs,
+                LogicalTimers = state.LogicalTimers,
                 CompletionPayload = participant.CompletionPayload,
                 CanonicalParticipantId = state.CanonicalParticipantId,
                 AcceptedBoundary = state.AcceptedBoundary,

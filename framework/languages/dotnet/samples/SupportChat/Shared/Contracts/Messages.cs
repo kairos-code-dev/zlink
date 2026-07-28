@@ -22,17 +22,15 @@ public sealed record OpenConversationApiReq(
     string Subject);
 
 public sealed record OpenConversationApiRes(
-    string ConversationId,
-    string Status);
+    ConversationState State);
 
-public sealed record AllocateConversationReq(
+public sealed record ConversationCreateReq(
     string CustomerActorId,
     string CustomerDisplayName,
-    string Subject);
+    string Subject,
+    long CreatedAtUnixMs);
 
-public sealed record AllocateConversationRes(
-    string ConversationId,
-    string Status);
+public sealed record ConversationCreateRes(ConversationState State);
 
 public sealed record OpenConversationReq(string Subject);
 
@@ -51,6 +49,11 @@ public sealed record JoinConversationReq(
     string DisplayName = "");
 
 public sealed record JoinConversationRes(ConversationState State);
+
+public sealed record JoinConversationFailedNotify(
+    string ConversationId,
+    string Error,
+    bool IsRetriable);
 
 public sealed record SendChatMessageReq(string Text);
 

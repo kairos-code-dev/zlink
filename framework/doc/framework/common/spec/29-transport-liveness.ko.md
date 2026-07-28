@@ -22,6 +22,12 @@ socket으로 event를 전달하는 기능은
 Framework는 세 연결 방식에 같은 시간 기준을 적용한다. 그러나 양방향 연결과
 단방향 fanout은 연결 상태를 확인하는 방법이 다르다.
 
+RouteMesh에서 양쪽 MeshNode의 Object role이 모두 `Client`이면 peer connection을
+사용하지 않는다. Automatic discovery는 descriptor를 확인해 connection intent를
+만들지 않는다. Manual connection은 handshake에서 두 role을 확인한 뒤 ready 전에
+닫는다. Connection이 없으므로 이 pair에는 liveness probe와 deadline을 적용하지
+않는다.
+
 | 연결 방식 | Framework가 연결 상태를 확인하는 방법 |
 |---|---|
 | RouteMesh·ClientServer | 상대에게 확인 요청을 보내고 같은 ID가 든 응답을 기다린다. |
@@ -59,6 +65,15 @@ protocol만 사용한다. Private binding member, native symbol 직접 호출과
 Transport 연결, service handshake와 identity 확인을 모두 통과하여 message target으로
 사용할 수 있는 상태를 [ready](01-glossary.ko.md#ready)라고 한다. RouteMesh와
 ClientServer는 ready가 된 시점부터 15초 deadline을 적용한다.
+
+Manual RouteMesh에서 양쪽 모두 Object Client이고 RouteMesh Channel Server
+membership도 없는 pair는 handshake admission에서 `NotRequired` terminal로 끝낸다.
+이는 liveness failure나 reconnect 대기 상태가 아니다. Framework는 같은 endpoint와
+configuration generation에서 connect를 반복하지 않는다. Endpoint, expected RID
+또는 configuration generation이 바뀌면 새 intent로 다시 확인할 수 있다. Public
+monitoring에는 이 peer를 `not_required`로 표시한다. 연결이 필요한데 ready
+connection이 없는 `not_connected`와 구분하며, `not_required`는 probe·deadline과
+liveness·health failure 집계에서 제외한다.
 
 Framework는 application message가 없어도 5초마다 다음 순서로 연결을 확인한다.
 
@@ -144,7 +159,7 @@ Remote endpoint와 identity를 찾도록 Store에 게시하는 정보를
 
 | 연결 방식 | Ready가 되기 위한 조건 |
 |---|---|
-| RouteMesh·ClientServer | Transport 연결, service handshake, identity·generation 검증과 handler 준비를 모두 끝낸다. |
+| RouteMesh·ClientServer | Transport 연결, service handshake, identity·generation 검증과 handler 준비를 모두 끝낸다. Server membership 없는 RouteMesh Object Client pair는 ready 대상에서 제외한다. |
 | Classic fanout | Publisher별 SUB socket이 연결되고 descriptor 또는 manual endpoint 관계가 유효하며, 첫 정상 application record나 beacon을 받는다. |
 
 다음 조건을 확인하면 해당 connection을 ready target 목록에서 즉시 제거한다.
@@ -185,6 +200,8 @@ Framework는 connection loss 뒤 request와 one-way message를 다른 peer나 ow
 Reconnect는 기존 configuration 또는 현재 discovery descriptor를 사용한다.
 
 - RouteMesh와 ClientServer는 service handshake와 identity 확인을 다시 수행한다.
+- Server membership 없는 RouteMesh Object Client pair의 `NotRequired` admission은 같은 manual configuration
+  generation에서 reconnect하지 않는다.
 - 이전 connection ID, reply route, session binding과 ready 상태를 재사용하지 않는다.
 - Classic fanout은 해당 publisher용 SUB socket을 새로 만든다.
 - Fanout connection은 첫 정상 record를 받기 전까지 ready가 아니다.
@@ -243,6 +260,7 @@ label에는 endpoint, RID와 connection ID를 넣지 않는다. 개별 identity�
 | 장애 격리 | Publisher 하나의 15초 timeout과 peer 하나의 실패가 다른 connection이나 host state를 `Error`로 바꾸지 않는다. |
 | Store 분리 | Store polling 실패 중에도 transport 확인을 계속한다. Transport ready가 만료된 owner lease를 다시 유효하게 만들지 않는다. |
 | Reconnect | Service handshake와 identity 확인을 다시 수행하고 이전 connection의 completion·binding·ready 상태를 재사용하지 않는다. |
+| 불필요한 RouteMesh connection | Automatic은 양쪽 모두 Object Client이고 RouteMesh Channel Server membership도 없는 pair를 descriptor 단계에서 제외한다. Manual은 같은 조건의 pair를 ready 전에 `NotRequired`로 닫고 같은 configuration generation에 재시도하지 않으며 probe·deadline을 만들지 않는다. |
 | 중복 방지 | Reply, timeout, cancellation, disconnect와 shutdown이 경쟁해도 request 결과를 한 번만 완료한다. 다른 peer나 owner에 자동 재제출하지 않는다. |
 | 종료 정리 | `Relocate`·`Shutdown` 뒤 liveness·reconnect timer, subscription과 callback이 남지 않는다. |
 | 언어 parity | C++·.NET·JVM·Node.js가 같은 고정 시간과 관찰 결과를 제공한다. |

@@ -109,7 +109,7 @@ internal sealed class ZLinkBoundSessionService(
             .ConfigureAwait(false);
         if (result.Status != ZLinkOneWaySubmitStatus.Submitted)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestFailed,
+                ZLinkFrameworkErrorKind.InternalFailure,
                 $"Deferred bound-session submit completed with '{result.Status}'.");
     }
 
@@ -178,12 +178,13 @@ internal sealed class ZLinkBoundSessionService(
 
     private ZLinkActorBoundSession ResolveSessionRoute(string actorId)
     {
-        if (runtime.TryGetActorBoundSession(actorId, out var route)) return route;
+        if (runtime.TryGetActorBoundSessionForOutbound(actorId, out var route))
+            return route;
 
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorSessionNotBound,
+            ZLinkFrameworkErrorKind.InvalidOperation,
             $"No current session binding exists for actor '{actorId}'.",
-            true);
+            ZLinkRetryAdvice.RetryAfterBackoff);
     }
 
     private static byte[] CreateBoundSessionFrame<TPayload>(
@@ -269,6 +270,6 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
             message,
             cancellationToken).EnsureAcceptedAsync(
                 "Bound session send",
-                ZLinkFrameworkErrorKind.ActorSessionNotBound);
+                ZLinkFrameworkErrorKind.InvalidOperation);
     }
 }

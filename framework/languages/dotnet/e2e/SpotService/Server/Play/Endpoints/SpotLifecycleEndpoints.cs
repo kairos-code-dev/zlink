@@ -61,7 +61,7 @@ internal static class SpotLifecycleEndpoints
                     .GetOrCreate(request.SpotRid, SpotServiceNames.AlternateSpotType)
                     .Async();
             }
-            catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.SpotTypeMismatch)
+            catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.TypeMismatch)
             {
                 evidence.Add($"spot-type-mismatch|rid={node.Rid}|spot={request.SpotRid}|kind={ex.Kind}");
                 return Results.Ok(new SpotTypeMismatchRes(
@@ -102,18 +102,12 @@ internal static class SpotLifecycleEndpoints
         app.MapPost("/spot/state/command", async (
             IZLinkSpotClient spotsClient,
             EvidenceStore evidence,
-            NodeOptions node,
             SpotStateCommandReq request) =>
         {
-            var before = evidence.Snapshot();
             await SendSpotCommandAsync(
                 spotsClient,
                 request.SpotRid,
                 new StateMsg(request.Marker));
-            await WaitUntilAsync(
-                () => CountNew(evidence.Snapshot(), before,
-                    $"spot-state-command|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}") == 1,
-                "Expected spot state command evidence.");
             return Results.Ok(new SpotStateCommandRes(
                 request.SpotRid,
                 request.Marker,

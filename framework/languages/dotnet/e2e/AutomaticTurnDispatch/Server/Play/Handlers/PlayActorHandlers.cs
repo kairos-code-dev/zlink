@@ -194,7 +194,10 @@ internal sealed class EntryActorJoinAwaitHandler(EvidenceStore evidence)
         actor.TrackJoin(request.RequestId, "actor-join-await");
         var call = actor.Context.JoinSpot(
             request.TargetSpotRid,
-            ZLinkMessage.From(new DelayReq(request.RequestId, 350, "join")));
+            ZLinkMessage.From(new JoinDelayReq(
+                request.RequestId,
+                350,
+                "actor-join-await")));
         call.Defer();
         evidence.Add(
             $"actor-join-await-released|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
@@ -222,7 +225,10 @@ internal sealed class SpotActorJoinAwaitHandler(EvidenceStore evidence)
         actor.TrackJoin(request.RequestId, "actor-join");
         actor.Context.JoinSpot(
                 request.TargetSpotRid,
-                ZLinkMessage.From(new DelayReq(request.RequestId, 25, "join")))
+                ZLinkMessage.From(new JoinDelayReq(
+                    request.RequestId,
+                    25,
+                    "actor-join")))
             .Defer();
         evidence.Add(
             $"actor-join-deferred|rid={evidence.Rid}|spot={spot.Context.SpotId}|actor={actor.ActorId}"

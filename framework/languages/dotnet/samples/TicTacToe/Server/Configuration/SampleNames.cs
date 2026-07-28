@@ -3,7 +3,6 @@ namespace TicTacToe.Server.Configuration;
 internal static class SampleChannels
 {
     public const string Api = "Api";
-    public const string Play = "Play";
 }
 
 internal static class SampleTypes

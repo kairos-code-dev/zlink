@@ -11,16 +11,19 @@ internal sealed class ZLinkSerialWorkItem
     public ZLinkSerialWorkItem(
         Func<CancellationToken, ValueTask> callback,
         ZLinkAcceptedWorkRecord? acceptedRecord = null,
-        Action? relocationRelease = null)
+        Action? relocationRelease = null,
+        bool previousOwnerMessageFollow = false)
     {
         _callback = callback;
         AcceptedRecord = acceptedRecord;
         _relocationRelease = relocationRelease;
+        PreviousOwnerMessageFollow = previousOwnerMessageFollow;
     }
 
     public Task Completion => _completion.Task;
 
     public ZLinkAcceptedWorkRecord? AcceptedRecord { get; }
+    public bool PreviousOwnerMessageFollow { get; }
 
     public void ReleaseForRelocation(Action<Exception> onUnhandledException)
     {

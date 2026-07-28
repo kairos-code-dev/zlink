@@ -23,7 +23,7 @@ internal static class ZLinkActorCreationTerminalCodec
         {
             if (reply.Count < 2)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestProtocolError,
+                    ZLinkFrameworkErrorKind.ProtocolError,
                     "Actor creation reply envelope is incomplete.");
             var messages = reply.Select(static part => Message.From(part.Span)).ToArray();
             try
@@ -50,7 +50,7 @@ internal static class ZLinkActorCreationTerminalCodec
         bytes.CopyTo(result, 5);
         if (result.Length > MaximumBytes)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "Actor creation terminal exceeds 1 MiB.");
         return result;
     }

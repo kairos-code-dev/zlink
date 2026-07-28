@@ -8,7 +8,8 @@ internal sealed class ZLinkSpotHandlerInvoker(
     object spot,
     string meshName,
     ZLinkCodecRegistryBuilder codecs,
-    IZlinkStreamCompressionCodec? compressionCodec)
+    IZlinkStreamCompressionCodec? compressionCodec,
+    ZLinkSpotActivation? activation = null)
 {
     internal ZLinkSpotHandlerInvoker(
         ZLinkScopedHandlerInstanceOwner handlerInstances,
@@ -196,15 +197,19 @@ internal sealed class ZLinkSpotHandlerInvoker(
     private async ValueTask InvokeWithDeferredJoinsAsync(Func<ValueTask> callback)
     {
         using var joins = ZLinkDeferredActorJoinHandlerScope.Open(spot is not IZLinkInstanceSpot);
+        using var relocationReady = ZLinkSpotRelocationReadyHandlerScope.Open(activation);
         await callback().ConfigureAwait(false);
         joins.Complete();
+        relocationReady.Complete();
     }
 
     private async ValueTask<T> InvokeWithDeferredJoinsAsync<T>(Func<ValueTask<T>> callback)
     {
         using var joins = ZLinkDeferredActorJoinHandlerScope.Open(spot is not IZLinkInstanceSpot);
+        using var relocationReady = ZLinkSpotRelocationReadyHandlerScope.Open(activation);
         var result = await callback().ConfigureAwait(false);
         joins.Complete();
+        relocationReady.Complete();
         return result;
     }
 

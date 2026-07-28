@@ -1209,7 +1209,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       acknowledgement: {
         command: "replyRelayAck",
         scope: "maintenanceRelocation-only",
-        identity: ["stable-relocation-id", "exact-request-source-fence", "operation-id"],
+        identity: ["stable-relocation-id", "exact-request-source-fence", "operation-id", "reply-route-id"],
         requestSource: "authenticated-exact-source-owner-lease-node-rid-and-generation",
         statuses: ["terminalReceived", "alreadyTerminal"],
         targetPersistence: "relocation-root-cas-before-ack-effect",
@@ -1219,8 +1219,8 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         physicalConnectionClose: "never-terminal-proof",
         retireWhileSourceLeaseValid: "forceStopped-and-retain-relocation-root-and-reply-bytes-for-retention-window",
       },
-      terminalOwnership: "stable-relocation-id-exact-request-source-fence-and-operation-id-once-independent-of-target-attempt",
-      replyRoute: "request-only",
+      terminalOwnership: "stable-relocation-id-exact-request-source-fence-operation-id-and-reply-route-id-once-independent-of-target-attempt",
+      replyRoute: "request-and-ack-echo-only",
     }],
     ["instance-placement-authority-fence", {
       routeType: "instance-route-v1",
@@ -3969,7 +3969,7 @@ function validateRelocationStateMachine(machine, commands, types, fail) {
       command: "replyRelayAck",
       senderKind: "requestSource",
       phases: ["committed", "activating", "activated", "cleaning"],
-      duplicate: "idempotent-by-stable-relocation-id-exact-request-source-fence-operation-id-and-status",
+      duplicate: "idempotent-by-stable-relocation-id-exact-request-source-fence-operation-id-reply-route-id-and-status",
       reorder: "hold-until-matching-durable-completion-or-retransmit-causes-source-reack",
       loss: "target-retransmits-terminal-until-ack-or-exact-request-source-owner-lease-expiry",
     }],
@@ -4165,9 +4165,10 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "relocation", $ref: "relocation-id" },
     { name: "coordinator", $ref: "relocation-coordinator-fence" },
     { name: "operation", $ref: "operation-id" },
+    { name: "replyRouteId", $ref: "nonzero-u64" },
     { name: "requestSource", $ref: "request-source-fence" },
     { name: "status", $ref: "reply-relay-ack-status" },
-  ], "$.commands", "replyRelayAck must carry the stable completion identity and exact request-source fence");
+  ], "$.commands", "replyRelayAck must echo the operation and reply route with the stable completion identity and exact request-source fence");
   if (commands.get("replyRelayAck")?.id !== 46
       || commands.get("replyRelayAck")?.domain !== "infrastructure"
       || commands.get("replyRelayAck")?.payload !== "forbidden"
@@ -6820,9 +6821,18 @@ function runSelfTests(schema) {
         (entry) => entry.kind === "reply-relay-context-integrity",
       );
       constraint.acknowledgement.identity =
-        ["stable-relocation-id", "operation-id"];
+        ["stable-relocation-id", "operation-id", "reply-route-id"];
       constraint.terminalOwnership =
-        "stable-relocation-id-and-operation-id-once-independent-of-target-attempt";
+        "stable-relocation-id-operation-id-and-reply-route-id-once-independent-of-target-attempt";
+    }],
+    ["reply relay acknowledgement drops reply route identity", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "reply-relay-context-integrity",
+      );
+      constraint.acknowledgement.identity =
+        ["stable-relocation-id", "exact-request-source-fence", "operation-id"];
+      constraint.terminalOwnership =
+        "stable-relocation-id-exact-request-source-fence-and-operation-id-once-independent-of-target-attempt";
     }],
     ["frozen request reply route omitted", (candidate) => {
       const frozen = candidate.types.find((type) => type.name === "frozen-record");

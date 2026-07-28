@@ -17,7 +17,8 @@ internal sealed class PlayActorRelocationAdapter
             actor.RoomId,
             actor.Player,
             actor.DestroyAfterEntrySpotJoin,
-            actor.Disconnected)));
+            actor.Disconnected,
+            actor.ProcessedJoinOperations)));
     }
 
     public ValueTask RestoreAsync(
@@ -32,6 +33,7 @@ internal sealed class PlayActorRelocationAdapter
         if (!string.IsNullOrEmpty(transferred.RoomId)) actor.JoinRoom(transferred.RoomId);
         if (transferred.DestroyAfterEntrySpotJoin) actor.MarkForDestroyAfterRoomLeave();
         if (transferred.Disconnected) actor.MarkDisconnected();
+        actor.RestoreProcessedJoinOperations(transferred.ProcessedJoinOperations);
         return ValueTask.CompletedTask;
     }
 
@@ -39,5 +41,6 @@ internal sealed class PlayActorRelocationAdapter
         string RoomId,
         PlayerInfo? Player,
         bool DestroyAfterEntrySpotJoin,
-        bool Disconnected);
+        bool Disconnected,
+        IReadOnlyCollection<ZLinkActorJoinOperationId> ProcessedJoinOperations);
 }

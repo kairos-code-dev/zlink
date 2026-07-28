@@ -28,6 +28,12 @@ internal static partial class ZLinkServiceWireCodec
         string? ChannelName,
         bool HasMetadata);
 
+    internal readonly record struct LogicalMulticastRecord(
+        string ChannelName,
+        string Topic,
+        string SourceSpotId,
+        bool HasMetadata);
+
     internal readonly record struct ReplyRecord(
         ulong Correlation,
         int TerminalResult,
@@ -239,6 +245,78 @@ internal static partial class ZLinkServiceWireCodec
             command,
             correlation,
             channelName,
+            (flags & ServiceWireConstants.Flag.Metadata) != 0);
+        error = DecodeError.None;
+        return true;
+    }
+
+    internal static byte[] EncodeLogicalMulticast(
+        string channelName,
+        string topic,
+        string sourceSpotId,
+        bool hasMetadata)
+    {
+        var encodedChannel = EncodeText(channelName);
+        var encodedTopic = EncodeText(topic);
+        var encodedSourceSpot = EncodeText(sourceSpotId);
+        var bodyLength = encodedChannel.Length
+                         + encodedTopic.Length
+                         + encodedSourceSpot.Length;
+        var flags = hasMetadata
+            ? ServiceWireConstants.Flag.Metadata
+            : ServiceWireConstants.Flag.None;
+        var bytes = Prefix(
+            ServiceWireConstants.Command.LogicalMulticast,
+            flags,
+            bodyLength);
+        var offset = 5;
+        encodedChannel.CopyTo(bytes, offset);
+        offset += encodedChannel.Length;
+        encodedTopic.CopyTo(bytes, offset);
+        offset += encodedTopic.Length;
+        encodedSourceSpot.CopyTo(bytes, offset);
+        return bytes;
+    }
+
+    internal static bool TryDecodeLogicalMulticast(
+        ReadOnlySpan<byte> bytes,
+        out LogicalMulticastRecord record,
+        out DecodeError error)
+    {
+        record = default;
+        if (!TryDecodePrefix(bytes, out var command, out var flags, out error))
+            return false;
+        if (command != ServiceWireConstants.Command.LogicalMulticast)
+        {
+            error = DecodeError.UnknownCommand;
+            return false;
+        }
+        if ((flags & ~ServiceWireConstants.Flag.Metadata) != 0)
+        {
+            error = DecodeError.ForbiddenFlag;
+            return false;
+        }
+
+        var offset = 5;
+        if (!TryDecodeText(bytes[offset..], out var channelName, out var consumed, out error))
+            return false;
+        offset += consumed;
+        if (!TryDecodeText(bytes[offset..], out var topic, out consumed, out error))
+            return false;
+        offset += consumed;
+        if (!TryDecodeText(bytes[offset..], out var sourceSpotId, out consumed, out error))
+            return false;
+        offset += consumed;
+        if (offset != bytes.Length)
+        {
+            error = DecodeError.TrailingByte;
+            return false;
+        }
+
+        record = new LogicalMulticastRecord(
+            channelName,
+            topic,
+            sourceSpotId,
             (flags & ServiceWireConstants.Flag.Metadata) != 0);
         error = DecodeError.None;
         return true;
@@ -1393,7 +1471,8 @@ internal static partial class ZLinkServiceWireCodec
         string advertisedEndpoint,
         ulong lifecycleGeneration,
         ulong descriptorRevision,
-        IReadOnlyDictionary<string, uint> channels)
+        IReadOnlyDictionary<string, uint> channels,
+        byte objectRole = 0)
     {
         if (command is not (ServiceWireConstants.Command.Hello
             or ServiceWireConstants.Command.Admit
@@ -1403,6 +1482,8 @@ internal static partial class ZLinkServiceWireCodec
             throw new ArgumentOutOfRangeException(nameof(lifecycleGeneration));
         if (descriptorRevision == 0)
             throw new ArgumentOutOfRangeException(nameof(descriptorRevision));
+        if (objectRole > (byte)ZLinkMeshNodeObjectRole.Server)
+            throw new ArgumentOutOfRangeException(nameof(objectRole));
         ArgumentNullException.ThrowIfNull(channels);
 
         var body = new WireWriter();
@@ -1425,7 +1506,7 @@ internal static partial class ZLinkServiceWireCodec
             body.Text8(name);
             body.U32(weight);
         }
-        body.Bytes(EncodeDescriptorExtension());
+        body.Bytes(EncodeDescriptorExtension(objectRole));
 
         var admission = new WireWriter();
         admission.U8(1); // service-topology-kind.routeMesh
@@ -1745,7 +1826,7 @@ internal static partial class ZLinkServiceWireCodec
         return bytes;
     }
 
-    private static byte[] EncodeDescriptorExtension()
+    private static byte[] EncodeDescriptorExtension(byte objectRole)
     {
         var fields = new WireWriter();
         fields.Tlv(1, [1]); // runtime-state.serving
@@ -1758,7 +1839,7 @@ internal static partial class ZLinkServiceWireCodec
         capabilities.U16(1);
         capabilities.Text8(ServiceWireConstants.RequiredCapability);
         fields.Tlv(6, capabilities.ToArray());
-        fields.Tlv(7, [0]); // object-role.none
+        fields.Tlv(7, [objectRole]);
         fields.TlvU32(8, 100);
         fields.TlvU32(9, 10_000);
         fields.TlvU32(10, 128);

@@ -15,14 +15,13 @@ internal sealed class QuestProgressNotifyHandler(
 {
     public async ValueTask HandleAsync(
         QuestProgressNotify request,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         var actor = await actors.FindAsync(request.PlayerId, cancellationToken);
         if (actor is null) return;
 
-        await actorClient.SendToActor(
-            SampleNames.MeshName, actor.Value, request).Async(cancellationToken);
+        await actorClient.SendToActor(actor.Value.ActorId, request).Async(cancellationToken);
     }
 }
 
@@ -34,13 +33,12 @@ internal sealed class QuestCompletedNotifyHandler(
 {
     public async ValueTask HandleAsync(
         QuestCompletedNotify request,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         var actor = await actors.FindAsync(request.PlayerId, cancellationToken);
         if (actor is null) return;
 
-        await actorClient.SendToActor(
-            SampleNames.MeshName, actor.Value, request).Async(cancellationToken);
+        await actorClient.SendToActor(actor.Value.ActorId, request).Async(cancellationToken);
     }
 }

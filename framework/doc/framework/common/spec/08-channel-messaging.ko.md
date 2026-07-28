@@ -12,7 +12,7 @@ ChannelName으로 Server 하나를 선택하는 Channel 메시징의 공통 계�
 
 | 방식 | Application이 지정하는 값 | Framework가 실제 target을 정하는 방법 |
 |---|---|---|
-| [Node direct](01-glossary.ko.md#node-direct) | `MeshName`과 target node의 RID를 지정한다. | 같은 MeshName의 RouteMesh에서 지정한 RID와 정확히 일치하는 ready [MeshNode](01-glossary.ko.md#meshnode)만 사용한다. 다른 RID로 바꾸지 않는다. |
+| [Node direct](01-glossary.ko.md#node-direct) | `MeshName`과 target node의 RID를 지정한다. | 같은 MeshName의 RouteMesh에서 지정한 RID와 정확히 일치하고 Object Client가 아닌 ready [MeshNode](01-glossary.ko.md#meshnode)만 사용한다. 다른 RID로 바꾸지 않는다. |
 | [ChannelName](01-glossary.ko.md#channelname) select-one | `ChannelName` 하나를 지정한다. | 현재 process에서 ChannelName에 등록된 송신 경로를 찾는다. [RouteMesh](01-glossary.ko.md#routemesh) 경로이면 해당 ChannelName의 [ready](01-glossary.ko.md#ready) Server membership 중 하나를, ClientServer 경로이면 ready server 중 하나를 선택한다. |
 
 ChannelName은 socket이나 endpoint 이름이 아니다. 현재 process에 등록된 RouteMesh
@@ -85,10 +85,20 @@ Node direct는 caller가 지정한 `MeshName`과 target RID를 그대로 유지�
 
 - 같은 [MeshName](01-glossary.ko.md#meshname)의 RouteMesh에 참여한다.
 - 지정한 target RID와 일치한다.
+- Object role이 `Client`가 아니다.
 - Message를 받을 수 있는 ready 상태다.
 
 Target RID가 member가 아니거나 제한 시간까지 ready가 되지 않으면 target 오류 또는
 timeout으로 끝난다. Framework는 같은 MeshName의 다른 RID로 자동 전환하지 않는다.
+
+Object Client는 application Node direct handler를 등록할 수 없으며 Node direct
+target이 아니다. 이 제한은 같은 MeshNode에 등록한 RouteMesh Channel Server에는
+적용하지 않는다. Automatic discovery는 양쪽 모두 Object Client이고 RouteMesh
+Channel Server membership도 없는 pair에만 connection intent를 만들지 않는다.
+Manual endpoint도 handshake에서 같은 조건을 확인하면 ready 전에 connection을
+닫고 같은 configuration generation에는 다시 연결하지 않는다. Caller가 Object
+Client RID를 Node direct target으로 지정하면 다른 target으로 바꾸지 않고
+`NotFound`로 끝낸다.
 
 ### 3.2 ChannelName select-one
 
@@ -208,7 +218,7 @@ Node direct와 ChannelName handler는 서로 다른
 
 | Handler 종류 | Handler를 구분하는 값 | 실행하는 queue |
 |---|---|---|
-| Node direct | MeshName, message kind와 packet name을 함께 사용한다. | Target MeshNode의 Node application queue에서 실행한다. |
+| Node direct | MeshName, message kind와 packet name을 함께 사용한다. | Object Client가 아닌 target MeshNode의 Node application queue에서 실행한다. |
 | ChannelName | ChannelName, message kind와 packet name을 함께 사용한다. | 선택된 RouteMesh Server 또는 ClientServer server의 Channel application queue에서 실행한다. |
 
 같은 handler 범위에서 [message kind](01-glossary.ko.md#message-kind)와
@@ -412,8 +422,9 @@ metadata 계약을 Classic fanout publish에 적용하지 않는다.
 | 조건 | 결과 |
 |---|---|
 | Node direct target이 같은 MeshName의 member가 아니다. | Target을 찾을 수 없다는 오류로 끝난다. |
-| ChannelName이 현재 process에 등록되지 않았다. | `RequestTargetNotFound`로 끝나며 다른 송신 경로로 보내지 않는다. |
-| ChannelName의 선택 가능한 target이 없다. | `RequestTargetNotFound`로 끝난다. |
+| Node direct target의 Object role이 `Client`다. | Application target이 아니므로 `NotFound`로 끝낸다. Client pair connection을 만들지 않는다. |
+| ChannelName이 현재 process에 등록되지 않았다. | `NotFound`로 끝나며 다른 송신 경로로 보내지 않는다. |
+| ChannelName의 선택 가능한 target이 없다. | `NotFound`로 끝난다. |
 | 알려진 target의 연결이 제한 시간까지 ready가 되지 않는다. | Route 연결 오류 또는 timeout으로 끝난다. |
 | Request handler를 찾지 못하거나 payload를 해석하지 못했다. | Reply 경로가 남아 있으면 error reply로 완료한다. |
 | One-way handler를 찾지 못하거나 payload를 해석하지 못했다. | Message를 handler에 전달하지 않고 runtime 관측 정보에 기록한다. |
@@ -428,7 +439,7 @@ drain 상태여도 Framework가 다른 RID로 바꾸지 않는다. 이 호출의
 node의 연결과 수락 상태에 따라 결정된다.
 
 ClientServer client가 제출한 request와 일치하지 않는 server message는
-`RequestProtocolError`로 기록하고 application handler에 전달하지 않는다.
+`ProtocolError`로 기록하고 application handler에 전달하지 않는다.
 
 각 service runtime은 transport 전용 오류를 공통 Framework 결과로 변환한다.
 Transport library의 내부 result를 public call에 직접 노출하지 않는다.

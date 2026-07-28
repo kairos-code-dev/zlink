@@ -3,8 +3,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Systems.Zlink.Framework.Runtime.Protocol;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Backend.DotNet;
+using Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Locations;
+using Zlink.Framework.Runtime.Service;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -464,6 +468,10 @@ public sealed class StatefulServiceRuntimeTests
                   && heavy.Status().AdmittedPeerCount == 1);
 
         var publisher = source.CreateSpot();
+        var lightSubscriber = light.CreateSpot();
+        var heavySubscriber = heavy.CreateSpot();
+        lightSubscriber.SetSubscription("events", "room.updated");
+        heavySubscriber.SetSubscription("events", "room.updated");
         using var payload = Message.From(new byte[] { 2 });
         publisher.Publish(
             "events",
@@ -473,8 +481,12 @@ public sealed class StatefulServiceRuntimeTests
         await WaitUntilAsync(
             () => light.Status().PendingApplicationMessages == 1
                   && heavy.Status().PendingApplicationMessages == 1);
-        Assert.Single(DrainRecords(light));
-        Assert.Single(DrainRecords(heavy));
+        Assert.Equal(
+            MeshRecordKind.SpotMulticast,
+            Assert.Single(DrainRecords(light)).Kind);
+        Assert.Equal(
+            MeshRecordKind.SpotMulticast,
+            Assert.Single(DrainRecords(heavy)).Kind);
     }
 
     [Fact]
@@ -663,6 +675,340 @@ public sealed class StatefulServiceRuntimeTests
         Assert.Equal(1, received.Count);
         Assert.Equal(admitted, received[0].OperationId);
         Assert.Equal(admitted.Low, received[0].ReplyRouteId);
+    }
+
+    [Fact]
+    public async Task RemoteActorStaleAuthorityReturnsOneTerminalForTheOriginalOperation()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var caller = NewNode(context, "stale-authority-caller");
+        await using var owner = NewNode(context, "stale-authority-owner");
+        owner.SetLocalOwnerLeaseGeneration(137);
+        var suffix = Guid.NewGuid().ToString("N");
+        var callerEndpoint = $"inproc://stale-authority-caller-{suffix}";
+        var ownerEndpoint = $"inproc://stale-authority-owner-{suffix}";
+        caller.SetBind(callerEndpoint);
+        owner.SetBind(ownerEndpoint);
+        caller.ConnectPeer(ownerEndpoint, owner.RoutingId);
+        owner.ConnectPeer(callerEndpoint, caller.RoutingId);
+        var requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
+            "stale-authority-caller-owner",
+            1,
+            caller.RoutingId,
+            caller.Status().LifecycleGeneration);
+        caller.SetLocalRequestSourceFence(requestSource);
+        caller.Start();
+        owner.Start();
+        await WaitUntilAsync(() => caller.Status().AdmittedPeerCount == 1
+                                  && owner.Status().AdmittedPeerCount == 1);
+
+        var actor = owner.CreateActor("stale-authority-actor");
+        DrainAndDispose(owner);
+        Assert.True(owner.TryGetActorAuthority(
+            actor,
+            out var sourceAuthorityOwnerGeneration,
+            out var sourceOwnerLeaseGeneration));
+        caller.ObserveActorAuthority(
+            actor,
+            owner.Status().LifecycleGeneration,
+            sourceAuthorityOwnerGeneration,
+            sourceOwnerLeaseGeneration);
+
+        // The caller submits with the immutable source fence while the owner
+        // has already advanced to the target authority.
+        owner.SetActorAuthority(
+            actor,
+            checked(sourceAuthorityOwnerGeneration + 1));
+        using var request = Message.From(new byte[] { 139 });
+        Assert.Equal(
+            SubmitResult.Ok,
+            caller.RequestToActor(
+                actor,
+                [request],
+                out var operation,
+                TimeSpan.FromSeconds(3)));
+
+        await WaitUntilAsync(() =>
+            caller.Status().PendingInfrastructureMessages > 0);
+        var completion = Assert.Single(DrainRecords(caller).Where(record =>
+            record.Kind == MeshRecordKind.Completion
+            && record.OperationId == operation));
+        Assert.Equal((int)RequestResult.Conflict, completion.TerminalResult);
+        Assert.Equal(
+            (int)ServiceWireConstants.FrameworkErrorCode.ActorLocationStale,
+            completion.FailureErrno);
+        Assert.Equal(0UL, owner.Status().PendingApplicationMessages);
+
+        var lateRelay = new ZLinkServiceWireCodec.ReplyRelayRecord(
+            operation,
+            operation.Low,
+            new ZLinkServiceWireCodec.RelocationWireId(149, 151),
+            157,
+            new ZLinkServiceWireCodec.RelocationCoordinatorFence(
+                "stale-authority-target-owner",
+                163,
+                RoutingId.From("stale-authority-target"),
+                167,
+                "stale-authority-root"),
+            173,
+            179,
+            (uint)RequestResult.Ok,
+            ServiceWireConstants.FrameworkErrorCode.None);
+        var latePayload = new[] { Message.From(new byte[] { 181 }) };
+        var duplicate = caller.TryCompleteRelocationReply(
+            lateRelay,
+            latePayload);
+        Assert.Equal(
+            ZLinkRelocationReplyCompletionState.AlreadyTerminal,
+            duplicate.State);
+        Assert.Equal(requestSource, duplicate.RequestSource);
+        Assert.Throws<ObjectDisposedException>(
+            () => latePayload[0].AsReadOnlySpan());
+        await Task.Delay(50);
+        Assert.DoesNotContain(
+            DrainRecords(caller),
+            record => record.Kind == MeshRecordKind.Completion
+                      && record.OperationId == operation);
+    }
+
+    [Fact]
+    public async Task RemoteActorStaleAuthorityUsesTheActiveFollowerBeforeAStaleTerminal()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var caller = NewNode(context, "active-follower-caller");
+        await using var owner = NewNode(context, "active-follower-owner");
+        owner.SetLocalOwnerLeaseGeneration(191);
+        var requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
+            "active-follower-caller-owner",
+            181,
+            caller.RoutingId,
+            caller.Status().LifecycleGeneration);
+        caller.SetLocalRequestSourceFence(requestSource);
+        var ownerBackend = new ZLinkBackendSpotNodeWrapper(owner);
+        ownerBackend.ObserveRequestSourceFence(requestSource);
+        var follower = new CapturingBackendActorMessageFollowHandler(
+            acceptsOwnership: true);
+        ownerBackend.SetActorMessageFollowIngressHandler(follower.TryFollow);
+        var suffix = Guid.NewGuid().ToString("N");
+        var callerEndpoint = $"inproc://active-follower-caller-{suffix}";
+        var ownerEndpoint = $"inproc://active-follower-owner-{suffix}";
+        caller.SetBind(callerEndpoint);
+        owner.SetBind(ownerEndpoint);
+        caller.ConnectPeer(ownerEndpoint, owner.RoutingId);
+        owner.ConnectPeer(callerEndpoint, caller.RoutingId);
+        caller.Start();
+        owner.Start();
+        await WaitUntilAsync(() => caller.Status().AdmittedPeerCount == 1
+                                  && owner.Status().AdmittedPeerCount == 1);
+
+        var actor = owner.CreateActor("active-follower-actor");
+        DrainAndDispose(owner);
+        Assert.True(owner.TryGetActorAuthority(
+            actor,
+            out var sourceAuthorityOwnerGeneration,
+            out var sourceOwnerLeaseGeneration));
+        caller.ObserveActorAuthority(
+            actor,
+            owner.Status().LifecycleGeneration,
+            sourceAuthorityOwnerGeneration,
+            sourceOwnerLeaseGeneration);
+        owner.SetActorAuthority(
+            actor,
+            checked(sourceAuthorityOwnerGeneration + 1));
+
+        using var request = Message.From(new byte[] { 193 });
+        Assert.Equal(
+            SubmitResult.Ok,
+            caller.RequestToActor(
+                actor,
+                [request],
+                out var operation,
+                TimeSpan.FromSeconds(3)));
+
+        await WaitUntilAsync(() =>
+            caller.Status().PendingInfrastructureMessages > 0);
+        var completion = Assert.Single(DrainRecords(caller).Where(record =>
+            record.Kind == MeshRecordKind.Completion
+            && record.OperationId == operation));
+        Assert.Equal((int)RequestResult.Ok, completion.TerminalResult);
+        Assert.Equal(1, follower.Count);
+        Assert.Equal(operation, follower.LastRoute.OperationId);
+        Assert.Equal(operation.Low, follower.LastRoute.ReplyRequestId);
+        Assert.Equal(
+            sourceAuthorityOwnerGeneration,
+            follower.LastRoute.AuthorityOwnerGeneration);
+        Assert.Equal(
+            sourceOwnerLeaseGeneration,
+            follower.LastRoute.OwnerLeaseGeneration);
+        Assert.Equal(
+            owner.Status().LifecycleGeneration,
+            follower.LastRoute.TargetNodeGeneration);
+        Assert.Equal(operation, follower.LastRoute.OperationId);
+        Assert.Equal(operation.Low, follower.LastRoute.ReplyRequestId);
+        Assert.Equal(requestSource, follower.LastRequestSource);
+        Assert.Empty(follower.LastApplicationMetadata);
+        Assert.Equal([193], follower.LastPayload);
+        Assert.True(follower.DisposedByHandler);
+        Assert.All(
+            follower.LastMessages,
+            message => Assert.Throws<ObjectDisposedException>(
+                () => message.AsReadOnlySpan()));
+        Assert.Equal(0UL, owner.Status().PendingApplicationMessages);
+
+        await Task.Delay(50);
+        Assert.DoesNotContain(
+            DrainRecords(caller),
+            record => record.Kind == MeshRecordKind.Completion
+                      && record.OperationId == operation);
+    }
+
+    [Fact]
+    public async Task RemoteActorStaleAuthorityDisposesRejectedFollowerPartsAndReturnsOneStaleTerminal()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var caller = NewNode(context, "rejected-follower-caller");
+        await using var owner = NewNode(context, "rejected-follower-owner");
+        owner.SetLocalOwnerLeaseGeneration(211);
+        var requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
+            "rejected-follower-caller-owner",
+            201,
+            caller.RoutingId,
+            caller.Status().LifecycleGeneration);
+        caller.SetLocalRequestSourceFence(requestSource);
+        var ownerBackend = new ZLinkBackendSpotNodeWrapper(owner);
+        ownerBackend.ObserveRequestSourceFence(requestSource);
+        var follower = new CapturingBackendActorMessageFollowHandler(
+            acceptsOwnership: false);
+        ownerBackend.SetActorMessageFollowIngressHandler(follower.TryFollow);
+        var suffix = Guid.NewGuid().ToString("N");
+        var callerEndpoint = $"inproc://rejected-follower-caller-{suffix}";
+        var ownerEndpoint = $"inproc://rejected-follower-owner-{suffix}";
+        caller.SetBind(callerEndpoint);
+        owner.SetBind(ownerEndpoint);
+        caller.ConnectPeer(ownerEndpoint, owner.RoutingId);
+        owner.ConnectPeer(callerEndpoint, caller.RoutingId);
+        caller.Start();
+        owner.Start();
+        await WaitUntilAsync(() => caller.Status().AdmittedPeerCount == 1
+                                  && owner.Status().AdmittedPeerCount == 1);
+
+        var actor = owner.CreateActor("rejected-follower-actor");
+        DrainAndDispose(owner);
+        Assert.True(owner.TryGetActorAuthority(
+            actor,
+            out var sourceAuthorityOwnerGeneration,
+            out var sourceOwnerLeaseGeneration));
+        caller.ObserveActorAuthority(
+            actor,
+            owner.Status().LifecycleGeneration,
+            sourceAuthorityOwnerGeneration,
+            sourceOwnerLeaseGeneration);
+        owner.SetActorAuthority(
+            actor,
+            checked(sourceAuthorityOwnerGeneration + 1));
+
+        using var request = Message.From(new byte[] { 213 });
+        Assert.Equal(
+            SubmitResult.Ok,
+            caller.RequestToActor(
+                actor,
+                [request],
+                out var operation,
+                TimeSpan.FromSeconds(3)));
+
+        await WaitUntilAsync(() =>
+            caller.Status().PendingInfrastructureMessages > 0);
+        var completion = Assert.Single(DrainRecords(caller).Where(record =>
+            record.Kind == MeshRecordKind.Completion
+            && record.OperationId == operation));
+        Assert.Equal((int)RequestResult.Conflict, completion.TerminalResult);
+        Assert.Equal(
+            (int)ServiceWireConstants.FrameworkErrorCode.ActorLocationStale,
+            completion.FailureErrno);
+        Assert.Equal(1, follower.Count);
+        Assert.False(follower.DisposedByHandler);
+        Assert.Equal(operation, follower.LastRoute.OperationId);
+        Assert.Equal(operation.Low, follower.LastRoute.ReplyRequestId);
+        Assert.Equal(requestSource, follower.LastRequestSource);
+        Assert.Equal([213], follower.LastPayload);
+        Assert.All(
+            follower.LastMessages,
+            message => Assert.Throws<ObjectDisposedException>(
+                () => message.AsReadOnlySpan()));
+
+        await Task.Delay(50);
+        Assert.DoesNotContain(
+            DrainRecords(caller),
+            record => record.Kind == MeshRecordKind.Completion
+                      && record.OperationId == operation);
+    }
+
+    [Fact]
+    public async Task ActorMessageFollowIngressAdapterPreservesExactRouteMetadataAndOwnership()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var node = NewNode(context, "follow-adapter-node");
+        var pump = new ZLinkMeshDispatchPump(
+            node,
+            new ZLinkMeshCompletionTable());
+        var source = new ZLinkServiceWireCodec.RequestSourceFence(
+            "follow-adapter-source-owner",
+            223,
+            RoutingId.From("follow-adapter-source"),
+            227);
+        pump.ObserveRequestSourceFence(source);
+        var adapter =
+            new ZLinkBackendSpotNodeWrapper.ActorMessageFollowIngressAdapter(
+                pump);
+        var follower = new CapturingBackendActorMessageFollowHandler(
+            acceptsOwnership: true,
+            reply: false);
+        adapter.SetHandler(follower.TryFollow);
+        var operation = new MeshOperationId(229, 233);
+        var actor = new ActorRef(
+            "follow-adapter-actor",
+            239,
+            "mesh",
+            RoutingId.From("follow-adapter-owner"));
+        var metadata = new byte[] { 241, 251 };
+        var messages = new[]
+        {
+            Message.From(new byte[] { 2, 3 }),
+            Message.From(new byte[] { 5, 7 })
+        };
+
+        Assert.True(adapter.TryFollow(new ActorMessageFollowIngress(
+            source.NodeRid,
+            source.NodeGeneration,
+            "source-spot",
+            actor,
+            operation,
+            ReplyRouteId: 257,
+            TargetNodeGeneration: 263,
+            AuthorityOwnerGeneration: 269,
+            OwnerLeaseGeneration: 271,
+            MessageFollowHopCount: 3,
+            DeadlineUnixMs: 277,
+            ApplicationMetadata: metadata,
+            Parts: messages,
+            Reply: static (_, _) => SubmitResult.Ok)));
+
+        Assert.Equal(1, follower.Count);
+        Assert.Equal(operation, follower.LastRoute.OperationId);
+        Assert.Equal(257UL, follower.LastRoute.ReplyRequestId);
+        Assert.Equal(263UL, follower.LastRoute.TargetNodeGeneration);
+        Assert.Equal(269UL, follower.LastRoute.AuthorityOwnerGeneration);
+        Assert.Equal(271UL, follower.LastRoute.OwnerLeaseGeneration);
+        Assert.Equal((byte)3, follower.LastRoute.MessageFollowHopCount);
+        Assert.Equal(277UL, follower.LastRoute.DeadlineUnixMs);
+        Assert.Equal(source, follower.LastRequestSource);
+        Assert.Equal(metadata, follower.LastApplicationMetadata);
+        Assert.Equal([2, 3, 5, 7], follower.LastPayload);
+        Assert.True(follower.DisposedByHandler);
+        Assert.All(
+            messages,
+            message => Assert.Throws<ObjectDisposedException>(
+                () => message.AsReadOnlySpan()));
     }
 
     [Fact]
@@ -1028,6 +1374,104 @@ public sealed class StatefulServiceRuntimeTests
         {
             ZLinkMessageParts.DisposeAll(response);
         }
+    }
+
+    [Fact]
+    public async Task CallerTerminalPathsRetainTheExactRelocationReplyTombstone()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var caller = NewNode(context, "reply-terminal-caller");
+        var requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
+            "reply-terminal-owner",
+            1,
+            caller.RoutingId,
+            caller.Status().LifecycleGeneration);
+        caller.SetLocalRequestSourceFence(requestSource);
+        var actor = caller.CreateActor("reply-terminal-actor");
+        DrainAndDispose(caller);
+        using var request = Message.From(new byte[] { 101 });
+
+        Assert.Equal(
+            SubmitResult.Ok,
+            caller.RequestToActor(
+                actor,
+                [request],
+                out var completedOperation,
+                TimeSpan.FromSeconds(1)));
+        using (var ready = new MeshReadyBatch())
+        {
+            caller.DrainReady(
+                MeshReadyDomains.Application,
+                ready,
+                RecvFlags.DontWait);
+            using var claim = ready.TakeClaim(0);
+            using var received = new MeshReceiveBatch();
+            Assert.True(claim.Receive(received, RecvFlags.DontWait));
+            Assert.Equal(
+                SubmitResult.Ok,
+                received[0].Reply(Array.Empty<Message>()));
+        }
+        Assert.Contains(
+            DrainRecords(caller),
+            record => record.Kind == MeshRecordKind.Completion
+                      && record.OperationId == completedOperation);
+
+        var relay = new ZLinkServiceWireCodec.ReplyRelayRecord(
+            completedOperation,
+            completedOperation.Low,
+            new ZLinkServiceWireCodec.RelocationWireId(103, 107),
+            109,
+            new ZLinkServiceWireCodec.RelocationCoordinatorFence(
+                "reply-terminal-target",
+                113,
+                RoutingId.From("reply-terminal-target"),
+                127,
+                "reply-terminal-root"),
+            131,
+            137,
+            (uint)RequestResult.Ok,
+            ServiceWireConstants.FrameworkErrorCode.None);
+        var duplicatePayload = new[] { Message.From(new byte[] { 139 }) };
+        var duplicate = caller.TryCompleteRelocationReply(
+            relay,
+            duplicatePayload);
+        Assert.Equal(
+            ZLinkRelocationReplyCompletionState.AlreadyTerminal,
+            duplicate.State);
+        Assert.Equal(requestSource, duplicate.RequestSource);
+        Assert.Throws<ObjectDisposedException>(
+            () => duplicatePayload[0].AsReadOnlySpan());
+
+        Assert.Equal(
+            SubmitResult.Ok,
+            caller.RequestToActor(
+                actor,
+                [request],
+                out var timedOutOperation,
+                TimeSpan.FromMilliseconds(30)));
+        await WaitUntilAsync(() =>
+            caller.Status().PendingInfrastructureMessages > 0);
+        Assert.Contains(
+            DrainRecords(caller),
+            record => record.Kind == MeshRecordKind.Completion
+                      && record.OperationId == timedOutOperation
+                      && record.TerminalResult == (int)RequestResult.TimedOut);
+
+        var timedOutPayload = new[] { Message.From(new byte[] { 149 }) };
+        var timedOutDuplicate = caller.TryCompleteRelocationReply(
+            relay with
+            {
+                OperationId = timedOutOperation,
+                ReplyRouteId = timedOutOperation.Low,
+                Sequence = 151
+            },
+            timedOutPayload);
+        Assert.Equal(
+            ZLinkRelocationReplyCompletionState.AlreadyTerminal,
+            timedOutDuplicate.State);
+        Assert.Equal(requestSource, timedOutDuplicate.RequestSource);
+        Assert.Throws<ObjectDisposedException>(
+            () => timedOutPayload[0].AsReadOnlySpan());
     }
 
     [Fact]
@@ -1910,9 +2354,9 @@ public sealed class StatefulServiceRuntimeTests
         Assert.Equal(closeFence, operationTarget.LastClose.Target);
 
         operationTarget.CloseError = new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.SpotMoving,
+            ZLinkFrameworkErrorKind.Unavailable,
             "The User Spot is sealed for relocation.",
-            true);
+            ZLinkRetryAdvice.RetryAfterBackoff);
         Assert.Equal(
             SubmitResult.Ok,
             source.CloseUserSpot(
@@ -1966,7 +2410,8 @@ public sealed class StatefulServiceRuntimeTests
         var relayTarget = new RecordingReplyRelayTarget(
             requestSource,
             dropFirstAcknowledgement: true,
-            corruptSecondSource: true);
+            corruptSecondSource: true,
+            corruptThirdReplyRoute: true);
         target.SetRelocationReplyRelayTarget(relayTarget);
         source.Start();
         target.Start();
@@ -2007,6 +2452,14 @@ public sealed class StatefulServiceRuntimeTests
                     payload,
                     TimeSpan.FromMilliseconds(50),
                     CancellationToken.None));
+            await Assert.ThrowsAsync<TimeoutException>(async () =>
+                await source.RelayRelocationReplyAsync(
+                    target.RoutingId,
+                    relay,
+                    requestSource,
+                    payload,
+                    TimeSpan.FromMilliseconds(50),
+                    CancellationToken.None));
             var ack = await source.RelayRelocationReplyAsync(
                 target.RoutingId,
                 relay,
@@ -2017,7 +2470,7 @@ public sealed class StatefulServiceRuntimeTests
 
             Assert.Equal((byte)2, ack.Status);
             Assert.Equal(requestSource, ack.RequestSource);
-            Assert.Equal(3, relayTarget.InvocationCount);
+            Assert.Equal(4, relayTarget.InvocationCount);
             Assert.All(relayTarget.Payloads, bytes =>
                 Assert.Equal(new byte[] { 7, 8, 9 }, bytes));
             await Assert.ThrowsAsync<ArgumentException>(async () =>
@@ -2076,6 +2529,19 @@ public sealed class StatefulServiceRuntimeTests
                     relay.RelocationId,
                     relay.Coordinator,
                     relay.OperationId,
+                    relay.ReplyRouteId,
+                    new ZLinkServiceWireCodec.RequestSourceFence(
+                        "owner-a", 50, sourceA, 51),
+                    1)));
+        Assert.NotEqual(
+            keyA,
+            ZLinkManagedMeshNode.PendingReplyRelayKey.Create(
+                sourceA,
+                new ZLinkServiceWireCodec.ReplyRelayAckRecord(
+                    relay.RelocationId,
+                    relay.Coordinator,
+                    relay.OperationId,
+                    relay.ReplyRouteId + 1,
                     new ZLinkServiceWireCodec.RequestSourceFence(
                         "owner-a", 50, sourceA, 51),
                     1)));
@@ -2417,7 +2883,8 @@ public sealed class StatefulServiceRuntimeTests
     private sealed class RecordingReplyRelayTarget(
         ZLinkServiceWireCodec.RequestSourceFence requestSource,
         bool dropFirstAcknowledgement,
-        bool corruptSecondSource = false) : IRelocationReplyRelayTarget
+        bool corruptSecondSource = false,
+        bool corruptThirdReplyRoute = false) : IRelocationReplyRelayTarget
     {
         internal int InvocationCount { get; private set; }
         internal List<byte[]> Payloads { get; } = [];
@@ -2445,6 +2912,9 @@ public sealed class StatefulServiceRuntimeTests
                     relay.RelocationId,
                     relay.Coordinator,
                     relay.OperationId,
+                    corruptThirdReplyRoute && InvocationCount == 3
+                        ? relay.ReplyRouteId + 1
+                        : relay.ReplyRouteId,
                     acknowledgedSource,
                     2));
         }
@@ -2624,6 +3094,66 @@ public sealed class StatefulServiceRuntimeTests
         }
     }
 
+    private sealed class CapturingBackendActorMessageFollowHandler(
+        bool acceptsOwnership,
+        bool reply = true)
+    {
+        public int Count { get; private set; }
+
+        public ZLinkBackendActorRouteContext LastRoute { get; private set; }
+
+        public ZLinkServiceWireCodec.RequestSourceFence? LastRequestSource
+        {
+            get;
+            private set;
+        }
+
+        public byte[] LastPayload { get; private set; } = [];
+
+        public byte[] LastApplicationMetadata { get; private set; } = [];
+
+        public IReadOnlyList<Message> LastMessages { get; private set; } = [];
+
+        public bool DisposedByHandler { get; private set; }
+
+        public bool TryFollow(IReadOnlyList<ZLinkBackendActorPart> parts)
+        {
+            Count++;
+            var header = Assert.IsType<ZLinkBackendActorPart>(
+                Assert.Single(parts.Take(1)));
+            LastRoute = header.RouteContext;
+            LastRequestSource = header.RequestSource;
+            LastApplicationMetadata = header.ApplicationMetadata.ToArray();
+            LastMessages = parts.Select(static part => part.Message).ToArray();
+            LastPayload = parts
+                .SelectMany(static part =>
+                    part.Message.AsReadOnlySpan().ToArray())
+                .ToArray();
+            if (!acceptsOwnership)
+                return false;
+            try
+            {
+                if (reply)
+                {
+                    using var first = Message.From(new byte[] { 197 });
+                    Assert.Equal(
+                        SubmitResult.Ok,
+                        header.DirectReply!([first], SendFlags.DontWait));
+                    using var duplicate = Message.From(new byte[] { 199 });
+                    Assert.Equal(
+                        SubmitResult.Ok,
+                        header.DirectReply!([duplicate], SendFlags.DontWait));
+                }
+                return true;
+            }
+            finally
+            {
+                ZLinkMessageParts.DisposeAll(LastMessages);
+                DisposedByHandler = true;
+            }
+        }
+    }
+
     private sealed class ProductionUserSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         private static int _createCount;
@@ -2720,6 +3250,26 @@ public sealed class StatefulServiceRuntimeTests
             var bytes = payload.ToArray();
             var reference = Convert.ToHexString(
                 System.Security.Cryptography.SHA256.HashData(bytes));
+            _payloads[reference] = bytes;
+            var now = DateTimeOffset.UtcNow;
+            return ValueTask.FromResult(new ZLinkRelocationStored(
+                reference,
+                Zlink.Framework.Runtime.Locations.ZLinkCrc32C.Compute(bytes),
+                now + retention,
+                now));
+        }
+
+        public ValueTask<ZLinkRelocationStored> PutRelocationAtAsync(
+            string reference,
+            ReadOnlyMemory<byte> payload,
+            TimeSpan retention,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var bytes = payload.ToArray();
+            if (_payloads.TryGetValue(reference, out var current)
+                && !current.AsSpan().SequenceEqual(bytes))
+                throw new InvalidDataException("Relocation reference collision.");
             _payloads[reference] = bytes;
             var now = DateTimeOffset.UtcNow;
             return ValueTask.FromResult(new ZLinkRelocationStored(

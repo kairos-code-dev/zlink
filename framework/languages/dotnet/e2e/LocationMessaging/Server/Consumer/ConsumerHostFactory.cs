@@ -9,9 +9,11 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Eventing;
+using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Locations.Redis;
 using LocationMessaging.Server.Consumer.Configuration;
 using LocationMessaging.Server.Consumer.Endpoints;
+using LocationMessaging.Shared;
 
 namespace LocationMessaging.Server.Consumer;
 
@@ -33,39 +35,81 @@ internal static class ConsumerHostFactory
         });
 
         builder.WebHost.UseUrls(options.HttpUrl);
+        builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<ConnectionEvidence>();
-        builder.Services.AddScoped<
-            IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>,
-            MeshConnectionEventObserver>();
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"{options.TraceLabel}-flow.log"))
-                .TraceLabel(options.TraceLabel);
-
-            var profileMesh = framework.AddRouteMesh("profile")
-                .Listen()
-                .SetBindHost("127.0.0.1")
-                .SetAdvertiseHost("127.0.0.1");
-            profileMesh.Channel("profile").Client();
-            if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
+            var profileMesh = framework.AddRouteMesh(options.MeshName);
+            if (string.IsNullOrWhiteSpace(options.MeshEndpoint))
             {
-                // The client-only automatic member uses a deterministic low
-                // prefix so the pairwise RID rule makes this process initiate
-                // the provider links in this topology fixture.
-                profileMesh.SetRoutingIdPrefix($"00-{options.TraceLabel}");
-                // Endpoint-less client: valid only because the shared Redis
-                // location store is registered; the framework auto-connects
-                // from live peer rows (doc §2).
-                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint)
-                .SetKeyPrefix(options.RedisKeyPrefix!)));
+                profileMesh.Listen()
+                    .SetBindHost("127.0.0.1")
+                    .SetAdvertiseHost("127.0.0.1");
             }
             else
             {
-                profileMesh.SetRoutingId(RoutingId.From(options.TraceLabel));
-                foreach (var endpoint in options.ProviderEndpoints ?? [])
+                profileMesh.Listen(options.MeshEndpoint);
+            }
+            switch (options.RouteChannelRole)
+            {
+                case "Client":
+                    profileMesh.Channel("profile").Client();
+                    break;
+                case "Server":
+                    profileMesh.Channel("profile").Server()
+                        .SetWeight(options.RouteChannelWeight);
+                    break;
+                case "None":
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        $"Unknown RouteChannelRole '{options.RouteChannelRole}'.");
+            }
+            switch (options.ObjectRole)
+            {
+                case "None":
+                    break;
+                case "Client":
+                    profileMesh.Objects().Client();
+                    break;
+                case "Server":
+                    profileMesh.Objects().Server();
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        $"Unknown ObjectRole '{options.ObjectRole}'.");
+            }
+
+            if (options.RegisterIndependentTopologies)
+            {
+                // These registrations use separate physical topologies. They
+                // must not make an Object Client pair require RouteMesh peers.
+                framework.AddClientServerChannel("rm-a3-client-server").Client();
+                framework.AddFanoutChannel("rm-a3-fanout")
+                    .EnableSubscriber()
+                    .AddHandler<RmA3FanoutProbeHandler, ProfileMsg>();
+            }
+
+            var manualEndpoints = options.ProviderEndpoints ?? [];
+            if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
+            {
+                framework.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+                {
+                    redis.ConnectionString = options.RedisEndpoint;
+                    redis.KeyPrefix = options.RedisKeyPrefix!;
+                }));
+                if (manualEndpoints.Count == 0)
+                {
+                    // Automatic discovery allocates the RID from this prefix.
+                    profileMesh.SetRoutingIdPrefix($"00-{options.TraceLabel}");
+                }
+            }
+
+            if (manualEndpoints.Count > 0)
+            {
+                if (string.Equals(options.ObjectRole, "None", StringComparison.Ordinal))
+                    profileMesh.SetRoutingId(RoutingId.From(options.TraceLabel));
+                foreach (var endpoint in manualEndpoints)
                     profileMesh.PeerConnections.Connect(endpoint);
             }
 
@@ -73,10 +117,17 @@ internal static class ConsumerHostFactory
                 profileMesh.ConfigureRouterSocket().SendHighWaterMark = 4;
 
         });
-        builder.Services.AddZLinkMonitoring(monitor => monitor.AddMeshNodeEvents("profile"));
-
+        builder.Services.AddHostedService<MeshConnectionEventObserver>();
         var app = builder.Build();
-        app.MapConsumerEndpoints();
+        app.MapConsumerEndpoints(options);
         return app;
     }
+}
+
+internal sealed class RmA3FanoutProbeHandler : IZLinkFanoutHandler<ProfileMsg>
+{
+    public ValueTask HandleAsync(
+        ProfileMsg message,
+        CancellationToken cancellationToken) =>
+        ValueTask.CompletedTask;
 }

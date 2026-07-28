@@ -48,18 +48,18 @@ internal static class Program
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(configuration.LogDirectory, instance.InstanceId))
-                .TraceLabel(instance.InstanceId);
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(Program));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(instance.MeshEndpoint)
                 .SetRoutingIdPrefix("commerce-api");
-            mesh.Channel(SampleNames.OrderWorkflowChannel).Client();
+            mesh.Objects().Client();
             mesh.Channel(SampleNames.OrderProjectionChannel).Client();
         });
 

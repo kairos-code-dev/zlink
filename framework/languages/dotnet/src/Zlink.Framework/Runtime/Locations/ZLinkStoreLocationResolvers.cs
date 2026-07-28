@@ -315,6 +315,45 @@ internal sealed class ZLinkStoreLocationResolvers :
                 snapshot.OwnerLeaseGeneration,
                 snapshot.StoreNow,
                 snapshot.AuthorityOwnerGeneration);
+        if (!TryReadCommittedCanonicalTarget(
+                snapshot,
+                out var canonical,
+                out var targetNodeRid))
+            return null;
+        if (ZLinkUserSpotAuthorityPayloadCodec.TryDecode(
+                canonical.SteadyAuthorityPayload.Span,
+                out user)
+            && user.State == ZLinkUserSpotAuthorityState.Ready
+            && user.MeshName == snapshot.Allocation.Descriptor.MeshName)
+            return new ZLinkResolvedSpotLocation(
+                user.MeshName,
+                user.SpotId,
+                snapshot.ObjectGeneration,
+                targetNodeRid,
+                canonical.State.TargetNodeGeneration,
+                ZLinkSpotKind.User,
+                user.StableType,
+                snapshot.OwnerId,
+                snapshot.OwnerLeaseGeneration,
+                snapshot.StoreNow,
+                snapshot.AuthorityOwnerGeneration);
+        if (ZLinkInstanceSpotAuthorityPayloadCodec.TryDecode(
+                canonical.SteadyAuthorityPayload.Span,
+                out instance)
+            && instance.State == ZLinkInstanceSpotAuthorityState.Ready
+            && instance.MeshName == snapshot.Allocation.Descriptor.MeshName)
+            return new ZLinkResolvedSpotLocation(
+                instance.MeshName,
+                instance.SpotId,
+                snapshot.ObjectGeneration,
+                targetNodeRid,
+                canonical.State.TargetNodeGeneration,
+                ZLinkSpotKind.Instance,
+                instance.StableType,
+                snapshot.OwnerId,
+                snapshot.OwnerLeaseGeneration,
+                snapshot.StoreNow,
+                snapshot.AuthorityOwnerGeneration);
         return null;
     }
 
@@ -332,7 +371,38 @@ internal sealed class ZLinkStoreLocationResolvers :
             || snapshot.OwnerLeaseGeneration <= 0
             || actor.OwnerLeaseGeneration
                != (ulong)snapshot.OwnerLeaseGeneration)
-            return null;
+        {
+            if (!TryReadCommittedCanonicalTarget(
+                    snapshot,
+                    out var canonical,
+                    out var targetNodeRid)
+                || !ZLinkActorAuthorityPayloadCodec.TryDecodeRelocating(
+                    canonical.SteadyAuthorityPayload.Span,
+                    out actor)
+                || actor.State != ZLinkActorAuthorityState.Ready
+                || actor.MeshName
+                   != snapshot.Allocation.Descriptor.MeshName)
+                return null;
+            return new ZLinkResolvedActorLocation(
+                actor.MeshName,
+                actor.ActorId,
+                actor.StableType,
+                new ActorRef(
+                    actor.ActorId,
+                    snapshot.ObjectGeneration,
+                    actor.MeshName,
+                    targetNodeRid),
+                targetNodeRid,
+                canonical.State.TargetNodeGeneration,
+                actor.CurrentSpotId,
+                actor.CurrentSpotGeneration,
+                actor.CurrentSpotKind,
+                snapshot.AuthorityOwnerGeneration,
+                snapshot.OwnerId,
+                snapshot.OwnerLeaseGeneration,
+                snapshot.StoreNow,
+                snapshot.AuthorityOwnerGeneration);
+        }
         return new ZLinkResolvedActorLocation(
             actor.MeshName,
             actor.ActorId,
@@ -352,6 +422,36 @@ internal sealed class ZLinkStoreLocationResolvers :
             snapshot.OwnerLeaseGeneration,
             snapshot.StoreNow,
             snapshot.AuthorityOwnerGeneration);
+    }
+
+    private static bool TryReadCommittedCanonicalTarget(
+        ZLinkAuthoritySnapshot snapshot,
+        out ZLinkCanonicalRelocationAuthorityProjection canonical,
+        out RoutingId targetNodeRid)
+    {
+        canonical = null!;
+        targetNodeRid = default;
+        if (snapshot.OwnerLeaseGeneration <= 0
+            || !ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                snapshot.Payload.Span,
+                out canonical)
+            || canonical.Phase is < 4 or > 8
+            || canonical.TargetOwnerId != snapshot.OwnerId
+            || canonical.TargetOwnerLeaseGeneration
+               != (ulong)snapshot.OwnerLeaseGeneration
+            || canonical.State.TargetNodeGeneration
+               != snapshot.Allocation.DescriptorLifecycleGeneration)
+            return false;
+        try
+        {
+            targetNodeRid = RoutingId.FromHex(
+                canonical.State.TargetNodeRid);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        return targetNodeRid == snapshot.Allocation.Descriptor.Rid;
     }
 
     private sealed record CachedRoute<TRow>(

@@ -365,6 +365,36 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
+    internal async ValueTask RemoveDescriptorForShutdownAsync(
+        ZLinkMeshNodeDescriptorKey key,
+        CancellationToken cancellationToken = default)
+    {
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Drain cleanup removes every row owned by this runtime before it
+            // releases the owner lease. Auto-connect teardown still needs to
+            // disconnect sockets, but its per-descriptor delete is then
+            // already complete and must not require the released lease again.
+            if (_ownerCleanedForDrain)
+                return;
+
+            var token = RequireOwnerToken();
+            _ = await ExecuteRemoveAsync(
+                    () => _store.RemoveMeshNodeAsync(
+                        key,
+                        token,
+                        cancellationToken),
+                    ZLinkLocationKind.MeshNode,
+                    ZLinkLocationKeyCodec.EncodeMeshNodeKey(key))
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+    }
+
     internal async ValueTask<bool> RenewOwnerLeaseOnceAsync(
         CancellationToken cancellationToken = default)
     {

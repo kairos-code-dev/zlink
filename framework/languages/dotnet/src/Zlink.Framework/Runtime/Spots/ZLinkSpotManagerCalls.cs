@@ -44,7 +44,7 @@ internal abstract class ZLinkSpotCall
         if (_timeout is not null) Duplicate("Timeout");
         if (value <= TimeSpan.Zero)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "Timeout must be positive.");
         _timeout = value;
     }
@@ -55,7 +55,7 @@ internal abstract class ZLinkSpotCall
     {
         if (Interlocked.Exchange(ref _submitted, 1) != 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.AlreadySubmitted,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "The User Spot call was already submitted.");
         return _submit(
             _meshName,
@@ -70,14 +70,14 @@ internal abstract class ZLinkSpotCall
             || System.Text.Encoding.UTF8.GetByteCount(value) > byte.MaxValue
             || value.Contains('\0'))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"{parameter} must be 1..255 UTF-8 bytes without NUL.");
         return value;
     }
 
     private static void Duplicate(string option) =>
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.InvalidConfiguration,
+            ZLinkFrameworkErrorKind.InvalidOperation,
             $"{option} was already configured.");
 }
 
@@ -91,6 +91,8 @@ internal sealed class ZLinkSpotCreateCall(
         ValueTask<ZLinkSpotCreateResult>> submit)
     : ZLinkSpotCall(submit), IZLinkSpotCreateCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
+
     public IZLinkSpotCreateCall InMesh(string meshName)
     {
         SetMesh(meshName);
@@ -118,6 +120,14 @@ internal sealed class ZLinkSpotCreateCall(
     public ValueTask<ZLinkSpotCreateResult> Async(
         CancellationToken cancellationToken = default) =>
         SubmitAsync(defaultTimeout, cancellationToken);
+
+    public ValueTask<ZLinkSpotCreateResult> Yield(
+        CancellationToken cancellationToken = default) =>
+        ZLinkApplicationExecutionContext
+            .RequireYieldTurn(_turn, "User Spot creation")
+            .YieldFrameworkCallAsync(
+                token => SubmitAsync(defaultTimeout, token),
+                cancellationToken);
 }
 
 internal sealed class ZLinkSpotGetOrCreateCall(
@@ -130,6 +140,8 @@ internal sealed class ZLinkSpotGetOrCreateCall(
         ValueTask<ZLinkSpotCreateResult>> submit)
     : ZLinkSpotCall(submit), IZLinkSpotGetOrCreateCall
 {
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
+
     public IZLinkSpotGetOrCreateCall InMesh(string meshName)
     {
         SetMesh(meshName);
@@ -157,4 +169,12 @@ internal sealed class ZLinkSpotGetOrCreateCall(
     public ValueTask<ZLinkSpotCreateResult> Async(
         CancellationToken cancellationToken = default) =>
         SubmitAsync(defaultTimeout, cancellationToken);
+
+    public ValueTask<ZLinkSpotCreateResult> Yield(
+        CancellationToken cancellationToken = default) =>
+        ZLinkApplicationExecutionContext
+            .RequireYieldTurn(_turn, "User Spot get-or-create")
+            .YieldFrameworkCallAsync(
+                token => SubmitAsync(defaultTimeout, token),
+                cancellationToken);
 }

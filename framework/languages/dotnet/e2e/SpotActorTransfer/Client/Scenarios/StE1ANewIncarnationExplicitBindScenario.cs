@@ -126,7 +126,7 @@ internal static class StE1ANewIncarnationExplicitBindScenario
 
     private static void AssertBinding(
         SessionBindingsRes bindings,
-        ActorRefSnapshotRes expected)
+        ActorRefRes expected)
     {
         ZlinkStreamAssert.Ensure(
             bindings.Bindings.Any(binding =>

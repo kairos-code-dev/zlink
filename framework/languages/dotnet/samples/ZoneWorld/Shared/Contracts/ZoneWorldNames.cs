@@ -16,7 +16,7 @@ public static class ZoneWorldNames
     /// <summary>Fanout channel: Ops publishes, every ZoneNode subscribes.</summary>
     public const string BroadcastChannel = "zoneworld.broadcast";
 
-    /// <summary>Client-server channel: ZoneNode reports to Ops.</summary>
+    /// <summary>RouteMesh ChannelName: ZoneNode reports to the ready Ops member.</summary>
     public const string ReportChannel = "zoneworld.report";
 
     public const string AnnounceTopic = "world.announce";

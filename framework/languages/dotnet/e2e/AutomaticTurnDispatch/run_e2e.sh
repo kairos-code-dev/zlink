@@ -18,6 +18,15 @@ STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
 SKIP_BUILD=0
 SCENARIO_ARGS=()
+CANONICAL_SCENARIOS=(
+  TD-A1 TD-A2 TD-A3 TD-A4 TD-A5
+  TD-B1 TD-B2 TD-B3 TD-B4
+  TD-C1 TD-C2 TD-C3 TD-C4 TD-C5
+  TD-D1 TD-D2 TD-D3
+  TD-E1 TD-E2 TD-E3
+  TD-F1 TD-F2 TD-F3 TD-F4 TD-F5 TD-F6
+  TD-G1
+)
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --skip-build)
@@ -41,6 +50,50 @@ else
   SCENARIO="${SCENARIO_ARGS[*]}"
   SCENARIO="${SCENARIO// /,}"
 fi
+
+RUN_CLIENT=0
+RUN_SHUTDOWN=0
+CLIENT_ALL=0
+CLIENT_SCENARIO_IDS=()
+declare -A CLIENT_SCENARIO_SEEN=()
+IFS=',' read -ra REQUESTED_SELECTORS <<<"$SCENARIO"
+for selector in "${REQUESTED_SELECTORS[@]}"; do
+  case "$selector" in
+    all)
+      RUN_CLIENT=1
+      RUN_SHUTDOWN=1
+      CLIENT_ALL=1
+      ;;
+    full)
+      RUN_CLIENT=1
+      CLIENT_ALL=1
+      ;;
+    shutdown|shutdown-wait|shutdown-recovery)
+      RUN_SHUTDOWN=1
+      ;;
+    TD-A[1-5]|TD-B[1-4]|TD-C[1-5]|TD-D[1-3]|TD-E[1-3]|TD-F[1-6]|TD-G1)
+      RUN_CLIENT=1
+      if [[ -z "${CLIENT_SCENARIO_SEEN[$selector]+x}" ]]; then
+        CLIENT_SCENARIO_IDS+=("$selector")
+        CLIENT_SCENARIO_SEEN["$selector"]=1
+      fi
+      ;;
+    *)
+      echo "Unknown scenario selector: $selector" >&2
+      exit 64
+      ;;
+  esac
+done
+if [[ "$RUN_CLIENT" == "1" ]]; then
+  if [[ "$CLIENT_ALL" == "1" ]]; then
+    CLIENT_SCENARIO_IDS=("${CANONICAL_SCENARIOS[@]}")
+    CLIENT_SCENARIO="full"
+  else
+    CLIENT_SCENARIO="$(IFS=,; echo "${CLIENT_SCENARIO_IDS[*]}")"
+  fi
+  EXPECTED_CLIENT_SCENARIO_COUNT="${#CLIENT_SCENARIO_IDS[@]}"
+fi
+
 mkdir -p "$LOG_DIR"
 CONFIG_DIR="$(mktemp -d)"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
@@ -104,22 +157,8 @@ PY
 
 scenario_selected() {
   local expected="$1"
-  local item
-  if [[ "$SCENARIO" == "all" || "$SCENARIO" == "$expected" ]]; then
-    return 0
-  fi
-  if [[ "$expected" == "shutdown" ]]; then
-    [[ "$SCENARIO" == "shutdown-wait" || "$SCENARIO" == "shutdown-recovery" ]] && return 0
-  fi
-  IFS=',' read -ra items <<<"$SCENARIO"
-  for item in "${items[@]}"; do
-    if [[ "$item" == "$expected" ]]; then
-      return 0
-    fi
-    if [[ "$expected" == "shutdown" && ( "$item" == "shutdown-wait" || "$item" == "shutdown-recovery" ) ]]; then
-      return 0
-    fi
-  done
+  [[ "$expected" == "full" && "$RUN_CLIENT" == "1" ]] && return 0
+  [[ "$expected" == "shutdown" && "$RUN_SHUTDOWN" == "1" ]] && return 0
   return 1
 }
 
@@ -197,7 +236,7 @@ static_checks() {
     return 1
   fi
 
-  echo "TD-C5 PASS blocking-io-in-cpu-worker=absent"
+  echo "TD-C5 source-gate=passed blocking-io-in-cpu-worker=absent"
 }
 
 PIDS=()
@@ -646,7 +685,7 @@ done
 if scenario_selected full; then
   python3 "$SCRIPT_DIR/../write_role_config.py" "$CONFIG_DIR/client-full.json" -- \
     --config-dir "$CONFIG_DIR" \
-    --scenario full \
+    --scenario "$CLIENT_SCENARIO" \
     --session-a-stream-endpoint "$SESSION_A_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     --request-id "client-${STAMP//[^a-zA-Z0-9]/}" \
@@ -654,7 +693,18 @@ if scenario_selected full; then
   dotnet "$CLIENT_DLL" --config "$CONFIG_DIR/client-full.json" \
     >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
   cat "$LOG_DIR/client.stdout.log"
-  echo "TD-G1 PASS language=dotnet scenario-ids=common"
+  expected_client_summary="automatic-turn-dispatch client executed=${EXPECTED_CLIENT_SCENARIO_COUNT} result=passed"
+  if ! grep -Fxq "$expected_client_summary" "$LOG_DIR/client.stdout.log"; then
+    echo "AutomaticTurnDispatch client did not execute the selected scenario count: expected=${EXPECTED_CLIENT_SCENARIO_COUNT}." >&2
+    exit 1
+  fi
+  actual_client_markers="$(
+    grep -Ec '^TD-[A-G][0-9]+ result=passed$' "$LOG_DIR/client.stdout.log" || true
+  )"
+  if [[ "$actual_client_markers" != "$EXPECTED_CLIENT_SCENARIO_COUNT" ]]; then
+    echo "AutomaticTurnDispatch scenario marker count mismatch: expected=${EXPECTED_CLIENT_SCENARIO_COUNT} actual=${actual_client_markers}." >&2
+    exit 1
+  fi
 fi
 
 if scenario_selected shutdown; then

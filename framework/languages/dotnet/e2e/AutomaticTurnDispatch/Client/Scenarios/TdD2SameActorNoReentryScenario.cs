@@ -8,6 +8,10 @@ internal static class TdD2SameActorNoReentryScenario
     public static async Task RunAsync(ExecutionTurnScenarioContext context)
     {
         var actors = await context.ActorsAsync();
+        await context.EnsureActorInSpotAsync(
+            actors.ActorA,
+            actors.SpotRid,
+            "TD-D2-prepare");
         var requestId = ExecutionTurnScenarioContext.NewId("TD-D2");
         var pending = context.ActorRequest(actors.ActorA, new ActorAwaitReq(requestId, 300, "yield"))
             .Async<ActorAwaitRes>();

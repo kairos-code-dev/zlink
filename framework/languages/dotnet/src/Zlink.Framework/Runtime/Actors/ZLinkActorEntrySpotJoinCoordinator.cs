@@ -50,7 +50,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                     completion.Complete,
                     registration.DefaultRequestTimeout))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                    ZLinkFrameworkErrorKind.NotFound,
                     $"Actor entry SPOT join submit failed for '{actor.Context.ActorId}'.");
         }
 
@@ -86,7 +86,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         var accepted = result.JoinResultCode == 0;
         if (result.Result != RequestResult.Ok)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                ZLinkFrameworkErrorKind.NotFound,
                 $"Actor entry SPOT join failed for '{actor.Context.ActorId}' with '{result.Result}'.");
 
         if (accepted)
@@ -146,7 +146,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                           ?? state.SpotNodes.Values.FirstOrDefault(
                               candidate => candidate.Registration.Router is not null)
                           ?? throw new ZLinkFrameworkException(
-                              ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                              ZLinkFrameworkErrorKind.NotFound,
                               $"Actor entry SPOT join failed for '{actor.Context.ActorId}' because no router-capable MeshNode is registered.");
 
         var request = ZLinkActorEntrySpotRoutePackets.CreateJoinRequest(
@@ -188,11 +188,11 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
 
         var targetRef = ZLinkActorEntrySpotRoutePackets.ToActorRef(reply);
         actorState.BindNativeActorRef(targetRef);
-        await NotifyManagedUserSpotLeftForEntrySpotJoinAsync(
-                actor,
-                previousActivation,
-                cancellationToken)
-            .ConfigureAwait(false);
+        if (previousActivation is not null)
+            await previousActivation.NotifyActorLeftAfterNativeJoinEntrySpotAsync(
+                    actor,
+                    cancellationToken)
+                .ConfigureAwait(false);
         if (targetRef.NodeRid != sourceActorRef.NodeRid)
         {
             actorState.InvalidateContext();
@@ -218,7 +218,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
     {
         var activation = targetNode.EntrySpotActivation
                          ?? throw new ZLinkFrameworkException(
-                             ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                             ZLinkFrameworkErrorKind.NotFound,
                              $"Actor entry SPOT join target node '{targetNode.Node.RoutingId}' does not have an Entry Spot activation.");
         var localTargetRef = targetNode.Node.ActorLookup(actor.Context.ActorId);
         var createdHere = localTargetRef is null;
@@ -343,7 +343,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         {
             if (result != RequestResult.Ok)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                    ZLinkFrameworkErrorKind.NotFound,
                     $"Actor entry SPOT join was rejected for '{actorId}' to node '{spotNodeRid}'.");
 
             if (replyParts.Count == 0) return ZLinkMessage.Empty;

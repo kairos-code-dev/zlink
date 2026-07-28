@@ -10,9 +10,9 @@ using Zlink.Framework.Contracts.Spots;
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 
 internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
-    : IZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActor, ObserveBingoEventsReq, ObserveBingoEventsRes>
+    : IZLinkEntrySpotActorSendHandler<BingoEntrySpot, PlayerActor, ObserveBingoEventsReq>
 {
-    public async ValueTask<ObserveBingoEventsRes> HandleAsync(
+    public async ValueTask HandleAsync(
         BingoEntrySpot entrySpot,
         PlayerActor actor,
         IZLinkMessageContext context,
@@ -23,11 +23,12 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
         var settings = BingoRoomSettings.CreateObserver(message.RoomId, actor.ActorId);
         _ = await spots
             .GetOrCreate(observerSpotId, SampleNames.RoomSpotType)
-            .InMesh(SampleNames.MeshName)
+            .InMesh(SampleNames.PlayMeshName)
             .Request(BingoRoomSettingsPayloadMapper.ToPayload(settings))
             .Async(cancellationToken);
 
-        var joined = await actor.Context.JoinSpot(
+        actor.TrackDeferredJoin(observerSpotId, observeOnly: true);
+        actor.Context.JoinSpot(
                 observerSpotId,
                 new BingoRoomJoinReq
                 {
@@ -36,18 +37,7 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
                     DisplayName = actor.DisplayName,
                     ObserveOnly = true
                 })
-            .Async<BingoRoomJoinRes>(cancellationToken);
-
-        if (joined is not ZLinkActorJoinResult<BingoRoomJoinRes>.Accepted)
-            return new ObserveBingoEventsRes
-            {
-                Subscribed = false
-            };
-
-        return new ObserveBingoEventsRes
-        {
-            Subscribed = true
-        };
+            .Defer();
     }
 
     private static string ObserverSpotId(string roomId, string observerActorId)

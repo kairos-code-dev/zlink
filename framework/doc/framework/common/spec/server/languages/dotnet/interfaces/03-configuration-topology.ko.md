@@ -255,9 +255,18 @@ public interface IZLinkMetadataPolicyBuilder
 [weight](../../../../01-glossary.ko.md#weight)와 handler 등록을 제공한다. Server [membership](../../../../01-glossary.ko.md#membership)이 없는 MeshNode도 시작할 수 있다.
 
 Automatic [RouteMesh](../../../../01-glossary.ko.md#routemesh)는 RID를 canonical byte order로 비교하고 더 작은 RID의 MeshNode만 상대 endpoint로
-connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 또는 양쪽에서 connect할 수 있다.
+connect한다. Local과 remote의 object role이 모두 `Client`이고 양쪽 모두 RouteMesh Channel Server
+membership이 없을 때만 connection intent를 만들지 않는다. Channel Client membership만으로는 연결하지
+않는다. 어느 한쪽에라도 Channel Server membership이 있으면 weight가 `0`이어도 connection이 필요하다.
+Manual topology는 application endpoint 구성에 따라 한쪽 또는 양쪽에서 connect할 수 있다.
 양쪽 연결이나 automatic discovery 경합·오래된 snapshot으로 중복 후보가 생기면 handshake와 admission이
 같은 RID와 lifecycle generation을 확인해 하나만 ready 상태로 유지한다.
+
+Manual endpoint의 remote object role과 RouteMesh Server membership을 connect 전에 알 수 없으면
+handshake에서 확인한다. 양쪽이 Object Client이고 양쪽 모두 RouteMesh Channel Server membership이
+없을 때만 admission을 `NotRequired` terminal로 끝내고 ready 전에 socket을 닫는다. 같은 endpoint와
+configuration generation에서는 background reconnect를 반복하지 않는다. Endpoint, expected RID 또는
+configuration generation이 바뀌면 새 intent로 한 번 다시 확인한다.
 
 `Listen(string endpoint)`, `Bind(string endpoint)`와 `EnablePublisher(string endpoint)`를 제공하며,
 host·port 조합 overload도 같은 listener 설정을 표현한다.
@@ -336,6 +345,18 @@ MeshNode가 이 값을 게시하며 음수는 startup 전에 `ZLinkConfiguration
 client를 제공하지만 placement target이 되지 않는다. `Server()`는 Client capability를 포함하며 Entry Spot과
 factory를 등록한다. 두 role은 Location Store가 필수다. Role은 한 번만 선택할 수 있다.
 
+`Objects().Client()`를 선택한 MeshNode에도 `Channel(...).Server()`를 등록할 수 있다. 이 조합은
+Channel request·send를 처리하기 위한 peer connection이 필요하다. Server weight가 `0`이어도 Server
+capability와 연결 필요성은 유지되며 새 Channel operation의 선택 후보에서만 제외된다.
+`AddRouteSendHandler(...)`·`AddRouteRequestHandler(...)` 같은 application Node direct handler는 Object
+Client에 등록할 수 없고 socket bind 전에 `ZLinkConfigurationException`으로 실패한다.
+
+두 Object Client 사이에는 양쪽 모두 RouteMesh Channel Server membership이 없을 때만 automatic 또는
+manual peer connection이 필요하지 않다. Channel Client membership만 등록한 경우도 같다. 어느 한쪽에라도
+RouteMesh Channel Server membership이 있으면 연결을 유지한다. ClientServer와 classic fanout은 별도 물리
+topology이므로 이 판정에 포함하지 않는다. Object Client와 Object Server, Object Server끼리의 connection은
+유지한다.
+
 Actor·User Spot·Instance Spot [factory](../../../../01-glossary.ko.md#factory)는 stable type, object 종류별 factory option과 explicit relocation
 policy를 같은 registration에서 고정한다. Policy를 생략하는 overload는 없다. [Stable type](../../../../01-glossary.ko.md#stable-type)은 UTF-8
 1..255 bytes이고 중복 type은 startup 오류다. Entry Spot ID는 Framework가 발급한다.
@@ -361,6 +382,12 @@ public interface IZLinkMeshPeerConnections
     IReadOnlyList<ZLinkMeshPeerConnection> ListConnections();
 }
 ```
+
+`Connect(...)`로 지정한 양쪽 MeshNode가 Object Client이고 양쪽 모두 RouteMesh Channel Server
+membership이 없으면 configuration intent는 목록에 남을 수 있지만 ready peer가 되지 않는다. Handshake가
+`NotRequired`로 끝난 뒤 같은 configuration generation에는 다시 연결하지 않으며 public RouteMesh status의
+ready peer 수와 liveness 대상에 포함하지 않는다. 어느 한쪽에라도 weight `0`을 포함한 Channel Server
+membership이 있으면 일반 peer admission과 liveness 규칙을 적용한다.
 
 Handler filter는 application이 구현하고 root에 등록하는 public extension point다. `next`를 호출하면 남은
 filter와 handler가 실행되고, 호출하지 않으면 현재 dispatch를 종료한다. 적용 범위와 실행 순서는 공통

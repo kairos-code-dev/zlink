@@ -12,6 +12,10 @@ internal sealed class ZLinkActorMessageFollower
     private readonly System.Collections.Concurrent.ConcurrentDictionary<
         DirectReplyKey,
         PendingDirectReply> _directReplies = new();
+    private readonly object _directReplyTerminalGate = new();
+    private readonly Dictionary<DirectReplyKey, DateTimeOffset>
+        _directReplyTerminals = [];
+    private readonly Queue<DirectReplyKey> _directReplyTerminalOrder = [];
 
     public ZLinkActorMessageFollower(
         ZLinkFrameworkRuntime runtime,
@@ -33,33 +37,66 @@ internal sealed class ZLinkActorMessageFollower
         Message body,
         ulong sourceNodeGeneration = 0,
         ZLinkServiceWireCodec.RequestSourceFence? requestSource = null,
-        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null)
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null,
+        ReadOnlyMemory<byte> applicationMetadata = default)
+    {
+        _ = EnqueueTracked(
+            messageFollowRoute,
+            sourceNodeRid,
+            sourceSessionRid,
+            requestId,
+            flags,
+            routeContext,
+            header,
+            body,
+            sourceNodeGeneration,
+            requestSource,
+            directReply,
+            applicationMetadata);
+    }
+
+    internal Task<bool> EnqueueTracked(
+        ZLinkActorMessageFollowRoute messageFollowRoute,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        ulong requestId,
+        uint flags,
+        ZLinkBackendActorRouteContext routeContext,
+        ZlinkStreamHeader header,
+        Message body,
+        ulong sourceNodeGeneration = 0,
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null,
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null,
+        ReadOnlyMemory<byte> applicationMetadata = default)
     {
         _runtime.ShutdownToken.ThrowIfCancellationRequested();
         if (!_admissionSlots.Wait(0))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor ref '{messageFollowRoute.SourceActor.ActorId}' could not use Message Follow because its queue is full.");
         MessageFollowFrame? frame = null;
         DirectReplyKey? directReplyKey = null;
         try
         {
             if (directReply is not null
-                && header.Kind == ZlinkStreamMessageKind.Request)
+                && header.Kind == ZlinkStreamMessageKind.Request
+                && string.IsNullOrEmpty(routeContext.ReplyCapability))
             {
                 var capability = CreateReplyCapability(
-                    messageFollowRoute.SourceActor.NodeRid);
+                    messageFollowRoute.SourceActor.NodeRid,
+                    routeContext.DeadlineUnixMs);
                 var replyKey = new DirectReplyKey(
                     messageFollowRoute.SourceActor.ActorId,
                     requestId,
                     capability);
                 var pending = new PendingDirectReply(
                     directReply,
-                    messageFollowRoute.Lease);
-                if (_directReplies.Count >= Capacity
+                    routeContext.DeadlineUnixMs);
+                if (IsDirectReplyTerminal(replyKey)
+                    || _directReplies.Count >= Capacity
                     || !_directReplies.TryAdd(replyKey, pending))
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorLocationStale,
+                        ZLinkFrameworkErrorKind.Unavailable,
                         $"Actor ref '{messageFollowRoute.SourceActor.ActorId}' could not preserve its Message Follow reply route.");
                 directReplyKey = replyKey;
                 routeContext = routeContext with
@@ -75,7 +112,7 @@ internal sealed class ZLinkActorMessageFollower
                             pending,
                             ct)))
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.RuntimeShutdown,
+                        ZLinkFrameworkErrorKind.ShuttingDown,
                         "The runtime stopped before the Message Follow reply route was registered.");
             }
             frame = new MessageFollowFrame(
@@ -87,6 +124,7 @@ internal sealed class ZLinkActorMessageFollower
                 routeContext,
                 sourceNodeGeneration,
                 requestSource,
+                applicationMetadata.ToArray(),
                 header,
                 ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray(),
                 body.ToArray(),
@@ -109,6 +147,7 @@ internal sealed class ZLinkActorMessageFollower
                    .TryEnqueue(frame))
             {
             }
+            return frame.Completion;
         }
         catch
         {
@@ -122,28 +161,75 @@ internal sealed class ZLinkActorMessageFollower
         }
     }
 
-    public bool TryCompleteDirectReply(
+    public async ValueTask<bool> TryCompleteDirectReplyAsync(
         string actorId,
         ulong requestId,
         uint flags,
         string replyCapability,
         RoutingId authenticatedResponder,
         RoutingId declaredResponder,
-        byte[] frame)
+        byte[] frame,
+        CancellationToken cancellationToken)
     {
         if (flags != ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind
             || authenticatedResponder.IsEmpty
             || authenticatedResponder != declaredResponder)
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"actor_follow_reply_rejected actor={actorId} request_id={requestId} "
+                + $"flags={flags} authenticated={authenticatedResponder} "
+                + $"declared={declaredResponder}");
             return false;
+        }
         var key = new DirectReplyKey(
             actorId,
             requestId,
             replyCapability);
-        if (!_directReplies.TryRemove(key, out var pending))
+        if (!_directReplies.TryGetValue(key, out var pending))
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"actor_follow_reply_not_found actor={actorId} request_id={requestId}");
             return false;
-        using var reply = Message.From(frame);
-        _ = pending.Reply([reply], SendFlags.DontWait);
-        return true;
+        }
+        if (!pending.TryBeginDelivery())
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"actor_follow_reply_already_claimed actor={actorId} request_id={requestId}");
+            return true;
+        }
+        var outcome = DirectReplyDeliveryResult.Interrupted;
+        try
+        {
+            outcome = await SubmitDirectReplyUntilDeadlineAsync(
+                    pending,
+                    actorId,
+                    requestId,
+                    frame,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"actor_follow_reply_completed actor={actorId} request_id={requestId} "
+                + $"outcome={outcome}");
+        }
+        finally
+        {
+            if (outcome is not DirectReplyDeliveryResult.Interrupted
+                || pending.IsExpired)
+            {
+                pending.Complete();
+                RememberDirectReplyTerminal(key);
+                _directReplies.TryRemove(
+                    new KeyValuePair<DirectReplyKey, PendingDirectReply>(
+                        key,
+                        pending));
+            }
+            else
+            {
+                pending.ReleaseDelivery();
+            }
+        }
+        return outcome is not DirectReplyDeliveryResult.DeadlineExpired
+               || pending.HasExplicitDeadline;
     }
 
     internal PreservedDirectReply PreserveDirectReply(
@@ -159,20 +245,20 @@ internal sealed class ZLinkActorMessageFollower
             throw new ArgumentOutOfRangeException(nameof(requestId));
         ArgumentNullException.ThrowIfNull(directReply);
 
-        var capability = CreateReplyCapability(replyNodeRid);
+        var capability = CreateReplyCapability(replyNodeRid, deadlineUnixMs);
         var key = new DirectReplyKey(actorId, requestId, capability);
-        var pending = new PendingDirectReply(directReply, null);
-        if (_directReplies.Count >= Capacity
+        var pending = new PendingDirectReply(directReply, deadlineUnixMs);
+        if (IsDirectReplyTerminal(key)
+            || _directReplies.Count >= Capacity
             || !_directReplies.TryAdd(key, pending))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor ref '{actorId}' could not preserve its relocation reply route.");
         if (!_runtime.TryRunDetached(
                 "actor relocation reply expiry",
                 ct => ExpireDirectReplyAsync(
                     key,
                     pending,
-                    deadlineUnixMs,
                     ct)))
         {
             _directReplies.TryRemove(
@@ -180,7 +266,7 @@ internal sealed class ZLinkActorMessageFollower
                     key,
                     pending));
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RuntimeShutdown,
+                ZLinkFrameworkErrorKind.ShuttingDown,
                 "The runtime stopped before the relocation reply route was registered.");
         }
 
@@ -193,22 +279,29 @@ internal sealed class ZLinkActorMessageFollower
                 flags));
     }
 
-    internal bool TryResolveReplyNode(
+    internal bool TryResolveReplyRoute(
         string replyCapability,
-        out RoutingId replyNodeRid)
+        out RoutingId replyNodeRid,
+        out ulong deadlineUnixMs)
     {
         replyNodeRid = default;
-        const string prefix = "v1.";
-        if (!replyCapability.StartsWith(prefix, StringComparison.Ordinal))
+        deadlineUnixMs = 0;
+        var components = replyCapability.Split('.');
+        if (components[0] is not ("v1" or "v2")
+            || (components[0] == "v1" && components.Length != 3)
+            || (components[0] == "v2" && components.Length != 4))
             return false;
-        var separator = replyCapability.IndexOf('.', prefix.Length);
-        if (separator <= prefix.Length
-            || separator == replyCapability.Length - 1)
+        if (components[0] == "v2"
+            && (!ulong.TryParse(
+                    components[2],
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out deadlineUnixMs)
+                || deadlineUnixMs > long.MaxValue))
             return false;
         try
         {
-            replyNodeRid = RoutingId.FromHex(
-                replyCapability[prefix.Length..separator]);
+            replyNodeRid = RoutingId.FromHex(components[1]);
             return !replyNodeRid.IsEmpty;
         }
         catch (Exception exception)
@@ -218,24 +311,55 @@ internal sealed class ZLinkActorMessageFollower
         }
     }
 
-    internal bool TryCompleteLocalDirectReply(
+    internal async ValueTask<bool> TryCompleteLocalDirectReplyAsync(
         string actorId,
         ulong requestId,
         uint flags,
         string replyCapability,
-        IReadOnlyList<Message> parts)
+        IReadOnlyList<Message> parts,
+        CancellationToken cancellationToken)
     {
         if (flags != ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind)
             return false;
         var key = new DirectReplyKey(actorId, requestId, replyCapability);
         if (!_directReplies.TryGetValue(key, out var pending))
             return false;
-        return CompleteLocalDirectReply(
-                   key,
-                   pending,
-                   parts,
-                   SendFlags.DontWait)
-               == SubmitResult.Ok;
+        if (!pending.TryBeginDelivery())
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+            return true;
+        }
+        var frames = parts.Select(static part => part.ToArray()).ToArray();
+        ZLinkMessageParts.DisposeAll(parts);
+        var outcome = DirectReplyDeliveryResult.Interrupted;
+        try
+        {
+            outcome = await SubmitDirectReplyUntilDeadlineAsync(
+                    pending,
+                    actorId,
+                    requestId,
+                    frames,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            if (outcome is not DirectReplyDeliveryResult.Interrupted
+                || pending.IsExpired)
+            {
+                pending.Complete();
+                RememberDirectReplyTerminal(key);
+                _directReplies.TryRemove(
+                    new KeyValuePair<DirectReplyKey, PendingDirectReply>(
+                        key,
+                        pending));
+            }
+            else
+            {
+                pending.ReleaseDelivery();
+            }
+        }
+        return true;
     }
 
     private SubmitResult CompleteLocalDirectReply(
@@ -245,65 +369,204 @@ internal sealed class ZLinkActorMessageFollower
         SendFlags flags)
     {
         if (!_directReplies.TryGetValue(key, out var current)
-            || !ReferenceEquals(current, pending))
+            || !ReferenceEquals(current, pending)
+            || !pending.TryBeginDelivery())
             return SubmitResult.Terminated;
-        var result = pending.Reply(parts, flags);
-        if (result == SubmitResult.Ok)
+        var terminal = false;
+        try
+        {
+            if (pending.IsExpired)
+            {
+                pending.Complete();
+                terminal = true;
+                return SubmitResult.Terminated;
+            }
+            var result = pending.Reply(parts, flags);
+            if (result == SubmitResult.Ok)
+            {
+                pending.Complete();
+                terminal = true;
+            }
+            else if (result is not (SubmitResult.Backpressured
+                         or SubmitResult.NotConnected))
+            {
+                pending.Complete();
+                terminal = true;
+            }
+            return result;
+        }
+        finally
+        {
+            pending.ReleaseDelivery();
+            if (terminal)
+            {
+                RememberDirectReplyTerminal(key);
+                _directReplies.TryRemove(
+                    new KeyValuePair<DirectReplyKey, PendingDirectReply>(
+                        key,
+                        pending));
+            }
+        }
+    }
+
+    private static string CreateReplyCapability(
+        RoutingId replyNodeRid,
+        ulong deadlineUnixMs)
+    {
+        if (replyNodeRid.IsEmpty)
+            throw new ArgumentOutOfRangeException(nameof(replyNodeRid));
+        if (deadlineUnixMs > long.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(deadlineUnixMs));
+        return string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"v2.{replyNodeRid.ToHex()}.{deadlineUnixMs}.{Guid.NewGuid():N}");
+    }
+
+    private async ValueTask ExpireDirectReplyAsync(
+        DirectReplyKey key,
+        PendingDirectReply pending,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var deadline = ResolveDeadlineUnixMs(
+                pending.DeadlineUnixMs,
+                now,
+                _runtime.Registration.DefaultRequestTimeout);
+            var remaining = Math.Max(0, deadline - now);
+            if (remaining > 0)
+                await Task.Delay(
+                        TimeSpan.FromMilliseconds(remaining),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+        }
+        finally
+        {
+            pending.Expire();
+            RememberDirectReplyTerminal(key);
             _directReplies.TryRemove(
                 new KeyValuePair<DirectReplyKey, PendingDirectReply>(
                     key,
                     pending));
-        return result;
+        }
     }
 
-    private async ValueTask ExpireDirectReplyAsync(
-        DirectReplyKey key,
+    private void RememberDirectReplyTerminal(DirectReplyKey key)
+    {
+        lock (_directReplyTerminalGate)
+        {
+            var now = DateTimeOffset.UtcNow;
+            RemoveExpiredDirectReplyTerminalsUnderLock(now);
+            if (_directReplyTerminals.TryAdd(
+                    key,
+                    now + ZLinkRelocationReplyLifetime.TerminalRetention))
+                _directReplyTerminalOrder.Enqueue(key);
+            else
+                _directReplyTerminals[key] =
+                    now + ZLinkRelocationReplyLifetime.TerminalRetention;
+            while (_directReplyTerminals.Count > Capacity
+                   && _directReplyTerminalOrder.TryDequeue(out var evicted))
+                _directReplyTerminals.Remove(evicted);
+        }
+    }
+
+    private bool IsDirectReplyTerminal(DirectReplyKey key)
+    {
+        lock (_directReplyTerminalGate)
+        {
+            RemoveExpiredDirectReplyTerminalsUnderLock(DateTimeOffset.UtcNow);
+            return _directReplyTerminals.ContainsKey(key);
+        }
+    }
+
+    private void RemoveExpiredDirectReplyTerminalsUnderLock(
+        DateTimeOffset now)
+    {
+        while (_directReplyTerminalOrder.TryPeek(out var oldest)
+               && (!_directReplyTerminals.TryGetValue(
+                       oldest,
+                       out var expiresAt)
+                   || expiresAt <= now))
+        {
+            _directReplyTerminalOrder.Dequeue();
+            _directReplyTerminals.Remove(oldest);
+        }
+    }
+
+    private async ValueTask<DirectReplyDeliveryResult>
+        SubmitDirectReplyUntilDeadlineAsync(
         PendingDirectReply pending,
-        ulong deadlineUnixMs,
-        CancellationToken cancellationToken)
-    {
-        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var deadline = deadlineUnixMs is > 0 and <= long.MaxValue
-            ? checked((long)deadlineUnixMs)
-            : checked(now + (long)_runtime.Registration.DefaultRequestTimeout.TotalMilliseconds);
-        var remaining = Math.Max(0, deadline - now);
-        if (remaining > 0)
-            await Task.Delay(
-                    TimeSpan.FromMilliseconds(remaining),
-                    cancellationToken)
-                .ConfigureAwait(false);
-        _directReplies.TryRemove(
-            new KeyValuePair<DirectReplyKey, PendingDirectReply>(
-                key,
-                pending));
-    }
-
-    private static string CreateReplyCapability(RoutingId replyNodeRid)
-    {
-        if (replyNodeRid.IsEmpty)
-            throw new ArgumentOutOfRangeException(nameof(replyNodeRid));
-        return $"v1.{replyNodeRid.ToHex()}.{Guid.NewGuid():N}";
-    }
-
-    private async ValueTask ExpireDirectReplyAsync(
-        DirectReplyKey key,
-        PendingDirectReply pending,
-        CancellationToken cancellationToken)
-    {
-        while (pending.Lease is { IsActive: true })
-            await Task.Delay(
-                    TimeSpan.FromMilliseconds(100),
-                    cancellationToken)
-                .ConfigureAwait(false);
-        await Task.Delay(
-                _runtime.Registration.DefaultRequestTimeout,
+        string actorId,
+        ulong requestId,
+        byte[] frame,
+        CancellationToken cancellationToken) =>
+        await SubmitDirectReplyUntilDeadlineAsync(
+                pending,
+                actorId,
+                requestId,
+                [frame],
                 cancellationToken)
             .ConfigureAwait(false);
-        _directReplies.TryRemove(
-            new KeyValuePair<DirectReplyKey, PendingDirectReply>(
-                key,
-                pending));
+
+    private async ValueTask<DirectReplyDeliveryResult>
+        SubmitDirectReplyUntilDeadlineAsync(
+        PendingDirectReply pending,
+        string actorId,
+        ulong requestId,
+        IReadOnlyList<byte[]> frames,
+        CancellationToken cancellationToken)
+    {
+        var gate = _runtime.Services.GetService(
+            typeof(IZLinkActorTransportDeliveryGate))
+            as IZLinkActorTransportDeliveryGate;
+        while (!pending.IsExpired)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = gate?.OverrideReplyAdmission(
+                actorId,
+                requestId,
+                pending.DeadlineUnixMs);
+            if (result is null)
+            {
+                var messages = frames
+                    .Select(static frame => Message.From(frame))
+                    .ToArray();
+                try
+                {
+                    result = pending.Reply(messages, SendFlags.DontWait);
+                }
+                finally
+                {
+                    ZLinkMessageParts.DisposeAll(messages);
+                }
+            }
+            if (result == SubmitResult.Ok)
+                return DirectReplyDeliveryResult.Submitted;
+            if (result is not (SubmitResult.Backpressured
+                or SubmitResult.NotConnected))
+                return DirectReplyDeliveryResult.TerminalRejected;
+            var remaining = pending.Remaining;
+            if (remaining <= TimeSpan.Zero)
+                break;
+            await Task.Delay(
+                    remaining < TimeSpan.FromMilliseconds(10)
+                        ? remaining
+                        : TimeSpan.FromMilliseconds(10),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        pending.Expire();
+        return DirectReplyDeliveryResult.DeadlineExpired;
     }
+
+    private static long ResolveDeadlineUnixMs(
+        ulong deadlineUnixMs,
+        long now,
+        TimeSpan fallbackTimeout) =>
+        deadlineUnixMs is > 0 and <= long.MaxValue
+            ? checked((long)deadlineUnixMs)
+            : checked(now + (long)fallbackTimeout.TotalMilliseconds);
 
     internal static ZLinkBackendActorRouteContext AdvanceRoute(
         ZLinkActorMessageFollowRoute messageFollowRoute,
@@ -314,7 +577,7 @@ internal sealed class ZLinkActorMessageFollower
         if (routeContext.IsDirectRoute
             && routeContext.MessageFollowHopCount >= 8)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor ref '{messageFollowRoute.SourceActor.ActorId}' cannot use Message Follow because the chain reached the 8-hop limit.");
         return routeContext.IsDirectRoute
             ? new ZLinkBackendActorRouteContext(
@@ -341,8 +604,11 @@ internal sealed class ZLinkActorMessageFollower
                 : default;
     }
 
-    private async ValueTask FollowAsync(MessageFollowFrame frame, CancellationToken cancellationToken)
+    private async ValueTask FollowAsync(
+        MessageFollowFrame frame,
+        CancellationToken cancellationToken)
     {
+        var submitted = false;
         try
         {
             var headerSubmitted = false;
@@ -369,7 +635,8 @@ internal sealed class ZLinkActorMessageFollower
                             SendFlags.DontWait,
                             frame.MessageFollowRouteContext,
                             frame.SourceNodeGeneration,
-                            frame.RequestSource);
+                            frame.RequestSource,
+                            frame.ApplicationMetadata);
                         if (!headerSubmitted)
                         {
                             await DelayRetryAsync(cancellationToken).ConfigureAwait(false);
@@ -391,8 +658,12 @@ internal sealed class ZLinkActorMessageFollower
                             SendFlags.DontWait,
                             frame.MessageFollowRouteContext,
                             frame.SourceNodeGeneration,
-                            frame.RequestSource))
+                            frame.RequestSource,
+                            frame.ApplicationMetadata))
+                    {
+                        submitted = true;
                         return;
+                    }
                 }
                 catch (ZlinkSubmitException exception)
                     when (exception.Result is ZlinkSubmitException.ErrorCode.Backpressured
@@ -423,13 +694,14 @@ internal sealed class ZLinkActorMessageFollower
                     frame.MessageFollowRouteContext.ReplyCapability,
                     frame.Header,
                     new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorLocationStale,
+                        ZLinkFrameworkErrorKind.Unavailable,
                         $"Actor ref '{frame.MessageFollowRoute.SourceActor.ActorId}' could not use Message Follow before its duration expired."),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
         finally
         {
+            frame.Complete(submitted);
             frame.ReleaseAdmission();
         }
     }
@@ -456,7 +728,7 @@ internal sealed class ZLinkActorMessageFollower
                 if (_count >= RouteMessageCapacity
                     || frame.EncodedSize > RouteByteCapacity - _bytes)
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorLocationStale,
+                        ZLinkFrameworkErrorKind.Unavailable,
                         $"Actor ref '{key.ActorId}' could not use Message Follow because "
                         + "its Message Follow route reached the 1,024 message or 16 MiB bound.");
                 _count++;
@@ -477,6 +749,7 @@ internal sealed class ZLinkActorMessageFollower
                 while (_frames.TryDequeue(out var frame))
                 {
                     ReleaseRouteAdmission(frame);
+                    frame.Complete(false);
                     frame.ReleaseAdmission();
                 }
                 _retired = true;
@@ -512,6 +785,7 @@ internal sealed class ZLinkActorMessageFollower
                         while (_frames.TryDequeue(out var frame))
                         {
                             ReleaseRouteAdmission(frame);
+                            frame.Complete(false);
                             frame.ReleaseAdmission();
                         }
                         _retired = true;
@@ -545,12 +819,15 @@ internal sealed class ZLinkActorMessageFollower
         ZLinkBackendActorRouteContext routeContext,
         ulong sourceNodeGeneration,
         ZLinkServiceWireCodec.RequestSourceFence? requestSource,
+        byte[] applicationMetadata,
         ZlinkStreamHeader header,
         byte[] headerBytes,
         byte[] bodyBytes,
         SemaphoreSlim admissionSlots)
     {
         private int _admissionHeld = 1;
+        private readonly TaskCompletionSource<bool> _completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public ZLinkActorMessageFollowRoute MessageFollowRoute { get; } = messageFollowRoute;
         public RoutingId SourceNodeRid { get; } = sourceNodeRid;
@@ -560,13 +837,20 @@ internal sealed class ZLinkActorMessageFollower
         public ulong SourceNodeGeneration { get; } = sourceNodeGeneration;
         public ZLinkServiceWireCodec.RequestSourceFence? RequestSource { get; } =
             requestSource;
+        public byte[] ApplicationMetadata { get; } = applicationMetadata;
         public ZLinkBackendActorRouteContext MessageFollowRouteContext { get; } =
             AdvanceRoute(messageFollowRoute, routeContext, requestId, flags);
         public ZlinkStreamHeader Header { get; } = header;
         public byte[] HeaderBytes { get; } = headerBytes;
         public byte[] BodyBytes { get; } = bodyBytes;
         public long EncodedSize { get; } =
-            checked((long)headerBytes.Length + bodyBytes.Length);
+            checked(
+                (long)headerBytes.Length
+                + bodyBytes.Length
+                + applicationMetadata.Length);
+        public Task<bool> Completion => _completion.Task;
+        public void Complete(bool submitted) =>
+            _completion.TrySetResult(submitted);
         public void ReleaseAdmission()
         {
             if (Interlocked.Exchange(ref _admissionHeld, 0) != 0)
@@ -592,9 +876,61 @@ internal sealed class ZLinkActorMessageFollower
         ulong RequestId,
         string Capability);
 
-    private sealed record PendingDirectReply(
-        Func<IReadOnlyList<Message>, SendFlags, SubmitResult> Reply,
-        ZLinkActorMessageFollowLease? Lease);
+    private enum DirectReplyDeliveryResult
+    {
+        Interrupted,
+        Submitted,
+        TerminalRejected,
+        DeadlineExpired
+    }
+
+    private sealed class PendingDirectReply(
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult> reply,
+        ulong deadlineUnixMs)
+    {
+        private int _state;
+
+        public Func<IReadOnlyList<Message>, SendFlags, SubmitResult> Reply { get; } =
+            reply;
+        public ulong DeadlineUnixMs { get; } = deadlineUnixMs;
+        public bool HasExplicitDeadline =>
+            DeadlineUnixMs is > 0 and <= long.MaxValue;
+        public bool IsExpired =>
+            Volatile.Read(ref _state) == 2
+            || Remaining <= TimeSpan.Zero;
+        public TimeSpan Remaining
+        {
+            get
+            {
+                if (DeadlineUnixMs is 0 or > long.MaxValue)
+                    return TimeSpan.MaxValue;
+                var milliseconds = checked(
+                    (long)DeadlineUnixMs
+                    - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                return milliseconds <= 0
+                    ? TimeSpan.Zero
+                    : TimeSpan.FromMilliseconds(milliseconds);
+            }
+        }
+
+        public bool TryBeginDelivery() =>
+            Interlocked.CompareExchange(ref _state, 1, 0) == 0;
+
+        public void ReleaseDelivery()
+        {
+            Interlocked.CompareExchange(ref _state, 0, 1);
+        }
+
+        public void Complete()
+        {
+            Interlocked.Exchange(ref _state, 2);
+        }
+
+        public void Expire()
+        {
+            Interlocked.Exchange(ref _state, 2);
+        }
+    }
 
     internal readonly record struct PreservedDirectReply(
         string Capability,

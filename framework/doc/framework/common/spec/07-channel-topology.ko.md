@@ -15,7 +15,7 @@ Client 또는 Server 역할을 등록한다. ChannelName을 추가해도 socket�
 
 | Application이 구성하는 값 | Framework가 만드는 결과 |
 |---|---|
-| `MeshName` | 같은 이름을 사용하는 MeshNode끼리 직접 연결되는 하나의 RouteMesh를 만든다. 서로 다른 [MeshName](01-glossary.ko.md#meshname)의 node를 자동으로 중계하지 않는다. |
+| `MeshName` | 같은 이름을 사용하는 MeshNode가 참여하는 하나의 RouteMesh를 만든다. 서로 다른 [MeshName](01-glossary.ko.md#meshname)의 node를 자동으로 중계하지 않는다. |
 | [MeshNode](01-glossary.ko.md#meshnode) | 하나의 routing ID와 peer가 연결할 ROUTER endpoint를 가진다. 여러 ChannelName이 이 ROUTER 연결을 함께 사용한다. |
 | ChannelName `Client` role | 현재 process에서 해당 ChannelName으로 message를 보낼 경로만 등록한다. Remote node가 선택할 Server membership으로는 게시하지 않는다. |
 | ChannelName `Server` role | 송신 경로와 remote target membership을 모두 등록하고, handler와 선택 weight를 제공한다. |
@@ -212,6 +212,12 @@ role로 등록하지 않아도 된다. 이 MeshNode가 특정 ChannelName으로 
 MeshNode의 같은 ROUTER와 peer 연결을 사용한다. 차이는 Channel target 목록에
 membership을 게시하는지, handler와 선택 weight를 제공하는지에 있다.
 
+Object role을 `Client`로 선택한 MeshNode는 outbound-only object node다. 이 MeshNode에
+Channel `Server` role이나 application Node direct handler를 함께 등록하면 startup
+configuration error다. Object `Server` role은 Client 기능을 포함하므로 Channel
+`Client`와 `Server` role을 모두 사용할 수 있다. Object role이 `None`인 Channel-only
+topology의 기존 role 조합은 유지한다.
+
 | 현재 MeshNode의 ChannelName 등록 | 시작할 수 있는 작업 | Remote target으로 게시 |
 |---|---|---|
 | 아무 role도 등록하지 않음 | Node direct 호출은 시작할 수 있다. 이 MeshNode를 송신 경로로 사용하는 RouteMesh ChannelName 호출은 시작할 수 없다. | 게시하지 않는다. |
@@ -253,19 +259,20 @@ set을 빈 값으로 게시한다. 이 set은 모든 local Channel 설정이 아
 <a id="physical-routemesh-diagram"></a>
 #### 4.2.1 RouteMesh의 물리 연결
 
-먼저 ChannelName을 제외하고 물리 연결만 보면 다음과 같다. 같은 MeshName의 MeshNode는
-각자의 ROUTER를 서로 직접 연결하여 하나의 full mesh를 구성한다.
+먼저 물리 연결만 보면 다음과 같다. 같은 MeshName의 MeshNode는 필요한 pair마다
+ROUTER를 직접 연결한다. 두 MeshNode가 모두 Object Client이고 양쪽 모두 RouteMesh
+Channel Server membership이 없을 때만 연결을 생략한다.
 
 ```mermaid
 flowchart LR
     subgraph GameMesh["game-mesh 물리 연결망"]
-        A["MeshNode<br/>MeshName = game-mesh<br/>RID = node-a"]
-        B["MeshNode<br/>MeshName = game-mesh<br/>RID = node-b"]
-        C["MeshNode<br/>MeshName = game-mesh<br/>RID = node-c"]
+        A["Object Server<br/>MeshName = game-mesh<br/>RID = node-a"]
+        B["Object Client<br/>MeshName = game-mesh<br/>RID = node-b"]
+        C["Object Client<br/>MeshName = game-mesh<br/>RID = node-c"]
 
         A <-->|물리 peer 연결| B
-        B <-->|물리 peer 연결| C
-        C <-->|물리 peer 연결| A
+        A <-->|물리 peer 연결| C
+        B ~~~ C
     end
 
     D["MeshNode<br/>MeshName = admin-mesh<br/>RID = node-d"]
@@ -275,15 +282,22 @@ flowchart LR
 `MeshName` 값이 모두 `game-mesh`다. 각 MeshNode의 transport identity인 RID는
 `node-a`, `node-b`, `node-c`로 서로 다르다.
 
+Object Client B와 C는 Object Server A에는 연결하지만 서로 연결하지 않는다. B나 C에
+RouteMesh Channel Server를 등록하면 object role은 Client로 유지하면서도 B와 C의
+연결이 필요해진다. RouteMesh Channel Server는 object placement role과 독립된
+application target이다. Object Client에는 application Node direct handler를
+등록할 수 없다.
+
 `RID = node-d`인 MeshNode는 MeshName이 `admin-mesh`이므로 앞의 세 MeshNode와
 자동으로 연결되지 않는다. 같은 process의 application은 `admin-mesh`를 지정하여
 이 MeshNode가 속한 RouteMesh에서 별도 호출을
 시작할 수 있지만 Framework가 `game-mesh` message를 이 MeshNode로 자동 중계하지는
 않는다.
 
-Node direct는 이 물리 연결망에서 동작한다. 예를 들어 `RID = node-a`인 MeshNode에서
-`game-mesh`와 `RID = node-b`를 지정하면 Framework는 두 MeshNode 사이의 기존 peer
-연결을 사용한다. Channel role과 Channel weight는 이 RID 선택에 관여하지 않는다.
+Node direct는 이 물리 연결망에서 Object Client가 아닌 target으로 보낼 때 동작한다.
+Object Client에는 application Node direct handler를 등록할 수 없다. 해당 RID를
+target으로 지정하면 Framework는 다른 node로 바꾸거나 Client pair 연결을 만들지 않고
+target 없음으로 끝낸다. Channel role과 Channel weight는 RID 선택에 관여하지 않는다.
 
 <a id="logical-channel-diagram"></a>
 #### 4.2.2 물리 RouteMesh 위에 구성하는 Channel 관계
@@ -418,10 +432,11 @@ Node direct handler는 MeshName과 RID가 만드는 별도 route 범위에 등�
 Channel handler와 Node direct handler는 같은 packet name을 사용해도 서로 충돌하지
 않는다.
 
-## 5. Full mesh와 peer 연결
+## 5. RouteMesh peer 연결
 
-같은 MeshName의 ready MeshNode는 서로 직접 연결되는 `full mesh`를 구성한다. Node가
-`N`개이면 각 MeshNode ROUTER가 관리하는 peer 연결은 최대 `N-1`개다.
+같은 MeshName의 ready MeshNode는 필요한 pair마다 직접 연결된다. Node가 `N`개이면
+각 MeshNode ROUTER가 관리하는 peer 연결은 최대 `N-1`개다. 양쪽 모두 Object
+Client이고 RouteMesh Channel Server membership도 없는 pair는 이 집합에서 제외한다.
 
 [4.2.1 RouteMesh 물리 연결 그림](#421-routemesh의-물리-연결)처럼 MeshName이 다른
 MeshNode와는 자동으로 연결되지 않는다. ChannelName을 추가해도 같은 MeshName의
@@ -433,13 +448,21 @@ Automatic RouteMesh의 두 MeshNode는 서로를 발견해도 양쪽이 동시�
 않는다. 두 MeshNode가 RID의 canonical byte order를 같은 방식으로 비교하고, RID가
 더 작은 MeshNode만 상대 endpoint로 연결을 시작한다.
 
-따라서 current MeshNode descriptor를 사용한 정상적인 automatic discovery에서는
-MeshNode 쌍마다 connect initiator가 하나다.
+Automatic discovery는 먼저 local과 remote descriptor의 Object role을 확인한다.
+두 role이 모두 `Client`이면 connection intent를 만들지 않는다. 그 밖의 pair에는
+RID 순서를 적용하므로 connect initiator가 하나다.
 
 Manual topology에서는 application이 한쪽 endpoint만 등록하거나 양쪽 endpoint를
 모두 등록할 수 있다. 양쪽이 동시에 연결을 시작하면 Framework는 handshake와
 admission에서 RID와 lifecycle generation이 같은 중복 연결을 확인하고 하나만 ready
 상태로 유지한다.
+
+Manual endpoint만으로는 connect 전에 remote Object role을 알 수 없을 수 있다.
+Framework는 handshake에서 양쪽 Object role이 모두 `Client`임을 확인하면 connection이
+필요하지 않다는 terminal admission 결과를 기록하고 ready 전에 socket을 닫는다.
+같은 endpoint와 configuration generation에는 background reconnect를 반복하지 않는다.
+Endpoint, expected RID 또는 configuration generation이 바뀌면 새 intent로 한 번
+다시 확인할 수 있다.
 
 Automatic에서도 연결 경합이나 오래된 discovery snapshot 때문에 중복 후보가 생기면
 같은 admission 규칙을 적용한다. 이 안전장치는 automatic initiator 선택을 대신하지
@@ -452,7 +475,8 @@ Peer handshake에서는 다음 정보를 확인한다.
 | MeshName과 RID | 같은 RouteMesh의 올바른 peer인지 확인한다. |
 | Lifecycle generation | 재시작 전의 오래된 연결과 현재 연결을 구분한다. |
 | Descriptor revision | 같은 lifecycle 안에서 더 최신 weight 정보를 선택한다. |
-| Server ChannelName set과 weight | 이 peer가 어떤 ChannelName의 target이 될 수 있는지 확인한다. ChannelName set은 비어 있을 수 있다. |
+| Object role | 두 node가 모두 Object Client인지 확인한다. |
+| Server ChannelName set과 weight | Object Client pair에도 연결이 필요한지 판단하고, 이 peer가 어떤 ChannelName의 target인지 확인한다. Set은 비어 있을 수 있고 weight `0` membership도 Server capability다. |
 | Endpoint와 security identity | 연결한 상대와 신뢰 설정이 등록 정보와 같은지 확인한다. |
 | Protocol version과 필수 capability | 서로 호환되는 runtime인지 확인한다. |
 
@@ -503,6 +527,13 @@ Peer endpoint를 얻는 방법은 automatic과 manual 두 가지다.
 연결 제거 규칙을 사용한다.
 Expected RID를 지정하면 실제 remote RID가 다를 때 연결에 실패한다. Expected RID를
 생략하면 handshake 결과로 remote identity를 확정한다.
+
+Manual peer 양쪽이 Object Client이고 RouteMesh Channel Server membership도 없으면
+설정 오류로 host 전체를 중단하지 않는다. 해당 connection intent만 `NotRequired`
+terminal로 끝내고 ready peer와 liveness 대상에서 제외한다. 같은 설정을 계속
+재시도하지 않는다.
+Monitoring에는 peer를 `NotRequired`로 남겨 정상적인 연결 생략임을 보여 준다.
+연결이 필요하지만 ready connection이 없는 `NotConnected`와 같은 장애로 집계하지 않는다.
 
 Manual mode는 일반 messaging과 `Shutdown`에 사용할 수 있지만 host `Relocate`의 무중단
 handoff에는 사용할 수 없다. Framework가 replacement endpoint를 모든 참여 host와 client에
@@ -624,7 +655,19 @@ Fanout 연결의 ready와 liveness는
   제공한다.
 - Server membership이 없는 MeshNode도 가짜 ChannelName 없이 Node direct와 Channel
   outbound를 사용할 수 있다.
-- Automatic RouteMesh에서는 RID가 더 작은 MeshNode만 pairwise connect를 시작한다.
+- Object Client에는 RouteMesh Channel Server를 등록할 수 있지만 application Node
+  direct handler는 등록할 수 없다.
+- Automatic RouteMesh는 양쪽 모두 Object Client이고 RouteMesh Channel Server
+  membership도 없는 pair를 descriptor로 먼저 제외한다. 나머지는 RID가 더 작은
+  MeshNode만 pairwise connect를 시작한다.
+- Manual RouteMesh도 handshake에서 같은 조건을 확인한 pair만 `NotRequired`로
+  끝내고 ready 전에 닫으며 같은 configuration generation에 재시도하지 않는다.
+- RouteMesh Channel Server membership은 weight가 `0`이어도 연결 필요성을 만든다.
+  Channel Client membership, ClientServer와 classic fanout은 이 판정에 포함하지
+  않는다.
+- Monitoring은 연결이 필요한 장애인 `NotConnected`와 정상적으로 생략한
+  `NotRequired`를 구분한다. `NotRequired`는 ready·liveness·health failure 집계에서
+  제외한다.
 - Manual 양방향 connect와 automatic의 연결 경합·오래된 후보는 같은 handshake와
   duplicate-pipe admission을 거쳐 ready 연결 하나만 남긴다.
 - Channel weight는 `0`, 기본값 `100`과 상한 `10000`을 허용하고 `-1`과 `10001`은

@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/../redis-common.sh"
 RUN_DIR="$(mktemp -d)"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
-BINGO_LOG_DIR="${RUN_DIR}/flow-logs"
+BINGO_LOG_DIR="${RUN_DIR}/sample-logs"
 mkdir -p "${LOG_DIR}" "${BINGO_LOG_DIR}"
 
 PIDS=()
@@ -64,7 +64,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 8:
+    while len(sockets) < 11:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -91,6 +91,9 @@ BINGO_SESSION_A_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
 BINGO_SESSION_B_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
 BINGO_SESSION_A_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
 BINGO_SESSION_B_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
+BINGO_API_A_MATCHMAKING_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
+BINGO_API_B_MATCHMAKING_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
+BINGO_MATCHMAKING_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
 API_A_CONFIG_FILE="${RUN_DIR}/appsettings.api-a.json"
 API_B_CONFIG_FILE="${RUN_DIR}/appsettings.api-b.json"
 PLAY_A_CONFIG_FILE="${RUN_DIR}/appsettings.play-a.json"
@@ -98,6 +101,7 @@ PLAY_B_CONFIG_FILE="${RUN_DIR}/appsettings.play-b.json"
 SESSION_A_CONFIG_FILE="${RUN_DIR}/appsettings.session-a.json"
 SESSION_B_CONFIG_FILE="${RUN_DIR}/appsettings.session-b.json"
 CLIENT_CONFIG_FILE="${RUN_DIR}/appsettings.client.json"
+MATCHMAKING_CONFIG_FILE="${RUN_DIR}/appsettings.matchmaking.json"
 
 endpoint_host() {
   local endpoint="$1"
@@ -148,7 +152,7 @@ REDIS_CONTAINER="zlink-bingo-dotnet-redis-${RUN_ID}"
 zlink_redis_start_scoped_assign REDIS_CONTAINER BINGO_REDIS_ENDPOINT "zlink-bingo-dotnet-redis" redis:7.2-alpine
 wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 
-python3 - "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${PLAY_A_CONFIG_FILE}" "${PLAY_B_CONFIG_FILE}" "${SESSION_A_CONFIG_FILE}" "${SESSION_B_CONFIG_FILE}" "${CLIENT_CONFIG_FILE}" <<PY
+python3 - "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${PLAY_A_CONFIG_FILE}" "${PLAY_B_CONFIG_FILE}" "${SESSION_A_CONFIG_FILE}" "${SESSION_B_CONFIG_FILE}" "${MATCHMAKING_CONFIG_FILE}" "${CLIENT_CONFIG_FILE}" <<PY
 import json
 import sys
 
@@ -158,14 +162,17 @@ common = {
     "RedisKeyPrefix": "${BINGO_REDIS_KEY_PREFIX}",
 }
 roles = [
-    {**common, "NodeName": "a", "MeshEndpoint": "${BINGO_API_A_MESH_ENDPOINT}"},
-    {**common, "NodeName": "b", "MeshEndpoint": "${BINGO_API_B_MESH_ENDPOINT}"},
+    {**common, "NodeName": "a", "MeshEndpoint": "${BINGO_API_A_MESH_ENDPOINT}",
+     "MatchmakingMeshEndpoint": "${BINGO_API_A_MATCHMAKING_ENDPOINT}"},
+    {**common, "NodeName": "b", "MeshEndpoint": "${BINGO_API_B_MESH_ENDPOINT}",
+     "MatchmakingMeshEndpoint": "${BINGO_API_B_MATCHMAKING_ENDPOINT}"},
     {**common, "NodeName": "a", "MeshEndpoint": "${BINGO_PLAY_A_MESH_ENDPOINT}"},
     {**common, "NodeName": "b", "MeshEndpoint": "${BINGO_PLAY_B_MESH_ENDPOINT}"},
     {**common, "NodeName": "a", "MeshEndpoint": "${BINGO_SESSION_A_MESH_ENDPOINT}",
      "StreamEndpoint": "${BINGO_SESSION_A_STREAM_ENDPOINT}"},
     {**common, "NodeName": "b", "MeshEndpoint": "${BINGO_SESSION_B_MESH_ENDPOINT}",
      "StreamEndpoint": "${BINGO_SESSION_B_STREAM_ENDPOINT}"},
+    {**common, "NodeName": "matchmaking", "MeshEndpoint": "${BINGO_MATCHMAKING_MESH_ENDPOINT}"},
 ]
 for path, role in zip(sys.argv[1:-1], roles):
     with open(path, "w", encoding="utf-8") as output:
@@ -194,15 +201,22 @@ start_server() {
 
 dotnet build "${SCRIPT_DIR}/Bingo.csproj" --maxcpucount:1
 
-start_server play-a "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --config "${PLAY_A_CONFIG_FILE}"
-wait_port play-a-mesh "${BINGO_PLAY_A_MESH_ENDPOINT}"
+# Start B before A. The sample must not depend on the process named "a" becoming
+# Ready first; Framework placement selects from the Ready owners it discovers.
 start_server play-b "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --config "${PLAY_B_CONFIG_FILE}"
 wait_port play-b-mesh "${BINGO_PLAY_B_MESH_ENDPOINT}"
+start_server play-a "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --config "${PLAY_A_CONFIG_FILE}"
+wait_port play-a-mesh "${BINGO_PLAY_A_MESH_ENDPOINT}"
+
+start_server matchmaking "${SCRIPT_DIR}/Server/Matchmaking/Bingo.Server.Matchmaking.csproj" --config "${MATCHMAKING_CONFIG_FILE}"
+wait_port matchmaking-mesh "${BINGO_MATCHMAKING_MESH_ENDPOINT}"
 
 start_server api-a "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --config "${API_A_CONFIG_FILE}"
 wait_port api-a-mesh "${BINGO_API_A_MESH_ENDPOINT}"
+wait_port api-a-matchmaking "${BINGO_API_A_MATCHMAKING_ENDPOINT}"
 start_server api-b "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --config "${API_B_CONFIG_FILE}"
 wait_port api-b-mesh "${BINGO_API_B_MESH_ENDPOINT}"
+wait_port api-b-matchmaking "${BINGO_API_B_MATCHMAKING_ENDPOINT}"
 
 start_server session-a "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --config "${SESSION_A_CONFIG_FILE}"
 wait_port session-a-mesh "${BINGO_SESSION_A_MESH_ENDPOINT}"
@@ -249,7 +263,12 @@ require_log_count 1 "entry spot: actor destroy completed\\. actor=player-2" "${P
 require_log_count 0 "entry spot: actor destroy completed\\. actor=observer" "${PLAY_LOGS[@]}"
 require_log_count 2 "bingo room: player record loaded\\." "${PLAY_LOGS[@]}"
 require_log_count 2 "bingo room: result reported\\." "${PLAY_LOGS[@]}"
-grep -Rq "message flow" "${BINGO_LOG_DIR}"
 grep -Eq "zlink metric name=zlink\.stream\.connections\.(active|opened)" "${LOG_DIR}/session-a.log"
 grep -Eq "zlink metric name=zlink\.spot\.(count|queue\.depth)" "${LOG_DIR}/play-a.log"
+# Reaching this marker proves the six placement checks in the common sample
+# contract through one owner-neutral run: no fixed NodeRid exists in the generated
+# configuration, B started before A, Actor and room creation completed through the
+# managers, global ActorId/SpotId routing remained usable, and the level-bucket
+# Instance Spot returned the same reservation to both players.
+echo "bingo-placement=completed"
 RUN_SUCCEEDED=1

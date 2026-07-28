@@ -196,9 +196,9 @@ internal sealed class ZLinkSpotLocationLifecycle(
             if (result is ZLinkAuthorityCompareExchangeResult.Conflict(
                     ZLinkAuthorityReadResult.Found))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotGenerationStale,
+                    ZLinkFrameworkErrorKind.InvalidOperation,
                     $"Spot '{spotId}' authority is owned by another runtime.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             if (result is ZLinkAuthorityCompareExchangeResult.GenerationExhausted)
                 throw new ZLinkAuthorityGenerationExhaustedException(
                     $"removing Spot '{spotId}' authority");
@@ -219,9 +219,9 @@ internal sealed class ZLinkSpotLocationLifecycle(
         if (spotId is null) return null;
         lock (_gate)
         {
-            return _spots.Remove(spotId, out var spot)
-                ? spot.Deactivate
-                : null;
+            if (!_spots.Remove(spotId, out var spot))
+                return null;
+            return spot.Deactivate;
         }
     }
 

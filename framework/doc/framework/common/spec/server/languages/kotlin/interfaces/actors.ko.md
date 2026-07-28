@@ -18,14 +18,14 @@ bind할 때만 사용한다. `objectGeneration`은 `1..Long.MAX_VALUE`이고 JSO
 
 `ZLinkKotlinActorManager.create(actorId, actorType)`와 `getOrCreate(actorId, actorType)`는 Kotlin 전용
 single-use wrapper를 반환한다. `inMesh`, `request`, `timeout`을 설정한 뒤 terminal `await()` 또는
-`yield()`를 한 번만 호출한다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, 두 번째 terminal은
-`AlreadySubmitted`다. `inMesh`를 생략했을 때 object role Mesh가 하나면 자동 선택하고, 0개면
-`ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`다. 지정한 Mesh가 없으면 `MeshNotFound`다.
+`yield()`를 한 번만 호출한다. 같은 option을 두 번 설정하거나 terminal을 두 번 호출하면
+`InvalidOperation`이다. `inMesh`를 생략했을 때 object role Mesh가 하나면 자동 선택하고, 0개면
+`NotConfigured`, 둘 이상이면 `InvalidOperation`이다. 지정한 Mesh가 없으면 `NotFound`다.
 Target RID나 predicate callback을 받는 placement API는 제공하지 않는다.
 
 Create와 GetOrCreate의 `await()`·`yield()`는 모두 `ZLinkActorCreateResult`를 반환한다. `yield()`는
 `SPOT_WIDE` User Spot과 Instance Spot application callback에서만 현재 Spot gate를 반납한다. 다른 문맥에서는
-reservation, factory 실행과 queue 변경 전에 `InvalidConfiguration`으로 끝낸다. Actor send는 one-way
+reservation, factory 실행과 queue 변경 전에 `InvalidOperation`으로 끝낸다. Actor send는 one-way
 `await(): Unit`만 제공하고 `yield()`를 제공하지 않는다.
 
 Actor type은 UTF-8 1..255 bytes의 stable exact value다. `Create`에서 Ready object가 있으면
@@ -46,7 +46,7 @@ Opaque Java `byte[]`는 Kotlin `ByteArray`로 보이며 `capture`와 `restore`�
 `CompletionStage`다. 별도 suspending adapter, `TState`, `stateContractId`, state class와 `ZLinkMessage` 기반
 relocation API를 만들지 않는다. Snapshot policy는
 `ZLinkRelocationPolicy.snapshot(ActorAdapter::class.java)`로 구성하며 factory와 adapter target의 일치는 socket
-bind 전에 검증한다. Java interop에서 null adapter class를 전달한 policy도 bind 전에 `InvalidConfiguration`으로
+bind 전에 검증한다. Java interop에서 null adapter class를 전달한 policy도 bind 전에 startup configuration error로
 거부한다.
 
 [Snapshot](../../../../01-glossary.ko.md#relocation-policy) Actor adapter는 maintenance cross-node materialization, remote User·Entry Spot join과 whole [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
@@ -230,7 +230,7 @@ Actor Join에는 coroutine terminal을 추가하지 않는다. Java exact interf
 실행 중 한 번 호출하며 Spot gate나 Actor FIFO claim을 반납하지 않는다. Request·worker·create
 wrapper의 `yield()`는 `SPOT_WIDE` User Spot member Actor에서 Actor FIFO claim을 유지하고 User Spot gate만
 반환한다. Entry Actor와 `PER_ACTOR` Actor에서는 underlying Java operation submission 전에
-`InvalidConfiguration`으로 완료한다. 같은 Actor 자신에게 보내는 awaited request도 coroutine을 suspend하거나
+`InvalidOperation`으로 완료한다. 같은 Actor 자신에게 보내는 awaited request도 coroutine을 suspend하거나
 queue를 변경하기 전에 거부한다.
 `SPOT_WIDE` member Actor가 현재 User Spot을 떠나는 Join도 `defer()`로 등록하고 handler의 마지막
 continuation 뒤 실행한다. Callback을 inline 또는 재진입 방식으로 호출하지 않는다.

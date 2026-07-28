@@ -79,6 +79,9 @@ internal static class ZLinkSpotStartupValidator
         public IZLinkWorkerCall<TResult> RunIoWorker<TResult>(
             Func<CancellationToken, ValueTask<TResult>> work) => throw ConfigurationOnly();
 
+        public IZLinkSpotRelocationReadyCall RelocationReady() =>
+            throw ConfigurationOnly();
+
         public ValueTask LeaveActorAsync(
             IZLinkActor actor,
             CancellationToken cancellationToken = default) => throw ConfigurationOnly();

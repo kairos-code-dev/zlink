@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Runtime;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol;
@@ -15,15 +16,14 @@ public sealed class StreamFlowEndToEndTests
     [Fact]
     public async Task Connector_Request_Server_Log_Reply_And_Callback_Share_One_Flow()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"zlink-connector-server-flow-{Guid.NewGuid():N}");
-        var logPath = Path.Combine(root, "flow.log");
         var port = FindFreeTcpPort();
         var builder = Host.CreateApplicationBuilder();
+        var flowLogs = new FlowLoggerProvider();
+        builder.Logging.AddProvider(flowLogs);
         builder.Services.AddZLinkFramework(options =>
         {
-            options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(logPath);
+            options.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddStreamNode("flow.stream")
                 .Bind($"tcp://127.0.0.1:{port}")
                 .AddSession<FlowSession>();
@@ -64,7 +64,7 @@ public sealed class StreamFlowEndToEndTests
             Assert.Equal(ZlinkStreamFlowOrigin.Application, callback.Origin);
             Assert.Null(ZlinkStreamFlowContext.Current);
 
-            var lines = File.ReadAllLines(logPath)
+            var lines = flowLogs.Messages
                 .Where(line => line.Contains($"flow={callback.FlowId}", StringComparison.Ordinal))
                 .ToArray();
             Assert.Equal(2, lines.Length);
@@ -73,7 +73,7 @@ public sealed class StreamFlowEndToEndTests
             var replied = Assert.Single(lines.Where(line =>
                 line.Contains("phase=replied", StringComparison.Ordinal)));
             Assert.Contains($"packet={nameof(FlowRequest)}", received, StringComparison.Ordinal);
-            Assert.DoesNotContain("packet=", replied, StringComparison.Ordinal);
+            Assert.Equal(string.Empty, ReadToken(replied, "packet"));
             Assert.Contains($"flow={callback.FlowId}", received, StringComparison.Ordinal);
             Assert.Contains($"flow={callback.FlowId}", replied, StringComparison.Ordinal);
             Assert.Contains("origin=application", received, StringComparison.Ordinal);
@@ -85,10 +85,7 @@ public sealed class StreamFlowEndToEndTests
             await connector.Close.Async();
             await host.StopAsync();
         }
-        finally
-        {
-            if (Directory.Exists(root)) Directory.Delete(root, true);
-        }
+        finally { }
     }
 
     private static string? ReadToken(string line, string key)
@@ -108,6 +105,44 @@ public sealed class StreamFlowEndToEndTests
     private sealed record FlowRequest(string Value);
 
     private sealed record FlowReply(string Value);
+
+    private sealed class FlowLoggerProvider : ILoggerProvider
+    {
+        private readonly object _gate = new();
+        private readonly List<string> _messages = [];
+
+        public IReadOnlyList<string> Messages
+        {
+            get
+            {
+                lock (_gate) return _messages.ToArray();
+            }
+        }
+
+        public ILogger CreateLogger(string categoryName) =>
+            categoryName == ZLinkMessageFlowTracer.LoggerCategory
+                ? new FlowLogger(this)
+                : Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+
+        public void Dispose() { }
+
+        private sealed class FlowLogger(FlowLoggerProvider owner) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                lock (owner._gate) owner._messages.Add(formatter(state, exception));
+            }
+        }
+    }
 
     private sealed class FlowSession(IZLinkSessionContext context) : IZLinkSession
     {

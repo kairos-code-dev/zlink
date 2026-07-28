@@ -27,30 +27,35 @@ public static class ApiServerHostFactory
             builder.Logging,
             logDirectory,
             traceLabel);
+        builder.Services.AddSingleton(configuration);
         builder.Services.AddSingleton<BingoPlayerRecordStore>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(configuration.RedisEndpoint)
-                .SetKeyPrefix(configuration.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = configuration.RedisEndpoint;
+                redis.KeyPrefix = configuration.RedisKeyPrefix;
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(logDirectory, traceLabel))
-                .TraceLabel(traceLabel);
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
-            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+            options.AddRouteMesh(SampleNames.PlayMeshName)
                 .SetRoutingIdPrefix("api")
-                .Listen(node.MeshEndpoint);
-            mesh.Channel(SampleNames.ApiChannel).Server()
+                .Listen(node.PlayMeshEndpoint)
+                .Objects().Client();
+            options.AddRouteMesh(SampleNames.MatchmakingMeshName)
+                .SetRoutingIdPrefix("api-matchmaking")
+                .Listen(node.MatchmakingMeshEndpoint)
+                .Objects().Client();
+            options.AddClientServerChannel(SampleNames.ApiChannel).Server()
+                .Listen()
                 .AddHandlerGroup("api");
-            mesh.Channel(SampleNames.PlayChannel).Client();
-            mesh.Channel(SampleNames.RoomChannel).Client();
         });
-        builder.Services.AddSingleton(new BingoRoutingIdReport(
+        builder.Services.AddSingleton(new BingoMeshStatusReport(
             "api",
-            SampleNames.MeshName));
-        builder.Services.AddHostedService<BingoRoutingIdReporter>();
+            SampleNames.PlayMeshName));
+        builder.Services.AddHostedService<BingoMeshStatusReporter>();
         return builder.Build();
     }
 }

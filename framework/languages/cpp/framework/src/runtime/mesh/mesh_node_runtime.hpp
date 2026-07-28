@@ -42,6 +42,8 @@ struct mesh_node_builder_state_t
     std::string mesh_name;
     std::string listen_endpoint;
     std::optional<zlink::routing_id_t> routing_id;
+    object_role_t object_role = object_role_t::server;
+    bool has_node_direct_handler = false;
     int placement_weight = 100;
     std::int32_t actor_limit = 10000;
     std::int32_t spot_limit = 128;
@@ -265,6 +267,9 @@ class mesh_node_runtime_t
       const host::operation_id_t &operation,
       const actor_ref_t &actor,
       std::chrono::milliseconds timeout);
+    std::optional<zlink::submit_result_t>
+    classify_node_direct_target (
+      const zlink::routing_id_t &target) const;
     std::shared_ptr<mesh_node_builder_state_t> _state;
     serializer_registry_t *_serializers = nullptr;
     std::shared_ptr<location_store_t> _user_spot_store;

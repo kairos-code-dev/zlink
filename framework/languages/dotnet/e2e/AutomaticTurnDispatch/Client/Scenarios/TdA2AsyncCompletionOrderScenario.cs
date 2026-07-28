@@ -10,9 +10,9 @@ internal static class TdA2AsyncCompletionOrderScenario
         const string scenarioId = "TD-A2";
         var spot = await context.SpotAsync();
         var requestId = ExecutionTurnScenarioContext.NewId(scenarioId);
-        context.SendSpot(new AwaitMsg(requestId, 300, scenarioId, "async"), spot);
+        await context.SendSpotAsync(new AwaitMsg(requestId, 300, scenarioId, "async"), spot);
         await context.EvidenceAsync(requestId, "await-held");
-        context.SendSpot(new ProbeMsg(requestId, "interleave-probe"), spot);
+        await context.SendSpotAsync(new ProbeMsg(requestId, "interleave-probe"), spot);
         await context.EvidenceAsync(requestId, "async-completed");
         var evidence = await context.EvidenceAsync(requestId, "probe-completed");
         EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,

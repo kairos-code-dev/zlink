@@ -1,3 +1,4 @@
+// Verifies bulk Spot relocation throughput, interruption, and service continuity bounds.
 using System.Diagnostics;
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
@@ -91,7 +92,9 @@ internal static class StI3BulkSpotRelocationScenario
                     instanceSpot ? 64 * 1024 : 1024 * 1024,
                     instanceSpot,
                     MaxConcurrency: setupConcurrency,
-                    ActorsPerSpot: actorsPerSpot));
+                    ActorsPerSpot: actorsPerSpot,
+                    ActorApplicationStateBytes:
+                        instanceSpot ? 0 : 64 * 1024));
         }
         finally
         {
@@ -303,6 +306,11 @@ internal static class StI3BulkSpotRelocationScenario
             + $" completed={terminalSummary.CompletedUnits}"
             + $" verified_participants="
             + terminalSummary.VerifiedParticipants
+            + $" max_service_interruption_ms="
+            + terminalSummary.MaxServiceInterruptionMilliseconds
+                .ToString("F3")
+            + $" service_unit_slo_missed="
+            + terminalSummary.ServiceUnitSloMissed
             + $" safe_aborted={terminalSummary.SafeAborted}"
             + $" blocked={terminalSummary.Blocked}"
             + $" elapsed_seconds={elapsed:F3}"
@@ -321,7 +329,10 @@ internal static class StI3BulkSpotRelocationScenario
             var rateLimit = instanceSpot ? 8 : 1;
             ZlinkStreamAssert.Ensure(
                 elapsed <= elapsedLimit
-                && unitsPerSecond >= rateLimit,
+                && unitsPerSecond >= rateLimit
+                && terminalSummary.ServiceUnitSloMissed == 0
+                && terminalSummary.MaxServiceInterruptionMilliseconds
+                   <= 1_000,
                 $"ST-I3 {label} workload_slo_missed.");
         }
     }

@@ -8,7 +8,7 @@ namespace RegistrationCodec.Server.JsonOnlyPeer.Handlers;
 internal sealed class JsonEchoRequestHandler(EvidenceStore evidence)
     : IZLinkRequestHandler<JsonEchoReq, EchoRes>
 {
-    public ValueTask<EchoRes> HandleAsync(JsonEchoReq request, ZLinkRequestContext context,
+    public ValueTask<EchoRes> HandleAsync(JsonEchoReq request, IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -20,7 +20,7 @@ internal sealed class JsonEchoRequestHandler(EvidenceStore evidence)
 internal sealed class JsonEchoCommandHandler(EvidenceStore evidence)
     : IZLinkSendHandler<JsonEchoMsg>
 {
-    public ValueTask HandleAsync(JsonEchoMsg message, ZLinkSendContext context, CancellationToken cancellationToken)
+    public ValueTask HandleAsync(JsonEchoMsg message, IZLinkMessageContext context, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add(
@@ -32,7 +32,7 @@ internal sealed class JsonEchoCommandHandler(EvidenceStore evidence)
 internal sealed class ProtobufEchoRequestHandler(EvidenceStore evidence)
     : IZLinkRequestHandler<StringValue, StringValue>
 {
-    public ValueTask<StringValue> HandleAsync(StringValue request, ZLinkRequestContext context,
+    public ValueTask<StringValue> HandleAsync(StringValue request, IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -44,7 +44,7 @@ internal sealed class ProtobufEchoRequestHandler(EvidenceStore evidence)
 internal sealed class ProtobufEchoCommandHandler(EvidenceStore evidence)
     : IZLinkSendHandler<StringValue>
 {
-    public ValueTask HandleAsync(StringValue message, ZLinkSendContext context, CancellationToken cancellationToken)
+    public ValueTask HandleAsync(StringValue message, IZLinkMessageContext context, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"codec-command|codec=protobuf|value={message.Value}|content={context.ContentType}");
@@ -55,7 +55,7 @@ internal sealed class ProtobufEchoCommandHandler(EvidenceStore evidence)
 internal sealed class MessagePackEchoRequestHandler(EvidenceStore evidence)
     : IZLinkRequestHandler<PackedEchoReq, PackedEchoReq>
 {
-    public ValueTask<PackedEchoReq> HandleAsync(PackedEchoReq request, ZLinkRequestContext context,
+    public ValueTask<PackedEchoReq> HandleAsync(PackedEchoReq request, IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -68,7 +68,7 @@ internal sealed class MessagePackEchoRequestHandler(EvidenceStore evidence)
 internal sealed class MessagePackEchoCommandHandler(EvidenceStore evidence)
     : IZLinkSendHandler<PackedEchoMsg>
 {
-    public ValueTask HandleAsync(PackedEchoMsg message, ZLinkSendContext context,
+    public ValueTask HandleAsync(PackedEchoMsg message, IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

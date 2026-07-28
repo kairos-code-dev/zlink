@@ -40,9 +40,8 @@ internal static class MonC1DispatchFailureScenario
                 $"/runtime/snapshot/{RuntimeMonitoringNames.SpotChannel}")
             .Async<MeshRuntimeSnapshotRes>()).Body;
         ZlinkStreamAssert.Ensure(
-            before.Claims.ApplicationActive
-            && before.Claims.InfrastructureActive,
-            "MON-C1 snapshot did not keep application and infrastructure claims distinct.");
+            before.IsReady && before.Placement.IsAvailable,
+            "MON-C1 RouteMesh readiness regressed while an application handler was blocked.");
         ZlinkStreamAssert.Ensure(
             !blockedRequest.IsCompleted,
             "MON-C1 application gate did not hold the request handler.");
@@ -78,9 +77,8 @@ internal static class MonC1DispatchFailureScenario
                 $"/runtime/snapshot/{RuntimeMonitoringNames.SpotChannel}")
             .Async<MeshRuntimeSnapshotRes>()).Body;
         ZlinkStreamAssert.Ensure(
-            active.Claims.ApplicationActive
-            && active.Claims.InfrastructureActive,
-            "MON-C1 infrastructure claim did not progress with the application gate held.");
+            active.IsReady && active.Sequence >= before.Sequence,
+            "MON-C1 runtime status did not progress with the application gate held.");
 
         var beforeRelease = await WaitForObserverAsync(
             serviceA,

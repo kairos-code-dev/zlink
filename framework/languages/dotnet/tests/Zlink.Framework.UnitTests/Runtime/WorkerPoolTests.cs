@@ -127,6 +127,35 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
+    public async Task RunCpuWorker_PreCanceledToken_DoesNotAdmitWork_AndReturnsCanceledTask()
+    {
+        using var pool = CreatePool(1);
+        await using var queue = CreateQueue();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var sideEffects = 0;
+
+        var pending = CreateCall(
+                pool,
+                _ =>
+                {
+                    Interlocked.Increment(ref sideEffects);
+                    return 1;
+                },
+                queue)
+            .Async(cancellation.Token)
+            .AsTask();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        await Task.Delay(100);
+
+        Assert.True(pending.IsCanceled);
+        Assert.Equal(0, Volatile.Read(ref sideEffects));
+        Assert.Equal(0, pool.QueueLength);
+        Assert.Equal(0, pool.ThreadCount);
+    }
+
+    [Fact]
     public async Task RunCpuWorker_Queue_Full_Fails_Fast_With_WorkerQueueFull()
     {
         using var pool = CreatePool(1, 1);
@@ -154,8 +183,8 @@ public sealed class WorkerPoolTests
             var overflow = CreateCall(pool, _ => 0, queue).Async();
             var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
                 await overflow.AsTask().WaitAsync(TimeSpan.FromSeconds(5)));
-            Assert.Equal(ZLinkFrameworkErrorKind.WorkerQueueFull, error.Kind);
-            Assert.True(error.IsRetriable);
+            Assert.Equal(ZLinkFrameworkErrorKind.CapacityExceeded, error.Kind);
+            Assert.True(error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry);
         }
         finally
         {
@@ -182,7 +211,7 @@ public sealed class WorkerPoolTests
         var observed = await Assert.ThrowsAsync<ZLinkFrameworkException>(() =>
             pending.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(
-            ZLinkFrameworkErrorKind.WorkerTimedOut,
+            ZLinkFrameworkErrorKind.DeadlineExceeded,
             observed.Kind);
 
         // Let the abandoned work finish; its late completion must not change
@@ -222,8 +251,8 @@ public sealed class WorkerPoolTests
         var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await call.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5)));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.WorkerFailed, error.Kind);
-        Assert.False(error.IsRetriable);
+        Assert.Equal(ZLinkFrameworkErrorKind.InternalFailure, error.Kind);
+        Assert.False(error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry);
         Assert.IsType<InvalidOperationException>(error.InnerException);
     }
 

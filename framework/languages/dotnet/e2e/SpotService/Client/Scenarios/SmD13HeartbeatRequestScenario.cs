@@ -31,7 +31,7 @@ internal static class SmD13HeartbeatRequestScenario
             return ValueTask.CompletedTask;
         };
         await stream.Connect.Async();
-        await stream.Request(new AuthReq("actor-sm-d13", "heartbeat", "play-a"))
+        await stream.Request(new AuthReq("actor-sm-d13", "heartbeat"))
             .PacketName("AuthReq").Async<AuthRes>();
         var alive = await stream.Request(new ActorPingReq("heartbeat-alive"))
             .PacketName("ActorPingReq").Async<ActorPingRes>();

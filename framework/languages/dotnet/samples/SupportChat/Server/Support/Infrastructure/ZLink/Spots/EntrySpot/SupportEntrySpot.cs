@@ -13,26 +13,23 @@ internal sealed class SupportEntrySpot(
     IZLinkEntrySpotContext context,
     SupportActorDirectory directory,
     AgentAssignmentService assignment,
-    IZLinkActorManager actorManager,
     ILogger<SupportEntrySpot> logger) : IZLinkEntrySpot<SupportUserActor>
 {
     public IZLinkEntrySpotContext Context { get; } = context;
 
-    public async ValueTask OnCreateActorAsync(
+    public ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
         SupportUserActor actor,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
-        var request = createRequest.Decode<EnsureSupportUserActorReq>();
+        var request = createRequest.Decode<SupportUserActorCreateReq>();
         actor.SetIdentity(request.DisplayName, request.Role, request.ParticipantId);
-        var actorRef = await actorManager.FindAsync(actor.ActorId, cancellationToken)
-                       ?? throw new InvalidOperationException(
-                           $"Support actor ref is not available. actor={actor.ActorId}");
-        directory.AddOrUpdate(actor, actorRef);
+        directory.AddOrUpdate(actor);
         logger.LogInformation(
             "support entry: actor created. actor={ActorId}, role={Role}",
             actor.ActorId,
             actor.Role);
+        return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(

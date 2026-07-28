@@ -43,6 +43,7 @@ weight를 다르게 준 provider를 따로 시작한다(공유 provider는 기�
 | provider (api 노드) | 2 (`api-a`, `api-b`) | `AddRouteMesh(meshName)`으로 MeshNode를 만들고 profile `ChannelName` membership에 request handler(`ProfileRequest`)·send handler(`ProfileCommand`)를 등록한다. RID direct route handler(`ScenarioRoutePing`)는 같은 MeshNode에 등록한다. Automatic routing ID는 역할 prefix `api-a`·`api-b` 뒤에 lifecycle별 lowercase canonical UUID v4를 붙여 발급하며 application이 exact RID를 고정하지 않는다. Dispatch-error observer로 evidence를 기록하며 테스트용 `/evidence`·`/health` HTTP endpoint를 함께 제공한다. |
 | object authority 노드 | 2 (`profile-object`, `workflow-object`) | 각각 `profile`·`workflow` Mesh의 Object Server다. 두 노드는 같은 stable Actor type `cfg1.actor`과 User Spot type `cfg1.user-spot` factory를 `Disabled` policy로 등록하고 placement weight `100`, Actor total·Spot total limit `128`과 activation concurrency `32`를 사용한다. RM-A7의 manager call과 direct request를 시작할 Client capability는 Server role에 포함된다. |
 | consumer | 시나리오별 | Location Store를 사용하는 automatic topology에서는 같은 MeshName의 descriptor에서 peer를 확인하고 RID prefix만 설정한다. 두 MeshNode 중 RID가 canonical byte order에서 더 작은 쪽만 connect를 시작한다. Manual topology에서는 role `None` MeshNode에 fixed RID와 peer endpoint를 언어별 peer-connection interface로 등록한다. Application 구성에 따라 한쪽 또는 양쪽에서 connect할 수 있으며, 양쪽에서 시작한 중복 후보는 admission이 하나의 ready 연결로 수렴시킨다. |
+| Object Client pair | 2 (`client-a`, `client-b`, RM-A3 전용) | 같은 MeshName과 Location Store를 사용한다. 기본 반복은 `Objects().Client()`와 outbound Channel Client만 등록한다. 대조 반복은 한쪽에 RouteMesh Channel Server를 weight `100`과 `0`으로 각각 등록한다. Automatic 반복과 runner가 endpoint를 지정한 Manual 반복을 분리한다. Application Node direct handler와 object factory는 등록하지 않는다. |
 
 각 provider는 MeshName, RID, lifecycle generation, ROUTER endpoint와 `ChannelWeights`를 포함한
 MeshNode descriptor를 framework lifecycle을 통해 store에 게시한다. consumer는 MeshName과
@@ -124,6 +125,49 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 > Spot direct는 global Spot ID를 받고 current owner를 Location Store에서 resolve한다. `SpotRef`는
 > create·find·exact close에 사용하는 immutable snapshot이며 messaging target은 아니다.
 
+#### RM-A3 Object Client pair의 연결 필요 판정
+
+우선순위: `P0`
+
+**검증 질문:** Object Client 두 node의 RouteMesh Server capability를 기준으로 필요한 connection만
+만들고 불필요한 reconnect loop를 피하는가.
+
+- 절차:
+  1. Automatic 반복에서 `client-a`와 `client-b`를 같은 MeshName과 Location Store로
+     시작한다. 두 descriptor가 보인 뒤 20초 동안 상태와 connect evidence를 수집한다.
+  2. Manual 반복에서 runner가 두 endpoint를 서로 등록한다. 양쪽 connect를 동시에
+     시작하고 handshake 뒤 20초 동안 상태와 retry evidence를 수집한다.
+  3. Automatic과 Manual 반복에서 한쪽 Object Client에 RouteMesh `Channel(...).Server()`를
+     추가하고 weight `100`으로 시작한다. 같은 구성을 weight `0`으로 다시 실행한다.
+  4. 양쪽에 Channel Client membership만 등록한 반복을 실행한다.
+  5. 같은 두 host에 independent ClientServer와 classic fanout registration만 추가한 반복을
+     실행한다.
+  6. Object Client에 application Node direct handler를 등록하는 negative host를 시작하고,
+     별도 정상 Object Client RID를 Node direct target으로 지정한다.
+- 검증:
+  - Automatic 반복은 두 descriptor를 발견하지만 connect attempt, ready peer와
+    liveness probe가 모두 0이다.
+  - Manual 반복은 각 intent가 최대 한 번 handshake를 시작하고 양쪽 Object role을
+    확인한 뒤 `NotRequired` terminal로 끝난다. Ready 전 socket을 닫고 같은 endpoint와
+    configuration generation에 reconnect하지 않는다.
+  - Public RouteMesh status는 이 peer를 `NotRequired`로 표시한다.
+    `ReadyPeerCount`, liveness probe·failure와 topology health failure에는 포함하지 않는다.
+  - 어느 한쪽에라도 RouteMesh Channel Server membership이 있으면 두 Object Client는 ready
+    connection 하나를 유지한다. Weight `0`도 Server capability이므로 connection을 생략하지 않는다.
+    Weight `0` Server는 새 Channel operation의 선택 후보에서만 제외한다.
+  - Channel Client membership만 있는 반복은 기본 반복과 같이 `NotRequired`다.
+  - ClientServer와 classic fanout registration은 RouteMesh 연결 필요 판정을 바꾸지 않는다.
+  - 연결이 필요한 대조군의 connection을 끊으면 같은 status가 `NotConnected`가 된다.
+    `NotRequired`로 바뀌지 않으며 topology와 liveness 장애 집계에 반영된다.
+  - Object Client와 RouteMesh Channel Server 조합은 startup에 성공한다.
+  - Object Client의 application Node direct handler 등록은 socket bind 전에
+    configuration error로 실패한다.
+  - Node direct 호출은 다른 RID로 바뀌지 않고 `NotFound`로 끝난다.
+  - 대조군 Object Client↔Object Server와 Object Server↔Object Server는 기존 RID
+    initiator 규칙으로 ready connection 하나를 유지한다.
+- 세부 동작: Object Client pair의 RouteMesh Server capability 판정, automatic 사전 제외,
+  manual terminal admission, retry 억제와 Node direct target 제한.
+
 #### RM-A4 새 RID·endpoint replacement
 
 우선순위: `P0`
@@ -144,7 +188,7 @@ connection을 사용하고, consumer가 이전 connection으로 계속 요청하
   lowercase canonical `8-4-4-4-12` 형식을 만족한다. Endpoint는 public status에 포함하지 않는다.
   교체 뒤 신규 request는 v2 evidence에 기록되고 consumer의 이전 connection에는 새 write가 없다. 이후
   연속 20개 request가 모두 성공한다. Active conflict 반복은 기존 descriptor mutation 없이 startup
-  `RoutingIdConflict`로 끝나고 두 번째 UUID 생성과 두 번째 descriptor claim은 0건이다.
+  startup configuration error로 끝나고 두 번째 UUID 생성과 두 번째 descriptor claim은 0건이다.
 - 세부 동작: application 역할 replacement의 새 automatic identity 반영 + stale 회피. 이미 실행 중인 다른 provider가
   장애 직후 처리를 계속하는 failover는 RM-B3에서 별도로 검증한다.
 
@@ -225,13 +269,13 @@ provider로만 처리하는가.
   20개를 보낸다 → 수동 peer 구성을 유지한 RouteMesh에서 `RequestToNode(A)`와 등록한 적 없는 rid
   `api-missing`을 대상으로 한 `RequestToNode`를 각각 한 건 보낸다.
 - 검증: A handler-start evidence가 있는 in-flight request는 연결 종료가 먼저 관측되면 retriable
-  `RouteNotConnected`, handler 완료 여부를 caller가 확정할 수 없으면 설정한 request timeout 안의
+  `Unavailable`, handler 완료 여부를 caller가 확정할 수 없으면 설정한 request timeout 안의
   timeout으로 끝나며 무한 대기하지 않는다. framework가 그 request를 B로 자동 재전송하지 않는다.
   crash 전파 구간의 target 미지정 request는 B의 정상 reply, reply보다 연결 종료가 먼저 request 완료로
-  전달된 `RouteNotConnected`, 또는 request deadline이 먼저 도달한 timeout 중 하나로 유한 시간 안에
+  전달된 `Unavailable`, 또는 request deadline이 먼저 도달한 timeout 중 하나로 유한 시간 안에
   끝나며, B의 성공 reply가 하나 이상 있어야 한다. A가 성공 topology 조회에서 제외된 뒤 보낸 20개는
   모두 B에서 성공한다. 수동 RouteMesh에는 A의 membership이 남아 있으므로 `RequestToNode(A)`는 readiness
-  한계 뒤 `RouteNotConnected`, member snapshot에 없는 `api-missing`은 `RequestTargetNotFound`로 끝난다.
+  한계 뒤 `Unavailable`, member snapshot에 없는 `api-missing`은 `NotFound`로 끝난다.
   이 시나리오는 A의 메모리 상태를 B로 자동 이전한다고 단언하지 않는다.
 - 세부 동작: ChannelName provider crash 격리와 신규 부하 failover + stale descriptor 제외.
 

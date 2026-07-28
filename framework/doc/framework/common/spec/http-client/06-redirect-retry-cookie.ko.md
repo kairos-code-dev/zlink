@@ -17,10 +17,10 @@
 | 307, 308 | 보존 | 보존 (streaming body는 rewind 불가라 드롭) |
 
 - `Location`은 절대/상대 URL을 지원한다. 해석 불가능한 형식은
-  `requestFailed`(비-retriable — 원 요청 재전송 금지).
+  `ProtocolError`와 `DoNotRetry`(원 요청 재전송 금지).
 - **cross-origin으로 이동하면 `Authorization` 헤더를 제거**한다.
   same-origin(scheme+host+port 동일)이면 보존한다.
-- 한도 초과는 `requestFailed`.
+- 한도 초과는 `ProtocolError`와 `DoNotRetry`.
 - redirect 중간 응답의 body는 소비(drain)하되 사용자에게 노출하지 않는다
   ([4장 §4.4](04-response-model.ko.md)).
 

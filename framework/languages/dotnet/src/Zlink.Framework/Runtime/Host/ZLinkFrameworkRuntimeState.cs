@@ -20,10 +20,6 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
             StopTokenSource.Token,
             executionOwner,
             ownsSupervisor: true);
-        MessageFlowObservers = new ZLinkMessageFlowObserverPump(
-            registration.DispatchOptions,
-            services,
-            TaskRunner);
     }
 
     public IZLinkBackendContext Context { get; }
@@ -37,8 +33,6 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
     public ZLinkRuntimeTaskRunner TaskRunner { get; }
 
     public ZLinkRuntimeErrorSink ErrorSink { get; }
-
-    public ZLinkMessageFlowObserverPump MessageFlowObservers { get; }
 
     public Dictionary<string, ZLinkChannelRuntimeBundle> SubscriberBundles { get; } = new(StringComparer.Ordinal);
 
@@ -139,7 +133,6 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
         foreach (var stream in resources.StreamNodes) Capture(stream.RequestStop);
 
         await CaptureAsync(TaskRunner.StopAsync).ConfigureAwait(false);
-        await CaptureAsync(MessageFlowObservers.DisposeAsync).ConfigureAwait(false);
 
         foreach (var stream in resources.StreamNodes)
             await CaptureAsync(() => DisposeSafelyAsync(stream)).ConfigureAwait(false);

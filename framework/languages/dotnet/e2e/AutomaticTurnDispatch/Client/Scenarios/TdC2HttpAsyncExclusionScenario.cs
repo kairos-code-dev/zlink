@@ -9,9 +9,9 @@ internal static class TdC2HttpAsyncExclusionScenario
     {
         var spot = await context.SpotAsync();
         var requestId = ExecutionTurnScenarioContext.NewId("TD-C2");
-        context.SendSpot(new HttpAwaitMsg(requestId, 300, "async"), spot);
+        await context.SendSpotAsync(new HttpAwaitMsg(requestId, 300, "async"), spot);
         await context.EvidenceAsync(requestId, "http-async-held");
-        context.SendSpot(new ProbeMsg(requestId, "http-probe"), spot);
+        await context.SendSpotAsync(new ProbeMsg(requestId, "http-probe"), spot);
         await context.EvidenceAsync(requestId, "http-async-completed");
         var evidence = await context.EvidenceAsync(requestId, "probe-completed");
         EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,

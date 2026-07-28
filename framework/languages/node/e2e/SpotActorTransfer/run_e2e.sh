@@ -8,7 +8,7 @@ source "$NODE_ROOT/e2e/redis-container.sh"
 SCENARIO="${1:-all}"
 CHILD_RUN="${2:-}"
 if [[ "$CHILD_RUN" != "--child-run" && "$SCENARIO" == "all" ]]; then
-  for child_scenario in all-core ST-F3; do
+  for child_scenario in all-core ST-F3 ST-F5; do
     "$ROOT_DIR/run_e2e.sh" "$child_scenario" --child-run
   done
   echo "spot-actor-transfer e2e result=passed"
@@ -64,36 +64,30 @@ wait_tcp() {
 }
 
 wait_topology() {
-  node "$NODE_ROOT/e2e/location-readiness.js" \
-    --redis-endpoint "$REDIS_ENDPOINT" \
-    --key-prefix "$REDIS_KEY_PREFIX" \
+  local urls=("$NODE_A_URL" "$NODE_B_URL" "$SESSION_A_URL" "$SESSION_B_URL")
+  if [[ "${ENABLE_NODE_C:-0}" == "1" ]]; then
+    urls+=("$NODE_C_URL")
+  fi
+  node "$ROOT_DIR/wait-topology.mjs" \
     --timeout-ms "$((ROUTE_SETTLE_TIMEOUT_SECONDS * 1000))" \
     --interval-ms "$((LOCAL_READINESS_TIMEOUT_SECONDS * 1000 / LOCAL_READINESS_ATTEMPTS))" \
-    --peer route-mesh spot-actor-transfer router \
-      "$NODE_A_ROUTER" \
-      "$NODE_B_ROUTER" \
-      "$SESSION_A_ROUTER" \
-      "$SESSION_B_ROUTER"
+    "${urls[@]}"
 }
 
 pids=()
 REDIS_CONTAINER_ID=""
-cleanup() {
-  local code=$?
-  for pid in "${pids[@]:-}"; do kill "$pid" >/dev/null 2>&1 || true; done
-  for _ in $(seq 1 40); do
-    local any_alive=0
-    for pid in "${pids[@]:-}"; do
-      if process_alive "$pid"; then
-        any_alive=1
-        break
-      fi
-    done
-    [[ "$any_alive" == "0" ]] && break
-    sleep 0.05
-  done
+stop_processes() {
+  # Test cleanup must not start a new maintenance relocation after the
+  # scenario terminal has already been captured. Shutdown behavior has its
+  # own scenarios; these processes are isolated fixtures.
   for pid in "${pids[@]:-}"; do kill -KILL "$pid" >/dev/null 2>&1 || true; done
   wait "${pids[@]:-}" >/dev/null 2>&1 || true
+  pids=()
+}
+
+cleanup() {
+  local code=$?
+  stop_processes
   if [[ -n "$REDIS_CONTAINER_ID" ]]; then docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true; fi
   [[ -z "$CONFIG_DIR" ]] || rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 ]]; then
@@ -158,11 +152,28 @@ run_client() {
   local client_config="$CONFIG_DIR/client-${scenario//,/_}.config.json"
   node "$ROOT_DIR/write-config.mjs" "$client_config" \
     --node-a-url "$NODE_A_URL" --node-b-url "$NODE_B_URL" \
+    --node-c-url "$NODE_C_URL" \
     --session-a-stream-endpoint "$SESSION_A_STREAM" --session-b-stream-endpoint "$SESSION_B_STREAM" \
     --scenario "$scenario"
   node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
     --config "$client_config" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
+}
+
+assert_no_flow_errors() {
+  local failed=0
+  local flow_log
+  shopt -s nullglob
+  for flow_log in "$LOG_DIR"/*-flow.log; do
+    if grep -nE 'phase=error|Unhandled|FAIL' "$flow_log"; then
+      failed=1
+    fi
+  done
+  shopt -u nullglob
+  if [[ "$failed" -ne 0 ]]; then
+    echo "SpotActorTransfer produced unexpected message-flow errors or failures in $LOG_DIR." >&2
+    return 1
+  fi
 }
 
 restart_node_a() {
@@ -200,7 +211,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 14:
+    while len(sockets) < 17:
         port = random.randint(20000, 60999)
         if port in chosen:
             continue
@@ -220,24 +231,30 @@ PY
 )"
 NODE_A_HTTP_PORT="${PORTS[0]}"
 NODE_B_HTTP_PORT="${PORTS[1]}"
-NODE_A_ROUTER_PORT="${PORTS[2]}"
-NODE_B_ROUTER_PORT="${PORTS[3]}"
-NODE_A_PUBSUB_PORT="${PORTS[4]}"
-NODE_B_PUBSUB_PORT="${PORTS[5]}"
-SESSION_A_HTTP_PORT="${PORTS[6]}"
-SESSION_B_HTTP_PORT="${PORTS[7]}"
-SESSION_A_ROUTER_PORT="${PORTS[8]}"
-SESSION_B_ROUTER_PORT="${PORTS[9]}"
-SESSION_A_PUBSUB_PORT="${PORTS[10]}"
-SESSION_B_PUBSUB_PORT="${PORTS[11]}"
-SESSION_A_STREAM_PORT="${PORTS[12]}"
-SESSION_B_STREAM_PORT="${PORTS[13]}"
+NODE_C_HTTP_PORT="${PORTS[2]}"
+NODE_A_ROUTER_PORT="${PORTS[3]}"
+NODE_B_ROUTER_PORT="${PORTS[4]}"
+NODE_C_ROUTER_PORT="${PORTS[5]}"
+NODE_A_PUBSUB_PORT="${PORTS[6]}"
+NODE_B_PUBSUB_PORT="${PORTS[7]}"
+NODE_C_PUBSUB_PORT="${PORTS[8]}"
+SESSION_A_HTTP_PORT="${PORTS[9]}"
+SESSION_B_HTTP_PORT="${PORTS[10]}"
+SESSION_A_ROUTER_PORT="${PORTS[11]}"
+SESSION_B_ROUTER_PORT="${PORTS[12]}"
+SESSION_A_PUBSUB_PORT="${PORTS[13]}"
+SESSION_B_PUBSUB_PORT="${PORTS[14]}"
+SESSION_A_STREAM_PORT="${PORTS[15]}"
+SESSION_B_STREAM_PORT="${PORTS[16]}"
 NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
 NODE_B_URL="http://127.0.0.1:$NODE_B_HTTP_PORT"
+NODE_C_URL="http://127.0.0.1:$NODE_C_HTTP_PORT"
 NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
 NODE_B_ROUTER="tcp://127.0.0.1:$NODE_B_ROUTER_PORT"
+NODE_C_ROUTER="tcp://127.0.0.1:$NODE_C_ROUTER_PORT"
 NODE_A_PUBSUB="tcp://127.0.0.1:$NODE_A_PUBSUB_PORT"
 NODE_B_PUBSUB="tcp://127.0.0.1:$NODE_B_PUBSUB_PORT"
+NODE_C_PUBSUB="tcp://127.0.0.1:$NODE_C_PUBSUB_PORT"
 SESSION_A_URL="http://127.0.0.1:$SESSION_A_HTTP_PORT"
 SESSION_B_URL="http://127.0.0.1:$SESSION_B_HTTP_PORT"
 SESSION_A_ROUTER="tcp://127.0.0.1:$SESSION_A_ROUTER_PORT"
@@ -252,6 +269,12 @@ SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
 start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_PUBSUB"
 wait_health "$NODE_B_URL" actor-b "${pids[-1]}"
 start_node_a
+ENABLE_NODE_C=0
+if [[ "$SCENARIO" == "ST-F5" ]]; then
+  ENABLE_NODE_C=1
+  start_node actor-c "$NODE_C_URL" "$NODE_C_ROUTER" "$NODE_C_PUBSUB"
+  wait_health "$NODE_C_URL" actor-c "${pids[-1]}"
+fi
 start_session session-a "$SESSION_A_URL" "$SESSION_A_ROUTER" "$SESSION_A_PUBSUB" "$SESSION_A_STREAM"
 start_session session-b "$SESSION_B_URL" "$SESSION_B_ROUTER" "$SESSION_B_PUBSUB" "$SESSION_B_STREAM"
 wait_topology
@@ -260,7 +283,7 @@ wait_topology
 : >"$LOG_DIR/client.stderr.log"
 
 if [[ "$SCENARIO" == "all-core" ]]; then
-  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-C3,ST-D1,ST-D2,ST-E1,ST-E2,ST-F1,ST-F2,ST-F4,ST-F5,ST-F6"
+  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-C3,ST-D1,ST-D2,ST-E1,ST-E2,ST-F1,ST-F2,ST-F4,ST-F6"
   run_client "ST-C2"
   restart_node_a
   run_client "ST-B2"
@@ -270,4 +293,8 @@ else
   run_client "$SCENARIO"
 fi
 
+# Message-flow sinks flush while the runtime shuts down, so stop every process
+# before inspecting the complete evidence files.
+stop_processes
+assert_no_flow_errors
 cat "$LOG_DIR/client.stdout.log"

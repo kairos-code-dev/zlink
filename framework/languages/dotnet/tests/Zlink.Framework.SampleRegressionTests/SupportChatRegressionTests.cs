@@ -22,10 +22,42 @@ public sealed partial class RegressionTests
             Assert.Contains("AddRouteMesh(SampleNames.MeshName)", source, StringComparison.Ordinal);
             Assert.DoesNotContain("AddRequestHandler<", source, StringComparison.Ordinal);
             Assert.DoesNotContain("AddSendHandler<", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("mesh.Channel(SampleNames.MeshName)", source, StringComparison.Ordinal);
         }
 
-        Assert.Contains("AddHandlerGroup(\"api\")", File.ReadAllText(hosts[0]), StringComparison.Ordinal);
-        Assert.Contains("AddHandlerGroup(\"support\")", File.ReadAllText(hosts[1]), StringComparison.Ordinal);
+        Assert.Contains("AddClientServerChannel(SampleNames.ApiChannel).Server()", File.ReadAllText(hosts[0]),
+            StringComparison.Ordinal);
+        Assert.Contains("AddClientServerChannel(SampleNames.ApiChannel).Client()", File.ReadAllText(hosts[1]),
+            StringComparison.Ordinal);
+        Assert.Contains("AddClientServerChannel(SampleNames.ApiChannel).Client()", File.ReadAllText(hosts[2]),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SupportChat_Local_Actor_Directory_Does_Not_Cache_Location_Ownership()
+    {
+        var sampleRoot = ResolveSampleRoot("SupportChat");
+        var actorDirectory = File.ReadAllText(Path.Combine(
+            sampleRoot,
+            "Server",
+            "Support",
+            "Infrastructure",
+            "ZLink",
+            "Actors",
+            "SupportActorDirectory.cs"));
+        var entrySpot = File.ReadAllText(Path.Combine(
+            sampleRoot,
+            "Server",
+            "Support",
+            "Infrastructure",
+            "ZLink",
+            "Spots",
+            "EntrySpot",
+            "SupportEntrySpot.cs"));
+
+        Assert.DoesNotContain("ActorRef", actorDirectory, StringComparison.Ordinal);
+        Assert.DoesNotContain("FindAsync", entrySpot, StringComparison.Ordinal);
+        Assert.Contains("directory.AddOrUpdate(actor)", entrySpot, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -78,15 +110,25 @@ public sealed partial class RegressionTests
             "ConversationAssignment", "AgentAvailabilityDirectory.cs"));
         var availableHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
             "ZLink", "Spots", "EntrySpot", "Handlers", "SetAgentAvailableHandler.cs"));
-        var ensureUserHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
-            "ZLink", "Handlers", "EnsureSupportUserActorHandler.cs"));
-        var ensureConversationHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
-            "ZLink", "Handlers", "EnsureAgentConversationHandler.cs"));
+        var session = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Session", "Sessions",
+            "SupportChatSession.cs"));
+        var supportActor = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
+            "ZLink", "Actors", "SupportUserActor.cs"));
+        var relocationAdapter = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
+            "ZLink", "Actors", "SupportUserActorRelocationAdapter.cs"));
+        var joinConversationHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
+            "ZLink", "Spots", "EntrySpot", "Handlers", "JoinConversationActorHandler.cs"));
         var entrySpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure", "ZLink",
             "Spots", "EntrySpot", "SupportEntrySpot.cs"));
         var conversationSpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure",
             "ZLink", "Spots", "ConversationSpot", "ConversationSpot.cs"));
         var clientScenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "SupportChatClientScenario.cs"));
+        var openConversation = File.ReadAllText(Path.Combine(
+            sampleRoot,
+            "Server",
+            "Api",
+            "Handlers",
+            "OpenConversationHandler.cs"));
 
         Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
         Assert.Contains("SAMPLE_LOG_DIR=\"${RUN_DIR}/sample-logs\"", shellRunner, StringComparison.Ordinal);
@@ -127,8 +169,7 @@ public sealed partial class RegressionTests
         Assert.Contains("status=Active", shellRunner, StringComparison.Ordinal);
         Assert.Contains("status=WaitingForClose", shellRunner, StringComparison.Ordinal);
         Assert.Contains("status=Closed", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("grep -Rq \"message flow\" \"${SUPPORTCHAT_LOG_DIR}\"", shellRunner,
-            StringComparison.Ordinal);
+        Assert.DoesNotContain("message flow", shellRunner, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("SUPPORTCHAT_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
 
         Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner,
@@ -171,21 +212,35 @@ public sealed partial class RegressionTests
         Assert.Contains("status=Active", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("status=WaitingForClose", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("status=Closed", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("Wait-SampleLogContains \"message flow\" \"SupportChat message-flow evidence\"",
-            powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("Select-String -Pattern $Pattern -List", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("message flow", powershellRunner, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("SUPPORTCHAT_STARTUP_DELAY_SECONDS", powershellRunner, StringComparison.Ordinal);
 
         Assert.Contains("RedisEndpoint", topology, StringComparison.Ordinal);
         Assert.Contains("RedisKeyPrefix", topology, StringComparison.Ordinal);
         Assert.DoesNotContain("Environment.GetEnvironmentVariable", topology, StringComparison.Ordinal);
-        Assert.DoesNotContain("public sealed record ActorRefSnapshot", sharedMessages, StringComparison.Ordinal);
+        Assert.DoesNotContain("public sealed record ActorRef", sharedMessages, StringComparison.Ordinal);
         Assert.DoesNotContain("EnsureSupportUserActorReq", sharedMessages, StringComparison.Ordinal);
-        Assert.DoesNotContain("public sealed record ActorRefSnapshot", serverContracts, StringComparison.Ordinal);
-        Assert.Contains("ActorRefSnapshot Actor", serverContracts, StringComparison.Ordinal);
-        Assert.Contains("ActorRefSnapshot.From(actor)", ensureUserHandler, StringComparison.Ordinal);
-        Assert.Contains("ActorRefSnapshot.From(actorRef)", ensureConversationHandler, StringComparison.Ordinal);
-        Assert.Contains("public sealed record EnsureSupportUserActorReq", serverContracts, StringComparison.Ordinal);
+        Assert.DoesNotContain("public sealed record ActorRef", serverContracts, StringComparison.Ordinal);
+        Assert.DoesNotContain("ActorRef", serverContracts, StringComparison.Ordinal);
+        Assert.Contains(".GetOrCreate(actorId, SampleNames.SupportActorType)", session,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            ".Create(SampleNames.ConversationSpotType)",
+            openConversation,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            ".InMesh(SampleNames.MeshName)",
+            openConversation,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("NodeRid", openConversation, StringComparison.Ordinal);
+        Assert.DoesNotContain("SupportChannel", session, StringComparison.Ordinal);
+        Assert.Contains("ZLinkActorJoinCompletion.Accepted accepted", supportActor, StringComparison.Ordinal);
+        Assert.Contains("CurrentRef = accepted.Actor", supportActor, StringComparison.Ordinal);
+        Assert.Contains("acceptedReply.Decode<JoinConversationRes>()", supportActor, StringComparison.Ordinal);
+        Assert.Contains(".Defer()", joinConversationHandler, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Async(cancellationToken)", joinConversationHandler, StringComparison.Ordinal);
+        Assert.Contains("public sealed record SupportUserActorCreateReq", serverContracts, StringComparison.Ordinal);
+        Assert.Contains("CompletedJoinOperations", relocationAdapter, StringComparison.Ordinal);
         AssertLocationStoreHost(apiHost);
         AssertLocationStoreHost(sessionHost);
         AssertLocationStoreHost(supportHost);
@@ -205,6 +260,6 @@ public sealed partial class RegressionTests
         Assert.Contains("실행별 key prefix를 역할들이 읽는 임시 config 파일에 기록한다", readme,
             StringComparison.Ordinal);
         Assert.Contains("동시에 실행되는 다른 테스트와 섞이지 않는다", readme, StringComparison.Ordinal);
-        Assert.Contains("message-flow evidence", readme, StringComparison.Ordinal);
+        Assert.Contains("표준 .NET diagnostics", readme, StringComparison.Ordinal);
     }
 }

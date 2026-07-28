@@ -30,27 +30,30 @@ internal sealed class ZLinkSubmitOperationFactory(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
         ZLinkRequestCompletion<T> completion,
-        string operationId)
+        string operationId,
+        DateTimeOffset? deadline = null)
     {
         return PendingSubmit.CreateRequest(
             parts,
             trySubmit,
-            ResolveDeadlineOrThrow(parts),
+            ResolveDeadlineOrThrow(parts, deadline),
             admissionGate,
             wake,
             completion,
             operationId);
     }
 
-    private DateTimeOffset? ResolveDeadlineOrThrow(IReadOnlyList<Message> parts)
+    private DateTimeOffset? ResolveDeadlineOrThrow(
+        IReadOnlyList<Message> parts,
+        DateTimeOffset? deadline = null)
     {
-        var deadline = ResolveDeadline();
-        if (deadline is DateTimeOffset value && value <= DateTimeOffset.UtcNow)
+        var resolvedDeadline = deadline ?? ResolveDeadline();
+        if (resolvedDeadline is DateTimeOffset value && value <= DateTimeOffset.UtcNow)
         {
             ZLinkMessageParts.DisposeAll(parts);
             throw new TimeoutException("ZLink async submit timed out before the socket became writable.");
         }
 
-        return deadline;
+        return resolvedDeadline;
     }
 }

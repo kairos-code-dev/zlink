@@ -1,6 +1,5 @@
 import type {
   ZLinkActor,
-  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkMessageSerializer,
   ZLinkSpotActorJoinResponse
@@ -27,7 +26,7 @@ import { REMOTE_ACTOR_JOIN_PACKET } from './spot-remote-codec';
 
 interface ZLinkNativeActorJoinAdmissionTarget {
   onActorJoin?(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
-  onJoinedActor?(actor: ZLinkActorMembership): Promise<void>;
+  onJoinedActor?(actor: ZLinkActor): Promise<void>;
 }
 
 interface ZLinkSpotNativeActorJoinAdmissionOptions {

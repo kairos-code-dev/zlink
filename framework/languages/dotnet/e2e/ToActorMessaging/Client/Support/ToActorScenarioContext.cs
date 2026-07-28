@@ -5,6 +5,7 @@ using Zlink.Framework.Contracts.Actors;
 
 namespace ToActorMessaging.Client.Support;
 
+using Systems.Zlink;
 internal sealed class ToActorScenarioContext : IDisposable
 {
     private readonly ZLinkHttpClient _actorHttp;
@@ -102,11 +103,11 @@ internal sealed class ToActorScenarioContext : IDisposable
             $"{scenario} expected '{expectedKind}', got '{response.ErrorKind}'.");
     }
 
-    public async Task<ActorRefSnapshot> CaptureAsync(string actorId)
+    public async Task<ActorRef> CaptureAsync(string actorId)
     {
         return (await _callerHttp.Post($"/refs/{actorId}/capture")
             .Body(new { })
-            .Async<ActorRefSnapshot>()).Body;
+            .Async<ActorRef>()).Body;
     }
 
     public async Task<ActorEvidence[]> GetAllActorEvidenceAsync()
@@ -144,7 +145,7 @@ internal sealed class ToActorScenarioContext : IDisposable
 
     public async Task AssertNoRouteCallerFailureAsync(
         string scenario,
-        ActorRefSnapshot actor)
+        ActorRef actor)
     {
         await _noRouteCallerHttp.Post("/route/disconnect")
             .Body(new { })
@@ -155,21 +156,21 @@ internal sealed class ToActorScenarioContext : IDisposable
                 actor.ActorId,
                 "no-route",
                 actor.NodeRid.ToString(),
-                actor.Generation))
+                actor.ObjectGeneration))
             .Async<ActorCallResponse>()).Body;
         // 10.0.0 conversion table (spec 05 §13.1): an explicit route
         // disconnect removes the peer from the member snapshot, so Core
-        // reports NOT_FOUND and the framework surfaces ActorRouteNotFound.
-        // RouteNotConnected is reserved for a known member whose pipe is
+        // reports NOT_FOUND and the framework surfaces NotFound.
+        // Unavailable is reserved for a known member whose pipe is
         // not ready.
         ZlinkStreamAssert.Ensure(
-            response.ErrorKind is "ActorRouteNotFound" or "RouteNotConnected",
-            $"{scenario} expected ActorRouteNotFound or RouteNotConnected without a route, got '{response.ErrorKind}'.");
+            response.ErrorKind is "NotFound" or "Unavailable",
+            $"{scenario} expected NotFound or Unavailable without a route, got '{response.ErrorKind}'.");
     }
 
     public async Task AssertNoRouteCallerRecoveryAsync(
         string scenario,
-        ActorRefSnapshot actor,
+        ActorRef actor,
         string value)
     {
         await _noRouteCallerHttp.Post("/route/reconnect").Body(new { }).Async<object>();
@@ -186,7 +187,7 @@ internal sealed class ToActorScenarioContext : IDisposable
                     actor.ActorId,
                     value,
                     actor.NodeRid.ToString(),
-                    actor.Generation))
+                    actor.ObjectGeneration))
                 .Async<ActorCallResponse>()).Body;
             if (response.ErrorKind is null || DateTimeOffset.UtcNow >= deadline) break;
             await Task.Delay(100);
@@ -272,8 +273,8 @@ internal sealed class ToActorScenarioContext : IDisposable
         var reply = (await actor.Post($"/actors/{actorId}/push")
             .Body(new BoundPushRequest(scenario, actorId, value))
             .Async<BoundPushReply>()).Body;
-        ZlinkStreamAssert.Ensure(!reply.Submitted && reply.ErrorKind == "ActorSessionNotBound",
-            $"{scenario} expected ActorSessionNotBound after disconnect, got '{reply.ErrorKind}'.");
+        ZlinkStreamAssert.Ensure(!reply.Submitted && reply.ErrorKind == "NotFound",
+            $"{scenario} expected NotFound after disconnect, got '{reply.ErrorKind}'.");
     }
 
     public async Task<BoundSessionSnapshot[]> GetBoundSessionSnapshotsAsync(string actorId)

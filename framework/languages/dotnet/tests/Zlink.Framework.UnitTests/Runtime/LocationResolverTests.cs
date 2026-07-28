@@ -449,12 +449,13 @@ public sealed class LocationResolverTests
                     attempts++;
                     return ValueTask.FromException<bool>(
                         new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                            ZLinkFrameworkErrorKind.NotFound,
                             "stale route"));
                 },
                 CancellationToken.None));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.SpotRouteNotFound, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.NotFound, error.Kind);
+        Assert.Equal(ZLinkRetryAdvice.DoNotRetry, error.RetryAdvice);
         Assert.Equal(1, attempts);
     }
 
@@ -609,12 +610,12 @@ public sealed class LocationResolverTests
                 {
                     operationCalls++;
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.RouteNotConnected,
+                        ZLinkFrameworkErrorKind.Unavailable,
                         "route is converging");
                 },
                 CancellationToken.None));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RouteNotConnected, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
         Assert.Equal(1, operationCalls);
         Assert.Equal(0, refreshCalls);
     }
@@ -735,12 +736,12 @@ public sealed class LocationResolverTests
                     attempts++;
                     return ValueTask.FromException<bool>(
                         new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.RequestTargetNotFound,
+                            ZLinkFrameworkErrorKind.NotFound,
                             "actor moved"));
                 },
                 CancellationToken.None));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestTargetNotFound, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.NotFound, error.Kind);
         Assert.Equal(1, attempts);
         Assert.Equal("spot-old", handle.SpotId);
     }

@@ -132,8 +132,6 @@ internal interface IZLinkBackendPublisherSocket : IZLinkBackendSocket, IZLinkBac
 {
     string GetLastEndpoint() => string.Empty;
 
-    void SetRoutingId(RoutingId routingId);
-
     void OnSendReady(Action handler);
 
     bool Publish(

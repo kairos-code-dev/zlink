@@ -136,6 +136,16 @@ std::vector<e2e::actor_evidence_t> get_evidence (http::client_t &node)
     return node.get ("/evidence").submit<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
 }
 
+std::pair<std::uint64_t, std::uint64_t>
+get_relocation_store_activity (http::client_t &node)
+{
+    const auto activity =
+      node.get ("/relocation-store/activity")
+        .submit<nlohmann::json> ().result ().value ().body;
+    return {activity.at ("reads").get<std::uint64_t> (),
+            activity.at ("writes").get<std::uint64_t> ()};
+}
+
 void shutdown_node (http::client_t &node)
 {
     (void) node.post ("/shutdown").submit<nlohmann::json> ().result ().value ().body;

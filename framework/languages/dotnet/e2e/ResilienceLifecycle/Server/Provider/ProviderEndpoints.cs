@@ -50,7 +50,7 @@ internal static class ProviderEndpoints
             [FromServices] IZLinkRouteMeshRuntimeOptions runtimeOptions,
             [FromServices] EvidenceStore evidence) =>
         {
-            runtimeOptions.Channel(ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel).Weight = 0;
+            runtimeOptions.Channel(ResilienceLifecycleNames.Channel).Weight = 0;
             evidence.Add($"admin|rid={evidence.Rid}|action=weight-exclude|weight=0");
             return Results.Ok(new { status = "excluded", weight = 0 });
         });
@@ -58,25 +58,31 @@ internal static class ProviderEndpoints
             [FromServices] IZLinkRouteMeshRuntimeOptions runtimeOptions,
             [FromServices] EvidenceStore evidence) =>
         {
-            runtimeOptions.Channel(ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel).Weight = 100;
+            runtimeOptions.Channel(ResilienceLifecycleNames.Channel).Weight = 100;
             evidence.Add($"admin|rid={evidence.Rid}|action=weight-include|weight=100");
             return Results.Ok(new { status = "included", weight = 100 });
         });
         app.MapPost("/admin/graceful-drain", async (
-            [FromServices] IZLinkDrainControl drain,
+            [FromServices] IZLinkFrameworkRuntime runtime,
             CancellationToken cancellationToken) =>
         {
-            var result = await drain.DrainAsync(TimeSpan.FromSeconds(30), cancellationToken);
-            return Results.Ok(result switch
-            {
-                Drained => new DrainResultRes(nameof(Drained)),
-                ForceStopped forced => new DrainResultRes(nameof(ForceStopped), forced.Reason.ToString()),
-                _ => throw new InvalidOperationException($"Unknown drain result '{result.GetType().Name}'.")
-            });
+            var relocation = await runtime.RelocateAsync(
+                new ZLinkFrameworkRelocationOptions
+                {
+                    Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance,
+                    Deadline = TimeSpan.FromSeconds(30)
+                },
+                cancellationToken);
+            if (relocation.Outcome != ZLinkFrameworkRelocationOutcome.Relocated)
+                return Results.Ok(new DrainResultRes(
+                    relocation.Outcome.ToString(),
+                    relocation.Reason.ToString()));
+            var result = await runtime.ShutdownAsync(TimeSpan.FromSeconds(30), cancellationToken);
+            return Results.Ok(new DrainResultRes(result.Outcome.ToString(), result.Reason.ToString()));
         });
         app.MapGet("/admin/weight", ([FromServices] IZLinkRouteMeshRuntimeOptions runtimeOptions) =>
         {
-            var weight = runtimeOptions.Channel(ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel).Weight;
+            var weight = runtimeOptions.Channel(ResilienceLifecycleNames.Channel).Weight;
             return Results.Ok(new { weight });
         });
         app.MapPost("/admin/weight/wait", async (
@@ -88,7 +94,7 @@ internal static class ProviderEndpoints
             var deadline = DateTimeOffset.UtcNow + timeout;
             while (DateTimeOffset.UtcNow < deadline)
             {
-                var weight = runtimeOptions.Channel(ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel).Weight;
+                var weight = runtimeOptions.Channel(ResilienceLifecycleNames.Channel).Weight;
                 if (weight == request.Expected) return Results.Ok(new { weight });
 
                 await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);

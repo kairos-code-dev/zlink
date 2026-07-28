@@ -28,7 +28,8 @@ public sealed class AnnouncementService(IWorldOperationsPort operations)
 /// </summary>
 public sealed class MaintenanceService(
     IMaintenanceStorePort store,
-    IWorldOperationsPort operations)
+    IWorldOperationsPort operations,
+    NodeRegistry nodes)
 {
     public async ValueTask<SetMaintenanceRes> SetAsync(
         string nodeId,
@@ -38,36 +39,45 @@ public sealed class MaintenanceService(
         await store.WriteAsync(nodeId, enabled, cancellationToken);
         await operations.PublishMaintenanceChangeAsync(nodeId, enabled, cancellationToken);
 
-        var applied = await operations.TryApplyMaintenanceAsync(nodeId, enabled, cancellationToken);
-        return applied is null
+        // The application addresses a logical node ID only. Fanout applies the
+        // desired state; no sample code translates it to a transport NodeRid.
+        var node = nodes.Snapshot()
+            .SingleOrDefault(candidate => candidate.NodeId == nodeId);
+        return node is not { Registered: true, Connected: true }
             ? new SetMaintenanceRes(
                 nodeId,
                 enabled,
                 [],
                 ZoneWorldErrors.NodeUnavailable)
-            : new SetMaintenanceRes(applied.NodeId, applied.Enabled, applied.Zones);
+            : new SetMaintenanceRes(node.NodeId, enabled, node.Zones);
     }
 }
 
-/// <summary>Reads one node's live diagnostics without exposing channel or timeout behavior.</summary>
-public sealed class NodeDiagnosticsService(IWorldOperationsPort operations)
+/// <summary>
+/// Reads the latest status report already observed by Ops. Diagnostics do not turn a
+/// transport NodeRid into an application routing address.
+/// </summary>
+public sealed class NodeDiagnosticsService(NodeRegistry nodes)
 {
-    public async ValueTask<NodeDiagnosticsRes> GetAsync(
+    public ValueTask<NodeDiagnosticsRes> GetAsync(
         string nodeId,
         CancellationToken cancellationToken)
     {
-        var diagnostics = await operations.TryGetDiagnosticsAsync(nodeId, cancellationToken);
-        return diagnostics is null
-            ? new NodeDiagnosticsRes(
+        cancellationToken.ThrowIfCancellationRequested();
+        var node = nodes.Snapshot()
+            .SingleOrDefault(candidate => candidate.NodeId == nodeId);
+        return ValueTask.FromResult(
+            node is not { Registered: true, Connected: true }
+                ? new NodeDiagnosticsRes(
                 nodeId,
                 [],
                 PlayerCount: 0,
                 Maintenance: false,
                 ZoneWorldErrors.NodeUnavailable)
-            : new NodeDiagnosticsRes(
-                diagnostics.NodeId,
-                diagnostics.Zones,
-                diagnostics.PlayerCount,
-                diagnostics.Maintenance);
+                : new NodeDiagnosticsRes(
+                    node.NodeId,
+                    node.Zones,
+                    node.PlayerCount,
+                    node.Maintenance));
     }
 }

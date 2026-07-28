@@ -33,7 +33,23 @@ internal sealed class ZLinkRequestCompletion<TResult> : IDisposable
         TimeSpan timeout,
         string timeoutMessage,
         Action<TResult>? discardResult = null)
-        : this(callerCancellation, discardResult: discardResult)
+        : this(
+            callerCancellation,
+            default,
+            timeout,
+            timeoutMessage,
+            discardResult)
+    {
+    }
+
+    internal ZLinkRequestCompletion(
+        CancellationToken callerCancellation,
+        CancellationToken stopCancellation,
+        TimeSpan timeout,
+        string timeoutMessage,
+        Action<TResult>? discardResult = null,
+        Action? onCanceled = null)
+        : this(callerCancellation, stopCancellation, discardResult, onCanceled)
     {
         _timeoutSource = new CancellationTokenSource();
         _timeoutRegistration = _timeoutSource.Token.Register(

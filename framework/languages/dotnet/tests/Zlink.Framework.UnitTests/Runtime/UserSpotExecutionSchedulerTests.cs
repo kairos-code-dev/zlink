@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -20,13 +21,18 @@ public sealed class UserSpotExecutionSchedulerTests
             new ZLinkUserSpotFactoryOptions
             {
                 StableTypeLimit = 8,
-                ExecutionMode = ZLinkUserSpotExecutionMode.PerActor
+                ExecutionMode = ZLinkUserSpotExecutionMode.PerActor,
+                RelocationReadiness =
+                    ZLinkSpotRelocationReadinessMode.AnyTurnBoundary
             },
             ZLinkRelocationPolicy<ExecutionTestSpot>.Disabled);
 
         var configured = registration.UserSpotFactoryOptions[typeof(ExecutionTestSpot)];
         Assert.Equal(8, configured.StableTypeLimit);
         Assert.Equal(ZLinkUserSpotExecutionMode.PerActor, configured.ExecutionMode);
+        Assert.Equal(
+            ZLinkSpotRelocationReadinessMode.AnyTurnBoundary,
+            configured.RelocationReadiness);
 
         var invalidRegistration = new ZLinkSpotNodeRegistration
         {
@@ -41,6 +47,17 @@ public sealed class UserSpotExecutionSchedulerTests
                 new ZLinkUserSpotFactoryOptions
                 {
                     ExecutionMode = (ZLinkUserSpotExecutionMode)9
+                },
+                ZLinkRelocationPolicy<OtherExecutionTestSpot>.Disabled));
+
+        Assert.Throws<ZLinkConfigurationException>(() =>
+            invalid.AddSpotFactory<OtherExecutionTestSpot>(
+                "invalid.application-signaled.spot",
+                new ZLinkUserSpotFactoryOptions
+                {
+                    ExecutionMode = ZLinkUserSpotExecutionMode.PerActor,
+                    RelocationReadiness =
+                        ZLinkSpotRelocationReadinessMode.ApplicationSignaled
                 },
                 ZLinkRelocationPolicy<OtherExecutionTestSpot>.Disabled));
     }
@@ -199,7 +216,7 @@ public sealed class UserSpotExecutionSchedulerTests
                     CancellationToken.None)
                 .AsTask());
 
-        Assert.Equal(ZLinkFrameworkErrorKind.InvalidConfiguration, failure.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.InvalidOperation, failure.Kind);
         Assert.Equal(0, Volatile.Read(ref submitCount));
     }
 
@@ -373,6 +390,139 @@ public sealed class UserSpotExecutionSchedulerTests
     }
 
     [Fact]
+    public async Task RelocationReplay_RequiresCurrentExactSeal()
+    {
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        await using var executor = CreateExecutor(
+            errorSink,
+            ZLinkUserSpotExecutionMode.SpotWide);
+
+        var stale = await executor.SealRelocationAsync(
+            CancellationToken.None);
+        Assert.True(executor.TryAbortRelocation(stale));
+        var current = await executor.SealRelocationAsync(
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            executor.ExecuteRelocationActorAsync(
+                    stale,
+                    "actor-1",
+                    static (_, _, _) => ValueTask.CompletedTask,
+                    0,
+                    CancellationToken.None)
+                .AsTask());
+
+        var ran = NewSignal();
+        await executor.ExecuteRelocationActorAsync(
+                current,
+                "actor-1",
+                static (_, completion, _) =>
+                {
+                    completion.TrySetResult();
+                    return ValueTask.CompletedTask;
+                },
+                ran,
+                CancellationToken.None)
+            .AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(ran.Task.IsCompleted);
+        Assert.True(executor.TryAbortRelocation(current));
+    }
+
+    [Fact]
+    public async Task SpotWideRelocationReplay_ReservesSharedQueueBeforeDirectIngress()
+    {
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        await using var executor = CreateExecutor(
+            errorSink,
+            ZLinkUserSpotExecutionMode.SpotWide);
+        var seal = await executor.SealRelocationAsync(
+            CancellationToken.None);
+        var order = new ConcurrentQueue<string>();
+        var route = new ZLinkBackendActorRouteContext(
+            new MeshOperationId(
+                0x1122334455667788,
+                0x99aabbccddeeff00),
+            MessageFollowHopCount: 1,
+            TargetNodeGeneration: 7,
+            AuthorityOwnerGeneration: 11,
+            OwnerLeaseGeneration: 13,
+            ReplyRequestId: 17,
+            ReplyFlags: 19,
+            ReplyCapability: "reply-capability",
+            DeadlineUnixMs: 23);
+        var probe = new ReplayContractProbe(route, new object());
+        var migrated = executor.ReserveRelocationActorQueue(
+            seal,
+            "actor-1");
+        var targetCaptured = executor.ReserveRelocationActorQueue(
+            seal,
+            "actor-1");
+
+        // Simulate authority publication. Message Follow and fresh direct
+        // ingress can now submit, but both must remain behind the replay
+        // positions reserved while the target admission seal was active.
+        Assert.True(executor.TryAbortRelocation(seal));
+        var sourceFollow = RecordActor(
+            executor,
+            "actor-1",
+            order,
+            "source-follow",
+            NewSignal());
+        var direct = RecordActor(
+            executor,
+            "actor-1",
+            order,
+            "direct",
+            NewSignal());
+
+        var migratedExecution = migrated.ExecuteAsync(
+            "actor-1",
+            _ =>
+            {
+                Assert.Equal(
+                    new MeshOperationId(
+                        0x1122334455667788,
+                        0x99aabbccddeeff00),
+                    probe.Route.OperationId);
+                Assert.Equal((ulong)23, probe.Route.DeadlineUnixMs);
+                Assert.Equal((ulong)17, probe.Route.ReplyRequestId);
+                Assert.Equal(
+                    "reply-capability",
+                    probe.Route.ReplyCapability);
+                Assert.NotNull(probe.Ownership);
+                order.Enqueue("migrated");
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask();
+        var targetExecution = targetCaptured.ExecuteAsync(
+            "actor-1",
+            _ =>
+            {
+                order.Enqueue("target-captured");
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None).AsTask();
+
+        await Task.WhenAll(
+                migratedExecution,
+                targetExecution,
+                sourceFollow,
+                direct)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(
+            new[]
+            {
+                "migrated",
+                "target-captured",
+                "source-follow",
+                "direct"
+            },
+            order.ToArray());
+    }
+
+    [Fact]
     public async Task CallerCancellation_DoesNotReleaseRelocationClaimBeforeCallbackEnds()
     {
         using var errorSink = new ZLinkRuntimeErrorSink();
@@ -447,7 +597,7 @@ public sealed class UserSpotExecutionSchedulerTests
                     0,
                     CancellationToken.None)
                 .AsTask());
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, failure.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Rejected, failure.Kind);
     }
 
     [Fact]
@@ -496,6 +646,44 @@ public sealed class UserSpotExecutionSchedulerTests
         await acceptedCompletion.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(await closing.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.True(closingRan.Task.IsCompleted);
+    }
+
+    [Fact]
+    public async Task PerActor_Shell_Seal_Does_Not_Wait_For_Actor_Lane()
+    {
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        await using var executor = CreateExecutor(
+            errorSink,
+            ZLinkUserSpotExecutionMode.PerActor);
+        var actorStarted = NewSignal();
+        var releaseActor = NewSignal();
+        var actor = executor.ExecuteActorAsync(
+                "actor-a",
+                async (_, _, _) =>
+                {
+                    actorStarted.TrySetResult();
+                    await releaseActor.Task.ConfigureAwait(false);
+                },
+                state: 0,
+                CancellationToken.None)
+            .AsTask();
+        await actorStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(executor.TrySealPerActorShellRelocation(out var seal));
+        var nextActorRan = NewSignal();
+        var nextActor = RecordActor(
+            executor,
+            "actor-b",
+            order: null,
+            marker: null,
+            nextActorRan);
+        await nextActorRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(executor.Queue(
+            static (_, _) => ValueTask.CompletedTask));
+
+        Assert.True(executor.TryAbortRelocation(seal));
+        releaseActor.TrySetResult();
+        await Task.WhenAll(actor, nextActor);
     }
 
     private static ZLinkSpotSerialExecutor CreateExecutor(
@@ -549,7 +737,7 @@ public sealed class UserSpotExecutionSchedulerTests
     private static void AssertInvalid(Action operation)
     {
         var failure = Assert.Throws<ZLinkFrameworkException>(operation);
-        Assert.Equal(ZLinkFrameworkErrorKind.InvalidConfiguration, failure.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.InvalidOperation, failure.Kind);
     }
 
     private static TaskCompletionSource NewSignal() =>
@@ -569,6 +757,10 @@ public sealed class UserSpotExecutionSchedulerTests
     private sealed record BlockState(
         TaskCompletionSource Started,
         TaskCompletionSource Release);
+
+    private sealed record ReplayContractProbe(
+        ZLinkBackendActorRouteContext Route,
+        object Ownership);
 
     private sealed record YieldBarrierState(
         TaskCompletionSource ExternalStarted,

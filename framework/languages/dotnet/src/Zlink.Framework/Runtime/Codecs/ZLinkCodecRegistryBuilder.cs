@@ -1,6 +1,9 @@
 namespace Zlink.Framework.Runtime.Codecs;
 
-internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZLinkCodecRegistrar
+internal sealed class ZLinkCodecRegistryBuilder :
+    IZLinkCodecRegistryBuilder,
+    IZLinkCodecRegistrar,
+    IZLinkMessageCodecRegistry
 {
     private readonly Dictionary<ZlinkStreamCodec, string> _contentTypesByStreamCodec =
         [];
@@ -158,6 +161,8 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZ
 
     internal ZLinkCodecRegistrySnapshot Snapshot() => Volatile.Read(ref _snapshot);
 
+    IZLinkMessageCodecResolver IZLinkMessageCodecRegistry.Snapshot() => Snapshot();
+
     private sealed record RegisteredSerializer(
         IZLinkMessageSerializer Serializer,
         Func<Type, bool> CanSerialize,
@@ -197,7 +202,8 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder, IZ
 
 internal sealed class ZLinkCodecRegistrySnapshot(
     IReadOnlyDictionary<string, IZLinkMessageSerializer> serializers,
-    IReadOnlyDictionary<ZlinkStreamCodec, string> contentTypesByStreamCodec)
+    IReadOnlyDictionary<ZlinkStreamCodec, string> contentTypesByStreamCodec) :
+    IZLinkMessageCodecResolver
 {
     internal static ZLinkCodecRegistrySnapshot Empty { get; } = new(
         new Dictionary<string, IZLinkMessageSerializer>(StringComparer.OrdinalIgnoreCase),
@@ -216,7 +222,17 @@ internal sealed class ZLinkCodecRegistrySnapshot(
         return false;
     }
 
+    bool IZLinkMessageCodecResolver.TryGetSerializer(
+        string contentType,
+        out IZLinkMessageSerializer serializer) =>
+        TryGetSerializer(contentType, out serializer);
+
     internal bool TryResolveStreamContentType(
         ZlinkStreamCodec codec,
         out string contentType) => contentTypesByStreamCodec.TryGetValue(codec, out contentType!);
+
+    bool IZLinkMessageCodecResolver.TryResolveStreamContentType(
+        ZlinkStreamCodec codec,
+        out string contentType) =>
+        TryResolveStreamContentType(codec, out contentType);
 }

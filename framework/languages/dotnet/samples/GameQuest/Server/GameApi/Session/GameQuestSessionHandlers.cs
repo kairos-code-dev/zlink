@@ -20,7 +20,7 @@ internal sealed class GetQuestProgressHandler(GameQuestStore store)
     public async ValueTask<GetQuestProgressRes> HandleAsync(
         GameQuestEntrySpot entrySpot,
         PlayerSessionActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         GetQuestProgressReq request,
         CancellationToken cancellationToken)
     {
@@ -61,7 +61,7 @@ internal sealed class KillMonsterHandler(GameplayActionService actions)
     public async ValueTask<KillMonsterRes> HandleAsync(
         GameQuestEntrySpot entrySpot,
         PlayerSessionActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         KillMonsterReq request,
         CancellationToken cancellationToken)
     {
@@ -82,7 +82,7 @@ internal sealed class CollectItemHandler(GameplayActionService actions)
     public async ValueTask<CollectItemRes> HandleAsync(
         GameQuestEntrySpot entrySpot,
         PlayerSessionActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         CollectItemReq request,
         CancellationToken cancellationToken)
     {
@@ -103,7 +103,7 @@ internal sealed class CompleteMissionHandler(GameplayActionService actions)
     public async ValueTask<CompleteMissionRes> HandleAsync(
         GameQuestEntrySpot entrySpot,
         PlayerSessionActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         CompleteMissionReq request,
         CancellationToken cancellationToken)
     {
@@ -123,7 +123,7 @@ internal sealed class EnterAreaHandler(GameplayActionService actions)
     public async ValueTask<EnterAreaRes> HandleAsync(
         GameQuestEntrySpot entrySpot,
         PlayerSessionActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         EnterAreaReq request,
         CancellationToken cancellationToken)
     {
@@ -143,7 +143,7 @@ internal sealed class UnlockFeatureHandler(GameplayActionService actions)
     public async ValueTask<UnlockFeatureRes> HandleAsync(
         GameQuestEntrySpot entrySpot,
         PlayerSessionActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         UnlockFeatureReq request,
         CancellationToken cancellationToken)
     {
@@ -167,7 +167,7 @@ internal sealed class SyncQuestProgressHandler(IQuestProgressSynchronizer quests
     public async ValueTask<SyncQuestProgressRes> HandleAsync(
         GameQuestEntrySpot entrySpot,
         PlayerSessionActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         SyncQuestProgressReq request,
         CancellationToken cancellationToken)
     {

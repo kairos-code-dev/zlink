@@ -18,7 +18,7 @@ internal static class PsA1FanoutBasicDeliveryScenario
             .Query("value", "activate-publisher")
             .AsyncRaw();
         await Task.WhenAll(subscribers.Select(subscriber =>
-            SubscriberObservation.WaitForConnectionAsync(subscriber)));
+            SubscriberObservation.WaitForEventAsync(subscriber, $"activate-{runId}", 0)));
 
         var measureStart = 100;
         var measureCount = 12;

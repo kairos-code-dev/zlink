@@ -28,26 +28,6 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddZLinkMonitoring(
-        this IServiceCollection services,
-        Action<IZLinkMonitoringOptions> configure)
-    {
-        ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(configure);
-
-        if (services.Any(static descriptor => descriptor.ServiceType == typeof(ZLinkMonitoringRegistration)))
-            throw new ZLinkConfigurationException("Monitoring is already configured.");
-
-        var registration = new ZLinkMonitoringRegistration();
-        var builder = new ZLinkMonitoringOptionsModel(registration);
-
-        configure(builder);
-
-        ZLinkMonitoringServiceRegistrar.AddMonitoringRuntime(services, registration);
-
-        return services;
-    }
-
     public static IServiceCollection AddZLinkHttpClient(
         this IServiceCollection services,
         string name,

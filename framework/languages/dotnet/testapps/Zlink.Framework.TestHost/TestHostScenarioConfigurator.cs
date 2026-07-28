@@ -57,7 +57,7 @@ internal static class TestHostScenarioConfigurator
                         ?? throw new InvalidOperationException(
                             "Channel server mode requires --server-endpoint."))
                 .SetRoutingId(RoutingId.From("dotnet-channel-server"));
-            var channel = mesh.ChannelName(meshName);
+            var channel = mesh.Channel(meshName).Server();
             channel
                 .AddRequestHandler<TestHostProfileRequestHandler, TestHostProfileRequest, TestHostProfileReply>();
             channel.AddSendHandler<TestHostProfileSendHandler, TestHostProfileSend>();
@@ -74,7 +74,7 @@ internal static class TestHostScenarioConfigurator
                                "Channel client mode requires --channel-name.");
             var mesh = framework.AddRouteMesh(meshName)
                 .SetRoutingId(RoutingId.From("dotnet-channel-client"));
-            mesh.ChannelName(meshName);
+            mesh.Channel(meshName).Client();
             mesh.PeerConnections.Connect(
                 options.ServerEndpoint
                 ?? throw new InvalidOperationException(
@@ -138,7 +138,7 @@ internal static class TestHostScenarioConfigurator
                         ?? throw new InvalidOperationException(
                             "Route server mode requires --server-endpoint."))
                 .SetRoutingId(RoutingId.From("dotnet-route"));
-            mesh.ChannelName(meshName);
+            mesh.Channel(meshName).Client();
             mesh.AddRouteRequestHandler<TestHostRouteRequestHandler, TestHostRouteRequest, TestHostRouteReply>();
         });
     }
@@ -153,7 +153,7 @@ internal static class TestHostScenarioConfigurator
                                "Route client mode requires --channel-name.");
             var mesh = framework.AddRouteMesh(meshName)
                 .SetRoutingId(RoutingId.From("dotnet-route-client"));
-            mesh.ChannelName(meshName);
+            mesh.Channel(meshName).Client();
             mesh.PeerConnections.Connect(
                 options.ServerEndpoint
                 ?? throw new InvalidOperationException(
@@ -177,9 +177,10 @@ internal static class TestHostScenarioConfigurator
                 var mesh = framework.AddRouteMesh(options.DiscoveryChannelName
                                                   ?? throw new InvalidOperationException(
                                                       "SPOT node mode requires --discovery-channel."));
-                mesh.ChannelName(options.DiscoveryChannelName
-                                                  ?? throw new InvalidOperationException(
-                                                      "SPOT node mode requires --discovery-channel."));
+                mesh.Channel(options.DiscoveryChannelName
+                             ?? throw new InvalidOperationException(
+                                 "SPOT node mode requires --discovery-channel."))
+                    .Client();
                 _ = options.SpotNodeName
                     ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name.");
                 var spotBindEndpoint = options.SpotBindEndpoint
@@ -187,14 +188,21 @@ internal static class TestHostScenarioConfigurator
                                            "SPOT node mode requires --spot-bind-endpoint.");
                 mesh.Listen(spotBindEndpoint);
 
-                if (options.EnableSpotFactory) mesh.AddSpotFactory<StartupStageSpot>();
+                if (options.EnableSpotFactory)
+                    mesh.Objects().Server().AddSpotFactory<StartupStageSpot>(
+                        "startup-stage",
+                        null,
+                        ZLinkRelocationPolicy<StartupStageSpot>.Disabled);
             }
         });
 
         if (options.CreateSpot)
             services.AddHostedService(provider =>
                 new StartupSpotCreationHostedService(
-                    provider.GetRequiredService<IZLinkSpotManager>()));
+                    provider.GetRequiredService<IZLinkSpotManager>(),
+                    options.DiscoveryChannelName
+                    ?? throw new InvalidOperationException(
+                        "SPOT node mode requires --discovery-channel.")));
 
         if (!string.IsNullOrWhiteSpace(options.AttachSpotPublisherChannel)
             && !string.IsNullOrWhiteSpace(options.PublishTopic))
@@ -210,13 +218,16 @@ internal static class TestHostScenarioConfigurator
     {
         services.AddSingleton(new TestHostEventSink(options.EventFilePath));
         services.AddSingleton<TestHostRawStreamRecorder>();
+        if (!string.IsNullOrWhiteSpace(options.EventFilePath))
+        {
+            services.AddSingleton(
+                new TestHostMessageFlowListener(options.EventFilePath + ".flow"));
+        }
         services.AddZLinkFramework(framework =>
         {
             if (!string.IsNullOrWhiteSpace(options.EventFilePath))
-                framework.ConfigureDispatch()
-                    .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                    .TraceLogFile(options.EventFilePath + ".flow")
-                    .TraceLabel("dotnet-test-host");
+                framework.ConfigureDispatch().Diagnostics
+                    .SetLevel(ZLinkDiagnosticsLevel.Normal);
             {
                 var stream = framework.AddStreamNode("stream.raw");
                 stream.Bind(options.StreamEndpoint

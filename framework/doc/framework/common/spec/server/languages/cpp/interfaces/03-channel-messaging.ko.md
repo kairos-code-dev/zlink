@@ -188,12 +188,20 @@ enum class topology_state_t {
     failed
 };
 
+enum class peer_state_t {
+    connecting,
+    ready,
+    draining,
+    not_connected,
+    not_required
+};
+
 struct mesh_peer_snapshot_t {
     zlink::routing_id_t rid;
     std::uint64_t lifecycle_generation;
     std::uint64_t descriptor_revision;
     std::string endpoint;
-    std::string admission_state;
+    peer_state_t state;
     bool ready;
     std::string drain_state;
     std::vector<std::string> channel_names;
@@ -459,6 +467,13 @@ builder에서는 `client()`와 `server()` 중 하나 또는 둘 다 호출할 �
 등록한다. Registration key는 `(ChannelName, Role)`이고 같은 역할의 중복 등록은 startup 오류다. 서로 다른
 역할은 별도 registration으로 같은 ChannelName의 topology를 공유한다. [RouteMesh](../../../../01-glossary.ko.md#routemesh)의 역할 단일 선택과
 [ChannelName](../../../../01-glossary.ko.md#channelname) 충돌 규칙은 바꾸지 않는다.
+
+두 MeshNode가 모두 Object Client이고 양쪽 모두 RouteMesh Channel Server membership이 없을 때만 peer
+connection이 필요하지 않다. Channel Client membership만 등록한 경우도 같다. 어느 한쪽에라도 weight
+`0`을 포함한 Channel Server membership이 있으면 연결을 만들고 liveness를 유지한다. ClientServer와
+classic fanout은 별도 물리 topology이므로 이 판정에 포함하지 않는다. Object Client에도 RouteMesh
+Channel Server를 등록할 수 있지만 application Node direct handler는 등록할 수 없다. Object Client RID를
+Node direct target으로 지정하면 다른 RID로 바꾸지 않고 `not_found`로 끝낸다.
 
 RouteMesh Channel Server, ClientServer Server와 node-wide placement weight는 모두 `int`이며 범위는
 `0..10000`, 기본값은 `100`이다. 범위 밖 값은 startup 설정과 runtime 변경에서 configuration error다.

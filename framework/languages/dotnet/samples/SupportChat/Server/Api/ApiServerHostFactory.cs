@@ -24,21 +24,21 @@ public static class ApiServerHostFactory
             "api");
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(logDirectory, "api"))
-                .TraceLabel("api");
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
                 .SetRoutingIdPrefix("support-api");
-            mesh.ChannelName(SampleNames.ApiChannel)
+            mesh.Objects().Client();
+            options.AddClientServerChannel(SampleNames.ApiChannel).Server()
+                .Listen()
                 .AddHandlerGroup("api");
-            mesh.ChannelName(SampleNames.SupportChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
         });
 
         return builder.Build();

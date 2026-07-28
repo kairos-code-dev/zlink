@@ -5,6 +5,7 @@ import type {
   ZLinkMessage
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
+import type { Type } from '../../contracts/Common/CoreTypes';
 import {
   meshActorSessionNodeAdapter,
   type ZLinkBackendMeshNode,
@@ -22,6 +23,10 @@ import {
 } from '../actors';
 import type { ZLinkActorHandoffCoordinator } from '../actors';
 import { type ZLinkActorRoutedJoinTransport } from '../actors';
+import {
+  ZLINK_INTERNAL_ACTOR_TRANSPORT_DELIVERY_GATE,
+  type ZLinkInternalActorTransportDeliveryGate
+} from '../actors/actor-transport-delivery-gate';
 import type { ZLinkLocationLifecycle, ZLinkStoreLocationResolvers } from '../locations';
 import type {
   ZLinkNativeFallbackBoundSessionPort,
@@ -197,6 +202,11 @@ export class ZLinkActorRuntimeOptionsFactory {
       nodeProvider: this.options.meshNode,
       completionTableProvider: this.options.meshCompletions,
       locationResolver: () => locationResolver,
+      routeTransport: this.options.routeTransport,
+      transportDeliveryGate: () => this.options.providerResolver?.get?.(
+        ZLINK_INTERNAL_ACTOR_TRANSPORT_DELIVERY_GATE as unknown as
+          Type<ZLinkInternalActorTransportDeliveryGate>
+      ),
       messageSerializers: this.options.registration.messageSerializers,
       defaultRequestTimeoutMs: this.options.registration.requestTimeoutMs,
       staleActorRefReporter: (_meshName, actorId) => this.options.actorHandoff.recordStaleFailure(actorId),

@@ -55,13 +55,13 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
             .ConfigureAwait(false);
         if (read is not ZLinkAuthorityReadResult.Found found)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                ZLinkFrameworkErrorKind.NotFound,
                 $"Actor '{actorId}' does not have authority for durable Join completion.");
 
         var snapshot = found.Snapshot;
         if (snapshot.ObjectGeneration != actor.ObjectGeneration)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorGenerationStale,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor '{actorId}' authority generation changed before Join completion was prepared.");
 
         if (await TryReadPublishedAsync(key, snapshot, cancellationToken).ConfigureAwait(false)
@@ -187,7 +187,7 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
             : null;
     }
 
-    internal async ValueTask ReleaseAsync(
+    internal async ValueTask<ZLinkAuthoritySnapshot?> ReleaseAsync(
         ZLinkDeferredJoinCompletionRoot root,
         CancellationToken cancellationToken)
     {
@@ -203,7 +203,7 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
                 out var publication)
             || !string.Equals(publication.Reference, root.Reference, StringComparison.Ordinal)
             || publication.ChecksumCrc32c != root.ChecksumCrc32c)
-            return;
+            return null;
 
         var result = await authorityStore.CompareExchangeAuthorityAsync(
                 root.AuthorityKey,
@@ -215,10 +215,11 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
                     null),
                 cancellationToken)
             .ConfigureAwait(false);
-        if (result is not ZLinkAuthorityCompareExchangeResult.Stored)
-            return;
+        if (result is not ZLinkAuthorityCompareExchangeResult.Stored stored)
+            return null;
 
         await DeleteBestEffortAsync(root.Reference).ConfigureAwait(false);
+        return stored.Snapshot;
     }
 
     private async ValueTask<ZLinkDeferredJoinCompletionRoot> MoveCursorAsync(
@@ -320,7 +321,8 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
     {
         if (!ZLinkRelocationAuthorityPayloadCodec.TryDecode(
                 snapshot.Payload.Span,
-                out var publication))
+                out var publication)
+            || publication.IsCanonical)
             return null;
         var envelope = await ZLinkRelocationTreeStore.GetAsync(
                 relocationStore,

@@ -22,7 +22,7 @@ internal static class ZLinkApplicationPayloadEnvelopeCodec
         var type = Encoding.UTF8.GetBytes(contentType);
         if (packet.Length > byte.MaxValue || type.Length > byte.MaxValue)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "Application payload text fields must fit in 255 UTF-8 bytes.");
         var bodyLength = checked(1 + packet.Length + 1 + type.Length + 4 + payload.Length);
         var result = new byte[checked(1 + 4 + bodyLength)];

@@ -333,7 +333,7 @@ public sealed class LocationLifecycleTests
                 ActorId,
                 "spot-1",
                 spotGeneration: 1));
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, notTracked.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.NotFound, notTracked.Kind);
 
         var row = await node.Resolvers.ResolveActorRowAsync(
             new ZLinkActorLocationKey(ActorId));
@@ -420,7 +420,7 @@ public sealed class LocationLifecycleTests
 
         var staleRelease = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await original.SpotLocations.ReleaseAsync("mesh", spotId));
-        Assert.Equal(ZLinkFrameworkErrorKind.SpotGenerationStale, staleRelease.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.InvalidOperation, staleRelease.Kind);
         var afterStaleRelease = await restarted.Resolvers.ResolveSpotRowAsync(key);
         Assert.Equal(restarted.Runtime.OwnerId, afterStaleRelease!.OwnerId);
     }
@@ -491,7 +491,7 @@ public sealed class LocationLifecycleTests
         var stale = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await nodeA.ActorOwnership.NotifyActorJoinedSpotAsync(
                 ActorId, "spot-1", spotGeneration: 1));
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorLocationStale, stale.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, stale.Kind);
 
         await deactivated.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(nodeA.ActorOwnership.OwnsActor(ActorId));

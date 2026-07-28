@@ -276,7 +276,7 @@
       "acknowledgement": {
         "command": "replyRelayAck",
         "scope": "maintenanceRelocation-only",
-        "identity": ["stable-relocation-id", "exact-request-source-fence", "operation-id"],
+        "identity": ["stable-relocation-id", "exact-request-source-fence", "operation-id", "reply-route-id"],
         "requestSource": "authenticated-exact-source-owner-lease-node-rid-and-generation",
         "statuses": ["terminalReceived", "alreadyTerminal"],
         "targetPersistence": "relocation-root-cas-before-ack-effect",
@@ -286,8 +286,8 @@
         "physicalConnectionClose": "never-terminal-proof",
         "retireWhileSourceLeaseValid": "forceStopped-and-retain-relocation-root-and-reply-bytes-for-retention-window"
       },
-      "terminalOwnership": "stable-relocation-id-exact-request-source-fence-and-operation-id-once-independent-of-target-attempt",
-      "replyRoute": "request-only"
+      "terminalOwnership": "stable-relocation-id-exact-request-source-fence-operation-id-and-reply-route-id-once-independent-of-target-attempt",
+      "replyRoute": "request-and-ack-echo-only"
     },
     {
       "kind": "instance-placement-authority-fence",
@@ -4620,6 +4620,7 @@
         { "name": "relocation", "$ref": "relocation-id" },
         { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
         { "name": "operation", "$ref": "operation-id" },
+        { "name": "replyRouteId", "$ref": "nonzero-u64" },
         { "name": "requestSource", "$ref": "request-source-fence" },
         { "name": "status", "$ref": "reply-relay-ack-status" }
       ],
@@ -4829,7 +4830,7 @@
         "command": "replyRelayAck",
         "senderKind": "requestSource",
         "phases": ["committed", "activating", "activated", "cleaning"],
-        "duplicate": "idempotent-by-stable-relocation-id-exact-request-source-fence-operation-id-and-status",
+        "duplicate": "idempotent-by-stable-relocation-id-exact-request-source-fence-operation-id-reply-route-id-and-status",
         "reorder": "hold-until-matching-durable-completion-or-retransmit-causes-source-reack",
         "loss": "target-retransmits-terminal-until-ack-or-exact-request-source-owner-lease-expiry"
       },

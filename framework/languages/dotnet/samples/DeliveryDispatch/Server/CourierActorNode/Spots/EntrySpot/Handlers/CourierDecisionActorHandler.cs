@@ -1,3 +1,4 @@
+using Zlink.Framework.Contracts.Handlers;
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
@@ -19,7 +20,7 @@ internal sealed class CourierDecisionActorHandler(
     public async ValueTask HandleAsync(
         CourierEntrySpot entrySpot,
         CourierActor actor,
-        ZLinkSpotActorSendContext context,
+        IZLinkMessageContext context,
         CourierDecisionMsg message,
         CancellationToken cancellationToken)
     {
@@ -34,7 +35,7 @@ internal sealed class CourierDecisionActorHandler(
         }
 
         await channels
-            .SendToChannel(SampleNames.MeshName, SampleNames.DispatchChannel,
+            .SendToChannel(SampleNames.DispatchChannel,
                 new OfferDeliveryResultMsg(
                     message.DeliveryId,
                     message.CourierId,

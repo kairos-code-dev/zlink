@@ -34,8 +34,8 @@ internal static class RlB2CrashDuringInflightScenario
         ZlinkStreamAssert.Ensure(
             crashResult.Reply is null
             && crashResult.IsRetriable
-            && crashResult.ErrorKind is "RouteNotConnected" or nameof(TimeoutException),
-            $"RL-B2 crash result was '{crashResult.ErrorKind}', expected RouteNotConnected or timeout.");
+            && crashResult.ErrorKind is "Unavailable" or nameof(TimeoutException),
+            $"RL-B2 crash result was '{crashResult.ErrorKind}', expected Unavailable or timeout.");
 
         await providerA.Post("/admin/weight/include").AsyncRaw();
         await providerA.Post("/admin/weight/wait")

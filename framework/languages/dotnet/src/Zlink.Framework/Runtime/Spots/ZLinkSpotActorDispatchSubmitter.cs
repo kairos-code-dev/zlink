@@ -9,27 +9,41 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
         Message payload,
+        ZLinkSpotExecutionRelocationSeal? relocationSeal,
+        ZLinkSpotRelocationActorQueueReservation? queueReservation,
         CancellationToken cancellationToken)
     {
         var ownedPayload = payload.Copy();
 
         try
         {
-            await serial.ExecuteActorAsync(
-                runtimeState.ActorId,
-                async static (_, state, ct) =>
-                {
-                    using var currentPayload = state.Payload;
-                    await state.Dispatcher.DispatchAsync(
-                            state.Actor,
-                            state.RuntimeState,
-                            state.Header,
-                            currentPayload,
-                            ct)
-                        .ConfigureAwait(false);
-                },
-                new ActorDispatchState(dispatcher, actor, runtimeState, header, ownedPayload),
-                cancellationToken).ConfigureAwait(false);
+            var state = new ActorDispatchState(
+                dispatcher,
+                actor,
+                runtimeState,
+                header,
+                ownedPayload);
+            var execution = queueReservation is not null
+                ? queueReservation.ExecuteAsync(
+                    runtimeState.ActorId,
+                    ct => DispatchAsync(
+                        null!,
+                        state,
+                        ct),
+                    cancellationToken)
+                : relocationSeal is not null
+                ? serial.ExecuteRelocationActorAsync(
+                    relocationSeal,
+                    runtimeState.ActorId,
+                    DispatchAsync,
+                    state,
+                    cancellationToken)
+                : serial.ExecuteActorAsync(
+                    runtimeState.ActorId,
+                    DispatchAsync,
+                    state,
+                    cancellationToken);
+            await execution.ConfigureAwait(false);
         }
         catch
         {
@@ -43,6 +57,8 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
         Message payload,
+        ZLinkSpotExecutionRelocationSeal? relocationSeal,
+        ZLinkSpotRelocationActorQueueReservation? queueReservation,
         CancellationToken cancellationToken)
     {
         var ownedPayload = payload.Copy();
@@ -50,21 +66,27 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
         try
         {
             var state = new ActorReplyDispatchState(dispatcher, actor, runtimeState, header, ownedPayload);
-            await serial.ExecuteActorAsync(
-                runtimeState.ActorId,
-                async static (_, state, ct) =>
-                {
-                    using var currentPayload = state.Payload;
-                    state.Reply = await state.Dispatcher.DispatchForReplyAsync(
-                            state.Actor,
-                            state.RuntimeState,
-                            state.Header,
-                            currentPayload,
-                            ct)
-                        .ConfigureAwait(false);
-                },
-                state,
-                cancellationToken).ConfigureAwait(false);
+            var execution = queueReservation is not null
+                ? queueReservation.ExecuteAsync(
+                    runtimeState.ActorId,
+                    ct => DispatchForReplyAsync(
+                        null!,
+                        state,
+                        ct),
+                    cancellationToken)
+                : relocationSeal is not null
+                ? serial.ExecuteRelocationActorAsync(
+                    relocationSeal,
+                    runtimeState.ActorId,
+                    DispatchForReplyAsync,
+                    state,
+                    cancellationToken)
+                : serial.ExecuteActorAsync(
+                    runtimeState.ActorId,
+                    DispatchForReplyAsync,
+                    state,
+                    cancellationToken);
+            await execution.ConfigureAwait(false);
 
             return state.Reply
                    ?? throw new InvalidOperationException(
@@ -75,6 +97,36 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
             ownedPayload.Dispose();
             throw;
         }
+    }
+
+    private static async ValueTask DispatchAsync(
+        ZLinkSpotActivation _,
+        ActorDispatchState state,
+        CancellationToken cancellationToken)
+    {
+        using var currentPayload = state.Payload;
+        await state.Dispatcher.DispatchAsync(
+                state.Actor,
+                state.RuntimeState,
+                state.Header,
+                currentPayload,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async ValueTask DispatchForReplyAsync(
+        ZLinkSpotActivation _,
+        ActorReplyDispatchState state,
+        CancellationToken cancellationToken)
+    {
+        using var currentPayload = state.Payload;
+        state.Reply = await state.Dispatcher.DispatchForReplyAsync(
+                state.Actor,
+                state.RuntimeState,
+                state.Header,
+                currentPayload,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private sealed class ActorDispatchState(

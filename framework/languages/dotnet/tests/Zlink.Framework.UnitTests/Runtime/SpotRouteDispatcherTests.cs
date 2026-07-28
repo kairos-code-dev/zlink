@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Codecs;
@@ -10,6 +11,16 @@ public sealed class SpotRouteDispatcherTests
     [Fact]
     public async Task MalformedSendPayload_IsDropped_WithoutBlockingTheNextMessage()
     {
+        var activities = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source =>
+                source.Name == ZLinkTelemetry.ActivitySourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activities.Add
+        };
+        ActivitySource.AddActivityListener(listener);
         var probe = new DispatchProbe();
         using var services = new ServiceCollection()
             .AddSingleton(probe)
@@ -22,7 +33,8 @@ public sealed class SpotRouteDispatcherTests
         var codecs = new ZLinkCodecRegistryBuilder();
         var invoker = new ZLinkSpotHandlerInvoker(handlerInstances, spot, codecs, null);
         var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
+        options.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
+        _ = new ZLinkDiagnosticsRuntimeService(options.Diagnostics);
         var dispatcher = new ZLinkSpotRouteDispatcher(
             "route",
             "target-spot",
@@ -48,6 +60,16 @@ public sealed class SpotRouteDispatcherTests
         }
 
         Assert.Equal(["next"], probe.Values);
+        var spotTraces = activities.Where(activity =>
+            activity.OperationName == "zlink.message_flow"
+            && Equals(
+                activity.GetTagItem("surface")?.ToString(),
+                "SpotRoute"));
+        Assert.NotEmpty(spotTraces);
+        Assert.All(spotTraces, activity =>
+            Assert.Equal(
+                "target-spot",
+                activity.GetTagItem("spot_id")));
     }
 
     private static IReadOnlyList<Message> Encode(TestMessage message)

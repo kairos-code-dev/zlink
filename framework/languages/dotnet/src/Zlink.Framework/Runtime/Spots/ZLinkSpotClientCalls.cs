@@ -103,7 +103,7 @@ internal sealed class ZLinkInstanceSpotSendCall<TMessage>(
         _submission.Claim();
         if (_meshSelected && !_instanceIntent)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "InMesh is valid only for an Instance Spot intent.");
         var handle = _exactSpotIdCall
             ? await runtime.ResolveSpotHandleAsync(target.SpotId, cancellationToken)
@@ -114,7 +114,7 @@ internal sealed class ZLinkInstanceSpotSendCall<TMessage>(
         {
             if (!_instanceIntent)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                    ZLinkFrameworkErrorKind.NotFound,
                     $"Spot '{target.SpotId}' was not found.");
             target = runtime.ResolveInstanceSpotIntent(target);
             var header = ZLinkClientCallCodec.CreateEnvelope(
@@ -238,7 +238,7 @@ internal sealed class ZLinkInstanceSpotRequestCall<TRequest>(
     {
         if (_meshSelected && !_instanceIntent)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "InMesh is valid only for an Instance Spot intent.");
         var handle = _exactSpotIdCall
             ? await runtime.ResolveSpotHandleAsync(target.SpotId, cancellationToken)
@@ -249,7 +249,7 @@ internal sealed class ZLinkInstanceSpotRequestCall<TRequest>(
         {
             if (!_instanceIntent)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestTargetNotFound,
+                    ZLinkFrameworkErrorKind.NotFound,
                     $"Spot '{target.SpotId}' was not found.");
             target = runtime.ResolveInstanceSpotIntent(target);
             var activationTimeout = _timeout ?? runtime.Registration.DefaultRequestTimeout;
@@ -333,7 +333,7 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
             ZLinkOneWaySubmitOutcome.EnsureAccepted(
                 result,
                 "Spot send",
-                ZLinkFrameworkErrorKind.SpotRouteNotFound);
+                ZLinkFrameworkErrorKind.NotFound);
         }
         catch (ZLinkFrameworkException error)
             when (ZLinkSpotHandleRequestExecution.IsStaleRoute(error))

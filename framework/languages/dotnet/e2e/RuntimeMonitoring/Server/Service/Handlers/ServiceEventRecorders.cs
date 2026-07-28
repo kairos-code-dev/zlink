@@ -1,236 +1,72 @@
 using RuntimeMonitoring.Server.Service.Support;
-using Zlink.Framework.Contracts.Eventing;
 
 namespace RuntimeMonitoring.Server.Service.Handlers;
 
-internal sealed class SocketEventRecorder(EvidenceStore evidence) : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
-{
-    public ValueTask HandleAsync(ZLinkSocketEvent @event, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add(
-            $"monitor-socket|source={@event.SourceName}|kind={@event.Event}"
-            + $"|remote={@event.RemoteAddr}|routing={@event.RoutingId}");
-        return ValueTask.CompletedTask;
-    }
-}
-
-// Mesh runtime events (spec 50) replace the 9.x socket sources for the mesh
-// plane: a peer reaching ready is the wire-level connection identity and a
-// peer leaving is its disconnect. The advertised endpoint comes from the
-// mesh snapshot (events carry rid+generation only) and is cached so the
-// disconnect line still names the endpoint of a gone peer.
+// Public RouteMesh status changes provide peer and ChannelName readiness
+// without exposing descriptor generations, endpoints, or provider records.
 internal sealed class MeshEventRecorder(
     EvidenceStore evidence,
-    Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshRuntime meshRuntime,
-    Zlink.Framework.Contracts.Locations.IZLinkLocationRuntimeQuery locations)
-    : IZLinkRuntimeEventHandler<Zlink.Framework.Contracts.Configuration.ZLinkMeshRuntimeEvent>
+    Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshRuntime meshRuntime)
+    : BackgroundService
 {
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string>
-        LastKnownEndpoints = new(StringComparer.Ordinal);
-
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int>
-        LastKnownWeights = new(StringComparer.Ordinal);
-
-    public async ValueTask HandleAsync(
-        Zlink.Framework.Contracts.Configuration.ZLinkMeshRuntimeEvent @event,
-        CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var peer = @event.PeerRid?.ToString() ?? string.Empty;
-        var endpoint = string.Empty;
-        if (peer.Length > 0)
-        {
-            // Core reuses the peer entry (and its dialed-endpoint label)
-            // across same-RID lifetime replacements; the descriptor row names
-            // the endpoint the peer currently advertises, so it wins.
-            try
-            {
-                var rows = await locations.ListMeshNodeDescriptorsAsync(
-                    @event.MeshName, cancellationToken);
-                endpoint = rows.FirstOrDefault(entry => entry.Rid.ToString() == peer)?.Endpoint
-                           ?? string.Empty;
-            }
-            catch (Exception)
-            {
-                // Store reads may fail during shutdown; fall through.
-            }
+        var channel = ObserveAsync(RuntimeMonitoring.Shared.RuntimeMonitoringNames.Channel, stoppingToken);
+        var spot = ObserveAsync(RuntimeMonitoring.Shared.RuntimeMonitoringNames.SpotChannel, stoppingToken);
+        await Task.WhenAll(channel, spot).ConfigureAwait(false);
+    }
 
-            if (endpoint.Length == 0)
+    private async Task ObserveAsync(string meshName, CancellationToken cancellationToken)
+    {
+        var previousPeers = new HashSet<string>(StringComparer.Ordinal);
+        var previousChannels = new Dictionary<string, (bool Ready, int Targets)>(
+            StringComparer.Ordinal);
+        await foreach (var status in meshRuntime
+                           .ObserveAsync(meshName, cancellationToken)
+                           .ConfigureAwait(false))
+        {
+            var currentPeers = status.Peers
+                .Where(static peer =>
+                    peer.State == Zlink.Framework.Contracts.Configuration.ZLinkPeerState.Ready)
+                .Select(static peer => peer.NodeRid.ToString())
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var peer in currentPeers.Except(previousPeers, StringComparer.Ordinal))
             {
-                try
-                {
-                    endpoint = meshRuntime.Snapshot(@event.MeshName).Peers
-                        .FirstOrDefault(entry => entry.Rid.ToString() == peer)?.Endpoint ?? string.Empty;
-                }
-                catch (Exception)
-                {
-                    // The mesh may be stopping; the cached endpoint still names it.
-                }
+                RecordPeer(meshName, "ConnectionReady", peer, status);
+            }
+            foreach (var peer in previousPeers.Except(currentPeers, StringComparer.Ordinal))
+            {
+                RecordPeer(meshName, "Disconnected", peer, status);
             }
 
-            if (endpoint.Length > 0) LastKnownEndpoints[peer] = endpoint;
-            else LastKnownEndpoints.TryGetValue(peer, out endpoint!);
-        }
-
-        var kind = @event.Reason switch
-        {
-            "ready" => "ConnectionReady",
-            "disconnected" => "Disconnected",
-            _ => @event.Identifier == "zlink.runtime.mesh_node.state_changed"
-                ? $"State:{@event.State}"
-                : @event.Reason ?? @event.Identifier
-        };
-        evidence.Add(
-            $"monitor-mesh|source={@event.MeshName}|identifier={@event.Identifier}|kind={kind}"
-            + $"|remote={endpoint}|routing={peer}|sequence={@event.Sequence}"
-            + $"|generation={@event.LifecycleGeneration}"
-            + $"|revision={@event.DescriptorRevision}"
-            + $"|channel={@event.ChannelName}|state={@event.State}"
-            + $"|reason={@event.Reason}");
-
-        // The peer's channel weight lives in its descriptor row (a weight
-        // change bumps the descriptor revision, which raised this event);
-        // surface transitions as the admission-weight evidence line.
-        if (peer.Length > 0
-            && (@event.Reason is "ready"
-                || @event.Identifier == "zlink.runtime.mesh_node.channel_changed"))
-        {
-            try
+            foreach (var channel in status.Channels)
             {
-                var row = await WaitForDescriptorRevisionAsync(
-                    @event.MeshName,
-                    peer,
-                    @event.DescriptorRevision ?? 0,
-                    cancellationToken);
-                if (row is not null
-                    && row.ChannelWeights.TryGetValue(@event.MeshName, out var weight)
-                    && (!LastKnownWeights.TryGetValue(peer, out var known) || known != weight))
+                var current = (channel.IsReady, channel.ReadyTargetCount);
+                if (!previousChannels.TryGetValue(channel.ChannelName, out var previous)
+                    || previous != current)
                 {
-                    LastKnownWeights[peer] = weight;
                     evidence.Add(
-                        $"monitor-mesh|source={@event.MeshName}|kind=PeerAdmissionChanged"
-                        + $"|remote={row.Endpoint}|routing={peer}|value={weight}");
+                        $"monitor-mesh|source={meshName}"
+                        + "|identifier=zlink.runtime.mesh_node.channel_changed"
+                        + $"|kind=ReadinessChanged|channel={channel.ChannelName}"
+                        + $"|ready={channel.IsReady}|targets={channel.ReadyTargetCount}"
+                        + $"|sequence={status.Sequence}|state={status.State}");
+                    previousChannels[channel.ChannelName] = current;
                 }
             }
-            catch (Exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                // Store reads may fail during shutdown; a later event retries.
-            }
+            previousPeers = currentPeers;
         }
     }
 
-    private async ValueTask<Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor?>
-        WaitForDescriptorRevisionAsync(
-            string meshName,
-            string peer,
-            ulong minimumRevision,
-            CancellationToken cancellationToken)
+    private void RecordPeer(
+        string meshName,
+        string kind,
+        string peer,
+        Zlink.Framework.Contracts.Configuration.ZLinkRouteMeshStatus status)
     {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
-        while (true)
-        {
-            var rows = await locations.ListMeshNodeDescriptorsAsync(
-                meshName, cancellationToken);
-            var row = rows.FirstOrDefault(entry => entry.Rid.ToString() == peer);
-            if (row is not null && row.DescriptorRevision >= minimumRevision)
-                return row;
-            if (DateTimeOffset.UtcNow >= deadline)
-                return row;
-            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
-        }
-    }
-}
-
-internal sealed class ThrowingSocketEventRecorder(EvidenceStore evidence) : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
-{
-    public ValueTask HandleAsync(ZLinkSocketEvent @event, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"monitor-throw|source={@event.SourceName}|kind={@event.Event}");
-        throw new InvalidOperationException("monitoring dispatch failure for e2e");
-    }
-}
-
-internal sealed class LocationRuntimeEventRecorder(
-    EvidenceStore evidence,
-    LocationTopologyTransitionTracker transitions)
-    : IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>
-{
-    public ValueTask HandleAsync(ZLinkLocationRuntimeEvent @event, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var topologyCount = @event is ZLinkLocationRuntimeEvent.TopologyChanged topology
-            ? topology.Topology.Count
-            : -1;
-        var summaryCount = @event is ZLinkLocationRuntimeEvent.ServiceSummaryChanged summary
-            ? summary.ServiceSummary.Count
-            : -1;
-        var topologyEntries = @event is ZLinkLocationRuntimeEvent.TopologyChanged changed
-            ? changed.Topology
-                .Select(entry => $"{entry.NodeRid}:{entry.State}")
-                .Distinct(StringComparer.Ordinal)
-                .Order(StringComparer.Ordinal)
-                .ToArray()
-            : [];
-        var summaryEntries = @event is ZLinkLocationRuntimeEvent.ServiceSummaryChanged summaryChanged
-            ? summaryChanged.ServiceSummary
-                .Select(entry => $"{entry.MeshName}:"
-                                 + $"{entry.TotalCount}:{entry.ReadyCount}:{entry.ErrorCount}:{entry.StoppedCount}")
-                .Order(StringComparer.Ordinal)
-                .ToArray()
-            : [];
-        var transition = @event is ZLinkLocationRuntimeEvent.TopologyChanged topologyChanged
-            ? transitions.Apply(topologyChanged.Topology)
-            : default;
         evidence.Add(
-            $"monitor-location-runtime|source={@event.SourceName}|kind={@event.GetType().Name}"
-            + $"|topology={topologyCount}|summary={summaryCount}"
-            + $"|entries={string.Join(',', topologyEntries)}"
-            + $"|summary-entries={string.Join(',', summaryEntries)}"
-            + $"|added={string.Join(',', transition.Added ?? [])}"
-            + $"|removed={string.Join(',', transition.Removed ?? [])}");
-        return ValueTask.CompletedTask;
-    }
-}
-
-internal sealed class LocationTopologyTransitionTracker
-{
-    private readonly object _gate = new();
-    private HashSet<string> _nodes = new(StringComparer.Ordinal);
-
-    public (string[] Added, string[] Removed) Apply(
-        IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry> topology)
-    {
-        var current = topology
-            .Where(entry => entry.State == Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState.Ready)
-            .Select(entry => entry.NodeRid.ToString())
-            .Where(static nodeRid => !nodeRid.StartsWith("hex:", StringComparison.Ordinal))
-            .ToHashSet(StringComparer.Ordinal);
-        lock (_gate)
-        {
-            var added = current.Except(_nodes, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
-            var removed = _nodes.Except(current, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
-            _nodes = current;
-            return (added, removed);
-        }
-    }
-}
-
-internal sealed class SpotEventRecorder(EvidenceStore evidence) : IZLinkRuntimeEventHandler<ZLinkSpotEvent>
-{
-    public ValueTask HandleAsync(ZLinkSpotEvent @event, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var timerName = @event switch
-        {
-            ZLinkSpotEvent.TimerHandlerFailed failed => failed.Diagnostic.TimerName,
-            ZLinkSpotEvent.TimerStoppedAfterUnhandledException stopped => stopped.Diagnostic.TimerName,
-            _ => "<null>"
-        };
-        evidence.Add(
-            $"monitor-spot|source={@event.SourceName}|kind={@event.GetType().Name}"
-            + $"|timer={timerName}");
-        return ValueTask.CompletedTask;
+            $"monitor-mesh|source={meshName}|identifier=zlink.runtime.mesh_node.peer_changed|kind={kind}"
+            + $"|routing={peer}|sequence={status.Sequence}"
+            + $"|state={status.State}");
     }
 }

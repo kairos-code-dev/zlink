@@ -31,13 +31,9 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         var courierABinding = await courierA.Request(new BindCourierSessionReq("courier-a"))
             .Async<BindCourierSessionRes>(cancellationToken);
         ZlinkStreamAssert.Ensure(courierABinding.CourierId == "courier-a", "courier-a binding id mismatch.");
-        ZlinkStreamAssert.Ensure(courierABinding.Actor.ActorId == "courier-a", "courier-a actor id mismatch.");
-        ZlinkStreamAssert.Ensure(courierABinding.Actor.Generation > 0, "courier-a generation was not assigned.");
         var courierBBinding = await courierB.Request(new BindCourierSessionReq("courier-b"))
             .Async<BindCourierSessionRes>(cancellationToken);
         ZlinkStreamAssert.Ensure(courierBBinding.CourierId == "courier-b", "courier-b binding id mismatch.");
-        ZlinkStreamAssert.Ensure(courierBBinding.Actor.ActorId == "courier-b", "courier-b actor id mismatch.");
-        ZlinkStreamAssert.Ensure(courierBBinding.Actor.Generation > 0, "courier-b generation was not assigned.");
         logger.LogInformation("topology=ready");
 
         // Run both dispatch paths: direct acceptance first, then timeout-based reassignment.

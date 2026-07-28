@@ -226,8 +226,18 @@ internal sealed class SupportChatClientScenario
         // here lets the scenario read as conversation work instead of route wiring.
         public ValueTask<JoinConversationRes> JoinAsync(CancellationToken cancellationToken)
         {
-            return connector.Request(new JoinConversationReq()).Metadata(Cid, conversationId)
-                .Async<JoinConversationRes>(cancellationToken);
+            return JoinCoreAsync(cancellationToken);
+        }
+
+        private async ValueTask<JoinConversationRes> JoinCoreAsync(
+            CancellationToken cancellationToken)
+        {
+            var completion = connector.WaitFor<JoinConversationRes>()
+                .Async(cancellationToken);
+            await connector.Send(new JoinConversationReq())
+                .Metadata(Cid, conversationId)
+                .Async(cancellationToken);
+            return (await completion).Payload;
         }
 
         public ValueTask<SendChatMessageRes> SendChatAsync(string text, CancellationToken cancellationToken)

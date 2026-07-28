@@ -438,7 +438,14 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         var advertisable = nodeRid is { Size: > 0 };
         if (!advertisable) return;
 
-        var local = new ZLinkAutoConnectLocal(type, meshName, role, nodeRid, endpoint);
+        var local = new ZLinkAutoConnectLocal(
+            type,
+            meshName,
+            role,
+            nodeRid,
+            endpoint,
+            objectRole,
+            channelWeights?.Count > 0);
         var effectiveLifecycleGeneration = lifecycleGeneration == 0
             ? CreateLifecycleNonce()
             : lifecycleGeneration;
@@ -491,11 +498,13 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             reconciler, local, _options, _store, _watchStore, _time, _leaseTracker));
     }
 
-    public bool? IsKnownRouteMeshPeer(string meshName, RoutingId nodeRid)
+    public ZLinkRouteMeshTargetClassification ClassifyRouteMeshTarget(
+        string meshName,
+        RoutingId nodeRid)
     {
         return _routeMeshReconcilers.TryGetValue(meshName, out var reconciler)
-            ? reconciler.KnowsPeer(nodeRid)
-            : null;
+            ? reconciler.ClassifyTarget(nodeRid)
+            : ZLinkRouteMeshTargetClassification.Unknown;
     }
 
     public IReadOnlyList<ZLinkRouteMeshPeerIdentity>? GetCompleteRouteMeshPeers(

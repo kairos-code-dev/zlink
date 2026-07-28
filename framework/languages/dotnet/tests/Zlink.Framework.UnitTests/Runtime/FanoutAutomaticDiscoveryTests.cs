@@ -150,12 +150,13 @@ public sealed class FanoutAutomaticDiscoveryTests
                 DateTimeOffset.UtcNow,
                 null));
 
-        var snapshot = runtime.Snapshot("automatic");
-        Assert.Equal(1, snapshot.ConnectionIntentCount);
-        Assert.Equal(0, snapshot.ReadyConnectionCount);
-        Assert.Equal(entry, Assert.Single(snapshot.Publishers));
+        var snapshot = runtime.GetStatus("automatic");
+        Assert.Equal(0, snapshot.ReadyPublisherCount);
+        Assert.Equal(
+            ZLinkPeerState.Connecting,
+            Assert.Single(snapshot.Publishers).State);
         Assert.Throws<ZLinkConfigurationException>(() =>
-            runtime.Snapshot("manual"));
+            runtime.GetStatus("manual"));
     }
 
     [Fact]

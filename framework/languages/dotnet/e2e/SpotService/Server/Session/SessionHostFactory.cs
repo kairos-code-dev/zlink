@@ -12,6 +12,7 @@ using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace SpotService.Server.Session;
 
@@ -32,20 +33,31 @@ internal static class SessionHostFactory
             console.TimestampFormat = "HH:mm:ss.fff ";
         });
         builder.WebHost.UseUrls(options.HttpUrl);
-        builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
+        var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
+        builder.Services.AddSingleton(evidence);
+        builder.Services.AddSingleton<SessionBindingProbeStore>();
         builder.Services.AddSingleton(new NodeOptions(options.Rid));
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"{options.Rid}-flow.log"),
+            options.Rid,
+            flow =>
+            {
+                if (flow.Phase is not ("error" or "dropped")) return;
+                evidence.Add(
+                    "dispatch-error"
+                    + $"|surface={flow.Surface}"
+                    + $"|reason={flow.Reason}"
+                    + $"|action={flow.Action}"
+                    + $"|packet={flow.PacketName ?? "<null>"}");
+            }));
 
         builder.Services.AddZLinkFramework(framework =>
         {
             if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
             {
-                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                    .SetConnectionString(options.RedisEndpoint)
-                    .SetKeyPrefix(options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
-                framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => redis
-                    .SetConnectionString(options.RedisEndpoint)
-                    .SetKeyPrefix($"{options.RedisKeyPrefix}:relocation")));
+                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix
+                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."); }));
+                framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = $"{options.RedisKeyPrefix}:relocation"; }));
                 // Crash-recovery scenarios re-claim actors from a killed
                 // node; a short owner lease keeps that takeover window
                 // within the scenario's patience.
@@ -55,11 +67,8 @@ internal static class SessionHostFactory
                 locations.PollingInterval = TimeSpan.FromMilliseconds(500);
             }
             framework.AddHandlersFromAssemblyOf(typeof(Program));
-            framework.ConfigureDispatch()
-                .SetRuntimeMessageFlowObserver<EvidenceDispatchErrorObserver>()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-                .TraceLabel(options.Rid);
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             var controlMesh = framework.AddRouteMesh(SpotServiceNames.ControlChannel)
                 .Listen(Require(options.ControlEndpoint, "ControlEndpoint"))
                 .SetRoutingIdPrefix(options.Rid);
@@ -117,14 +126,11 @@ internal static class SessionHostFactory
             string targetRid,
             IZLinkRouteMeshRuntime meshRuntime) =>
         {
-            var peer = meshRuntime.Snapshot(SpotServiceNames.SpotChannel).Peers
-                .FirstOrDefault(candidate =>
-                {
-                    var candidateRid = candidate.Rid.ToString();
-                    return string.Equals(candidateRid, targetRid, StringComparison.Ordinal)
-                           || candidateRid.StartsWith($"{targetRid}-", StringComparison.Ordinal);
-                });
-            return peer is { Ready: true }
+            var peer = ResolveReadyPeer(
+                meshRuntime,
+                SpotServiceNames.SpotChannel,
+                targetRid);
+            return peer is not null
                 ? Results.Ok(peer)
                 : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
         });
@@ -172,15 +178,38 @@ internal static class SessionHostFactory
         string meshName,
         string ridOrPrefix)
     {
-        var peer = meshRuntime.Snapshot(meshName).Peers.SingleOrDefault(candidate =>
-        {
-            var candidateRid = candidate.Rid.ToString();
-            return string.Equals(candidateRid, ridOrPrefix, StringComparison.Ordinal)
-                   || candidateRid.StartsWith($"{ridOrPrefix}-", StringComparison.Ordinal);
-        });
-        return peer?.Rid
+        var peer = ResolveReadyPeer(meshRuntime, meshName, ridOrPrefix);
+        return peer?.NodeRid
                ?? throw new InvalidOperationException(
                    $"Mesh '{meshName}' has no Ready node for prefix '{ridOrPrefix}'.");
+    }
+
+    private static ZLinkPeerStatus? ResolveReadyPeer(
+        IZLinkRouteMeshRuntime meshRuntime,
+        string meshName,
+        string ridOrPrefix)
+    {
+        var readyPeers = meshRuntime.GetStatus(meshName).Peers.Where(candidate =>
+        {
+            var candidateRid = candidate.NodeRid.ToString();
+            return candidate.State == ZLinkPeerState.Ready
+                   && (string.Equals(candidateRid, ridOrPrefix, StringComparison.Ordinal)
+                       || candidateRid.StartsWith(
+                           $"{ridOrPrefix}-",
+                           StringComparison.Ordinal));
+        }).ToArray();
+
+        return readyPeers.Length switch
+        {
+            0 => null,
+            1 => readyPeers[0],
+            _ => throw new InvalidOperationException(
+                $"Mesh '{meshName}' has more than one Ready node for prefix "
+                + $"'{ridOrPrefix}': "
+                + string.Join(", ", readyPeers.Select(
+                    static peer => peer.NodeRid.ToString()))
+                + ".")
+        };
     }
 
     private static string Require(string? value, string optionName)

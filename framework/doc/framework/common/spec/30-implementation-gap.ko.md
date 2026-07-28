@@ -75,8 +75,8 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.52 | 전 언어 | `Message Follow`의 Actor·Spot 전체 조합과 relocation payload·대량 처리·서비스 연속성 process E2E가 없다. `.NET`은 Actor·Spot route를 구현했지만 전체 matrix를 검증하지 않았고, Java/Kotlin·Node.js·C++는 Spot route 구현도 남아 있다 |
 | §12.53 | 전 언어 E2E | 정식 public contract는 `SpotId` 문자열을 사용하지만 기존 process fixture와 application DTO에 `SpotRid`·`spotRid`·`spot_rid` 이름과 RoutingId 변환이 남아 있다 |
 | §12.54 | `.NET`, Java/Kotlin, Node.js E2E | 여러 fixture가 제거된 handler context, Spot handle resolver, 이전 builder와 rich Store 표면을 사용해 현재 framework source와 compile되지 않는다 |
-| §12.56 | `.NET` | Opaque Store adapter의 process-local authority 문제는 해결했다. Redis package에 사용되지 않는 rich domain repository·Lua·key codec이 남아 있어 제거해야 한다 |
 | §12.57 | Java/Kotlin | Global Actor ID request가 remote owner route를 resolve한 뒤에도 local-only dispatch에서 실패한다 |
+| §12.58 | Java/Kotlin, Node.js, C++ | `.NET`은 양쪽 모두 Object Client이고 RouteMesh Channel Server membership도 없는 pair의 connection만 생략하고 `NotConnected`와 `NotRequired`를 구분한다. Object Client와 Channel Server의 동시 등록, weight `0` Server capability, public Node direct 분류, connecting expected RID와 backend Object role 설정을 함께 검증해야 한다. 다른 runtime의 같은 동작이 남아 있다 |
 
 ## 10. Stream Connector wire·검증 계약 차이
 
@@ -312,7 +312,7 @@ activation·abort·timeout·[shutdown](01-glossary.ko.md#shutdown)의 각 termin
 
 [Framework API §9](06-framework-api.ko.md#9-codec)은 송신 업무 타입에 맞는 extension이 없으면
 JSON을 선택하지만, 수신 envelope가 명시한 non-JSON content-type과 일치하는 codec이 없으면 JSON으로
-다시 해석하지 않고 `PayloadDecodeFailed`로 완료하도록 고정한다. 송신 기본값은 수신 wire 선언을
+다시 해석하지 않고 `ProtocolError`로 완료하도록 고정한다. 송신 기본값은 수신 wire 선언을
 무시하는 허가가 아니다.
 
 현재 구현은 모두 이 경계를 지키지 않는다.
@@ -328,7 +328,7 @@ JSON을 선택하지만, 수신 envelope가 명시한 non-JSON content-type과 �
   무관하게 handler 타입 serializer를 선택한다.
 
 각 언어는 envelope decode 경계에서 content-type을 codec registry와 먼저 대조해야 한다. JSON 또는
-등록된 codec만 허용하고, 알 수 없는 non-JSON 값은 handler를 호출하지 않은 채 `PayloadDecodeFailed`로
+등록된 codec만 허용하고, 알 수 없는 non-JSON 값은 handler를 호출하지 않은 채 `ProtocolError`로
 종료해야 한다. Config 4 RC-B5는 정확한 error kind, 정상 JSON 트래픽의 지속과 handler 미호출을 함께
 검증해야 한다.
 
@@ -544,7 +544,17 @@ bounded cleanup한다.
   authority에 먼저 반영한다. Source reply는 `TerminalReceived`와 `AlreadyTerminal`을 구분해 ACK하고, relay가
   실패하면 frozen source owner의 exact lease가 Missing·stale·expired인지 Store에서 확인한 경우에만
   `SourceLeaseExpired`를 durable delivery state로 기록한다. 재시도는 durable cursor와 pending terminal payload를
-  읽으므로 application handler를 중복 실행하지 않는다. Preflight는 Spot aggregate와 standalone Actor가 공유하는
+  읽으므로 application handler를 중복 실행하지 않는다. Command 35 completion은 target ACK까지 재시도한다.
+  Target은 prepare, target lifecycle generation, committed authority generation, command fingerprint와
+  applied marker를 deterministic Relocation Store reference에 보관한다. 같은 lifecycle에서 in-memory
+  terminal이 제거되어도 exact retry를 처리한다. Process restart로 lifecycle generation이 바뀌면 이전
+  command 35를 stale로 거부한다. Source cleanup state는 target completion 증거로 사용하지 않는다.
+  Exact publication이면 target completion을 실행하고, 같은 authority generation의 검증된 steady
+  authority만 이미 완료된 상태로 인정한다. Standalone Actor는 session route commit ACK와 unseal을
+  완료한 뒤 local route를 확정하고 steady authority를 게시한다. Steady 게시 뒤에는 await 없이
+  handoff admission을 연다. 따라서 unseal 실패 retry가 누락된 단계를 다시 실행한 뒤에만 steady로
+  전환한다. Receipt가 24시간 뒤 만료되면 ACK를 추측하지 않고 거부한다. Preflight는
+  Spot aggregate와 standalone Actor가 공유하는
   provisional capacity를 누적하고 limit `0`을 unlimited로 해석한다. 실제 두 host process 장애 E2E와 Entry Spot
   standalone Actor callback 순서 검증은 남아 있다.
 - Java/Kotlin, Node와 C++은 위 단계를 일부 구현했지만 target factory·restore staging, aggregate publication,
@@ -553,12 +563,23 @@ bounded cleanup한다.
   result를 소유하는 목표 계약과 다르다.
 - `SpotWide` User Spot과 member Actor는 하나의 aggregate permit·root·commit
   generation으로 이전해야 한다.
-- `PerActor` User Spot은 `Recreate` shell과 Actor별 owner를 사용해야 한다. 현재
-  runtime은 Spot authority를 먼저 target으로 바꾸고 `ToSpot`·Create·Join을 target,
-  `ToActor`를 Actor별 current owner로 분리하는 transient split state와 relay barrier를
-  구현하지 않았다.
-- Actor queue seal부터 target admission까지 1초 목표를 측정하는 metric과 warning이
-  없으며, 초과를 failure나 rollback 조건으로 사용하지 않는 검증도 없다.
+- `.NET`은 `PerActor` User Spot의 `Recreate` shell과 Actor별 owner를 production
+  scheduler에 연결했다. Spot authority를 먼저 target으로 바꾸고 Actor를 독립적으로
+  이전한다. `ST-G3` fresh process는 Actor 100개의 generation 유지, Capture·Restore
+  payload 일치, Actor별 `transfer_in` 1회와 이동 뒤 Actor·Spot dispatch를 확인했다.
+  증거는
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260728-075736-1950230`이다.
+  이동 중 Create·Join과 Actor별 source·target 분할을 연속 traffic으로 관찰하는 보강
+  시나리오는 Message Follow 검증이 계속 소유한다.
+- `.NET` Entry Actor는 current turn과 permit wait가 끝나 queue admission을 닫은
+  시점부터 target admission을 다시 열 때까지 production histogram과 warning으로
+  측정한다. 정상 경로와 Capture·Restore를 각각 1.25초 지연한 실제 process E2E가
+  1초 초과 후에도 같은 relocation을 완료하는지 검증한다. 별도 E2E는
+  infrastructure relocation에서 application membership callback을 호출하지 않는지
+  확인한다.
+  `.NET`의 `PerActor` target shell authority 선전환과 Actor별 production relocation은
+  연결됐다. 모든 relocation unit에 공통 1초 계측을 적용하는 작업과 Java/Kotlin,
+  Node, C++의 같은 metric·warning·actual process 검증은 남아 있다.
 - `SpotWide`의 `AnyTurnBoundary`·`ApplicationSignaled` option,
   `RelocationReady().Defer()` queue barrier와 source `Continued`·target `Relocated`
   default no-op callback이 다섯 runtime production scheduler에 연결되지 않았다.
@@ -607,16 +628,16 @@ canonical frame을 감싸는 두 번째 application packet protocol을 추가해
 
 - C++ Node direct는 현재 Core의 admitted pipe 결과만 사용한다. Config 13 process topology에는 Location Store의
   descriptor·location resolve snapshot이 연결되어 있지 않으므로, descriptor가 없는 RID와 알려졌지만 route가
-  준비되지 않은 RID가 모두 `RouteNotConnected`가 된다. [Node direct](01-glossary.ko.md#node-direct) submit 전에 target이 논리적으로 존재하는지
+  준비되지 않은 RID가 모두 `Unavailable`이 된다. [Node direct](01-glossary.ko.md#node-direct) submit 전에 target이 논리적으로 존재하는지
   판단할 기준 데이터를 조회해야 두 상태를 구분할 수 있다.
-- Node.js는 expected RID를 모두 명시한 manual peer registry에서는 unknown RID를 `TargetNotFound`로 분류하고,
-  registry에 남아 있지만 ready route가 없는 RID는 `RouteNotConnected`로 분류한다. Self RID direct submit도
+- Node.js는 expected RID를 모두 명시한 manual peer registry에서는 unknown RID를 `NotFound`로 분류하고,
+  registry에 남아 있지만 ready route가 없는 RID는 `Unavailable`로 분류한다. Self RID direct submit도
   기존 node-direct dispatcher의 local admission을 사용해 결과값 없이 완료한다. Discovery mode나 expected
   RID가 없는 [manual endpoint](01-glossary.ko.md#manual-endpoint)가 섞인 구성에는 unknown RID와 이전에 연결됐던 disconnected RID를 구분할
   target이 논리적으로 존재하는지 판단할 기준 데이터가 없다. 이 구성은 Core의 pipe 결과만 사용하므로 두
   상태를 완전히 구분하지 못한다.
-- JVM은 expected RID를 모두 명시한 manual peer registry에서 unknown RID를 `TargetNotFound`로 분류하고,
-  registry에 남아 있지만 ready route가 없는 RID는 `RouteNotConnected`로 분류한다. Self RID direct submit은
+- JVM은 expected RID를 모두 명시한 manual peer registry에서 unknown RID를 `NotFound`로 분류하고,
+  registry에 남아 있지만 ready route가 없는 RID는 `Unavailable`로 분류한다. Self RID direct submit은
   기존 Mesh application dispatcher와 drain claim을 사용하는 local admission으로 결과값 없이 완료한다.
   Discovery mode나 expected RID가 없는 manual endpoint가 섞인 구성에는 target이 논리적으로 존재하는지 판단할
   기준 데이터가 없으므로 두 상태를 완전히 구분하지 못한다. JVM Config 13은 Node direct·ChannelName·classic
@@ -715,7 +736,7 @@ operation이나 worker를 시작한 뒤 execution context를 검사한다.
 
 Entry Spot·Entry Actor·`PerActor`·Node·Channel·owner 밖의 호출은 operation ID,
 outbound admission, worker scheduling과 queue를 변경하기 전에
-`InvalidConfiguration`으로 끝나야 한다. 같은 gate를 다시 기다리는 `Async`와
+`InvalidOperation`으로 끝나야 한다. 같은 gate를 다시 기다리는 `Async`와
 자기 Actor로 보내는 awaited request도 timeout에 의존하지 않고 submit 전에
 거부해야 한다.
 
@@ -741,7 +762,7 @@ Spot ID와 global namespace 충돌 처리를 구현해야 한다.
 Active collision이면 record를 변경하거나 다른 ID로 재시도하지 않고
 `SpotIdConflict` startup failure를 반환한다. Caller가 지정한 User·Instance Spot ID가
 Entry Spot 예약 형식과 같으면 Location Store reservation과 factory 전에
-`InvalidConfiguration`으로 거부한다. RID 문자열을 parse하거나 MeshNode RID 전체를
+`InvalidOperation`으로 거부한다. RID 문자열을 parse하거나 MeshNode RID 전체를
 결합해 Entry Spot 관계를 복원하지 않는다.
 
 ### 12.49 전 언어 relocation mode와 exact version 선택 미구현
@@ -779,14 +800,27 @@ generation, inventory root와 capacity를 한 번의 CAS로 전환한다. 이 CA
 participant가 source owner를 사용하고, CAS 뒤에는 모두 target owner를 사용한다.
 Actor별 owner row 전체를 하나의 Store transaction에서 바꾸지 않는다.
 
-현재 service wire schema와 production runtime은 aggregate participant vector와 record
-하나에 최대 1,024개를 넣는 구조다. 이 구조는 Actor가 1,023명을 넘는 User Spot을
-relocation할 수 없다. 모든 언어에서 다음 항목을 구현해야 gap을 닫을 수 있다.
+`.NET`의 in-memory·provider coordinator와 Relocation envelope는 participant 전체
+1,024개 상한을 제거했다. Opaque provider는 participant metadata를 최대 1,024개·
+encoded 1 MiB인 leaf page로 나누고, page reference가 1,024개를 넘으면 같은 제한의
+상위 page를 재귀적으로 만든다. Aggregate root에는 전체 수, leaf 순서 digest, 최상위
+page reference와 level별 page 수만 둔다. Page는 version이 있는 전용 binary codec으로
+인코딩하므로 JSON serializer 출력 형식이 checksum의 기준이 되지 않는다.
 
-1. Location Store에 immutable inventory leaf·index chunk와 작은 aggregate authority
-   record를 저장한다.
-2. Participant negotiation과 relocation staging을 한 vector가 아니라 inventory
-   root·count·digest와 chunk stream으로 처리한다.
+Commit·recovery는 key에서 정한 level·index, page checksum·크기, 연속된 range와 순서,
+level별 page 수, leaf digest와 participant metadata·payload checksum을 다시 확인한다.
+누락·손상·순서 변경은 `RelocationDataLost`로 처리한다. 10,000 participant는 leaf
+10개로 준비·commit·cleanup되며 provider·coordinator·envelope focused test가
+통과했다. 손상된 root의 전체 수는 leaf page 수×1,024 범위를 먼저 확인하므로 전체
+수만으로 collection을 미리 할당하지 않는다.
+
+다른 언어 구현과 실제 process E2E가 남아 있으므로 이 gap은 유지한다. 다음 항목을
+완료해야 닫을 수 있다.
+
+1. Java·Kotlin, Node.js와 C++ Location Store도 같은 leaf·index page와 작은 aggregate
+   authority record를 저장한다.
+2. 다섯 언어의 participant negotiation과 relocation staging을 한 vector가 아니라
+   inventory root·count·digest와 page stream으로 처리한다.
 3. Actor direct resolve가 current aggregate generation과 owner를 따르게 한다.
 4. Join·leave는 새 inventory path를 준비한 뒤 Actor membership과 aggregate root를
    expected-version batch로 함께 바꾼다.
@@ -819,7 +853,9 @@ runtime 전이, metric label과 contract test를 exact interface에 맞춘 뒤 �
 연결했다. I1은 Actor 4 KiB·64 KiB·8 MiB·64 MiB와 Instance Spot·`SpotWide`
 64 KiB·1 MiB·32 MiB·64 MiB를 실제 cross-node relocation한다. deterministic state의
 Capture·Restore byte와 opaque Relocation Store blob의 size·read-back checksum을
-대조한다. 각 profile은 Store 측정을 reset한 격리 실행이다.
+대조한다. 각 profile은 Store 측정을 reset한 격리 실행이다. 이 selector들은 아직
+diagnostic 또는 부분 구현이므로 공식 `all`에서 실행하지 않는다. Java·Node.js·C++에는
+`ST-I1~I6` selector가 없고 Kotlin에는 별도 SpotActorTransfer runner 자체가 없다.
 
 `ST-I2/I3`가 이전에 사용한 `RelocationUnitTerminalStore`는 실제 terminal을 관찰하지
 않았다. Actor는 당시 lifecycle callback에서 기록했고, Spot은 authority commit 전의
@@ -852,6 +888,24 @@ admission 순서는 provider·runtime contract test가 검증한다.
   baseline을 제외한다. `SpotWide` 최종 owner equality는 유지 상태 확인에만 사용하며
   atomic publication 통과 증거로 사용하지 않는다. Commit 전 participant 0개 공개와 commit 뒤
   전체 공개를 함께 관찰할 수 없어 `spotwide_pre_post_visibility` blocker로 남긴다.
+- `ST-G5` Entry Actor selector는 relocation 전·중·후 request와 one-way를 계속
+  제출한다. Canonical replay는 `relocationReplay`를 Entry Spot request router까지
+  전달한다. Target은 preserved backlog에 mailbox 순서를 먼저 배정하고 direct
+  admission을 연다. Accepted request의 durable cursor 갱신과 reply relay 완료도
+  accepted sequence 순서로 처리한다.
+- Fresh process `logs/20260728-092319-3148154`의 `ST-G5-SMALL`은 interruption
+  0.388267초, source 마지막 handler에서 target 첫 handler 또는 reply까지 377 ms,
+  request 71건과 one-way 80건을 기록했다. Loss와 duplicate는 각각 0건이며 FIFO,
+  원래 operation ID·deadline·request correlation을 보존했다. 이 결과는 Entry Actor
+  small profile만 완료한다. Slow profile, PerActor·SpotWide·Instance Spot과
+  Spot Message Follow 전체 matrix는 계속 남아 있다.
+- `.NET` SpotWide payload는 Spot과 Actor의 `Capture` callback을 순차 실행한 뒤 하나의
+  logical stream으로 합친다. 64 MiB 이하는 하나의 data chunk로 저장하고, 그보다 큰
+  stream의 저장·read-back 확인·읽기·renew는 최대 4개와 encoded component bytes 256 MiB
+  단위로 병렬 실행한다. Manifest는 모든 chunk를 확인한 뒤에만 저장하고 target은 I/O
+  완료 순서가 아니라 manifest 순서로 stream을 복원한다. Focused
+  `RelocationTree` test 7/7이 통과했다. 이 결과는 Store I/O 병렬성만 증명하며
+  SpotWide unit의 1초 service interruption 달성을 증명하지 않는다.
 - 측정하지 않은 interruption·resource·Store 수치는 추정하거나 0으로 채우지 않는다.
   `ST-I2/I3` selector는 이 blocker가 남아 있는 동안 `diagnostic_only`다.
 
@@ -881,7 +935,9 @@ host relocation의 commit 전 hold, Spot 네 조합과 PerActor split는 남아 
 역순 release, expiry와 Message Follow 중 original absolute deadline을 연결했고
 `logs/20260728-002118-1750005`에서 correlation A/B exact reply, late reply 폐기와
 expiry stale rejection을 관찰했다. 현행 scenario는 runtime marker 대신 같은 결과를 public
-terminal과 application handler 0회로 판정하며 process 재검증이 필요하다.
+terminal과 application handler 0회로 판정한다. 수정 뒤 `logs/20260728-035609-2262342`에서
+I4와 함께 focused process를 재검증했다. 이 실행은 아래에 남은 case를 포함하지 않으므로
+전체 I5 완료 증거가 아니다.
 Duplicate, 이전 generation, loop, 8-hop과 record·byte bound 및 Spot 조합은 남아 있다. I6은 Actor의 두 번 relocation과
 delayed request를 연결했다. 현행 assertion은 public `Find`의 final owner가 정확히 한 번
 처리하고 source·중간 owner handler가 처리하지 않는지 확인한다. Route cleanup 내부값은 public
@@ -896,14 +952,14 @@ provider-backed authority repository를 연결했고 Redis와 in-memory parity t
 2026-07-27 process 재실행은 이전 `Conflict(Missing)`을 지나 User Spot·Actor 생성과
 admission 승인까지 진행했다. Reservation 기반 Actor creation commit의 authority snapshot을
 local ownership coordinator에 연결하고 Actor publish를 그 뒤로 옮겨 첫 deferred Join의
-`ActorRouteNotFound`도 수정했다. `ST-A1` process는 통과했지만 Track I 네 scenario는 각각의
+`NotFound`도 수정했다. `ST-A1` process는 통과했지만 Track I 네 scenario는 각각의
 남은 matrix와 process 검증을 끝내지 않아 완료 증거가 아니다.
 
 추가 재실행에서는 fixture 자체의 배치 오류를 확인했다. `ST-B1`은
 `logs/20260727-225502-168874`에서 Actor와 User Spot이 같은 node에 배치되어 실제 relocation이
 일어나지 않았고 `transfer_out` 증거가 없어서 실패했다. `ST-I5`도
 `logs/20260727-225133-156186`에서 deferred Join 요청의 접수 응답만 확인한 뒤 delivery gate를
-해제했다. 실제 Join completion은 `RequestFailed`였고 지연 request는 source Entry Spot에서
+해제했다. 실제 Join completion은 `InternalFailure`였고 지연 request는 source Entry Spot에서
 handler를 찾지 못했다. 두 결과는 Message Follow 실패 증거가 아니라, node별 stable type과
 `TargetNodeRid`에 의존한 fixture 및 deferred completion 대기 누락이다.
 
@@ -917,9 +973,10 @@ Spot을 actor-b에 자동 배치하고 target restore, authority convergence와 
 
 I1에는 Actor 외에 Instance Spot과 `SpotWide`의 `small`·`normal`·`large`·`boundary`
 adapter, opaque Store 총 byte·checksum과 process peak RSS 측정을 추가했다. Instance Spot은
-`logs/20260727-232318-914304`에서 4 KiB·64 KiB·8 MiB·64 MiB의 byte 수와 SHA-256,
-자동 remote placement를 모두 통과했다. 아직 다음 process blocker가 남아 있어 `all`에
-포함하지 않는다.
+초기 activation-only 진단 `logs/20260727-232318-914304`에서
+4 KiB·64 KiB·8 MiB·64 MiB fixture를 사용했다. 이 크기와 실행은 현행 relocation profile이나
+완료 증거가 아니다. 현행 Instance Spot profile은 64 KiB·1 MiB·32 MiB·64 MiB이며,
+아직 다음 process blocker가 남아 있어 `all`에 포함하지 않는다.
 
 - Actor payload 전체 profile은 remote Join 기반 fixture를 다시 실행해야 한다.
 - SpotWide small의 commit 직후 public lookup이 canonical relocation target route를
@@ -999,26 +1056,49 @@ Spot의 이전 route를 일정 기간 current owner로 전달한다. Java/Kotlin
 focused 구현은 Actor route만 처리하며 Spot route 연결이 남아 있다. 어느 언어도 다음
 계약 전체를 process E2E로 검증하지 않았다.
 
-Java/Kotlin·Node.js·C++의 공식 `all` selector는 이전 route를 caller가 직접 지정하는
+Java·Node.js·C++의 공식 `all` selector는 이전 route를 caller가 직접 지정하는
 전환 대상 `ST-F4/F5`도 실행한다. 시나리오를 삭제하거나 assertion을 약화하지 않는다.
 각 언어가 public global Actor ID의 resolve 뒤 delivery를 transport에서 지연하는 fixture로
 전환할 때까지 해당 실행 결과는 현행 `ST-F4/F5` 완료 증거가 아니다.
 
 Java의 evidence store는 현재 route 등록 marker만 보존하고 relay·거부·route 제거
-marker를 버리지만 client는 이 marker를 요구한다. Kotlin runner는 별도 observer를
-연결하지 않고 Java runner에 위임한다. 따라서 Java/Kotlin `ST-F4/F5`는 fixture를
-현행 Message Follow marker 계약에 맞추기 전에는 통과할 수 없다.
+marker를 버리지만 client는 이 marker를 요구한다. Kotlin은 별도 SpotActorTransfer
+runner·feature map·server module이 없다. Java runner 실행을 Kotlin runtime 증거로
+사용할 수 없다. 따라서 Java `ST-F4/F5` fixture 수정과 별개로 Kotlin process E2E를
+새로 연결해야 한다.
 
 Production code 대조 결과도 다음 차이가 남아 있다.
 
 | Runtime | Actor Message Follow | Spot Message Follow | Track I에서 남은 핵심 차이 |
 |---|---|---|---|
 | Java/Kotlin | generation과 1,024-message·16 MiB 제한을 검사하지만 accepted handoff packet에 original operation ID와 Message Follow hop이 없고, relay request에 original absolute deadline 대신 기본 timeout을 다시 적용한다 | 없음 | duplicate·loop, durable multi-hop recovery와 payload·bulk process 증거가 없다 |
-| Node.js | operation ID·correlation·hop·bound와 original absolute deadline을 accepted handoff·relay에 보존한다. 만료 request는 handler queue 전에 끝내고 late reply를 폐기한다 | codec field만 있고 route 수명과 relay를 소유하는 runtime이 없다 | duplicate·loop, recovery와 payload·bulk process 증거가 없다 |
+| Node.js | Immutable internal context에 128-bit operation ID, correlation·reply route, source·target owner fence, ObjectGeneration, hop·visited-owner chain, payload checksum과 original absolute deadline을 보존한다. Route별 terminal dedupe와 loop·8-hop·1,024-message·16 MiB bound를 적용한다. 만료 request는 handler queue 전에 끝내고 late reply를 폐기한다 | codec field만 있고 route 수명과 relay를 소유하는 runtime이 없다 | restart recovery와 payload·bulk process 증거가 없다 |
 | C++ | production relay는 target route를 사용하지만 1,024-message·16 MiB·hop 제한을 적용하는 admission API가 unit test에서만 호출된다. Relay request는 새 30초 envelope를 만들어 original operation·deadline·correlation을 보존하지 않고, Actor client는 Location Store에서 fresh owner를 다시 찾아 재시도한다 | 없음 | bounded committed route만 사용하는 전달, original operation·deadline·correlation 보존과 payload·bulk process 증거가 없다 |
 
 따라서 세 runtime의 component code나 F6 결과를 Actor·Spot 전체 Message Follow 또는
 Track I 완료 증거로 사용하지 않는다.
+
+세부 계약을 production code와 대조한 결과는 다음과 같다. `부분`은 field나 helper는
+있지만 모든 실제 relay 경로가 그 계약을 사용하지 않는다는 뜻이다.
+
+| 계약 | Java/Kotlin Actor | Node.js Actor | C++ Actor | 세 runtime Spot |
+|---|---|---|---|---|
+| one-way·request | 구현 | 구현 | 구현 | 미구현 |
+| commit 전 accepted queue | 구현 | 구현 | 구현 | 미구현 |
+| commit 뒤 stale physical route Message Follow | 구현 | 구현 | 구현 | 미구현 |
+| original operation ID | 미구현 | 구현 | 미구현 | 미구현 |
+| original absolute deadline | 미구현 | 구현 | 미구현 | 미구현 |
+| correlation·reply route | 부분 | 구현 | 미구현 | 미구현 |
+| ObjectGeneration·owner generation | ObjectGeneration만 검사 | 둘 다 검사 | ObjectGeneration만 검사 | 미구현 |
+| duplicate terminal·loop | 미구현 | 구현 | 미구현 | 미구현 |
+| 8-hop 제한 | 미구현 | 구현 | production relay에는 미적용 | 미구현 |
+| route당 1,024 messages·16 MiB | 구현 | 구현 | production relay에는 미적용 | 미구현 |
+| duration·cleanup | process memory에서 구현 | process memory에서 구현 | process memory에서 구현 | 미구현 |
+| restart recovery·multi-hop cleanup | 미구현 | process 내 multi-hop route와 cleanup은 구현, restart recovery는 미구현 | 미구현 | 미구현 |
+
+여기서 `Message Follow`는 relocation commit 뒤 이전 physical route에 도착한 message를
+새 owner로 전달하는 기능만 뜻한다. Session의 일반 reply relay나 relocation commit 전
+accepted queue는 기존 이름을 유지한다.
 
 `.NET`의 Spot request runtime은 absolute deadline을 wire와 inbound record에 보존하고
 Message Follow hop마다 남은 시간만 전달하도록 수정했다. 만료된 ingress는 handler queue
@@ -1027,9 +1107,16 @@ test는 통과했지만, 실제 process에서 relay 중 deadline을 넘기는 `M
 
 Node.js Actor request도 absolute deadline을 internal stream metadata, accepted handoff와
 relay envelope에 보존한다. 각 hop은 남은 시간만 사용하고 만료 request를 target
-handler queue 전에 `DeadlineExceeded`로 끝내며 late reply를 폐기한다. Build·lint와
-Actor handoff/client focused 25/25가 통과했다. Spot route runtime과 process
-`MF-DEADLINE` 증거는 남아 있다.
+handler queue 전에 `DeadlineExceeded`로 끝내며 late reply를 폐기한다. Actor route key는
+ActorId, ObjectGeneration과 source authority owner generation을 사용하고 relay 전에 full
+source·target owner fence를 다시 확인한다. 같은 operation ID·checksum·request·reply route의
+중복은 같은 terminal Promise에 합류하므로 target handler가 한 번만 실행된다.
+
+Node workspace build, Actor client·handoff focused 30/30과 authority transfer 3/3이 통과했다.
+Fresh process `ST-F4` `log/20260728-082930-2149821`과 A→B→C `ST-F5`
+`log/20260728-082947-2149807`에서는 보류한 one-way와 positive request가 final owner에서
+각각 한 번 처리되고 reply도 한 번 돌아왔다. 모든 process stderr는 0 bytes다. Spot route
+runtime, restart recovery, payload·bulk와 process `MF-DEADLINE` 증거는 남아 있다.
 
 Spot public call은 Spot ID만 받고 terminal 실행 안에서 route를 찾는다. Relocation 전에
 선택한 opaque route를 보존해 commit 뒤 제출하는 public operation은 없다. Message Follow가
@@ -1062,20 +1149,33 @@ Java/Kotlin·Node.js·C++에는 Spot Message Follow 자체가 없다.
 구분해 기록한다. Runtime marker나 단위 test만으로 process E2E 완료로 판정하지 않는다.
 
 `.NET`은 relocation source가 commit 뒤 Store에서 읽은 실제 authority owner generation으로
-Message Follow를 시작한다. 비교 규칙도 정확히 `source + 1`이 아니라 유효 범위와
-`target > source`만 검사한다. 하지만 target object를 commit 전에 만드는 여섯 경로는 아직
-`source + 1`을 임시 generation으로 사용한다. 현재 prepare 결과에는 participant별 예약
-generation이 없고 commit 결과에도 실제 generation이 없기 때문이다. Store prepare 결과가
-participant별 target generation을 반환하고, target admission·factory·context와 authority
-publication까지 같은 값을 전달해야 이 차이를 제거할 수 있다.
+Message Follow를 시작한다. 비교 규칙은 정확히 `source + 1`이 아니라 유효 범위와
+`target > source`만 검사한다. Capacity reservation과 aggregate prepare가 target generation을
+먼저 예약하고, target admission·factory·context와 authority commit이 같은 값을 사용한다.
+Abort된 예약의 generation은 재사용하지 않는다. 따라서 중간 예약이 취소되어 target generation이
+`source + 2` 이상이어도 staging과 commit이 같은 값으로 완료된다.
 
-Message Follow request reply도 backpressure gap이 남아 있다. Source의 reply queue가 잠시
-가득 차면 현재 구현은 direct reply entry를 먼저 제거하거나 remote reply를 `DontWait`으로
-한 번만 제출한다. Handler가 정확히 한 번 실행된 뒤에도 caller가 정상 reply 대신 timeout을
-받을 수 있다. Reply terminal은 original deadline까지 bounded retry하거나 reply queue가
-수락할 때까지 pending entry를 유지해야 하며, E2E는 reply backpressure를 실제로 주입해야 한다.
+In-memory Store와 opaque provider adapter가 모두 예약값을 commit에 사용한다.
+`.NET` unit 1,098/1,098, provider adapter focused 2/2, contract 67/67과 Redis 25/25가 통과했다.
+`ST-F4` process 재검증 `logs/20260728-033031-1716434`에서도 duration 안에 해제한 operation을
+target handler가 한 번 처리하고 만료 operation은 stale로 끝났다.
 
-2026-07-28 최종 회귀 기준으로 `.NET` Unit 1,090/1,090와 public Contract 67/67이 통과했다.
+`.NET`의 Message Follow request reply backpressure 구현은 수정했다. Source는 direct reply
+entry를 queue admission 전에 제거하지 않는다. Local direct reply와 remote reply relay는
+reply capability에 보존한 original absolute deadline까지만 다시 제출한다. 같은 capability의
+동시·중복 reply는 terminal claim 하나만 실행한다. Cancellation은 claim을 반환하므로 deadline
+안의 재전달 한 번이 같은 entry를 이어서 사용할 수 있다. Focused Message Follow test 26/26이
+backpressure 뒤 성공, deadline 종료, deadline 0의 configured fallback, cancellation 뒤 재전달,
+local·remote queue admission 재시도, duplicate terminal과 deadline 뒤 remote 전송 0회를 검증했다. 실제 process E2E에서 source reply
+queue backpressure를 주입하는 fixture와 `ST-I4`·`ST-I5` assertion을 연결했다. Fixture는 route,
+pending request와 reply capability를 바꾸지 않고 reply submit 직전에 `Backpressured`를 반환한다.
+Runtime retry loop는 이 internal transport fixture의 결과를 실제 transport와 같은 bounded retry로
+처리한다. `20260728-035609-2262342`에서 ST-I4·I5 focused process가 통과했다. Actor commit 직후
+Message Follow request의 reply backpressure·release·deadline은 확인했지만, Spot 조합과
+duplicate·generation·loop·hop·queue bound는 아직 gap이다.
+
+2026-07-28 reply backpressure 변경 뒤 `.NET` Unit 1,097/1,097이 통과했다.
+Public Contract의 마지막 독립 실행은 67/67이다.
 
 ### 12.53 E2E fixture의 SpotRid 잔여
 
@@ -1101,11 +1201,12 @@ application DTO가 이전 `SpotRid` 이름을 유지한다. 일부 Java E2E는 �
 | 대상 | 확인 결과 | 주요 원인 |
 |---|---:|---|
 | `.NET 전체 solution` | Linux build 260 errors | Sample과 다른 E2E에 제거된 `ActorRefSnapshot`, 이전 drain API·handler context·Spot manager terminal이 남아 있고 일부 consumer project가 provider abstraction reference를 포함하지 않는다 |
-| `.NET AutomaticTurnDispatch` | 5개 project compile 통과, process TD-A2 실패 | User Spot `GetOrCreate`에서 reservation이 달라졌다는 runtime 오류 |
-| `.NET SpotActorTransfer` | 4개 project compile 통과, current fixture `ST-A1` 통과, remote `ST-B1` 실패 | 동일 stable type·caller 비지정 배치와 deferred completion wait는 전환했다. Remote Join completion이 `RequestFailed`로 끝나는 runtime gap이 남았다 |
+| `.NET AutomaticTurnDispatch` | 5개 project compile 통과, process TD-A2·TD-D1·TD-D2·TD-F3 통과 | Runner가 canonical selector를 실제 client scenario로 전달하고 실행 수를 검증한다. `20260728-035646-2274534`에서 TD-A2 1개가 실행됐고 알 수 없는 selector는 fixture 시작 전 exit code 64로 실패한다. 내부 session route handler 네 개의 DI 등록을 복구했다. Route commit ACK가 검증한 session owner RID를 Steady authority 정리 뒤까지 보존해 ingress를 unseal한다. `20260728-050239-3599515`에서 TD-D1, `20260728-050340-3689192`에서 TD-D2·TD-F3가 실제 multi-process 실행으로 통과했다 |
+| `.NET SpotActorTransfer` | ST-A1 Client·ActorNode compile 통과, current ST-A1 process 실패 | Same-node join과 Relocation Store artifact 0건은 고정했다. Runtime이 same-node authority commit evidence를 발행하지 않아 `admission -> authority_committed -> leave -> joined -> success_reply` 전체 순서를 검증할 수 없다. 증거: `logs/20260728-042012-2770643` |
 | Java SpotActorTransfer | 현재 Client·Shared·ActorNode compile 통과 | 제거된 route-bearing `ActorRef` 제출은 제거했지만 `ST-F4/F5` transport delivery-delay fixture는 아직 없다 |
 | Kotlin SpotActorTransfer | Client·Shared·JavaClient·ActorNode compile 통과, process ST-A1 실패 | Actor가 다른 owner에 배치되면 public global Actor ID request가 `actor is not local`로 실패하는 Java runtime cross-node routing 차이가 있다 |
-| Node.js E2E | 47개 project 중 42개 실패 | 제거된 `SpotHandle`·handler context·Actor join context, 이전 builder·rich Store 표면과 공통 `rootDir` 설정 |
+| Node.js SpotActorTransfer | Client·ActorNode·Session과 workspace build가 통과한다. Native MeshNode의 relocation control을 application node-direct dispatch 전에 처리하며 internal route handler도 native dispatcher에 연결한다. Fresh `ST-F4` `20260728-082930-2149821`과 3-node `ST-F5` `20260728-082947-2149807`에서 one-way·positive request의 final-owner handler와 reply가 각각 한 번이고 모든 stderr가 0 bytes다. Runner가 delivery·terminal·중복 0을 terminal gate로 강제한다 | 현행 `ST-F4/F5` 범위의 gap 없음. Spot Message Follow와 Track I payload·bulk·restart recovery는 별도 gap이다 |
+| C++ SpotActorTransfer | 강화한 ST-A1·ST-B1 contract gate 통과, process는 host compile 전 차단 | ST-A1은 same-node와 `admission -> authority_committed -> leave -> joined -> success_reply`, Relocation Store·Message Follow 0건을 요구하고 ST-B1은 commit-before-joined를 요구한다. 기존 host source에는 제거된 Spot handler context·factory/context 생성·Actor 생성자·transfer adapter·builder·location option이 남아 actual process를 시작하지 못한다 |
 
 각 fixture는 정식 exact interface의 `MessageContext`, global `SpotId`, 현재 builder와
 opaque Store 등록 표면을 사용해야 한다. 기존 scenario를 삭제하거나 assertion을 줄여
@@ -1122,24 +1223,6 @@ Public API로 global Actor ID에 operation을 제출한 뒤, resolver가 선택�
 fixture가 지연해야 한다. 이 fixture가 없으면 endpoint를 global Actor ID 호출로 바꿔 PASS를
 만들지 않고 `전환 대상`으로 유지한다.
 
-### 12.56 .NET Redis package의 중복 domain repository
-
-`.NET`의 public Location Store SPI는 opaque `Read`, 조건부 batch `Write`와 bounded `Scan`만
-노출한다. Framework가 authority record와 transaction 조건을 private 형식으로 구성해 이 SPI에
-저장해야 한다.
-
-`ZLinkProviderLocationRepository`는 더 이상 in-memory repository를 상속하지 않는다.
-Framework private repository가 owner lease, descriptor, authority, creation terminal,
-relocation capacity와 aggregate operation을 opaque Store의 조건부 batch로 처리한다.
-두 repository가 같은 Redis prefix를 사용하는 creation·relocation CAS test와
-`AutomaticTurnDispatch TD-A2` process E2E도 통과했다.
-
-Redis package에는 이전 internal `IZLinkLocationRepository` 직접 구현과 domain-specific
-Lua·key codec도 남아 있다. Runtime registration은 이 구현을 사용하지 않고 opaque SPI를
-Framework repository로 감싸지만, 같은 authority 지식이 Framework와 Redis package에 중복된다.
-이 dead implementation과 Hybrid 물리 schema를 직접 검사하는 test를 제거하고, opaque provider와
-Framework private repository의 contract test로 대체해야 이 항목을 닫을 수 있다.
-
 ### 12.57 Java runtime의 cross-node Actor messaging 미연결
 
 Actor caller는 global Actor ID만 전달한다. Framework는 Location Store에서 current owner를 찾고,
@@ -1153,6 +1236,65 @@ remote route를 사용하지 않고 `actor is not local`로 실패한다. Kotlin
 특정 Node RID에 Actor를 강제로 배치하거나 old `ActorRef`, raw route와 test-only local registry로
 우회하면 안 된다. Java runtime에서 global ID resolve, exact owner fence, remote submission과 reply
 correlation을 연결하고 Java·Kotlin 양쪽 process E2E로 검증해야 한다.
+
+### 12.58 Object Client pair RouteMesh connection 생략 수렴 필요
+
+두 MeshNode의 object role이 모두 `Client`이더라도 RouteMesh Channel Server는
+application target이 될 수 있다. Automatic discovery는 descriptor에서 양쪽 object
+role과 RouteMesh Server membership을 함께 확인한다. 양쪽 모두 Object Client이고
+Server membership도 없을 때만 connection intent를 만들지 않는다. Manual endpoint는
+handshake에서 같은 조건을 확인한 뒤 ready 전에 socket을 닫고 `NotRequired`
+terminal로 끝낸다. 같은 endpoint와 configuration generation에는 reconnect를
+반복하지 않는다.
+Public monitoring은 이 결과를 `NotRequired`로 표시하고, 연결이 필요하지만 준비되지
+않은 `NotConnected`와 구분해야 한다. `NotRequired`는 ready peer, liveness와 health
+failure 집계에서 제외한다.
+
+Object Client에는 RouteMesh Channel Server를 함께 등록할 수 있다. 이 조합은 object
+placement target은 아니지만 Channel target이다. Server membership은 weight가 `0`이어도
+connection 필요성을 만든다. Channel Client membership만 있는 pair는 connection을
+만들지 않는다. ClientServer와 classic fanout role은 별도 topology이므로 이 판정에
+포함하지 않는다. Object Client에 application Node direct handler를 등록하는 조합은
+계속 socket bind 전에 거부한다.
+Object Client RID를 Node direct target으로 지정하면 다른 RID로 바꾸거나 새 connection을
+만들지 않고 `NotFound`로 끝내야 한다. Object Client↔Object Server,
+Object Server↔Object Server와 object role `None`인 Channel-only topology의 기존
+연결 규칙은 유지한다.
+
+`.NET` low-level runtime은 automatic descriptor filtering, manual admission terminal,
+startup validation과 public peer 상태를 이 계약에 맞췄다. Channel Client의 weight
+`0`은 server capability로 계산하지 않는다. Focused unit 46건, targeted contract
+7건과 전체 unit 1,191건이 통과했다. AutomaticTurnDispatch Session fixture도
+Object Server로 바로잡아 build했다.
+
+후속 high review의 세 finding은 닫았다. `.NET`은 target을 `Unknown`,
+`ObjectClientTarget`, `RequiredNotConnected`, `ReadyEligible` 중 하나로 분류한다.
+따라서 연결이 필요하지만 Ready가 아닌 peer와 Node direct target이 아닌 Object Client를
+내부에서 구분하고, public error는 각각 `Unavailable`과 `NotFound`로 투영한다. Admission 전 peer
+snapshot은 expected RID를 사용해 descriptor와 Connecting peer를 한 항목으로
+표시한다. Internal backend의 `SetObjectRole`은 모든 구현이 제공해야 한다.
+
+기존 증거는 public automatic·manual Node direct, Connecting peer 단일 표시,
+Server→Client의 `NotConnected`와 Client-only pair의 `NotRequired`를 검증했다.
+Object Client와 RouteMesh Channel Server의 동시 등록, local·remote Server membership,
+weight `0` Server가 connection을 유지하는 새 회귀 증거를 추가해야 한다.
+
+Framework가 bound Session의 owner에게 보내는 route seal·abort·commit·unseal은 application
+Node direct 호출이 아니다. `.NET`은 이 네 control packet만 허용하는 내부 request 경로를 사용하고,
+public `IZLinkRouteClient`는 Object Client target을 계속 `NotFound`로 거부한다. Low-level
+internal relay와 public 거부 focused test는 통과했다. Bingo process smoke는 cross-node Actor authority
+commit 뒤 handoff completion reply ACK가 caller로 돌아오지 않아 아직 완료되지 않았다. 이 문제는
+Object Client target 분류가 아니라 request reply correlation의 남은 gap이다.
+`NotRequired`는 peer 목록에만 남고 retry·liveness·health failure·ready count에서
+제외된다.
+
+`.NET` Linux actual-process Config 1 `RM-A3`는 Automatic·Manual Client pair의
+`NotRequired`, 20초 reconnect 억제, 연결이 필요한 peer의 `NotConnected`, 정상
+Server↔Client·Server↔Server 연결을 확인했다. RouteMesh Channel Server가 있는
+Object Client pair의 Ready 연결과 weight `0` 대조군은 다시 실행해야 한다. Config 13 `SA-E2E-08`도 manual Ready
+Object Client를 Node-direct target으로 지정했을 때 Send·Request가 `NotFound`이고
+peer 수가 변하지 않음을 확인했다. Java/Kotlin, Node.js와 C++ runtime에는 같은 연결
+생략, manual terminal과 public 상태 투영을 구현해야 한다.
 
 ## 13. 샘플 계약 차이
 
@@ -1204,13 +1346,14 @@ sample과 E2E가 검증하는지 직접 대조해 확인한 현재 차이를 기
 | ID | 목표 계약과 실제 차이 | 대상 |
 |---|---|---|
 | **IMP-X2** | [50 §5](24-runtime-monitoring.ko.md#5-structured-log)는 `zlink.runtime.location.store_changed`와 `not_configured`, `ready`, `degraded`, `stopped` 상태를 요구한다. Java와 C++는 이 location store 상태 log source를 게시하지 않는다 | Java · C++ |
-| **IMP-X5** | [52 §4.1](26-message-flow-tracing.ko.md#41-실행-중에-기록-수준-변경)은 `off`에서 level read와 branch 외의 trace 전용 작업을 금지하고 public observer·event DTO를 제공하지 않는다. 네 runtime source에는 observer·event DTO가 public으로 남아 있으며, 실행 중 `off` 전환 뒤 event·flow context·telemetry queue item을 만들지 않는 allocation·queue contract test가 완성되지 않았다 | .NET · Java · Node · C++ |
+| **IMP-X5** | [52 §4.1](26-message-flow-tracing.ko.md#41-실행-중에-기록-수준-변경)은 `off`에서 level read와 branch 외의 trace 전용 작업을 금지하고 public observer·event DTO를 제공하지 않는다. Java·Node.js·C++ runtime에는 observer·event DTO가 public으로 남아 있으며, 실행 중 `off` 전환 뒤 event·flow context·telemetry queue item을 만들지 않는 allocation·queue contract test가 완성되지 않았다. .NET은 public observer·event DTO와 file·label 설정을 제거했고 `off`에서 operation ID, flow context와 Activity를 만들지 않는 focused test를 통과했다. | Java · Node · C++ |
 | **IMP-X6** | [53 §4](27-flow-correlation.ko.md#4-flow를-만드는-시점)의 `origin=lifecycle`을 생성하지 않아 drain이 유발한 트래픽과 application 트래픽을 구분할 수 없다 | Java · Node · C++ |
 | **IMP-X8** | [10 §5.2](07-channel-topology.ko.md)는 수동 endpoint를 지정한 역할의 automatic reconcile을 중단하도록 요구한다. Java는 store의 다른 peer도 연결하고 round-robin 대상으로 사용한다 | Java |
 | **IMP-X12** | [21 §close](13-mesh-node.ko.md)는 actor가 남은 user Spot의 종료를 실패로 끝내도록 요구한다. Java의 check-then-act 경합은 actor가 존재하는 Spot을 종료해 actor location row가 제거된 Spot을 가리킬 수 있다 | Java |
 | **IMP-X14** | C++는 `listPageSize`를 읽지 않아 기본 1000개 단위 page 대신 목록 전체를 한 번에 읽는다 | C++ |
 | **IMP-X16** | Java는 `includeNativeDiagnostics`를 검증하지만 runtime에 적용하지 않는다 | Java |
 | **IMP-X17** | [54 §4~5](28-graceful-drain-handoff.ko.md#4-target을-선택하기-전에-확인하는-조건)는 manual service topology가 하나라도 있으면 `Relocate`를 `Blocked/ManualTopologyUnsupported`로 차단하고, 각 automatic RouteMesh에 source 자신을 제외한 non-draining replacement가 최소 하나 있으며 exact RID·lifecycle generation이 source Core peer table에서 admitted·ready가 된 뒤에만 `Relocating`을 게시하도록 요구한다. Empty·source-only·all-draining snapshot은 `TargetUnavailable`이다. .NET은 local manual registration blocker, exact descriptor/Core peer fence, `Relocating` publication rollback과 Green `Ready` → old `Relocating` → relocation → old `Draining`·barrier → descriptor·owner lease release → disconnect 순서를 구현했으며 minimum replacement gate 보강을 진행 중이다. Node.js는 같은 local manual registration blocker, minimum replacement와 exact peer readiness gate, cleanup ordering을 구현했다. Multi-Mesh `Relocating` descriptor publication은 host state 변경 전에 수행하며 일부 write 또는 응답 유실이 발생하면 시도한 모든 descriptor를 `Serving`으로 되돌린다. Rollback까지 확인되면 `Blocked/StoreUnavailable`, 확인할 수 없으면 안전하게 `ForceStopped/TeardownFailed`로 끝낸다. Build와 focused topology·drain contract 38/38이 통과했다. Java·Kotlin·C++ runtime과 실제 process rolling E2E에는 같은 gate와 cleanup ordering이 남아 있다. | .NET · Java · Kotlin · C++ · process E2E |
+| **IMP-X18** | .NET의 relocation 예약·prepare·commit 결과 타입 일부는 Framework 내부 coordinator와 Store adapter만 사용하지만 assembly의 public 타입으로 남아 있다. 이번 generation 보정은 새 public API를 추가하지 않는다. 결과 타입을 provider SPI 뒤로 숨기고 application public surface에서 제거하는 작업은 별도 POSD public-boundary 변경으로 수행한다. | .NET |
 
 ### 15.4 E2E gate 검증력 차이
 

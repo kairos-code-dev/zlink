@@ -21,7 +21,7 @@ internal static class SmB8ExplicitActorDestroyScenario
             MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
-        await client.Request(new AuthReq(actorId, "destroy", "play-a"))
+        await client.Request(new AuthReq(actorId, "destroy"))
             .PacketName("AuthReq")
             .Async<AuthRes>();
         var destroyed = await client.Request(new DestroyActorReq(actorId))

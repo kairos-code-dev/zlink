@@ -201,17 +201,33 @@ GameQuest의 Channel 역할과 물리 연결은 [공통 topology 기준](../READ
 따른다. GameApi와 QuestMission은 `gamequest` RouteMesh 하나를 공유한다. 양쪽이 독립 업무 호출을 시작하고
 Spot·Actor·session route도 이어지므로 방향별 ClientServer Channel을 추가하지 않는다.
 
-이 샘플은 mission별 ChannelName도 등록하지 않는다. `PlayerId`에서 global SpotRid를 만들고 Spot direct
-send/request call에 `InstanceSpot("gamequest.player-quest")` marker를 명시한다. QuestMission은 actor-free
+이 샘플은 mission별 ChannelName도 등록하지 않는다. `PlayerId` 문자열을 전역 `SpotId`로 사용하고
+Spot을 활성화할 수 있는 gameplay send/request에 `InstanceSpot("gamequest.player-quest")` marker를
+명시한다. QuestMission은 actor-free
 `PlayerQuestSpot` Instance factory를 등록하고 GameApi는 호출 전용 membership 0개 MeshNode로 같은 RouteMesh에
-참여한다. Caller는 Spot manager의 `GetOrCreate`, handle resolve, owner node RID나 endpoint 선택을 수행하지
+참여한다. Caller는 Spot manager의 `GetOrCreate`, handle resolve, owner `NodeRid`나 endpoint 선택을 수행하지
 않는다. `gamequest.mission.*` 같은 wildcard ChannelName이나 실행 중 역할 추가도 사용하지 않는다.
 
-Gameplay event의 one-way 호출은 public async submit만 사용한다. Framework는 Instance marker가 있는 call에서
-global SpotRid authority가 `Missing`일 때만 cold placement를 실행한다. `Ready` owner가 있으면 Location
+Gameplay event의 one-way 호출은 public async submit만 사용한다. 정상 완료는 source runtime의
+local outbound admission 완료만 뜻하며 target queue 수락이나 handler 실행 결과를 반환하지 않는다.
+Source-local admission 전에 timeout·cancellation·shutdown이 발생하면 typed exception으로 완료한다.
+Framework는 Instance marker가 있는 call에서
+전역 `SpotId`의 authority가 `Missing`일 때만 첫 message를 보낼 target node를 선택한다. Target runtime은
+Location Store의 현재 authority와 local Spot을 함께 확인하고 owner reservation을 시도한다. 같은
+`SpotId`의 concurrent 첫 message가 여러 target에 도착해도 reservation을 얻은 target 하나만
+factory와 초기화를 실행한다. 다른 target은 local Spot을 만들지 않고 최초 operation identity를
+유지해 winner에게 전달한다. Winner는 같은 첫 message를 Ready Spot의 queue 선두에 제출한다.
+`Ready` owner가 있으면 Location
 authority의 current route를 사용하며 caller가 owner route나 generation을 고정하지 않는다. `PlayerQuestSpot`은
 message 없는 actor-free initialize lifecycle에서 event stream 상태를 복구하며 기존 Spot create callback에 빈
 message를 전달하지 않는다.
+
+`InMesh`는 Instance intent를 명시한 call에서만 설정할 수 있고, `SpotId`가 Missing일 때 최초
+배치 Mesh를 선택하는 데만 사용한다. 이미 Ready인 Spot에서는 저장된 현재 Mesh와 위치를 사용하며
+`InMesh`가 placement를 바꾸지 않는다. Instance Spot을 종료할 때도 Spot manager의 `CloseAsync`를 사용하지 않는다.
+Self-check는 `ClosePlayerQuestMsg`를 Instance Spot에 existing-only one-way로 보낸다. Close call에는
+Instance intent를 붙이지 않으므로 이미 없는 Spot을 종료하려고 새로 활성화하지 않는다. Handler가
+domain 종료 조건을 확인한 뒤 `Context.CloseAsync()`를 호출한다.
 
 ```mermaid
 graph LR
@@ -293,10 +309,11 @@ scale-out 검증:
 - 서로 다른 player는 다른 노드 owner에서 동시에 처리된다.
 - notify는 현재 그 player의 연결을 가진 노드로 route된다.
 - owner tier에 node를 추가해도 기존 player owner는 자동으로 이동하지 않는다. 새 player의 첫 call은
-  Framework가 등록된 type capability와 내부 placement 정책으로 eligible node를 선택한다. Caller는 node RID나
+  Framework가 등록된 type capability와 내부 placement 정책으로 eligible node를 선택한다. Caller는 `NodeRid`나
   endpoint를 placement 입력으로 제공하지 않는다.
 
-샘플 self-check의 복구 시나리오는 owner를 정상 close하거나 process를 종료한다. 다음 gameplay call은 다른
+샘플 self-check의 복구 시나리오는 `ClosePlayerQuestMsg` handler가 `Context.CloseAsync()`를 호출하게 하거나
+process를 종료한다. 다음 gameplay call은 다른
 QuestMission node에서 같은 논리 주소를 새 generation으로 활성화하고 `QuestEventStore`와
 `QuestReadModelStore`에서 상태를 복구한다. 복구 뒤 이미 반영한 `EventId`를 다시 보내도 진행과 reward 결정
 event가 중복으로 적용되지 않아야 한다. 이 시나리오는 Instance Spot의 reference sample gate이므로 공통 E2E
@@ -530,7 +547,16 @@ GameplayMsg {
   Payload: bytes
   OccurredAtUnixMs: int64
 }
+
+ClosePlayerQuestMsg {
+  Reason: string             # self-check와 명시적 domain 종료에만 사용한다.
+}
 ```
+
+`ClosePlayerQuestMsg` handler는 현재 `PlayerQuestSpot`의 queue에서 실행한다. Handler는
+아직 처리할 state가 없는지 확인한 뒤 `Context.CloseAsync()`를 호출한다. One-way submit 완료는
+close 완료를 뜻하지 않는다. Self-check는 다음 gameplay message가 같은 `SpotId`를 새 generation으로
+활성화하고 저장된 event stream을 복원하는 것으로 close 완료를 확인한다.
 
 ### 11.3 quest domain event stream (`QuestEventStore`, append-only SoR)
 
@@ -625,7 +651,7 @@ GameQuest reference sample gate와 같은 조건을 사용한다.
   복원되는지 검증.
 - **중복(idempotency)**: 같은 IdempotencyKey 재전송 → 같은 EventId → 진행 중복 증가 없음.
 - **reward idempotency**: 완료된 quest에 같은 SourceEventId 재적용 → reward 결정 event 중복 append 없음.
-- **owner close 뒤 복구**: owner를 정상 close → 다른 QuestMission node의 새 generation 활성화 →
+- **owner close 뒤 복구**: `ClosePlayerQuestMsg` 처리 중 `Context.CloseAsync()` 호출 → 다른 QuestMission node의 새 generation 활성화 →
   `QuestEventStore`와 `QuestReadModelStore`에서 aggregate와 projection 복원 → 같은 `EventId` 재전송에도 진행과
   reward 결정 event가 중복으로 적용되지 않는지 검증.
 - **owner crash 뒤 복구**: owner process 종료 → lease 만료 전 replacement가 없는지 확인 → 만료 뒤 다음
@@ -655,4 +681,5 @@ GameQuest reference sample gate와 같은 조건을 사용한다.
   생략되지만 상태는 기록된다.
 - reset/reconcile은 `GameplayStateStore`로 어긋난 진행을 보정한다.
 - scale-out self-check가 2 노드 구성을 검증한다.
-- `PlayerId`·`QuestId`·`EventId`는 명시적 domain id이며 routing id hex를 client에 노출하지 않는다.
+- `PlayerId`·`QuestId`·`EventId`는 명시적 domain id다. `PlayerId`는 전역 문자열 `SpotId`로도
+  사용하며 Node transport용 `NodeRid`나 routing id hex를 client에 노출하지 않는다.

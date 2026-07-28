@@ -313,6 +313,10 @@ public sealed class InstanceSpotContracts
             public ValueTask<ZLinkSpotCreateResult> Async(
                 CancellationToken cancellationToken = default) =>
                 ValueTask.FromResult(manager.Submit(spotId: null, spotType, _meshName));
+
+            public ValueTask<ZLinkSpotCreateResult> Yield(
+                CancellationToken cancellationToken = default) =>
+                ValueTask.FromResult(manager.Submit(spotId: null, spotType, _meshName));
         }
 
         private sealed class SpotGetOrCreateCall(
@@ -336,6 +340,10 @@ public sealed class InstanceSpotContracts
             public IZLinkSpotGetOrCreateCall Timeout(TimeSpan timeout) => this;
 
             public ValueTask<ZLinkSpotCreateResult> Async(
+                CancellationToken cancellationToken = default) =>
+                ValueTask.FromResult(manager.Submit(spotId, spotType, _meshName));
+
+            public ValueTask<ZLinkSpotCreateResult> Yield(
                 CancellationToken cancellationToken = default) =>
                 ValueTask.FromResult(manager.Submit(spotId, spotType, _meshName));
         }

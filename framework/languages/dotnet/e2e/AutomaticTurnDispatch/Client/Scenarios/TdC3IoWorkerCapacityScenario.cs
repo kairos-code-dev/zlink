@@ -9,7 +9,7 @@ internal static class TdC3IoWorkerCapacityScenario
         var spot = await context.SpotAsync();
         var requestId = ExecutionTurnScenarioContext.NewId("TD-C3");
         for (var index = 0; index < 32; index++)
-            context.SendSpot(new IoWorkerAwaitMsg(requestId, $"io-{index:D2}", 150), spot);
+            await context.SendSpotAsync(new IoWorkerAwaitMsg(requestId, $"io-{index:D2}", 150), spot);
         var evidence = await context.EvidenceAsync(requestId, "io-worker-completed", minimumCount: 32);
         ZlinkStreamAssert.Ensure(
             evidence.Count(line => line.Contains($"request={requestId}", StringComparison.Ordinal)

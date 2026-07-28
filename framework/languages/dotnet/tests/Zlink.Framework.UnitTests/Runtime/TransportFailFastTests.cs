@@ -24,8 +24,8 @@ public sealed class TransportFailFastTests
                 Message.From(new byte[] { 1 }),
                 _ => throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.NotConnected)));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RouteNotConnected, exception.Kind);
-        Assert.True(exception.IsRetriable);
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, exception.Kind);
+        Assert.Equal(ZLinkRetryAdvice.RetryAfterBackoff, exception.RetryAdvice);
         await submitter.DisposeAsync();
     }
 
@@ -131,9 +131,9 @@ public sealed class TransportFailFastTests
         Exception exception = failure == "timeout"
             ? new TimeoutException("backpressured")
             : new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RouteNotConnected,
+                ZLinkFrameworkErrorKind.Unavailable,
                 "stale route",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
         ZLinkUnawaitedSubmit.Observe(
             ValueTask.FromException(exception),
             "channel send",

@@ -16,8 +16,8 @@ Unity 전용 connector package는 따로 두지 않는다. Unity도 일반 `.NET
 ## 기본 원칙
 
 Unity 객체는 main thread 밖에서 직접 다루면 안 된다. 그래서 connector의 기본 dispatch mode는
-`Manual`이다. 이 모드에서 network receive loop는 `On(...)` handler, error event,
-disconnect event, request callback을 직접 호출하지 않고 connector 내부 queue에 넣는다.
+`Manual`이다. 이 모드에서는 `Dispatch.Async()`를 호출한 thread에서 `On(...)` handler,
+error event, disconnect event와 request callback을 실행한다.
 
 Unity에서는 `MonoBehaviour.Update()`에서 `Dispatch.Async()`를 호출한다. 그러면 그 frame에
 쌓인 callback이 Unity main thread에서 실행된다.
@@ -28,8 +28,8 @@ Unity에서도 connector의 public API는 일반 `.NET`과 같은 `Task` / `Valu
 비동기 API다. `Connect.Async()`, `Close.Async()`, `Dispatch.Async()`,
 `Request(...).Async<TReply>(...)`, `WaitFor(...).Async(...)` 같은 호출을 그대로 사용한다.
 
-`Send(...)`는 응답을 기다리지 않는 fire-and-forget 호출이므로 `Async()`가 아니라
-`Submit()`으로 제출한다. 응답이 필요하면 `Request(...)`를 쓴다.
+`Send(...)`는 응답을 기다리지 않는 one-way 호출이다. 정상 완료 값을 반환하지 않는
+`Async()`로 실행한다. 응답이 필요하면 `Request(...)`를 쓴다.
 
 ## MonoBehaviour 예시
 

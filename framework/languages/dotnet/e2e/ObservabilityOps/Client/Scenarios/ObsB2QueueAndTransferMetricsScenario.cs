@@ -11,26 +11,44 @@ internal static class ObsB2QueueAndTransferMetricsScenario
     {
         var suffix = Guid.NewGuid().ToString("N");
         var actorId = $"obs-b2-{suffix}";
-        var sourceRoom = $"room-b2-source-{suffix}";
-        var targetRoom = $"room-b2-target-{suffix}";
-        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(sourceRoom)).AsyncRaw();
-        await context.PlayB.Post("/rooms").Body(new CreateRoomReq(targetRoom)).AsyncRaw();
+        var source = await context.CreateRoomOnObservedNodeAsync(
+            "play-b", $"room-b2-source-{suffix}");
+        var target = await context.CreateRoomOnObservedNodeAsync(
+            "play-a", $"room-b2-target-{suffix}");
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
-        await connector.Request(new JoinRoomReq(sourceRoom)).Async<JoinRoomRes>();
+        await context.JoinRoomAsync(connector, actorId, source.RoomRid);
 
-        var moved = await connector.Request(new JoinRoomReq(targetRoom)).Async<JoinRoomRes>();
-        ZlinkStreamAssert.Ensure(moved.NodeRid == "play-b", "OBS-B2 actor did not transfer to play-b.");
-        var transfers = await WaitMetricAsync(context, "zlink.actor.transfers", 1);
-        var transferDuration = await WaitMetricAsync(context, "zlink.actor.transfer.duration", 0);
-        var pending = await WaitMetricAsync(context, "zlink.actor.transfer.pending_requests.count", 0);
+        var moved = await context.JoinRoomAsync(connector, actorId, target.RoomRid);
+        ZlinkStreamAssert.Ensure(
+            moved.NodeRid == target.NodeRid,
+            "OBS-B2 Actor relocation did not commit to the observed target.");
+        var transfers = await WaitMetricAsync(
+            context,
+            "zlink.relocation.completed",
+            1,
+            new Dictionary<string, string>
+            {
+                ["object_kind"] = "actor",
+                ["outcome"] = "completed"
+            });
+        var transferDuration = await WaitMetricAsync(
+            context,
+            "zlink.relocation.duration",
+            0,
+            new Dictionary<string, string> { ["object_kind"] = "actor" });
+        var interruption = await WaitMetricAsync(
+            context,
+            "zlink.relocation.interruption",
+            0,
+            new Dictionary<string, string> { ["unit_kind"] = "actor" });
 
         ZlinkStreamAssert.Ensure(transfers.Any(sample => sample.Value >= 1),
-            "OBS-B2 transfer counter did not increase.");
+            "OBS-B2 relocation completion counter did not increase.");
         ZlinkStreamAssert.Ensure(transferDuration.Any(sample => sample.Count > 0),
-            "OBS-B2 transfer duration histogram was not recorded.");
-        ZlinkStreamAssert.Ensure(pending.Any(sample => sample.Count > 0),
-            "OBS-B2 pending-request sample was not recorded at transfer start.");
+            "OBS-B2 relocation duration histogram was not recorded.");
+        ZlinkStreamAssert.Ensure(interruption.Any(sample => sample.Count > 0),
+            "OBS-B2 service interruption histogram was not recorded.");
         await connector.Close.Async();
         Console.WriteLine("scenario OBS-B2 passed");
     }

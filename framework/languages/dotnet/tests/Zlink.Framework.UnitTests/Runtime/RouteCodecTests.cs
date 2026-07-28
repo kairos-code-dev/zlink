@@ -10,6 +10,14 @@ namespace Zlink.Framework.UnitTests.Runtime;
 public sealed class RouteCodecTests
 {
     [Fact]
+    public void PublisherBackend_DoesNotExposeUnsupportedRoutingIdOption()
+    {
+        Assert.DoesNotContain(
+            typeof(IZLinkBackendPublisherSocket).GetMethods(),
+            static method => method.Name == "SetRoutingId");
+    }
+
+    [Fact]
     public void MeshMetadataCodec_RoundTrips_The_Last_Value_Snapshot()
     {
         var callMetadata = new ZLinkCallMetadata();

@@ -3,13 +3,19 @@ import type {
   ActorRef,
   RoutingId,
   ZLinkActor,
+  ZLinkAuthoritySnapshot,
   ZLinkActorJoinOperationId,
   ZLinkMessage,
   ZLinkMessageSerializer,
   ZLinkRelocationStore,
+  ZLinkRelocationCapacityFence,
   ZLinkSpot
 } from '../../contracts';
-import type { ZLinkAuthorityStore } from '../locations/internal-store-contracts';
+import type {
+  ZLinkAuthorityStore,
+  ZLinkRelocationCapacityStore
+} from '../locations/internal-store-contracts';
+import { encodeAuthorityKey } from '../locations/authority-key-codec';
 import { ZLinkSpotKind } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendActorRef, ZLinkBackendMeshNode } from '../backend';
@@ -20,6 +26,7 @@ import {
   type ZLinkActorRoutedJoinTransport,
   type ZLinkActorTransferRegistry,
   ZLinkDeferredJoinAcceptedJournal,
+  rewriteActorAuthorityRoute,
   ZLinkBoundSessionAcceptedJournal,
   type ZLinkBoundSessionAcceptedJournalRoot,
   type ZLinkDeferredJoinAcceptedRoot,
@@ -49,6 +56,10 @@ import type {
   ZLinkActorHandoffTerminalAck
 } from '../actors/actor-handoff';
 import type { ZLinkNativeActorJoinSnapshot } from '../spots/spot-runtime-ports';
+import {
+  ownerFence,
+  type ZLinkActorMessageFollowOwnerFence
+} from '../actors/actor-message-follow-context';
 
 export interface ZLinkActorTransferRuntimeActorManager {
   getState(actorId: string): ZLinkActorRuntimeState | undefined;
@@ -68,6 +79,7 @@ export interface ZLinkActorTransferRuntimeActorManager {
     signal?: AbortSignal
   ): Promise<{ readonly actor: ZLinkActor; readonly actorRef: ActorRef }>;
   rollbackTransferredActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  completeCoreRelocationSource(actorId: string): void;
 }
 
 export interface ZLinkActorTransferRuntimeOptions {
@@ -81,7 +93,9 @@ export interface ZLinkActorTransferRuntimeOptions {
   readonly locationLifecycle: () => ZLinkLocationLifecycle | undefined;
   readonly actorHandoff: ZLinkActorHandoffCoordinator;
   readonly actorTransferRegistry: ZLinkActorTransferRegistry;
-  readonly authorityStore: () => ZLinkAuthorityStore | undefined;
+  readonly authorityStore: () => (
+    ZLinkAuthorityStore & ZLinkRelocationCapacityStore
+  ) | undefined;
   readonly relocationStore: () => ZLinkRelocationStore | undefined;
   readonly clearRemoteActorPacketTarget: (actorId: string) => void;
   readonly reportPostCommitError?: (error: unknown) => void;
@@ -216,7 +230,13 @@ export class ZLinkActorTransferRuntime {
 
   private async beginSourceActorMove(actor: ZLinkActor, state: ZLinkActorRuntimeState): Promise<void> {
     state.beginMove();
-    this.options.actorHandoff.begin(actor.context.actorId, state.nativeActorRef?.generation ?? 0n);
+    this.options.actorHandoff.begin(
+      actor.context.actorId,
+      state.nativeActorRef?.generation ?? 0n,
+      state.nativeActorRef === undefined ? undefined : String(state.nativeActorRef.nodeRid),
+      state.locationGeneration ?? 1n,
+      state.ownerLeaseGeneration
+    );
     try {
       if (state.spotId !== undefined) {
         await this.options.spotManager()?.beginActorTransfer(state.spotId, actor.context.actorId);
@@ -287,10 +307,127 @@ export class ZLinkActorTransferRuntime {
         });
       }
       let phase: 'prepared' | 'committed' | 'rolledBack' = 'prepared';
+      let authorityReservation: {
+        readonly snapshot: ZLinkAuthoritySnapshot;
+        readonly fence: ZLinkRelocationCapacityFence;
+      } | undefined;
+      let committedTargetOwnerFence:
+        ZLinkActorMessageFollowOwnerFence | undefined;
       return {
         ...transfer,
         handoffBacklog,
         sourceLeaveCompletion,
+        reserveTarget: async (target: ZLinkSpotRouteTarget, reserveSignal?: AbortSignal) => {
+          if (authorityReservation !== undefined) return;
+          const authority = this.options.authorityStore();
+          const actorType = state.actorType;
+          if (
+            authority === undefined
+            || actorType === undefined
+            || target.targetOwnerId === undefined
+            || target.ownerLeaseGeneration === undefined
+            || target.targetNodeGeneration === undefined
+          ) {
+            throw new Error(
+              `Actor '${actor.context.actorId}' relocation target has no complete authority fence.`
+            );
+          }
+          const key = encodeAuthorityKey('actor', actor.context.actorId);
+          const snapshot = await authority.readAuthority(key, reserveSignal);
+          if (snapshot.kind !== 'snapshot') {
+            throw new Error(`Actor '${actor.context.actorId}' authority is missing before relocation.`);
+          }
+          const reservationId = randomUUID();
+          const reserved = await authority.reserveRelocationCapacity({
+            reservationId,
+            authorityKey: key,
+            expectedStoreVersion: snapshot.storeVersion,
+            objectKind: 'actor',
+            stableType: actorType,
+            sourceDescriptor: snapshot.allocation.descriptor,
+            sourceNodeLifecycleGeneration: snapshot.allocation.descriptorLifecycleGeneration,
+            sourceOwner: {
+              ownerId: snapshot.ownerId,
+              leaseGeneration: snapshot.ownerLeaseGeneration
+            },
+            targetDescriptor: {
+              meshName: snapshot.allocation.descriptor.meshName,
+              rid: target.targetNodeRid
+            },
+            targetNodeLifecycleGeneration: target.targetNodeGeneration,
+            targetOwner: {
+              ownerId: target.targetOwnerId,
+              leaseGeneration: target.ownerLeaseGeneration
+            },
+            capacity: snapshot.allocation.capacity
+          }, reserveSignal);
+          if (reserved.kind !== 'reserved' && reserved.kind !== 'alreadyReserved') {
+            throw new Error(
+              `Actor '${actor.context.actorId}' relocation capacity reservation failed with '${reserved.kind}'.`
+            );
+          }
+          authorityReservation = { snapshot, fence: reserved.fence };
+        },
+        commitAuthority: async (
+          target: ZLinkSpotRouteTarget,
+          targetActorRef: ActorRef,
+          commitSignal?: AbortSignal
+        ) => {
+          await (authorityReservation === undefined
+            ? (async () => {
+                throw new Error(`Actor '${actor.context.actorId}' relocation capacity was not reserved.`);
+              })()
+            : Promise.resolve());
+          const reservation = authorityReservation!;
+          const authority = this.options.authorityStore()!;
+          const latest = await authority.readAuthority(
+            encodeAuthorityKey('actor', actor.context.actorId),
+            commitSignal
+          );
+          if (latest.kind !== 'snapshot') {
+            throw new Error(`Actor '${actor.context.actorId}' authority disappeared before relocation commit.`);
+          }
+          const result = await authority.compareExchangeAuthority(
+            encodeAuthorityKey('actor', actor.context.actorId),
+            latest.storeVersion,
+            {
+              kind: 'put',
+              generationTransition: 'newOwner',
+              targetOwner: {
+                ownerId: target.targetOwnerId!,
+                leaseGeneration: target.ownerLeaseGeneration!
+              },
+              relocationCapacityFence: reservation.fence,
+              payload: rewriteActorAuthorityRoute(
+                latest.payload,
+                targetActorRef,
+                String(target.spotId),
+                target.targetSpotGeneration
+              )
+            },
+            commitSignal
+          );
+          if (
+            result.kind !== 'stored'
+            || String(result.allocation.descriptor.rid) !== String(target.targetNodeRid)
+            || result.objectGeneration !== targetActorRef.objectGeneration
+          ) {
+            const detail = result.kind === 'stored'
+              ? `stored node=${String(result.allocation.descriptor.rid)} generation=${result.objectGeneration}`
+              : result.kind;
+            throw new Error(
+              `Actor '${actor.context.actorId}' relocation authority commit was rejected (${detail}; `
+              + `expected node=${String(target.targetNodeRid)} generation=${targetActorRef.objectGeneration}).`
+            );
+          }
+          committedTargetOwnerFence = ownerFence({
+            ownerId: result.ownerId,
+            ownerLeaseGeneration: result.ownerLeaseGeneration,
+            nodeRid: String(result.allocation.descriptor.rid),
+            nodeGeneration: result.allocation.descriptorLifecycleGeneration,
+            authorityOwnerGeneration: result.authorityOwnerGeneration
+          });
+        },
         commit: (
           target: Parameters<ZLinkActorHandoffCoordinator['complete']>[1],
           targetActorRef: ActorRef,
@@ -305,7 +442,13 @@ export class ZLinkActorTransferRuntime {
             Number(process.hrtime.bigint() - transferStarted) / 1e9
           );
           try {
-            this.options.actorHandoff.complete(actor.context.actorId, target, targetActorRef, results);
+            this.options.actorHandoff.complete(
+              actor.context.actorId,
+              target,
+              targetActorRef,
+              results,
+              committedTargetOwnerFence
+            );
           } catch (error) {
             // The target has already committed. Local Message Follow setup is now
             // post-commit work and must not turn the accepted transfer into a
@@ -328,6 +471,12 @@ export class ZLinkActorTransferRuntime {
           }
           if (acceptedRoot !== undefined) {
             await this.boundSessionAcceptedJournal()?.delete(acceptedRoot);
+          }
+          if (authorityReservation !== undefined) {
+            await this.options.authorityStore()?.abortRelocationCapacity(
+              authorityReservation.fence,
+              signal
+            );
           }
           await this.cancelSourceActorMove(actor, state);
           await this.restoreSourceActor(actor, sourceSpotId);
@@ -368,7 +517,10 @@ export class ZLinkActorTransferRuntime {
       state.beginMove();
       this.options.actorHandoff.begin(
         actor.context.actorId,
-        state.nativeActorRef?.generation ?? 0n
+        state.nativeActorRef?.generation ?? 0n,
+        state.nativeActorRef === undefined ? undefined : String(state.nativeActorRef.nodeRid),
+        state.locationGeneration ?? 1n,
+        state.ownerLeaseGeneration
       );
     }
     let acceptedRoot: ZLinkBoundSessionAcceptedJournalRoot | undefined;
@@ -655,6 +807,11 @@ export class ZLinkActorTransferRuntime {
             );
             state.markLocationReleased();
           }
+          // Message Follow owns the bounded stale route after the native leave.
+          // The source Actor shell must therefore be removed from the process
+          // registry so a later relocation can materialize the same Actor ID on
+          // this node without colliding with its previous incarnation.
+          this.options.actorManager()?.completeCoreRelocationSource(actor.context.actorId);
         }
         this.options.onSourceDepartureCompleted?.(actor.context.actorId);
         return;
@@ -804,6 +961,20 @@ export class ZLinkActorTransferRuntime {
     const ownerNodeGeneration = node.status().lifecycleGeneration;
     if (ownerNodeGeneration <= 0n) {
       throw new Error(`Actor '${actor.context.actorId}' owner MeshNode has no valid lifecycle generation.`);
+    }
+    const authority = await this.options.authorityStore()?.readAuthority(
+      encodeAuthorityKey('actor', actor.context.actorId)
+    );
+    if (
+      authority?.kind === 'snapshot'
+      && authority.allocation.state === 'active'
+      && String(authority.allocation.descriptor.rid) === String(node.status().routingId)
+      && authority.allocation.descriptorLifecycleGeneration === ownerNodeGeneration
+    ) {
+      state.setLocationGeneration(authority.authorityOwnerGeneration);
+      state.setOwnerLeaseGeneration(authority.ownerLeaseGeneration);
+      state.setJoinedSpot(spotId, state.spot, membershipEpoch);
+      return;
     }
     let claim;
     for (;;) {

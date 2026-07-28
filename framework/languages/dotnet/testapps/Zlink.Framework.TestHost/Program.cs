@@ -39,11 +39,14 @@ internal sealed class Program
 }
 
 internal sealed class StartupSpotCreationHostedService(
-    IZLinkSpotManager spotManager) : IHostedService
+    IZLinkSpotManager spotManager,
+    string meshName) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        await spotManager.CreateAsync<StartupStageSpot>(cancellationToken);
+        _ = await spotManager.Create("startup-stage")
+            .InMesh(meshName)
+            .Async(cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
@@ -86,7 +89,7 @@ internal sealed class ChannelClientStartupRequestHostedService(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var reply = await client
-            .RequestToChannel(channelName, channelName, new TestHostProfileRequest(value))
+            .RequestToChannel(channelName, new TestHostProfileRequest(value))
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<TestHostProfileReply>(cancellationToken);
         sink.Append($"channel-client|{reply.Value}");
@@ -109,7 +112,6 @@ internal sealed class SpotStartupPublishHostedService(
         while (!stoppingToken.IsCancellationRequested)
         {
             await publisher.Publish(
-                    channelName,
                     channelName,
                     topic,
                     new StartupStageEvent(value))
@@ -163,9 +165,11 @@ internal sealed class StartupStageSubscriptionHandler(TestHostEventSink sink)
     public ValueTask HandleAsync(
         StartupStageSpot spot,
         StartupStageEvent message,
+        ZLinkPublishMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = spot;
+        _ = context;
         _ = cancellationToken;
         sink.Append(message.Value);
         return ValueTask.CompletedTask;
@@ -189,7 +193,7 @@ internal sealed class TestHostRouteRequestHandler(TestHostEventSink sink)
 {
     public ValueTask<TestHostRouteReply> HandleAsync(
         TestHostRouteRequest request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -221,7 +225,7 @@ internal sealed class TestHostProfileRequestHandler
 {
     public ValueTask<TestHostProfileReply> HandleAsync(
         TestHostProfileRequest request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
@@ -235,7 +239,7 @@ internal sealed class TestHostProfileSendHandler(TestHostEventSink sink)
 {
     public ValueTask HandleAsync(
         TestHostProfileSend message,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;

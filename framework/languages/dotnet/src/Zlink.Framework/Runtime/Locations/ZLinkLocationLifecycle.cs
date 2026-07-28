@@ -55,20 +55,20 @@ internal sealed class ZLinkLocationLifecycle : IAsyncDisposable
                 .ListAllMeshNodesAsync(meshName, cancellationToken)
                 .ConfigureAwait(false);
             if (descriptors.Any(descriptor => descriptor.Rid.Equals(routingId)))
-                return ZLinkFrameworkErrorKind.RoutingIdConflict;
+                return ZLinkFrameworkErrorKind.AlreadyExists;
             if (descriptors.Any(
                     descriptor => string.Equals(
                         descriptor.EntrySpotId,
                         entrySpotId,
                         StringComparison.Ordinal)))
-                return ZLinkFrameworkErrorKind.SpotIdConflict;
+                return ZLinkFrameworkErrorKind.AlreadyExists;
 
             var authority = await _runtime.Store.ReadAuthorityAsync(
                     ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(entrySpotId),
                     cancellationToken)
                 .ConfigureAwait(false);
             if (authority is ZLinkAuthorityReadResult.Found)
-                return ZLinkFrameworkErrorKind.SpotIdConflict;
+                return ZLinkFrameworkErrorKind.AlreadyExists;
         }
         catch when (!cancellationToken.IsCancellationRequested)
         {
@@ -77,7 +77,7 @@ internal sealed class ZLinkLocationLifecycle : IAsyncDisposable
             // second store operation or a retry.
         }
 
-        return ZLinkFrameworkErrorKind.RoutingIdConflict;
+        return ZLinkFrameworkErrorKind.AlreadyExists;
     }
 
     public ValueTask DisposeAsync()

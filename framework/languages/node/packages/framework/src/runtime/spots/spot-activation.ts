@@ -680,7 +680,8 @@ export class ZLinkSpotActivationLifecycle {
     parts: readonly Message[],
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
+    fallbackActorRef?: ActorRef,
+    requestTerminal?: (response: unknown) => Promise<void> | void
   ): Promise<unknown> {
     return await this.actorAdmission.dispatchActorPacket(
       activation,
@@ -688,7 +689,8 @@ export class ZLinkSpotActivationLifecycle {
       parts,
       returnResponse,
       remoteBoundSessionTarget,
-      fallbackActorRef
+      fallbackActorRef,
+      requestTerminal
     );
   }
 

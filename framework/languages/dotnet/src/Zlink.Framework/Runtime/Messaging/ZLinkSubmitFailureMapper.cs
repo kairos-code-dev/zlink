@@ -20,14 +20,16 @@ internal static class ZLinkSubmitFailureMapper
     {
         var kind = result switch
         {
-            SubmitResult.NotFound => ZLinkFrameworkErrorKind.RequestTargetNotFound,
-            SubmitResult.NotConnected => ZLinkFrameworkErrorKind.RouteNotConnected,
-            SubmitResult.NotAdmitted => ZLinkFrameworkErrorKind.RouteNotConnected,
-            _ => ZLinkFrameworkErrorKind.RequestFailed
+            SubmitResult.NotFound => ZLinkFrameworkErrorKind.NotFound,
+            SubmitResult.NotConnected => ZLinkFrameworkErrorKind.Unavailable,
+            SubmitResult.NotAdmitted => ZLinkFrameworkErrorKind.Unavailable,
+            _ => ZLinkFrameworkErrorKind.InternalFailure
         };
         return new ZLinkFrameworkException(
             kind,
             $"Mesh submit to {targetDescription} failed with result '{result}'.",
-            isRetriable: result is SubmitResult.NotConnected or SubmitResult.NotAdmitted);
+            retryAdvice: result is SubmitResult.NotConnected or SubmitResult.NotAdmitted
+                ? ZLinkRetryAdvice.RetryAfterBackoff
+                : ZLinkRetryAdvice.DoNotRetry);
     }
 }

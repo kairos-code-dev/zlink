@@ -25,8 +25,6 @@ public sealed class SampleRoleOptions
 /// </summary>
 public sealed record SampleConfiguration(SampleTopology Topology, SampleRoleOptions Role)
 {
-    public string FlowLogPath => Path.Combine(Role.LogDir, $"flow-{Role.Name}.log");
-
     public string EvidencePath => Path.Combine(Role.WorkDir, "events.log");
 
     /// <summary>

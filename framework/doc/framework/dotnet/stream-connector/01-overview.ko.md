@@ -34,12 +34,9 @@
 
 ## 게임 엔진의 제약: main thread
 
-엔진 객체(`GameObject`, `Node`, scene tree)는 main thread 밖에서 다루면 안 된다. connector의
-network receive loop는 별도 thread에서 돈다. 이 둘을 그대로 이으면 엔진이 깨진다.
-
-그래서 connector의 기본 dispatch mode는 **`Manual`** 이다. receive loop는 handler와 event를
-직접 호출하지 않고 내부 queue에 넣는다. 사용자가 **main thread에서 명시적으로 펌프**해야
-callback이 실행된다.
+엔진 객체(`GameObject`, `Node`, scene tree)는 main thread 밖에서 다루면 안 된다.
+그래서 connector의 기본 dispatch mode는 **`Manual`** 이다. 이 모드에서는 사용자가
+**main thread에서 명시적으로 펌프**할 때 handler와 event callback이 실행된다.
 
 | 엔진 | 펌프 위치 |
 |------|-----------|
@@ -63,8 +60,7 @@ callback이 실행된다.
 
 ## 서버 framework와의 관계
 
-connector는 STREAM 서버에 연결하는 client library다. 서버 framework package와 상호 의존하지
-않는다. 양쪽은 STREAM header/payload wire 계약만 공유한다.
+connector는 STREAM 서버에 연결하는 client library다. 서버 framework package에 의존하지 않는다.
 
 wire 계약과 연결 생명주기의 정본은
 [Stream Connector 공통 스펙](../../common/spec/stream-connector/32-stream-connector.ko.md),

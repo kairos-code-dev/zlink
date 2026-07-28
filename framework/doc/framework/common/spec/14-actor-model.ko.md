@@ -120,16 +120,16 @@ snapshot, absolute deadline과 non-zero 128-bit operation ID를 고정한다.
 request를 변경할 수 없는 snapshot으로 만들고 monotonic clock을 기준으로 absolute
 deadline을 계산한다. Timeout 기본값은 5초이며, 명시한 값은 millisecond로 올림한
 `1..INT_MAX` 범위의 유한한 값이어야 한다. 제한을 넘긴 현재 registration은 일부
-record를 남기지 않고 동기 `InvalidConfiguration`으로 실패한다.
+record를 남기지 않고 동기 startup configuration error로 실패한다.
 
 Actor send/request handler와 User·Entry Spot의 packet·request·subscription·timer handler에서 local member
 Actor의 Join을 등록할 수 있다. Factory, `Configure`, lifecycle callback, relocation adapter, detached task,
-Instance Spot handler와 Framework가 관리하지 않는 thread에서는 `InvalidConfiguration`이다. 같은 call의
-두 번째 `Defer()`는 `AlreadySubmitted`, 같은 Actor의 다른 pending membership transition은 `ActorMoving`이다.
+Instance Spot handler와 Framework가 관리하지 않는 thread에서는 `InvalidOperation`이다. 같은 call의
+두 번째 `Defer()`는 `InvalidOperation`, 같은 Actor의 다른 pending membership transition은 `Unavailable`이다.
 
 Framework가 `Defer()`를 허용하는 시간 범위를 handler registration scope라 한다.
 Handler가 실행되는 동안과 Framework가 추적하는 awaited continuation에서는 이
-scope가 열려 있다. Scope가 닫힌 뒤 호출하면 `InvalidConfiguration`이다.
+scope가 열려 있다. Scope가 닫힌 뒤 호출하면 `InvalidOperation`이다.
 Application이 handler에서 시작하고 기다리지 않은 detached task에서 `Defer()`를
 호출하는 것은 계약 위반이다. Framework는 모든 언어에서 이 오용을 handler 종료
 전에 발견한다고 보장하지 않는다.
@@ -140,16 +140,17 @@ completion을 재생하지 않으며 source authority와 membership을 그대로
 
 Registration 뒤 source seal 전 도착한 payload는 barrier 뒤 Actor queue에 수락하고 cross-node relocation에서는
 accepted journal·실행 전 queue와 함께 이관한다. Source seal 이후 CAS 전과 Message Follow 구간의 payload만
-bounded ingress hold에 보관한다.
+처리 방식은 서로 다르다. CAS 전 payload는 bounded ingress hold에 보관한다. CAS가 끝난 뒤 이전 owner에
+도착한 payload는 [Message Follow](01-glossary.ko.md#message-follow)로 새 owner에 전달한다.
 
 같은 handler가 barrier를 등록한 Actor에 request를 보내고 그 reply를 기다리면,
 request는 barrier 뒤에서 기다리고 handler도 끝날 수 없어 순환 대기가 생긴다.
-Framework는 이 request를 제출하기 전에 `InvalidConfiguration`으로 거부한다.
+Framework는 이 request를 제출하기 전에 `InvalidOperation`으로 거부한다.
 
 Join과 maintenance가 경쟁하면 먼저 확정한 제어 상태를 따른다. Join claim이
 `Relocate`보다 먼저면 maintenance는 Join이 terminal 상태가 될 때까지 기다린다.
-`Relocate` seal이 먼저면 Join은 `ActorMoving`, shutdown admission seal이 먼저면
-`RuntimeShutdown`으로 실패한다.
+`Relocate` seal이 먼저면 Join은 `Unavailable`, shutdown admission seal이 먼저면
+`ShuttingDown`으로 실패한다.
 
 Actor가 이미 요청한 User Spot에 속해 있거나 Entry Spot Actor가 다시
 `JoinEntrySpot`을 호출하면 실제 위치를 바꾸지 않고 `Accepted` completion을
@@ -319,8 +320,8 @@ Actor manager의 `Create`와 `GetOrCreate`는 한 번만 제출할 수 있는 fl
 Caller는 target RID, predicate, factory class 또는 placement callback을 지정할 수
 없다.
 
-같은 option을 두 번 설정하면 `InvalidConfiguration`이다. Terminal submit을 두 번
-실행하면 `AlreadySubmitted`다.
+같은 option을 두 번 설정하면 `InvalidOperation`이다. Terminal submit을 두 번
+실행하면 `InvalidOperation`이다.
 
 Terminal submit을 시작할 때 end-to-end [deadline](01-glossary.ko.md#deadline) 하나를 고정한다. 이 deadline은
 resolve, reservation, factory 실행과 Ready barrier 전체에 적용된다.
@@ -357,7 +358,7 @@ public interface IZLinkActorManager
 public interface IZLinkActorCreateCall
 {
     // Actor를 처음 생성할 Mesh를 지정한다.
-    // Object role Mesh가 하나면 생략할 수 있고, 둘 이상인데 생략하면 MeshSelectionRequired다.
+    // Object role Mesh가 하나면 생략할 수 있고, 둘 이상인데 생략하면 InvalidOperation이다.
     IZLinkActorCreateCall InMesh(string meshName);
     IZLinkActorCreateCall Request(ZLinkMessage request);
     IZLinkActorCreateCall Request<TRequest>(TRequest request);
@@ -392,9 +393,9 @@ ZLinkActorCreateResult result = await actorManager
 | 조건 | 결과 |
 |---|---|
 | Object `Client` 또는 `Server` role을 가진 Mesh가 하나다. | 그 Mesh를 자동 선택한다. |
-| 후보가 없다. | `ObjectClientNotConfigured`로 끝난다. |
-| 후보가 둘 이상이다. | `MeshSelectionRequired`로 끝난다. |
-| `InMesh`로 지정한 Mesh가 없다. | `MeshNotFound`로 끝난다. |
+| 후보가 없다. | `NotConfigured`로 끝난다. |
+| 후보가 둘 이상이다. | `InvalidOperation`으로 끝난다. |
+| `InMesh`로 지정한 Mesh가 없다. | `NotFound`로 끝난다. |
 
 Framework는 다음 순서로 target 후보를 검사한다.
 
@@ -437,7 +438,7 @@ Actor는 `Find`로 조회할 수 없고 message를 받을 수 없으며 active c
 ### 6.5 Create와 GetOrCreate의 차이
 
 Exclusive `Create`를 실행할 때 같은 type의 Ready Actor가 이미 있으면
-`ActorAlreadyExists`로 끝난다. 다른 type의 Actor가 있으면 `ActorTypeMismatch`로
+`AlreadyExists`로 끝난다. 다른 type의 Actor가 있으면 `TypeMismatch`로
 끝난다.
 
 `GetOrCreate`는 같은 type의 Ready Actor가 있으면 새 reservation과 callback 실행 없이
@@ -528,8 +529,8 @@ Framework는 다음 순서로 destroy를 진행한다.
 | 상태 | Destroy 결과 |
 |---|---|
 | 같은 incarnation이 이미 없다. | Idempotent `false`를 반환한다. |
-| 같은 ActorId의 다른 generation이 있다. | `ActorGenerationStale`로 끝난다. |
-| Actor가 이동을 위한 seal 상태다. | `ActorMoving`으로 끝난다. |
+| 같은 ActorId의 다른 generation이 있다. | `InvalidOperation`으로 끝난다. |
+| Actor가 이동을 위한 seal 상태다. | `Unavailable`로 끝난다. |
 
 Framework는 current `ActorRef`를 다시 찾아 새 incarnation을 종료하지 않는다.
 
@@ -557,10 +558,10 @@ Bind, rebind, disconnect와 request correlation은
 | 조건 | 결과 |
 |---|---|
 | Logical ActorId에 Ready authority가 없다. | Actor target 오류로 끝난다. |
-| Exact-ref operation에서 mapping이 없다. | `ActorLocationStale`로 끝난다. |
-| Exact-ref의 generation이 current generation과 다르다. | `ActorGenerationStale`로 끝난다. |
-| Actor가 commit 전 seal 상태다. | `ActorMoving`으로 끝난다. |
-| Bound session이 필요한 작업에 유효한 binding이 없다. | Session-not-bound 오류로 끝난다. |
+| Exact-ref operation에서 mapping이 없다. | `Unavailable`로 끝난다. |
+| Exact-ref의 generation이 current generation과 다르다. | `InvalidOperation`으로 끝난다. |
+| Actor가 commit 전 seal 상태다. | `Unavailable`로 끝난다. |
+| Bound session이 필요한 작업에 유효한 binding이 없다. | `NotFound`로 끝난다. |
 
 Handler가 없거나 decode가 실패하거나 application handler가 예외를 반환하면 request는
 복원 가능한 reply route로 오류를 반환한다. One-way message는 runtime 관측 경로에

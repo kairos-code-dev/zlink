@@ -147,7 +147,6 @@ internal sealed class ZLinkChannelBundleFactory(
             publisher.SetChannelName(channelName);
             ApplySocketConfig(publisher, channel.Publisher!.SocketConfig);
             var localRid = ResolvePublisherRid(channelName, channel.Publisher);
-            publisher.SetRoutingId(localRid);
             publisher.Bind(ResolvePublisherBindEndpoint(channel.Publisher));
             var publisherIdentity = new ZLinkFanoutPublisherIdentity(
                 channelName,

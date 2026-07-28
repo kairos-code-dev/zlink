@@ -3,13 +3,13 @@ using Microsoft.Extensions.Configuration;
 using ShoppingMall.Server.Configuration;
 using ShoppingMall.Server.OrderWorkflow.Application.OrderWorkflow;
 using ShoppingMall.Server.OrderWorkflow.Application.SelfCheck;
-using ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Handlers;
 using ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots.OrderWorkflowSpot;
 using ShoppingMall.Server.Shared.Ports.Outbound;
 using ShoppingMall.Server.Shared.Store;
 using ShoppingMall.Shared.Contracts;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
@@ -51,22 +51,26 @@ public static class OrderWorkflowServerHostFactory
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            }));
+            options.AddRelocationStore(new ZLinkRedisRelocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = $"{topology.RedisKeyPrefix}relocation:";
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(logDirectory, instance.InstanceId))
-                .TraceLabel(instance.InstanceId);
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(OrderWorkflowServerHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(instance.MeshEndpoint)
-                .SetRoutingIdPrefix("order-workflow")
-                .AddSpotFactory<OrderWorkflowSpot>();
-            mesh.Channel(SampleNames.OrderWorkflowChannel)
-                .Server()
-                .SetWeight(100)
-                .AddHandlerGroup(SampleNames.OrderWorkflowHandlerGroup);
+                .SetRoutingIdPrefix("order-workflow");
+            mesh.Objects().Server().AddInstanceSpotFactory<OrderWorkflowSpot>(
+                SampleNames.OrderWorkflowSpotType,
+                null,
+                ZLinkRelocationPolicy<OrderWorkflowSpot>.Recreate);
             mesh.Channel(SampleNames.OrderProjectionChannel).Server();
         });
 
@@ -100,18 +104,13 @@ public static class OrderWorkflowServerHostFactory
         });
         app.MapPost("/self-check/projection/{orderId}/rebuild", async (
             string orderId,
-            IZLinkSpotManager spots,
             IZLinkSpotClient routes,
-            IZLinkSpotHandleResolver spotHandles,
             CancellationToken cancellationToken) =>
         {
-            var address = await StartOrderWorkflowRouteHandler.EnsureSpotAsync(
-                spots,
-                spotHandles,
-                orderId,
-                cancellationToken);
             var response = await routes
-                .RequestToSpot(address, new RebuildOrderProjectionReq(orderId))
+                .RequestToSpot(orderId, new RebuildOrderProjectionReq(orderId))
+                .InstanceSpot(SampleNames.OrderWorkflowSpotType)
+                .InMesh(SampleNames.MeshName)
                 .Async<RebuildOrderProjectionRes>(cancellationToken);
             return Results.Ok(response);
         });

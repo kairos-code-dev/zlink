@@ -42,8 +42,8 @@ internal sealed class StoreFailureProcessManager(ClientOptions options) : IAsync
     }
 
     /// <summary>
-    /// The polling-only consumer observes the store without the
-    /// change-stamp optimization (SF-A2).
+    /// Starts a separate consumer that proves the opaque Store SPI polling
+    /// path observes provider additions and removals (SF-A2).
     /// </summary>
     public async Task<ManagedProcess> StartConsumerNwAsync()
     {
@@ -211,7 +211,9 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
                 if ((await http.Get("/health").AsyncRaw()).Status == 200) return;
             }
             catch (ZLinkFrameworkException error) when (
-                error.Kind == ZLinkFrameworkErrorKind.RequestFailed && error.IsRetriable)
+                error.Kind is ZLinkFrameworkErrorKind.Unavailable
+                    or ZLinkFrameworkErrorKind.DeadlineExceeded
+                && error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry)
             {
             }
 

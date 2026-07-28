@@ -10,24 +10,21 @@ namespace DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot;
 internal sealed class CourierEntrySpot(
     IZLinkEntrySpotContext context,
     ActorDirectory actors,
-    IZLinkActorManager actorManager,
     ILogger<CourierEntrySpot> logger) : IZLinkEntrySpot<CourierActor>
 {
     public IZLinkEntrySpotContext Context { get; } = context;
 
-    public async ValueTask OnCreateActorAsync(
+    public ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
         CourierActor actor,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
-        var actorRef = await actorManager.FindAsync(actor.ActorId, cancellationToken)
-                       ?? throw new InvalidOperationException(
-                           $"Courier actor ref is not available. actor={actor.ActorId}");
-        actors.Register(actor, actorRef);
+        cancellationToken.ThrowIfCancellationRequested();
+        actors.Register(actor);
         logger.LogInformation(
-            "deliverydispatch courier-entry: actor created courier={CourierId} node={NodeRid}",
-            actor.ActorId,
-            actorRef.NodeRid);
+            "deliverydispatch courier-entry: actor created courier={CourierId}",
+            actor.ActorId);
+        return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(

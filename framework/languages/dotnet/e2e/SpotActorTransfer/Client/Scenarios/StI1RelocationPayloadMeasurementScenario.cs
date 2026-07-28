@@ -1,6 +1,8 @@
+// Verifies measured Actor and Spot relocation payload sizes match the configured profiles.
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
+// Verifies measured Actor and Spot relocation payload sizes match the configured profiles.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;

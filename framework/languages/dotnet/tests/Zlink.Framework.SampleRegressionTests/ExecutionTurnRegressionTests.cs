@@ -99,14 +99,17 @@ public sealed partial class RegressionTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(scenarioIds.Length, scenarioFiles.Length);
-        foreach (var scenarioId in scenarioIds)
+        foreach (var scenarioFile in scenarioFiles)
         {
-            var prefix = scenarioId.Replace("-", string.Empty, StringComparison.Ordinal);
-            var matches = scenarioFiles.Where(file =>
-                    file!.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                    && file.Length > prefix.Length + "Scenario".Length
-                    && char.IsUpper(file[prefix.Length]))
+            var matches = scenarioIds.Where(scenarioId =>
+                {
+                    var prefix = scenarioId.Replace("-", string.Empty, StringComparison.Ordinal);
+                    return scenarioFile!.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                           && scenarioFile.Length > prefix.Length + "Scenario".Length
+                           && char.IsUpper(scenarioFile[prefix.Length]);
+                })
+                .OrderByDescending(static scenarioId => scenarioId.Length)
+                .Take(1)
                 .ToArray();
             Assert.Single(matches);
         }

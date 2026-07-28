@@ -106,7 +106,8 @@ public sealed class AuthorityStoreContracts
 
         // 4. Relocation to play-node-c: reserve target capacity first, then
         //    hand ownership over with the fence the reservation issued.
-        var fence = Assert.IsType<ZLinkRelocationCapacityReserveResult.Reserved>(
+        var capacityReservation =
+            Assert.IsType<ZLinkRelocationCapacityReserveResult.Reserved>(
             await store.ReserveRelocationCapacityAsync(
                 new ZLinkRelocationCapacityReservationRequest(
                     Guid.Parse("6f1d1f8c-6b21-4f3a-9a52-2f0a5f8d4c11"),
@@ -120,7 +121,8 @@ public sealed class AuthorityStoreContracts
                     MatchNodeC,
                     TargetNodeLifecycleGeneration: 4,
                     OwnerC,
-                    ActorCapacity()))).Fence;
+                    ActorCapacity())));
+        var fence = capacityReservation.Fence;
 
         var handedOver = Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
             await store.CompareExchangeAuthorityAsync(
@@ -135,7 +137,7 @@ public sealed class AuthorityStoreContracts
             preserved.Snapshot.ObjectGeneration,
             handedOver.Snapshot.ObjectGeneration);
         Assert.Equal(
-            preserved.Snapshot.AuthorityOwnerGeneration + 1,
+            capacityReservation.TargetAuthorityOwnerGeneration,
             handedOver.Snapshot.AuthorityOwnerGeneration);
         Assert.Equal(OwnerC.OwnerId, handedOver.Snapshot.OwnerId);
         Assert.Equal(MatchNodeC, handedOver.Snapshot.Allocation.Descriptor);
@@ -437,8 +439,12 @@ public sealed class AuthorityStoreContracts
         private readonly Dictionary<ZLinkCreationOperationId, ZLinkCreationTerminalRecord>
             _terminals = [];
 
-        private readonly Dictionary<ZLinkRelocationCapacityFence, bool> _capacityFences = [];
-        private readonly Dictionary<ZLinkAggregateFence, ZLinkAggregatePrepareRequest> _aggregates = [];
+        private readonly Dictionary<ZLinkRelocationCapacityFence,
+            (bool Committed, ulong TargetGeneration)> _capacityFences = [];
+        private readonly Dictionary<ZLinkAggregateFence,
+            (ZLinkAggregatePrepareRequest Request,
+                IReadOnlyDictionary<ZLinkAuthorityKey, ulong> Generations)>
+            _aggregates = [];
         private readonly HashSet<ZLinkAggregateFence> _committedAggregates = [];
 
         private ulong _storeRevision;
@@ -498,7 +504,10 @@ public sealed class AuthorityStoreContracts
                 {
                     StoreVersion = NextStoreVersion(),
                     Payload = write.Payload,
-                    AuthorityOwnerGeneration = ++_authorityOwnerGeneration,
+                    AuthorityOwnerGeneration =
+                        _capacityFences[
+                            write.RelocationCapacityFence!.Value]
+                        .TargetGeneration,
                     OwnerId = write.TargetOwner!.Value.OwnerId,
                     OwnerLeaseGeneration = write.TargetOwner!.Value.LeaseGeneration,
                     Allocation = row.Allocation with
@@ -516,7 +525,8 @@ public sealed class AuthorityStoreContracts
             };
 
             if (write.GenerationTransition == ZLinkAuthorityGenerationTransition.NewOwner)
-                _capacityFences[write.RelocationCapacityFence!.Value] = true;
+                _capacityFences[write.RelocationCapacityFence!.Value] =
+                    (true, updated.AuthorityOwnerGeneration);
 
             _rows[key.Value] = updated;
             return ValueTask.FromResult<ZLinkAuthorityCompareExchangeResult>(
@@ -715,8 +725,13 @@ public sealed class AuthorityStoreContracts
                 $"fence/{request.Key.Value}/{request.ReservationId:N}");
             if (_capacityFences.ContainsKey(fence))
             {
+                var existing = _capacityFences[fence];
                 return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
-                    new ZLinkRelocationCapacityReserveResult.AlreadyReserved(fence));
+                    new ZLinkRelocationCapacityReserveResult.AlreadyReserved(fence)
+                    {
+                        TargetAuthorityOwnerGeneration =
+                            existing.TargetGeneration
+                    });
             }
 
             if (!_rows.TryGetValue(request.Key.Value, out var row)
@@ -729,9 +744,13 @@ public sealed class AuthorityStoreContracts
                     new ZLinkRelocationCapacityReserveResult.Conflict(Read(request.Key)));
             }
 
-            _capacityFences[fence] = false;
+            var targetGeneration = ++_authorityOwnerGeneration;
+            _capacityFences[fence] = (false, targetGeneration);
             return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
-                new ZLinkRelocationCapacityReserveResult.Reserved(fence));
+                new ZLinkRelocationCapacityReserveResult.Reserved(fence)
+                {
+                    TargetAuthorityOwnerGeneration = targetGeneration
+                });
         }
 
         public override ValueTask<ZLinkRelocationCapacityAbortResult> AbortRelocationCapacityAsync(
@@ -740,7 +759,7 @@ public sealed class AuthorityStoreContracts
         {
             if (!_capacityFences.TryGetValue(fence, out var committed))
                 return ValueTask.FromResult(ZLinkRelocationCapacityAbortResult.AlreadyAborted);
-            if (committed)
+            if (committed.Committed)
                 return ValueTask.FromResult(ZLinkRelocationCapacityAbortResult.AlreadyCommitted);
 
             _capacityFences.Remove(fence);
@@ -754,8 +773,13 @@ public sealed class AuthorityStoreContracts
             var fence = new ZLinkAggregateFence(request.AggregateId, request.AggregateGeneration);
             if (_aggregates.ContainsKey(fence))
             {
+                var existing = _aggregates[fence];
                 return ValueTask.FromResult<ZLinkAggregatePrepareResult>(
-                    new ZLinkAggregatePrepareResult.AlreadyPrepared(fence));
+                    new ZLinkAggregatePrepareResult.AlreadyPrepared(fence)
+                    {
+                        TargetAuthorityOwnerGenerations =
+                            existing.Generations
+                    });
             }
 
             foreach (var participant in request.Participants)
@@ -772,9 +796,15 @@ public sealed class AuthorityStoreContracts
                 }
             }
 
-            _aggregates[fence] = request;
+            var generations = request.Participants.ToDictionary(
+                static participant => participant.Key,
+                _ => ++_authorityOwnerGeneration);
+            _aggregates[fence] = (request, generations);
             return ValueTask.FromResult<ZLinkAggregatePrepareResult>(
-                new ZLinkAggregatePrepareResult.Prepared(fence));
+                new ZLinkAggregatePrepareResult.Prepared(fence)
+                {
+                    TargetAuthorityOwnerGenerations = generations
+                });
         }
 
         public override ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
@@ -783,23 +813,27 @@ public sealed class AuthorityStoreContracts
         {
             if (_committedAggregates.Contains(fence))
                 return ValueTask.FromResult(ZLinkAggregateCommitResult.AlreadyCommitted);
-            if (!_aggregates.TryGetValue(fence, out var request))
+            if (!_aggregates.TryGetValue(fence, out var aggregate))
                 return ValueTask.FromResult(ZLinkAggregateCommitResult.Stale);
 
-            foreach (var participant in request.Participants)
+            foreach (var participant in aggregate.Request.Participants)
             {
                 var row = _rows[participant.Key.Value];
                 _rows[participant.Key.Value] = row with
                 {
                     StoreVersion = NextStoreVersion(),
                     Payload = participant.AuthorityPayload,
-                    AuthorityOwnerGeneration = ++_authorityOwnerGeneration,
-                    OwnerId = request.TargetOwner.OwnerId,
-                    OwnerLeaseGeneration = request.TargetOwner.LeaseGeneration,
+                    AuthorityOwnerGeneration =
+                        aggregate.Generations[participant.Key],
+                    OwnerId = aggregate.Request.TargetOwner.OwnerId,
+                    OwnerLeaseGeneration =
+                        aggregate.Request.TargetOwner.LeaseGeneration,
                     Allocation = row.Allocation with
                     {
-                        Descriptor = request.TargetDescriptor,
-                        DescriptorLifecycleGeneration = request.TargetDescriptorLifecycleGeneration
+                        Descriptor = aggregate.Request.TargetDescriptor,
+                        DescriptorLifecycleGeneration =
+                            aggregate.Request
+                                .TargetDescriptorLifecycleGeneration
                     }
                 };
             }
@@ -909,6 +943,24 @@ public sealed class AuthorityStoreContracts
             // buffer as soon as the operation completes.
             var stored = payload.ToArray();
             var reference = $"relocation/play/{++_sequence:D4}";
+            _payloads[reference] = stored;
+            return ValueTask.FromResult(new ZLinkRelocationStored(
+                reference,
+                Crc32C(stored),
+                StoreNow.Add(retention),
+                StoreNow));
+        }
+
+        public ValueTask<ZLinkRelocationStored> PutRelocationAtAsync(
+            string reference,
+            ReadOnlyMemory<byte> payload,
+            TimeSpan retention,
+            CancellationToken cancellationToken = default)
+        {
+            var stored = payload.ToArray();
+            if (_payloads.TryGetValue(reference, out var current)
+                && !current.AsSpan().SequenceEqual(stored))
+                throw new InvalidDataException("Relocation reference collision.");
             _payloads[reference] = stored;
             return ValueTask.FromResult(new ZLinkRelocationStored(
                 reference,

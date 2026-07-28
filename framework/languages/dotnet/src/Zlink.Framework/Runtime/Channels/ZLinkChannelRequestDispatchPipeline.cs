@@ -37,7 +37,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
             || endpoint is null)
         {
             var error = new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.HandlerNotFound,
+                ZLinkFrameworkErrorKind.NotFound,
                 $"No request handler is registered for '{channelName}:{header.MessageName}'.");
             scope.HandlerMissing(
                 logger,
@@ -60,7 +60,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 ZLinkDispatchErrorAction.ReplyError,
                 out var message,
                 ex => decodeError = new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                    ZLinkFrameworkErrorKind.ProtocolError,
                     $"PayloadDecodeFailed: failed to decode request payload for '{channelName}:{header.MessageName}'.",
                     innerException: ex)))
         {

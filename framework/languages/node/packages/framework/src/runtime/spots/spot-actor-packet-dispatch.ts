@@ -93,7 +93,8 @@ export class ZLinkSpotActorPacketDispatch {
     parts: readonly Message[],
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
+    fallbackActorRef?: ActorRef,
+    requestTerminal?: (response: unknown) => Promise<void> | void
   ): Promise<unknown> {
     if (parts.length < 2) {
       this.reportInvalidFrame(actorId, ZLinkDispatchMessageKind.ActorSend);
@@ -164,7 +165,8 @@ export class ZLinkSpotActorPacketDispatch {
         action,
         returnResponse,
         remoteBoundSessionTarget,
-        fallbackActorRef
+        fallbackActorRef,
+        requestTerminal
       );
     });
   }
@@ -244,7 +246,8 @@ export class ZLinkSpotActorPacketDispatch {
     action: ZLinkDispatchErrorAction,
     returnResponse: boolean,
     fallbackBoundSessionTarget: ZLinkRemoteBoundSessionTarget | undefined,
-    fallbackActorRef: ActorRef | undefined
+    fallbackActorRef: ActorRef | undefined,
+    requestTerminal: ((response: unknown) => Promise<void> | void) | undefined
   ): Promise<unknown> {
     const dispatcher = new ZLinkSpotActorDispatcher({
       registry: this.options.registry,
@@ -276,6 +279,17 @@ export class ZLinkSpotActorPacketDispatch {
         return undefined;
       }
       const requestSeq = header.requestSeq;
+      if (returnResponse && requestTerminal !== undefined) {
+        await dispatcher.dispatchRequestThen(actor, header.name, payload, {
+          meshName: this.options.spot.context.meshName,
+          metadata: zlinkMessageMetadata(header.metadata),
+          correlationId: header.correlationId ?? header.requestSeq.toString()
+        }, async (response) => {
+          this.trace(ZLinkMessageFlowOutcome.Replied, actorId, header, ZLinkDispatchMessageKind.ActorRequest);
+          await requestTerminal(response);
+        });
+        return undefined;
+      }
       if (returnResponse || this.options.actorResponseSender === undefined) {
         const response = await dispatcher.dispatchRequest(actor, header.name, payload, {
           meshName: this.options.spot.context.meshName,

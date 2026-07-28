@@ -16,7 +16,7 @@ import systems.zlink.framework.runtime.locations.ZLinkLocationRuntime;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
 
 /**
- * Publishes Object Server placement descriptors under the host owner lease.
+ * Publishes MeshNode discovery descriptors under the host owner lease.
  */
 public final class ZLinkObjectServerDescriptorPublisher {
     private final ZLinkLocationStore store;
@@ -45,9 +45,6 @@ public final class ZLinkObjectServerDescriptorPublisher {
             : ZLinkLocationWriteIntent.NEW_CLAIM;
         List<CompletionStage<?>> writes = new ArrayList<>();
         for (MeshNodeRegistration configured : registration.meshNodes()) {
-            if (!configured.objectServer()) {
-                continue;
-            }
             ZLinkInternalMeshNode node = nodes.get(configured.meshName());
             if (node == null) {
                 continue;
@@ -59,7 +56,7 @@ public final class ZLinkObjectServerDescriptorPublisher {
                     if (result.status() != ZLinkLocationWriteStatus.STORED) {
                         throw new systems.zlink.framework.errors
                             .ZLinkConfigurationException(
-                                "Object Server descriptor publication failed"
+                                "MeshNode descriptor publication failed"
                                     + " [mesh=" + configured.meshName()
                                     + ", status=" + result.status() + "]");
                     }
@@ -73,7 +70,7 @@ public final class ZLinkObjectServerDescriptorPublisher {
         List<CompletionStage<?>> removals = new ArrayList<>();
         for (MeshNodeRegistration configured : registration.meshNodes()) {
             ZLinkInternalMeshNode node = nodes.get(configured.meshName());
-            if (node != null && configured.objectServer()) {
+            if (node != null) {
                 removals.add(store.removeMeshNode(
                     new ZLinkMeshNodeDescriptorKey(
                         configured.meshName(),
@@ -106,8 +103,14 @@ public final class ZLinkObjectServerDescriptorPublisher {
             node.channelWeights(),
             registration.applicationVersion(),
             placement.objectCapabilities(),
-            ZLinkMeshNodeObjectRole.SERVER,
-            Optional.of(configured.entrySpotId()),
+            configured.objectServer()
+                ? ZLinkMeshNodeObjectRole.SERVER
+                : configured.objectRoleEnabled()
+                    ? ZLinkMeshNodeObjectRole.CLIENT
+                    : ZLinkMeshNodeObjectRole.NONE,
+            configured.objectServer()
+                ? Optional.of(configured.entrySpotId())
+                : Optional.empty(),
             placement.placementWeight(),
             placement.objectCapacity(),
             new ZLinkActivationConcurrency(

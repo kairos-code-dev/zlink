@@ -16,9 +16,9 @@ internal static class TdG1TerminatorConformanceScenario
     {
         var spot = await context.SpotAsync();
         var requestId = ExecutionTurnScenarioContext.NewId("TD-G1");
-        context.SendSpot(new AwaitMsg(requestId, 300, "TD-G1", terminator), spot);
+        await context.SendSpotAsync(new AwaitMsg(requestId, 300, "TD-G1", terminator), spot);
         await context.EvidenceAsync(requestId, probeDuringWait ? "yield-released" : "await-held");
-        context.SendSpot(new ProbeMsg(requestId, "interleave-probe"), spot);
+        await context.SendSpotAsync(new ProbeMsg(requestId, "interleave-probe"), spot);
         await context.EvidenceAsync(requestId, probeDuringWait ? "yield-completed" : "async-completed");
         var evidence = await context.EvidenceAsync(requestId, "probe-completed");
         EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId, probeDuringWait

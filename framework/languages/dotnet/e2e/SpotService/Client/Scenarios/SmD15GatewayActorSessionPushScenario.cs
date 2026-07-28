@@ -26,7 +26,7 @@ internal static class SmD15GatewayActorSessionPushScenario
             MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
-        await client.Request(new AuthReq(actorId, "d15 push chain", "play-a"))
+        await client.Request(new AuthReq(actorId, "d15 push chain"))
             .PacketName("AuthReq")
             .Async<AuthRes>();
         await client.Request(new ActorPingReq("d15-bind-probe"))

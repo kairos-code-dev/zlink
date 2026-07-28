@@ -40,7 +40,9 @@ internal sealed class ReportSpotEventHandler(
 /// <summary>The one-second node report. It is where PlayerCount comes from: the runtime
 /// events tell Ops that a node exists, not what it is holding (§8.1).</summary>
 [ZLinkHandlerGroup(HandlerGroups.Ops)]
-internal sealed class ReportNodeStatusHandler(NodeRegistry nodes)
+internal sealed class ReportNodeStatusHandler(
+    NodeRegistry nodes,
+    ILogger<ReportNodeStatusHandler> logger)
     : IZLinkRouteSendHandler<ReportNodeStatusMsg>
 {
     public async ValueTask HandleAsync(
@@ -49,5 +51,9 @@ internal sealed class ReportNodeStatusHandler(NodeRegistry nodes)
         CancellationToken cancellationToken)
     {
         await nodes.ApplyReportAsync(message, context.SourceNodeRid, cancellationToken);
+        logger.LogInformation(
+            "node status observed. node={NodeId}, rid={NodeRid}",
+            message.NodeId,
+            context.SourceNodeRid);
     }
 }

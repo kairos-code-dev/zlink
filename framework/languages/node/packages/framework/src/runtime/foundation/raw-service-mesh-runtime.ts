@@ -98,6 +98,7 @@ export class RawServiceMeshRuntime {
   private readonly expectedPeers = new Map<string, {
     readonly meshName: string;
     readonly nodeRoutingId: string;
+    readonly endpoint?: string;
   }>();
   private readonly connectionIds = new Map<string, string>();
   private readonly monitorEvents: ZLinkRawMonitorRecord[] = [];
@@ -144,14 +145,15 @@ export class RawServiceMeshRuntime {
 
   connectPeer(endpoint: string, expected: ServiceNodeDescriptor): void {
     this.requireStarted().connectToRoutingId(expected.nodeRoutingId, endpoint);
-    this.expectedPeers.set(expected.nodeRoutingId, expected);
+    this.expectedPeers.set(expected.nodeRoutingId, { ...expected, endpoint });
   }
 
   connectPeerByRoutingId(endpoint: string, nodeRoutingId: string): void {
     this.requireStarted().connectToRoutingId(nodeRoutingId, endpoint);
     this.expectedPeers.set(nodeRoutingId, {
       meshName: this.topology.localDescriptor().meshName,
-      nodeRoutingId
+      nodeRoutingId,
+      endpoint
     });
   }
 
@@ -159,6 +161,8 @@ export class RawServiceMeshRuntime {
     this.requireStarted().disconnect(endpoint);
     const current = this.topology.peer(nodeRoutingId);
     if (current !== undefined) this.removePeer(current);
+    this.topology.forgetNotRequired(nodeRoutingId);
+    this.expectedPeers.delete(nodeRoutingId);
   }
 
   announcePeer(nodeRoutingId: string): boolean {
@@ -198,6 +202,19 @@ export class RawServiceMeshRuntime {
     this.topology.publishLocal(next);
     this.descriptor = next;
     this.announceExpectedPeers();
+  }
+
+  replaceDiscoveredNotRequired(
+    descriptors: readonly ServiceNodeDescriptor[]
+  ): void {
+    this.topology.replaceDiscoveredNotRequired(descriptors);
+  }
+
+  isObjectClientNodeDirectTarget(nodeRoutingId: string): boolean {
+    const descriptor = nodeRoutingId === this.descriptor.nodeRoutingId
+      ? this.topology.localDescriptor()
+      : this.topology.knownDescriptor(nodeRoutingId);
+    return descriptor?.objectRole === 'client';
   }
 
   sendToNode(targetNodeRoutingId: string, payload: ServiceApplicationPayload): boolean {
@@ -312,29 +329,45 @@ export class RawServiceMeshRuntime {
             || expected.nodeRoutingId !== descriptor.nodeRoutingId
           )
         ) {
-          router.send(received.sourceRid, [encodeReject(3)], true);
+          this.trySend(received.sourceRid, [encodeReject(3)]);
           return 'infrastructure';
         }
         const connectionId = this.currentConnectionId(received.sourceRid);
         const result = this.admitPeer(descriptor, connectionId, nowMs);
         if (result !== 'admitted') {
-          router.send(received.sourceRid, [encodeReject(admissionReason(result))], true);
+          this.trySend(received.sourceRid, [encodeReject(admissionReason(result))]);
           return 'infrastructure';
         }
         if (header.command === M6aServiceWireCommand.hello) {
-          router.send(
+          this.trySend(
             received.sourceRid,
-            [encodeRouteMeshAdmission(M6aServiceWireCommand.admit, this.topology.localDescriptor())],
-            true
+            [encodeRouteMeshAdmission(M6aServiceWireCommand.admit, this.topology.localDescriptor())]
           );
         }
         return 'infrastructure';
       }
       if (header.command === M6aServiceWireCommand.reject) {
         if (received.parts.length !== 1) return 'protocolError';
-        decodeReject(received.parts[0]!);
+        const reason = decodeReject(received.parts[0]!);
         const current = this.topology.peer(received.sourceRid);
         if (current !== undefined) this.removePeer(current);
+        if (reason === 4) {
+          const expected = this.expectedPeers.get(received.sourceRid);
+          const local = this.topology.localDescriptor();
+          this.topology.markNotRequired({
+            ...local,
+            nodeRoutingId: received.sourceRid,
+            lifecycleGeneration: 1n,
+            descriptorRevision: 1n,
+            advertisedEndpoint: expected?.endpoint ?? local.advertisedEndpoint,
+            channels: [],
+            objectRole: 'client'
+          });
+          if (expected?.endpoint !== undefined) {
+            this.requireStarted().disconnect(expected.endpoint);
+          }
+          this.expectedPeers.delete(received.sourceRid);
+        }
         return 'infrastructure';
       }
       const peer = this.topology.peer(received.sourceRid);
@@ -353,10 +386,10 @@ export class RawServiceMeshRuntime {
           );
           if (
             ack === undefined
-            || !router.send(received.sourceRid, [livenessCodec.encodeLivenessRecord({
+            || !this.trySend(received.sourceRid, [livenessCodec.encodeLivenessRecord({
               command: M6aServiceWireCommand.livenessAck,
               probeId: record.probeId
-            })], true)
+            })])
           ) {
             return 'protocolError';
           }
@@ -520,9 +553,15 @@ export class RawServiceMeshRuntime {
     connectionId: string,
     nowMs: number
   ): PeerAdmissionResult {
+    const previous = this.topology.peer(descriptor.nodeRoutingId);
     const result = this.topology.admit(descriptor, connectionId);
     if (result === 'admitted') {
       this.liveness.admit(descriptor.nodeRoutingId, connectionId, nowMs);
+    } else if (result === 'notRequired' && previous !== undefined) {
+      this.liveness.disconnect(
+        descriptor.nodeRoutingId,
+        previous.connectionId
+      );
     }
     return result;
   }
@@ -563,6 +602,8 @@ function admissionReason(result: PeerAdmissionResult): number {
       return 7;
     case 'invalidDescriptor':
       return 11;
+    case 'notRequired':
+      return 4;
     case 'admitted':
       return 1;
   }

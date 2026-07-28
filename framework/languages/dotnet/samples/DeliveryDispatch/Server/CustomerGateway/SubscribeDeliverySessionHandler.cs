@@ -21,20 +21,11 @@ internal sealed class SubscribeDeliverySessionHandler(
         SubscribeDeliveryReq request,
         CancellationToken cancellationToken)
     {
-        var found = await actors.FindAsync(
-            new FindCustomerActorReq(CustomerId),
-            cancellationToken);
-        var actor = found.Actor;
-        if (actor is null)
-        {
-            var ensured = await actors.EnsureAsync(
-                new EnsureCustomerActorReq(CustomerId),
-                cancellationToken);
-            actor = ensured.Actor;
-        }
+        var actor = await actors.FindAsync(CustomerId, cancellationToken)
+                    ?? await actors.EnsureAsync(CustomerId, cancellationToken);
 
         var boundActor = await context.Actors.BindOrGetAsync(
-            actor.ToActorRef(),
+            actor,
             cancellationToken);
         logger.LogInformation(
             "deliverydispatch customer-session: bound customer actor={ActorId} session={SessionId}",

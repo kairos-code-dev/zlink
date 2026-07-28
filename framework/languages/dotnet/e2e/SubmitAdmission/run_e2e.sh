@@ -3,6 +3,7 @@ set -euo pipefail
 umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../redis-common.sh"
 SERVER_PROJECT="$SCRIPT_DIR/Server/SubmitAdmission.Server.csproj"
 CLIENT_PROJECT="$SCRIPT_DIR/Client/SubmitAdmission.Client.csproj"
 GATE_PROJECT="$SCRIPT_DIR/ReceiverGate/SubmitAdmission.ReceiverGate.csproj"
@@ -13,6 +14,9 @@ GATE_DLL="$SCRIPT_DIR/ReceiverGate/bin/Debug/net8.0/SubmitAdmission.ReceiverGate
 UNIT_PROJECT="$SCRIPT_DIR/../../tests/Zlink.Framework.UnitTests/Zlink.Framework.UnitTests.csproj"
 SCENARIO="${*:-all}"
 SCENARIO="${SCENARIO// /,}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
 CONFIG_DIR="$(mktemp -d)"
@@ -153,6 +157,8 @@ CALLER_MESH_PORT="$(pick_port)"
 TARGET_MESH_PORT="$(pick_port)"
 GATE_MESH_PORT="$(pick_port)"
 FANOUT_PORT="$(pick_port)"
+OBJECT_CLIENT_HTTP_PORT="$(pick_port)"
+OBJECT_CLIENT_MESH_PORT="$(pick_port)"
 CALLER_URL="http://127.0.0.1:$CALLER_HTTP_PORT"
 TARGET_URL="http://127.0.0.1:$TARGET_HTTP_PORT"
 GATE_URL="http://127.0.0.1:$GATE_HTTP_PORT"
@@ -161,9 +167,14 @@ CALLER_ENDPOINT="tcp://127.0.0.1:$CALLER_MESH_PORT"
 TARGET_ENDPOINT="tcp://127.0.0.1:$TARGET_MESH_PORT"
 GATE_ENDPOINT="tcp://127.0.0.1:$GATE_MESH_PORT"
 FANOUT_ENDPOINT="tcp://127.0.0.1:$FANOUT_PORT"
+OBJECT_CLIENT_URL="http://127.0.0.1:$OBJECT_CLIENT_HTTP_PORT"
+OBJECT_CLIENT_ENDPOINT="tcp://127.0.0.1:$OBJECT_CLIENT_MESH_PORT"
 CALLER_RID="submit-caller"
 TARGET_RID="submit-target"
 PIDS=()
+REDIS_CONTAINER=""
+REDIS_ENDPOINT=""
+REDIS_KEY_PREFIX="zlink:e2e:cfg13:$STAMP"
 
 cleanup() {
   local code=$?
@@ -173,13 +184,13 @@ cleanup() {
       kill -INT -- "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
     fi
   done
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
     local alive=0
     for pid in "${PIDS[@]:-}"; do
       if kill -0 "$pid" 2>/dev/null; then alive=1; break; fi
     done
     [[ "$alive" == 0 ]] && break
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
   for pid in "${PIDS[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
@@ -187,6 +198,9 @@ cleanup() {
     fi
   done
   wait "${PIDS[@]:-}" 2>/dev/null || true
+  if [[ -n "$REDIS_CONTAINER" ]]; then
+    docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  fi
   if [[ "$code" != 0 ]]; then echo "SubmitAdmission failed; logs=$LOG_DIR" >&2; fi
 }
 trap cleanup EXIT
@@ -211,13 +225,18 @@ start_gate() {
   PIDS+=("$!")
 }
 
+needs_object_client() {
+  [[ "$SCENARIO" == "all"
+     || ",$SCENARIO," == *",SA-E2E-08,"* ]]
+}
+
 wait_health() {
   local name="$1" url="$2"
   for _ in $(seq 1 30); do
     if curl --connect-timeout 0.2 --max-time 0.2 -fsS "$url/health" >/dev/null 2>&1; then return; fi
     sleep 0.1
   done
-  echo "Timed out waiting 3s for $name at $url" >&2
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name at $url" >&2
   return 1
 }
 
@@ -292,6 +311,7 @@ CALLER_CONFIG="$CONFIG_DIR/caller.json"
 TARGET_CONFIG="$CONFIG_DIR/target.json"
 PUBLISHER_CONFIG="$CONFIG_DIR/publisher.json"
 CLIENT_CONFIG="$CONFIG_DIR/client.json"
+OBJECT_CLIENT_CONFIG="$CONFIG_DIR/object-client.json"
 write_config "$CALLER_CONFIG" \
   --role caller --rid "$CALLER_RID" --http-url "$CALLER_URL" \
   --mesh-endpoint "$CALLER_ENDPOINT" --peer-rid "$TARGET_RID" --peer-endpoint "$GATE_ENDPOINT" \
@@ -304,21 +324,75 @@ write_config "$PUBLISHER_CONFIG" \
   --fanout-endpoint "$FANOUT_ENDPOINT" --evidence-file "$LOG_DIR/publisher.evidence.log"
 write_config "$CLIENT_CONFIG" \
   --caller-url "$CALLER_URL" --target-url "$TARGET_URL" --publisher-url "$PUBLISHER_URL" \
-  --caller-rid "$CALLER_RID" --target-rid "$TARGET_RID" --scenario "$SCENARIO"
+  --caller-rid "$CALLER_RID" --target-rid "$TARGET_RID" \
+  --object-client-rid "$TARGET_RID" --scenario "$SCENARIO"
+
+if needs_object_client; then
+  zlink_redis_start_scoped_assign \
+    REDIS_CONTAINER \
+    REDIS_ENDPOINT \
+    "zlink-redis-dotnet-e2e-submit-admission" \
+    "redis:7.2-alpine" \
+    "$LOG_DIR"
+  zlink_redis_wait_ready \
+    "$REDIS_CONTAINER" 60 "$LOCAL_READINESS_POLL_SECONDS"
+  write_config "$OBJECT_CLIENT_CONFIG" \
+    --role object-client --rid submit-object-client \
+    --http-url "$OBJECT_CLIENT_URL" \
+    --mesh-endpoint "$OBJECT_CLIENT_ENDPOINT" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX"
+fi
 
 start_role target "$TARGET_CONFIG"
 wait_health target "$TARGET_URL"
 start_gate
 wait_health receiver-gate "$GATE_URL"
 start_role caller "$CALLER_CONFIG"
-start_role publisher "$PUBLISHER_CONFIG"
 wait_health caller "$CALLER_URL"
-wait_health publisher "$PUBLISHER_URL"
+if [[ "$SCENARIO" != "SA-E2E-08" ]]; then
+  start_role publisher "$PUBLISHER_CONFIG"
+  wait_health publisher "$PUBLISHER_URL"
+fi
 
-for _ in $(seq 1 30); do
+OBJECT_CLIENT_RID="$TARGET_RID"
+if needs_object_client; then
+  start_role object-client "$OBJECT_CLIENT_CONFIG"
+  wait_health object-client "$OBJECT_CLIENT_URL"
+  object_client_identity="$(curl --connect-timeout 0.2 --max-time 2 -fsS \
+    "$OBJECT_CLIENT_URL/object-client/identity")"
+  read -r OBJECT_CLIENT_RID object_client_endpoint < <(
+    python3 -c 'import json,sys; value=json.load(sys.stdin); print(value["rid"], value["endpoint"])' \
+      <<<"$object_client_identity")
+  curl --connect-timeout 0.2 --max-time 2 -fsS -X POST \
+    "$CALLER_URL/admin/connect-object-client?rid=$OBJECT_CLIENT_RID&endpoint=$object_client_endpoint" \
+    >/dev/null
+  for _ in $(seq 1 300); do
+    peer_state="$(curl --connect-timeout 0.2 --max-time 0.5 -fsS \
+      "$CALLER_URL/topology/peer/$OBJECT_CLIENT_RID" 2>/dev/null || true)"
+    if [[ -n "$peer_state" ]] && python3 - "$peer_state" <<'PY'
+import json
+import sys
+raise SystemExit(0 if json.loads(sys.argv[1])["state"] == "Ready" else 1)
+PY
+    then
+      break
+    fi
+    sleep 0.1
+  done
+  curl --connect-timeout 0.2 --max-time 1 -fsS \
+    "$CALLER_URL/topology/peer/$OBJECT_CLIENT_RID" \
+    >"$LOG_DIR/object-client-peer-before.json"
+  write_config "$CLIENT_CONFIG" \
+    --caller-url "$CALLER_URL" --target-url "$TARGET_URL" --publisher-url "$PUBLISHER_URL" \
+    --caller-rid "$CALLER_RID" --target-rid "$TARGET_RID" \
+    --object-client-rid "$OBJECT_CLIENT_RID" --scenario "$SCENARIO"
+fi
+
+for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
   if curl --connect-timeout 0.2 --max-time 0.2 -fsS \
     "$CALLER_URL/ready/$TARGET_RID" >/dev/null 2>&1; then break; fi
-  sleep 0.1
+  sleep "$LOCAL_READINESS_POLL_SECONDS"
 done
 curl --connect-timeout 0.2 --max-time 0.5 -fsS "$CALLER_URL/ready/$TARGET_RID" >/dev/null
 

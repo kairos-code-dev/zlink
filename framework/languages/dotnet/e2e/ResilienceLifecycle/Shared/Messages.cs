@@ -3,10 +3,6 @@ namespace ResilienceLifecycle.Shared;
 public static class ResilienceLifecycleNames
 {
     public const string Channel = "resilience.profile";
-
-    // Callers are mesh members like any other node (spec 10 §1); they carry a
-    // distinct ChannelName so profile select-one never targets a consumer.
-    public const string ConsumerChannel = "resilience.consumer";
 }
 
 public sealed record ProfileReq(string Value, string Marker);

@@ -378,6 +378,9 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public RoutingId PreparedRoutingId { get; set; }
 
+    internal RoutingId EffectiveRoutingId =>
+        PreparedRoutingId.Size > 0 ? PreparedRoutingId : RoutingId;
+
     public string EntrySpotId { get; set; } = string.Empty;
 
     public Type? EntrySpotType { get; set; }
@@ -439,7 +442,7 @@ internal sealed class ZLinkActorCatalog
         return _factories.TryGetValue(actorType, out var factoryType)
             ? factoryType
             : throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorCreateFailed,
+                ZLinkFrameworkErrorKind.InternalFailure,
                 $"Actor factory '{actorType}' is not registered.");
     }
 }

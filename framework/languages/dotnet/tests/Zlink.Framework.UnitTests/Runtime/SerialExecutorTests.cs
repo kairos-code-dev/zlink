@@ -90,6 +90,43 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
+    public async Task TargetCutoverRunsPreviousOwnerMessageFollowBeforeDirectIngress()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        var seal = await queue.SealRelocationAsync(CancellationToken.None);
+        var executionOrder = new ConcurrentQueue<int>();
+
+        ZLinkSerialWorkItem Post(int value, bool followed)
+        {
+            Assert.Equal(
+                ZLinkAcceptedWorkAdmission.Accepted,
+                queue.TryPostAccepted(
+                    new byte[] { (byte)value },
+                    _ =>
+                    {
+                        executionOrder.Enqueue(value);
+                        return ValueTask.CompletedTask;
+                    },
+                    static () => { },
+                    followed,
+                    out var item));
+            return item;
+        }
+
+        var directFirst = Post(1, followed: false);
+        var followed = Post(2, followed: true);
+        var directSecond = Post(3, followed: false);
+
+        Assert.True(queue.TryOpenRelocationAfterMessageFollow(seal));
+        await Task.WhenAll(
+            directFirst.Completion,
+            followed.Completion,
+            directSecond.Completion).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(new[] { 2, 1, 3 }, executionOrder);
+    }
+
+    [Fact]
     public async Task SerialExecutionQueue_RelocationCommit_ReleasesCapturedAndReturnsHeldRecords()
     {
         await using var queue = CreateQueue(CancellationToken.None);

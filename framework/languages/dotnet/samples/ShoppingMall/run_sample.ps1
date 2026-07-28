@@ -88,7 +88,6 @@ try {
         throw "No workflow instance recorded a shoppingmall order start."
     }
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "shoppingmall evidence:"
-    Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern "message flow"
     Write-Host "shoppingmall-server-evidence=completed"
     $RunSucceeded = $true
 }

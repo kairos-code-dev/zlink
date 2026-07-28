@@ -19,10 +19,17 @@ connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 �
 양쪽 연결이나 automatic discovery 경합·오래된 snapshot으로 중복 후보가 생기면 handshake와 admission이
 같은 RID와 [lifecycle generation](../../../../01-glossary.ko.md#lifecycle-generation)을 확인해 하나만 ready 상태로 유지한다.
 
+두 MeshNode가 모두 Object Client이고 양쪽 모두 RouteMesh Channel Server membership이 없을 때만 peer
+connection이 필요하지 않다. Channel Client membership만 등록한 경우도 같다. 어느 한쪽에라도 weight
+`0`을 포함한 Channel Server membership이 있으면 연결이 필요하다. ClientServer와 classic fanout은 별도
+물리 topology이므로 이 판정에 포함하지 않는다.
+
 [MeshNode](../../../../01-glossary.ko.md#meshnode)의 object role은 `None`, `Client`, `Server` 중 하나다. `objects()`를 호출하지 않으면 `None`,
 `client()`는 outbound manager와 resolve를 제공하고 `server()`는 Client 기능과 [factory](../../../../01-glossary.ko.md#factory)·Entry registration을
 함께 제공한다. Client와 Server는 Location Store가 필요하다. None에는 object manager나 factory가 없다.
 한 node에서 role을 중복 선택하면 startup configuration error다.
+Object Client에도 RouteMesh Channel Server를 등록할 수 있지만 application Node direct handler는 등록할
+수 없다. Object Client RID를 Node direct target으로 지정하면 다른 RID로 바꾸지 않고 not-found로 끝낸다.
 
 `ZLinkFrameworkOptions.addLocationStore(...)`와 `addRelocationStore(...)`는 Java public member를 그대로 사용한다.
 `RECREATE` 또는 `SNAPSHOT` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있으면 Relocation Store를
@@ -126,7 +133,7 @@ Object Server의 Entry Spot ID는 같은 prefix의
 Java `ZLinkMeshNodeDescriptor.entrySpotId()`가 같은 lifecycle의 exact mapping을 제공한다. Global Spot
 ID가 active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시 `SpotIdConflict`로 startup을
 실패시킨다. Caller가 지정한 User·Instance Spot ID가 예약 형식과 일치하면 Store와 factory 전에
-`InvalidConfiguration`으로 거부한다.
+startup configuration error로 거부한다.
 
 모든 Actor, User Spot, Instance Spot factory는 stable type, object 종류별 optional factory option과 명시적인
 `Disabled`·`Recreate`·`Snapshot` policy를 받는다. Policy를 생략하는 Kotlin overload와 `$default` JVM member는

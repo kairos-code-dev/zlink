@@ -5,10 +5,9 @@ namespace ShoppingMall.Server.Configuration;
 public static class SampleNames
 {
     public const string MeshName = "shoppingmall";
-    public const string OrderWorkflowHandlerGroup = "order-workflow";
-    public const string OrderWorkflowChannel = "shoppingmall.order.workflow";
     public const string OrderProjectionTopic = "shoppingmall.order.projection";
     public const string OrderProjectionChannel = "shoppingmall.order.projection.channel";
+    public const string OrderWorkflowSpotType = "shoppingmall.order-workflow";
 
 }
 

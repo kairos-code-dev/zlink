@@ -59,6 +59,11 @@ await (options.OperationGroup switch
     "sm-d2" => SmD2RemoteActorSessionRelayScenario.RunAsync(sessionA, options.SessionAStreamEndpoint),
     "sm-d3" => SmD3EntryAndUserSpotSessionRelayScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-d4" => SmD4MultipleActorBindingScenario.RunAsync(options.SessionAStreamEndpoint),
+    "sm-d4a" => SmD4AStaleBindingIsolationScenario.RunAsync(
+        playA,
+        gateway,
+        options.SessionAStreamEndpoint,
+        options.SessionBStreamEndpoint),
     "sm-d5" => SmD5ExplicitDisconnectNotificationScenario.RunAsync(playA, sessionA, options.SessionAStreamEndpoint),
     "sm-d5a" => SmD5ALogicalDisconnectScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-d6" => SmD6BoundSessionPushTargetingScenario.RunAsync(options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
@@ -76,13 +81,13 @@ await (options.OperationGroup switch
     "sm-e3" => SmE3IdleTimerSpotCloseScenario.RunAsync(playA),
     "sm-e4" => SmE4TimerOverrunPolicyScenario.RunAsync(playA),
     "sm-f1" => SmF1ClientServerChannelToSpotScenario.RunAsync(playA),
-    "sm-f2" => SmF2RouteMeshChannelToSpotScenario.RunAsync(playA),
+    "sm-f2" => SmF2RouteMeshChannelToSpotScenario.RunAsync(playA, playB),
     "sm-f3" => RunF3Async(playA, gateway),
     "sm-f4" => SmF4MissingTargetSpotRouteScenario.RunAsync(playA),
     "sm-f5" => SmF5ClosedSpotRouteIsolationScenario.RunAsync(playA, gateway),
     "sm-f6" => SmF6RemoteSpotOutboundScenario.RunAsync(multiA, multiB),
     "sm-g1" => SmG1BoundActorCrashRecoveryScenario.RunAsync(
-        playA, gateway, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
+        playA, playB, gateway, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
     "sm-g2" => SmG2OwnerSpotRemapScenario.RunAsync(playA, playB, gateway),
     "sm-g3" => SmG3ConcurrentSessionActorLifecycleScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-g4" => SmG4ConcurrentBoundSessionPushScenario.RunAsync(options.SessionAStreamEndpoint),
@@ -101,18 +106,20 @@ await (options.OperationGroup switch
     "sm-e2-e3" => RunE2E3Async(playA),
     "sm-a7-a8-c4" => RunA7A8C4Async(playA, gateway),
     "sm-a3-a6-b4-b7" => RunA3A6B4B7Async(playA, playB, options.SessionAStreamEndpoint),
-    "sm-a1-a2-a4-f1-f2" => RunA1A2A4F1F2Async(playA),
+    "sm-a1-a2-a4-f1-f2" => RunA1A2A4F1F2Async(playA, playB),
     _ => throw new InvalidOperationException($"Unsupported SpotService operation group '{options.OperationGroup}'.")
 });
 
 Console.WriteLine($"spot-service client operation_group={options.OperationGroup} result=passed");
 
-static async Task RunA1A2A4F1F2Async(ZLinkHttpClient playA)
+static async Task RunA1A2A4F1F2Async(
+    ZLinkHttpClient playA,
+    ZLinkHttpClient playB)
 {
     await SmA1EntrySpotRequestScenario.RunAsync(playA);
     await SmA4OwnerRoutingScenario.RunAsync(playA);
     await SmF1ClientServerChannelToSpotScenario.RunAsync(playA);
-    await SmF2RouteMeshChannelToSpotScenario.RunAsync(playA);
+    await SmF2RouteMeshChannelToSpotScenario.RunAsync(playA, playB);
     await SmA2UserSpotStateMutationScenario.RunAsync(playA);
 }
 

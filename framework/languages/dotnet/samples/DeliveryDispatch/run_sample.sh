@@ -7,9 +7,9 @@ source "${SCRIPT_DIR}/../redis-common.sh"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
 WORK_DIR="${RUN_DIR}/work"
-FLOW_LOG_DIR="${RUN_DIR}/flow-logs"
+SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"
 CONFIG_DIR="${RUN_DIR}/config"
-mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${CONFIG_DIR}" "${FLOW_LOG_DIR}"
+mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${CONFIG_DIR}" "${SAMPLE_LOG_DIR}"
 
 PIDS=()
 REDIS_CONTAINER=""
@@ -185,7 +185,7 @@ write_role_config() {
   python3 "${SCRIPT_DIR}/write_role_config.py" \
     --output "${CONFIG_DIR}/${role}.json" \
     --role "${role}" \
-    --log-dir "${FLOW_LOG_DIR}" \
+    --log-dir "${SAMPLE_LOG_DIR}" \
     --work-dir "${WORK_DIR}" \
     --redis-endpoint "${REDIS_ENDPOINT}" \
     --redis-key-prefix "${REDIS_KEY_PREFIX}" \
@@ -237,6 +237,5 @@ wait_log "deliverydispatch customer-session: bound customer" "${LOG_DIR}/custome
 wait_log "deliverydispatch customer-entry: pushed status" "${LOG_DIR}/customer-gateway.log"
 wait_log "deliverydispatch courier-session: bound courier=courier-a" "${LOG_DIR}/courier-session.log"
 wait_log "deliverydispatch courier-session: bound courier=courier-b" "${LOG_DIR}/courier-session.log"
-grep -Rq "message flow" "${FLOW_LOG_DIR}"
 echo "deliverydispatch-runner-evidence=completed"
 RUN_SUCCEEDED=1

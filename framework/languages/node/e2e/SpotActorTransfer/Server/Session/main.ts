@@ -5,13 +5,20 @@ import {
   ZLinkMessageFlowLogMode,
   type ActorRef,
   type ZLinkMessage,
+  type ZLinkLocationRuntimeQuery,
   type ZLinkSession,
   type ZLinkSessionContext,
   type ZLinkSessionDispatchContext,
-  type ZLinkSessionFactory
+  type ZLinkSessionFactory,
+  type ZLinkRouteMeshRuntime
 } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import {
+  ZLINK_LOCATION_RUNTIME_QUERY,
+  ZLINK_ROUTE_MESH_RUNTIME,
+  ZLinkModule,
+  zlinkFramework
+} from '@zlink-systems/nestjs';
 import {
   SpotActorTransferNames,
   type BindActorSessionReq,
@@ -100,20 +107,19 @@ Module({
         const builder = zlinkFramework();
         builder.addLocationStore(new ZLinkRedisLocationStore({
           url: `redis://${options.redisEndpoint}`,
-          keyPrefix: options.redisKeyPrefix
+          keyPrefix: `${options.redisKeyPrefix}:location`
         }));
-        Object.assign(builder.configureLocations(), {
-          pollingIntervalMs: 100,
-          heartbeatIntervalMs: 1000,
-          ownerLeaseTtlMs: 3000
-        });
+        builder.configureLocations()
+          .pollingIntervalMs(100)
+          .heartbeatIntervalMs(1000)
+          .ownerLeaseTtlMs(3000);
         builder.configureDispatch()
           .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
           .traceLogFile(path.join(options.logDir, `${options.rid}-flow.log`))
           .traceLabel(options.rid);
         builder.addRouteMesh(SpotActorTransferNames.mesh)
           .listen(options.routerEndpoint).routingId(options.rid)
-          .channelName(SpotActorTransferNames.mesh);
+          .channel(SpotActorTransferNames.mesh).server();
         builder.addStreamNode(`${SpotActorTransferNames.mesh}-${options.rid}`)
           .bind(options.streamEndpoint)
           .registerSession(GatewaySessionFactory);
@@ -126,8 +132,48 @@ Module({
 
 async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(SessionModule, { logger: false, abortOnError: false });
+  const routeMeshRuntime = app.get(
+    ZLINK_ROUTE_MESH_RUNTIME,
+    { strict: false }
+  ) as ZLinkRouteMeshRuntime;
+  const locationQuery = app.get(
+    ZLINK_LOCATION_RUNTIME_QUERY,
+    { strict: false }
+  ) as ZLinkLocationRuntimeQuery;
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ok', rid: options.rid }) },
+    {
+      method: 'GET',
+      path: '/mesh-snapshot',
+      handle: async () => {
+        const snapshot = routeMeshRuntime.snapshot(SpotActorTransferNames.mesh);
+        const topology = await locationQuery.listTopology(
+          { meshName: SpotActorTransferNames.mesh },
+          { pageSize: 100 }
+        );
+        return {
+          rid: String(snapshot.rid),
+          ready: routeMeshRuntime.isReady(SpotActorTransferNames.mesh),
+          readyPeerRids: snapshot.peers
+            .filter(peer => peer.ready)
+            .map(peer => String(peer.rid)),
+          peers: snapshot.peers.map(peer => ({
+            rid: String(peer.rid),
+            endpoint: peer.endpoint,
+            admissionState: peer.admissionState,
+            ready: peer.ready,
+            lastFailure: peer.lastFailure
+          })),
+          topologyRids: topology.items.map(entry => String(entry.nodeRid)),
+          topology: topology.items.map(entry => ({
+            rid: String(entry.nodeRid),
+            endpoint: entry.endpoint,
+            state: String(entry.state),
+            draining: entry.draining
+          }))
+        };
+      }
+    },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
     { method: 'POST', path: '/shutdown', handle: () => { stopping = true; return { status: 'stopping' }; } }
   ]);

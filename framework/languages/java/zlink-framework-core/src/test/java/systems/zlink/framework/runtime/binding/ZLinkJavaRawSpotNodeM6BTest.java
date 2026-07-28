@@ -14,6 +14,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
@@ -39,8 +40,11 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             RoutingId.from("jvm-m6b-user-spot-target");
         String spotId =
             "jvm-m6b-user-spot-room";
+        AtomicLong targetClock =
+            new AtomicLong(System.currentTimeMillis());
         try (var context = Zlink.createContext();
-             var target = new ZLinkJavaRawMeshNode(context, "mesh");
+             var target = new ZLinkJavaRawMeshNode(
+                 context, "mesh", targetClock::get);
              var source = new ZLinkJavaRawMeshNode(context, "mesh")) {
             target.setRoutingId(targetRid);
             target.setBind(endpoint);
@@ -96,7 +100,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     }
                 });
 
-            long deadline = System.currentTimeMillis() + 2_000;
+            long deadline = targetClock.get() + 2_000;
             var reservation =
                 new ZLinkServiceM6BWireCodec.ReservationFence(
                     "reservation",
@@ -132,8 +136,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             var replayed = duplicateCreate
                 .toCompletableFuture()
                 .get(2, TimeUnit.SECONDS);
-            Thread.sleep(Math.max(
-                0, deadline - System.currentTimeMillis() + 200));
+            targetClock.set(deadline + 200);
             var replayedAfterDeadline = source.requestUserSpotCreate(
                     targetRid,
                     intent,
@@ -182,8 +185,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     .toCompletableFuture()
                     .get(2, TimeUnit.SECONDS));
 
-            long closeDeadline =
-                System.currentTimeMillis() + 2_000;
+            long closeDeadline = targetClock.get() + 2_000;
             var closed = source.requestUserSpotClose(
                     targetRid,
                     new ZLinkInternalMeshNode.UserSpotCloseIntent(
@@ -725,6 +727,9 @@ final class ZLinkJavaRawSpotNodeM6BTest {
              var right = new ZLinkJavaRawMeshNode(context, "mesh")) {
             left.setRoutingId(leftRid);
             left.setBind(endpoint);
+            left.setObjectRole(
+                systems.zlink.framework.locations
+                    .ZLinkMeshNodeObjectRole.SERVER);
             left.addChannel("events");
             left.setChannelWeight("events", 10_000);
             right.setRoutingId(rightRid);

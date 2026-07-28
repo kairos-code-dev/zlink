@@ -91,25 +91,27 @@ internal static class ZLinkFrameworkServiceRegistrar
         // relayed push arrives on a router-capable node.
         services.TryAddScoped<ZLinkRemoteSessionBindRouteHandler>();
         services.TryAddScoped<ZLinkRemoteSessionUnbindRouteHandler>();
+        services.TryAddScoped<ZLinkRemoteSessionOwnerTombstoneRouteHandler>();
         services.TryAddScoped<ZLinkRemoteSessionPushRelayHandler>();
         services.TryAddScoped<ZLinkRemoteActorFrameRelayHandler>();
         services.TryAddScoped<ZLinkRemoteActorReplyRelayHandler>();
+        services.TryAddScoped<ZLinkSessionRouteSealHandler>();
+        services.TryAddScoped<ZLinkSessionRouteAbortHandler>();
+        services.TryAddScoped<ZLinkSessionRouteCommitHandler>();
+        services.TryAddScoped<ZLinkSessionRouteUnsealHandler>();
 
-        // Install the shared, runtime-mutable message-flow mode cell so the
-        // canonical IZLinkMessageFlowRuntime service updates every dispatch surface.
-        registration.DispatchOptions.Diagnostics.LiveMode ??=
-            new ZLinkMessageFlowModeCell(registration.DispatchOptions.Diagnostics.MessageFlow);
+        registration.DispatchOptions.Diagnostics.LiveLevel ??=
+            new ZLinkDiagnosticsLevelCell(
+                registration.DispatchOptions.Diagnostics.ConfiguredLevel);
+        ZLinkTelemetry.SetDiagnosticsLevel(
+            registration.DispatchOptions.Diagnostics.EffectiveLevel);
         services.TryAddSingleton(static provider =>
             new ZLinkHandlerRegistry(
                 provider.GetServices<ZLinkHandlerEndpointDescriptor>()));
         services.TryAddSingleton<ZLinkHandlerDispatcher>();
-        services.TryAddSingleton<ZLinkRuntimeEventDispatcher>();
-        services.TryAddSingleton<IZLinkRuntimeEventPublisher>(static provider =>
-            provider.GetRequiredService<ZLinkRuntimeEventDispatcher>());
         services.TryAddSingleton<ZLinkDrainAdmissionGate>();
         services.AddSingleton(static provider => new ZLinkAutoConnectLifecycleCoordinator(
-            provider.GetService<ZLinkLocationAutoConnectHost>(),
-            provider.GetService<ZLinkMonitoringRegistration>()?.SocketSources.Count > 0));
+            provider.GetService<ZLinkLocationAutoConnectHost>()));
         services.AddSingleton(static provider =>
             new ZLinkFrameworkRuntime(
                 provider,
@@ -133,9 +135,9 @@ internal static class ZLinkFrameworkServiceRegistrar
             new ZLinkDrainCoordinator(
                 provider.GetRequiredService<ZLinkDrainAdmissionGate>(),
                 provider.GetRequiredService<IZLinkDrainExecutor>(),
-                provider.GetRequiredService<IZLinkRuntimeEventPublisher>(),
-                () => provider.GetRequiredService<ZLinkFrameworkRuntime>().Flow.CaptureEnabled,
-                provider.GetService<ILogger<ZLinkDrainCoordinator>>()));
+                flowCaptureEnabled: () =>
+                    provider.GetRequiredService<ZLinkFrameworkRuntime>().Flow.CaptureEnabled,
+                logger: provider.GetService<ILogger<ZLinkDrainCoordinator>>()));
         services.TryAddSingleton<ZLinkFrameworkMaintenanceRuntime>(provider =>
             new ZLinkFrameworkMaintenanceRuntime(
                 provider.GetRequiredService<ZLinkDrainCoordinator>(),
@@ -150,7 +152,6 @@ internal static class ZLinkFrameworkServiceRegistrar
             new ZLinkFrameworkHostedService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
                 provider.GetRequiredService<ZLinkRouteMeshRuntimeService>(),
-                provider.GetService<ZLinkMonitoringRegistration>(),
                 provider.GetService<ZLinkLocationRuntime>(),
                 provider.GetRequiredService<ZLinkAutoConnectLifecycleCoordinator>(),
                 provider.GetService<ZLinkLocationLifecycle>(),
@@ -170,7 +171,7 @@ internal static class ZLinkFrameworkServiceRegistrar
             new ZLinkRouteMeshRuntimeService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
                 provider.GetService<ZLinkLocationStoreHealth>(),
-                provider.GetService<IZLinkLocationRuntimeQuery>()));
+                provider.GetService<IZLinkLocationDescriptorQuery>()));
         services.AddSingleton<IZLinkRouteMeshRuntime>(static provider =>
             provider.GetRequiredService<ZLinkRouteMeshRuntimeService>());
         services.AddSingleton(static provider =>
@@ -180,11 +181,11 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton<IZLinkClientServerRuntime>(static provider =>
             provider.GetRequiredService<ZLinkClientServerRuntimeService>());
         services.AddSingleton(static provider =>
-            new ZLinkMessageFlowRuntimeService(
+            new ZLinkDiagnosticsRuntimeService(
                 provider.GetRequiredService<ZLinkFrameworkRegistration>()
-                    .DispatchOptions));
-        services.AddSingleton<IZLinkMessageFlowRuntime>(static provider =>
-            provider.GetRequiredService<ZLinkMessageFlowRuntimeService>());
+                    .DispatchOptions.Diagnostics));
+        services.AddSingleton<IZLinkDiagnosticsRuntime>(static provider =>
+            provider.GetRequiredService<ZLinkDiagnosticsRuntimeService>());
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<IZLinkSpotClient, ZLinkSpotClient>();
@@ -377,7 +378,7 @@ internal static class ZLinkFrameworkServiceRegistrar
                 spot.SpotMeshChannelName ?? spot.SpotNodeName))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        services.AddSingleton<IZLinkLocationRuntimeQuery>(
+        services.AddSingleton(
             provider => new ZLinkLocationRuntimeQueryService(
                 provider.GetRequiredService<ZLinkLocationOptions>(),
                 provider.GetRequiredService<IZLinkLocationRepository>(),
@@ -387,6 +388,10 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkObservedLocationGenerations>(),
                 provider.GetService<IZLinkLocationWatchStore>() is not null,
                 provider.GetRequiredService<ZLinkLocationStoreHealth>()));
+        services.AddSingleton<IZLinkLocationRuntimeQuery>(static provider =>
+            provider.GetRequiredService<ZLinkLocationRuntimeQueryService>());
+        services.AddSingleton<IZLinkLocationDescriptorQuery>(static provider =>
+            provider.GetRequiredService<ZLinkLocationRuntimeQueryService>());
         services.AddSingleton<IZLinkLocationReadiness>(
             static provider => new ZLinkLocationReadiness(
                 provider.GetRequiredService<IZLinkLocationRuntimeQuery>()));

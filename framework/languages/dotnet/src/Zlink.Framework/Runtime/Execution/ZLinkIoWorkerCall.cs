@@ -42,7 +42,7 @@ internal sealed class ZLinkIoWorkerCall<TResult>(
         var turn = ZLinkApplicationExecutionContext.RequireYieldTurn("I/O worker");
         if (!ReferenceEquals(turn, _turn))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "I/O worker Yield must execute in the callback turn that created the call.");
         return turn.YieldFrameworkCallAsync(ExecuteAsync, cancellationToken);
     }
@@ -63,9 +63,9 @@ internal sealed class ZLinkIoWorkerCall<TResult>(
         {
             stopSource.Cancel();
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.WorkerTimedOut,
+                ZLinkFrameworkErrorKind.DeadlineExceeded,
                 "I/O worker call timed out.",
-                false,
+                ZLinkRetryAdvice.DoNotRetry,
                 ex);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -80,9 +80,9 @@ internal sealed class ZLinkIoWorkerCall<TResult>(
         catch (Exception ex) when (ex is not ZLinkFrameworkException)
         {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.WorkerFailed,
+                ZLinkFrameworkErrorKind.InternalFailure,
                 "I/O worker call failed.",
-                false,
+                ZLinkRetryAdvice.DoNotRetry,
                 ex);
         }
     }

@@ -9,7 +9,7 @@ public abstract record MoveDecision
     }
 
     /// <summary>The move stands. <paramref name="ZoneChanged"/> tells the caller whether the
-    /// actor must join a different zone spot, which across nodes means a transfer (§2.6).</summary>
+    /// actor must join a different zone spot, which across nodes means relocation (§2.6).</summary>
     public sealed record Accepted(PlayerPosition To, bool ZoneChanged) : MoveDecision;
 
     public sealed record Rejected(string Reason) : MoveDecision;

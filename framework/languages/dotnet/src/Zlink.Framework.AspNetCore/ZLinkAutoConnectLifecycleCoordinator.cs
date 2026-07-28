@@ -1,39 +1,31 @@
 namespace Zlink.Framework.AspNetCore;
 
 /// <summary>
-/// Owns auto-connect generation start and stop. Socket monitoring is an
-/// optional startup barrier: when configured, monitor callbacks must be
-/// attached before the generation can dial or publish location peers.
+/// Owns auto-connect generation start and stop.
 /// </summary>
 internal sealed class ZLinkAutoConnectLifecycleCoordinator
 {
     private readonly object _gate = new();
     private readonly Func<ZLinkFrameworkComponentState, CancellationToken, ValueTask>? _start;
     private readonly Func<CancellationToken, ValueTask>? _stop;
-    private readonly bool _requiresSocketMonitoring;
     private ZLinkFrameworkComponentState? _state;
     private Task? _startTask;
     private Task? _stopTask;
-    private bool _socketMonitoringReady;
 
     internal ZLinkAutoConnectLifecycleCoordinator(
-        ZLinkLocationAutoConnectHost? autoConnect,
-        bool requiresSocketMonitoring)
+        ZLinkLocationAutoConnectHost? autoConnect)
         : this(
             autoConnect is null ? null : autoConnect.StartAsync,
-            autoConnect is null ? null : autoConnect.StopAsync,
-            requiresSocketMonitoring)
+            autoConnect is null ? null : autoConnect.StopAsync)
     {
     }
 
     internal ZLinkAutoConnectLifecycleCoordinator(
         Func<ZLinkFrameworkComponentState, CancellationToken, ValueTask>? start,
-        Func<CancellationToken, ValueTask>? stop,
-        bool requiresSocketMonitoring)
+        Func<CancellationToken, ValueTask>? stop)
     {
         _start = start;
         _stop = stop;
-        _requiresSocketMonitoring = requiresSocketMonitoring;
     }
 
     internal Task FrameworkReadyAsync(
@@ -43,15 +35,6 @@ internal sealed class ZLinkAutoConnectLifecycleCoordinator
         lock (_gate)
         {
             _state = state;
-            return TryStartUnderLock(cancellationToken) ?? Task.CompletedTask;
-        }
-    }
-
-    internal Task SocketMonitoringReadyAsync(CancellationToken cancellationToken)
-    {
-        lock (_gate)
-        {
-            _socketMonitoringReady = true;
             return TryStartUnderLock(cancellationToken) ?? Task.CompletedTask;
         }
     }
@@ -100,8 +83,7 @@ internal sealed class ZLinkAutoConnectLifecycleCoordinator
         if (_startTask is not null
             || _stopTask is not null
             || _start is null
-            || _state is null
-            || (_requiresSocketMonitoring && !_socketMonitoringReady))
+            || _state is null)
             return _startTask;
 
         _startTask = _start(_state, cancellationToken).AsTask();

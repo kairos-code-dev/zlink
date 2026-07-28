@@ -1,45 +1,27 @@
-using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Runtime.Eventing;
-
 namespace Zlink.Framework.UnitTests.Runtime;
 
 public sealed class RuntimeConcurrencyBoundaryTests
 {
     [Fact]
-    public async Task RuntimeEventHandlerFailure_DoesNotEscapeAfterRuntimeStops()
+    public async Task Runner_can_stop_a_sibling_with_the_same_execution_owner()
     {
-        var services = new ServiceCollection();
-        services.AddScoped<IZLinkRuntimeEventHandler<TestRuntimeEvent>, ThrowingRuntimeEventHandler>();
-        services.AddZLinkFramework(_ => { });
-        await using var provider = services.BuildServiceProvider();
-        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
-        await runtime.StartAsync(CancellationToken.None);
-        await runtime.StopAsync(CancellationToken.None);
+        var owner = new object();
+        var reporter = new ZLinkRuntimeErrorSink();
+        var root = new ZLinkRuntimeTaskRunner(
+            reporter,
+            CancellationToken.None,
+            owner);
+        var sibling = new ZLinkRuntimeTaskRunner(
+            reporter,
+            CancellationToken.None,
+            owner);
 
-        await provider.GetRequiredService<IZLinkRuntimeEventPublisher>()
-            .PublishAsync(new TestRuntimeEvent(), CancellationToken.None);
-    }
+        await root.Run(
+            "stop-sibling",
+            async _ => await sibling.StopAsync())
+            .WaitAsync(TimeSpan.FromSeconds(5));
 
-    [Fact]
-    public async Task RuntimeEventHandlerFailure_DoesNotEscapeWhenRuntimeStopsDuringDispatch()
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton<BlockingRuntimeEventHandlerState>();
-        services.AddScoped<IZLinkRuntimeEventHandler<TestRuntimeEvent>, BlockingThrowingRuntimeEventHandler>();
-        services.AddZLinkFramework(_ => { });
-        await using var provider = services.BuildServiceProvider();
-        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
-        var state = provider.GetRequiredService<BlockingRuntimeEventHandlerState>();
-        await runtime.StartAsync(CancellationToken.None);
-
-        var publish = provider.GetRequiredService<IZLinkRuntimeEventPublisher>()
-            .PublishAsync(new TestRuntimeEvent(), CancellationToken.None).AsTask();
-        await state.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await runtime.StopAsync(CancellationToken.None);
-        state.Release.TrySetResult();
-
-        await publish.WaitAsync(TimeSpan.FromSeconds(5));
+        await root.StopAsync();
     }
 
     [Fact]
@@ -241,36 +223,4 @@ public sealed class RuntimeConcurrencyBoundaryTests
         Assert.Equal(["first", "second"], order);
     }
 
-    private sealed record TestRuntimeEvent : IZLinkRuntimeEvent
-    {
-        public string SourceName => "test";
-
-        public DateTimeOffset Timestamp { get; } = DateTimeOffset.UtcNow;
-    }
-
-    private sealed class ThrowingRuntimeEventHandler : IZLinkRuntimeEventHandler<TestRuntimeEvent>
-    {
-        public ValueTask HandleAsync(TestRuntimeEvent @event, CancellationToken cancellationToken) =>
-            ValueTask.FromException(new InvalidOperationException("handler failed"));
-    }
-
-    private sealed class BlockingRuntimeEventHandlerState
-    {
-        public TaskCompletionSource Entered { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public TaskCompletionSource Release { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-    }
-
-    private sealed class BlockingThrowingRuntimeEventHandler(BlockingRuntimeEventHandlerState state)
-        : IZLinkRuntimeEventHandler<TestRuntimeEvent>
-    {
-        public async ValueTask HandleAsync(TestRuntimeEvent @event, CancellationToken cancellationToken)
-        {
-            state.Entered.TrySetResult();
-            await state.Release.Task.WaitAsync(cancellationToken);
-            throw new InvalidOperationException("handler failed after runtime stop");
-        }
-    }
 }

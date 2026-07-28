@@ -21,7 +21,7 @@ internal static class SmD11StreamAndRouteRequestScenario
         }))
         {
             await stream.Connect.Async();
-            await stream.Request(new AuthReq("actor-sm-d11", "stream and channel", "play-a"))
+        await stream.Request(new AuthReq("actor-sm-d11", "stream and channel"))
                 .PacketName("AuthReq").Async<AuthRes>();
             var streamReply = await stream.Request(new ActorPingReq("stream-side"))
                 .PacketName("ActorPingReq")

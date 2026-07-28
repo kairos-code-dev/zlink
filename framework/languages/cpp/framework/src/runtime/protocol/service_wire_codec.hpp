@@ -483,6 +483,7 @@ struct reply_relay_ack_t
     relocation_id_t relocation;
     relocation_coordinator_fence_t coordinator;
     wire_operation_id_t operation;
+    std::uint64_t reply_route_id = 0;
     request_source_fence_t request_source;
     reply_relay_ack_status_t status =
       reply_relay_ack_status_t::terminal_received;

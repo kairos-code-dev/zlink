@@ -73,7 +73,7 @@ public sealed class ZLinkHttpClientBuilder
     {
         if (bytes <= 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "HTTP client max response body size must be greater than zero");
 
         _maxResponseBodySize = bytes;
@@ -99,7 +99,7 @@ public sealed class ZLinkHttpClientBuilder
     {
         if (maxRedirects <= 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "HTTP client follow_redirects must be greater than zero");
 
         _followRedirects = maxRedirects;
@@ -110,7 +110,7 @@ public sealed class ZLinkHttpClientBuilder
     {
         if (attempts <= 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "HTTP client retry attempts must be greater than zero");
 
         _retryAttempts = attempts;
@@ -128,7 +128,7 @@ public sealed class ZLinkHttpClientBuilder
         HttpClientText.RequireNonBlank(url, "HTTP client proxy url is required");
         if (!url.StartsWith("http://", StringComparison.Ordinal))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "HTTP client proxy url must start with http://");
 
         _proxy = url;
@@ -176,7 +176,7 @@ public sealed class ZLinkHttpClientBuilder
             || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
             || string.IsNullOrWhiteSpace(uri.Host))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "HTTP client base_url must be an absolute http or https URL");
     }
 

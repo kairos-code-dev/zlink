@@ -328,6 +328,26 @@ public sealed class DeferredActorJoinDurabilityTests
                     now));
         }
 
+        public ValueTask<ZLinkRelocationStored> PutRelocationAtAsync(
+            string reference,
+            ReadOnlyMemory<byte> payload,
+            TimeSpan retention,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var bytes = payload.ToArray();
+            if (Payloads.TryGetValue(reference, out var current)
+                && !current.AsSpan().SequenceEqual(bytes))
+                throw new InvalidDataException("Relocation reference collision.");
+            Payloads[reference] = bytes;
+            var now = DateTimeOffset.UtcNow;
+            return ValueTask.FromResult(new ZLinkRelocationStored(
+                reference,
+                ZLinkCrc32C.Compute(bytes),
+                now + retention,
+                now));
+        }
+
         public ValueTask<ZLinkRelocationReadResult> GetRelocationAsync(
             string reference,
             CancellationToken cancellationToken = default) =>

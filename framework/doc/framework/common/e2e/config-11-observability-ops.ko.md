@@ -104,24 +104,29 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 
 우선순위: `P0`
 
-**검증 질문:** dispatch가 실패(핸들러 없음/디코드 실패)해도 그 error 라인에 `flow=`가 찍혀 성공·실패가 한 grep에 잡히는가.
+**검증 질문:** 등록되지 않은 handler로 dispatch가 실패해도 그 error 라인에 `flow=`가 찍혀 성공·실패가
+한 grep에 잡히는가.
 
-- 절차: 알 수 없는 packet이나 잘못된 payload로 dispatch 실패를 유발한다.
+- 절차: public typed client로 미등록 packet을 보내 dispatch 실패를 유발한다. 잘못된 payload byte를 직접
+  주입하지 않는다. Typed client는 항상 정상 envelope를 만들기 때문에 decode failure는 raw-frame contract
+  test가 별도로 검증한다.
 - 검증: dispatch error 라인에 `flow=`가 있고, `grep flow=<id>`로 성공 라인과 실패 라인이 함께
   확인된다([Flow Correlation §7](../spec/27-flow-correlation.ko.md#7-reply와-failure)).
 - 세부 동작: error reporter flow 기록.
 
-#### OBS-A3 create-if-absent · off 노드 전파
+#### OBS-A3 create-if-absent · off 노드의 flow 생략
 
 우선순위: `P1`
 
-**검증 질문:** flow가 이미 있으면 재생성하지 않고, 트레이싱 off 노드를 지나도 흐름이 끊기지 않는가.
+**검증 질문:** tracing이 켜진 node는 기존 flow를 보존하고, `off` node는 flow 전용 처리를 완전히
+생략하는가.
 
 - 절차: (a) 진입점에서 생성된 flow가 하류 노드에서 그대로 유지되는지, (b) 중간 노드의 트레이싱을 `off`로 두고 흐름을 통과시킨다.
-- 검증: (a) 하류 노드는 flow를 재생성하지 않는다(같은 id 유지). (b) off 노드는 새 flow를 시작하지
-  않지만 전파는 유지해, off 노드 이후 노드에서 같은 flow가 다시 나타난다
+- 검증: (a) tracing이 켜진 하류 노드는 전달받은 flow를 재생성하지 않는다. (b) `off` node는 inbound
+  flow field를 context로 만들거나 outbound message에 복사하지 않는다. 따라서 그 다음 tracing-enabled
+  node는 flow field가 없는 inbound 작업을 새 flow로 시작하며, `off` node 앞의 flow ID와 같으면 실패다
   ([Flow Correlation §4](../spec/27-flow-correlation.ko.md#4-flow-생성)).
-- 세부 동작: create-if-absent + 전파 무조건.
+- 세부 동작: create-if-absent와 `off` 구간의 flow 생성·전파 생략.
 
 #### OBS-A4 publish fan-out 트리 · timer 발원
 
@@ -135,6 +140,25 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
   callback은 `origin=timer`로 새 flow를 시작한다
   ([Flow Correlation §4](../spec/27-flow-correlation.ko.md#4-flow-생성)).
 - 세부 동작: fan-out 트리 + timer origin.
+
+#### OBS-A5 실행 중 tracing level 변경
+
+우선순위: `P0`
+
+**검증 질문:** 실행 중 tracing을 끄고 다시 켜도 message 처리는 계속되며, `off` 구간에는 trace 전용
+flow 정보와 log message가 생성되지 않는가.
+
+- 절차: 같은 process에서 정상 request를 반복하면서 public runtime control로
+  `key_transitions -> off -> errors_only -> key_transitions` 순서로 level을 바꾼다. 각 변경이 반환된 뒤
+  서로 다른 marker의 request를 보낸다.
+- 검증: 모든 request의 업무 결과와 request/reply correlation은 같다. `off` 이후 처리한 marker에는
+  `flow_id`, `flow_origin`, flow context, trace event와 log line이 없다. 다시 켠 뒤 처리한 marker부터 새
+  flow가 생성되며, 끄기 전에 telemetry queue에 들어간 기록을 새 flow에 소급해서 연결하지 않는다.
+  Level 변경이 handler나 transport queue의 완료를 기다리게 하면 실패다.
+- 검증 경계: E2E는 공개 control과 생성된 관측 정보의 유무를 확인한다. `off`에서 level read와 branch
+  이외의 allocation·attribute formatting·clock read·telemetry queue 접근이 없는지는 언어별
+  allocation/benchmark contract test가 검증한다.
+- 세부 동작: process-wide atomic diagnostics level 변경과 disabled fast path.
 
 ### Track B — 런타임 메트릭
 
@@ -163,8 +187,10 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
   1회당 1회 증가한다.
   `zlink.relocation.duration`은 prepare부터 `completed|aborted|recovered|failed|shutdown` terminal까지의
   구간을 담는다. Location commit은 중간 상태이며 terminal 결과로 기록하지 않는다.
-  Entry Spot 또는 `PerActor` User Spot의 Actor는 queue seal부터 target admission까지의 시간을
-  `zlink.actor.relocation.interruption`에 기록한다. 1초를 넘겨도 relocation은 계속 진행하며,
+  Actor, Instance Spot과 User Spot relocation unit은 source admission seal부터 target
+  admission-open ACK까지의 시간을 `zlink.relocation.interruption`에 기록한다.
+  `unit_kind`는 `actor`, `instance_spot`, `user_spot`이며, Actor와 User Spot은 필요한 경우
+  `execution_mode=entry|per_actor|spot_wide`를 함께 기록한다. 1초를 넘겨도 relocation은 계속 진행하며,
   structured warning에는 `interruption_target_exceeded=true`와 실제 시간이 남는다. 이 초과를
   `zlink.relocation.completed`의 실패 결과로 바꾸면 안 된다.
   이동 전 actor request가 pending이면 `zlink.mesh_node.requests.inflight`의 `surface=actor` 값에
@@ -428,9 +454,29 @@ target으로 선택되는가.
   새 option으로 별도의 `Relocate`를 시작할 수 있다.
 - 세부 동작: 같은 intent의 single-flight와 다른 intent의 deterministic rejection.
 
+#### OBS-C12 Relocate waiter cancellation과 concurrent Shutdown
+
+우선순위: `P0`
+
+**검증 질문:** Relocate waiter의 cancellation과 concurrent Shutdown이 이미 시작한 relocation의 소유권과
+terminal 결과를 바꾸지 않는가.
+
+- 절차: eligible target readiness를 bounded gate에서 막고 `PlannedMaintenance` Relocate를 시작한다.
+  같은 option의 두 번째 caller를 합류시킨 뒤 그 caller만 취소한다. Relocation이 진행 중인 동안 같은
+  host에 Shutdown을 호출하고 target gate를 해제한다. Relocate와 Shutdown terminal result를 각각 다시
+  호출해 읽는다.
+- 검증: 취소된 caller만 cancellation으로 끝나며 shared Relocate operation, 최초 deadline, source admission과
+  다른 waiter는 유지된다. Shutdown의 seal이 먼저 확정되면 target reservation을 반환하고 Relocate waiter는
+  `Blocked/ShutdownRequested`로 끝난다. `Relocating` publication이 먼저 확정되면 현재 unit만 safe terminal
+  상태까지 처리하고 나머지 unit은 시작하지 않으며 Relocate waiter는 같은 reason으로 끝난다. 두 경우 모두
+  Shutdown은 `Stopped` 또는 deadline에 따른 `ForceStopped`로 유한 완료되고 published authority를 되돌리지
+  않는다. Relocate와 Shutdown의 terminal result는 반복 호출해도 같은 값이며 lifecycle terminal event와
+  resource cleanup은 operation마다 한 번뿐이다.
+- 세부 동작: caller waiter와 host operation 분리, Relocate·Shutdown 경쟁과 terminal idempotency.
+
 ## 5. 완료 기준
 
-- OBS-A1~A4, OBS-B1~B4, OBS-C1~C11을 모두 통과한다. 우선순위는 실행 순서만 정하며 완료 범위를
+- OBS-A1~A5, OBS-B1~B4, OBS-C1~C12를 모두 통과한다. 우선순위는 실행 순서만 정하며 완료 범위를
   줄이지 않는다.
 - flow 로그는 노드 경계를 관통하고 error 라인에도 `flow=`가 있다.
 - 메트릭 계기는 실제 사건과 일치하고 고카디널리티 라벨이 없다.

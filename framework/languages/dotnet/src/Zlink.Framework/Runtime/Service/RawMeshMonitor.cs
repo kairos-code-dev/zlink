@@ -124,6 +124,7 @@ internal sealed class RawMeshMonitor : IMeshNodeMonitor
             MeshMonitorEventKind.OperationCompleted => MeshMonitorEventMask.OperationCompleted,
             MeshMonitorEventKind.ProtocolError => MeshMonitorEventMask.ProtocolError,
             MeshMonitorEventKind.ClaimRevoked => MeshMonitorEventMask.ClaimRevoked,
+            MeshMonitorEventKind.PeerNotRequired => MeshMonitorEventMask.PeerNotRequired,
             _ => MeshMonitorEventMask.None
         };
         return (_mask & bit) != 0;

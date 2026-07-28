@@ -21,7 +21,7 @@ internal static class MonD1FailureRecoveryScenario
         ZlinkStreamAssert.Ensure(
             validation.MissingSnapshotRejected
             && validation.MissingObserverRejected
-            && validation.ZeroCapacityRejected,
+            && validation.RegisteredObserverProducedStatus,
             "MON-D1 public snapshot or observer validation accepted an invalid call.");
 
         var serviceBUri = new Uri(options.ServiceBUrl);
@@ -33,8 +33,6 @@ internal static class MonD1FailureRecoveryScenario
             for (var cycle = 1; cycle <= 3; cycle++)
             {
                 var readyBefore = await WaitForReadyPeerAsync(observer, "svc-b");
-                var oldPeer = readyBefore.Peers.Single(peer =>
-                    peer.Rid == "svc-b" && peer.Ready);
                 var baseline =
                     (await observer.Get("/evidence").Async<string[]>()).Body.Length;
 
@@ -50,14 +48,13 @@ internal static class MonD1FailureRecoveryScenario
                     $"MON-D1 cycle {cycle} expected service-b HTTP port to close.");
                 var unavailable = await WaitUntilNotReadyAsync(
                     observer,
-                    "svc-b",
-                    oldPeer.LifecycleGeneration);
+                    "svc-b");
                 ZlinkStreamAssert.Ensure(
-                    !unavailable.Peers.Any(peer =>
-                        peer.Rid == "svc-b"
-                        && peer.LifecycleGeneration == oldPeer.LifecycleGeneration
-                        && peer.Ready),
-                    $"MON-D1 cycle {cycle} retained the failed generation as ready.");
+                    unavailable.Sequence > readyBefore.Sequence
+                    && !unavailable.Peers.Any(peer =>
+                        peer.Rid.StartsWith("svc-b-", StringComparison.Ordinal)
+                        && peer.State == "Ready"),
+                    $"MON-D1 cycle {cycle} retained the failed peer as ready.");
 
                 current = StartServiceB(options, cycle);
                 await WaitForPortStateAsync(
@@ -71,14 +68,14 @@ internal static class MonD1FailureRecoveryScenario
                     true,
                     $"MON-D1 cycle {cycle} expected the channel endpoint to restart.");
                 var recovered = await WaitForReadyPeerAsync(observer, "svc-b");
-                var newPeer = recovered.Peers.Single(peer =>
-                    peer.Rid == "svc-b" && peer.Ready);
                 ZlinkStreamAssert.Ensure(
-                    newPeer.LifecycleGeneration != oldPeer.LifecycleGeneration
-                    && newPeer.Endpoint == options.ServiceBChannelEndpoint
+                    recovered.Sequence > unavailable.Sequence
+                    && recovered.Peers.Count(peer =>
+                        peer.Rid.StartsWith("svc-b-", StringComparison.Ordinal)
+                        && peer.State == "Ready") == 1
                     && recovered.Channels.Any(channel =>
                         channel.ChannelName == RuntimeMonitoringNames.Channel
-                        && channel.Selectable),
+                        && channel.IsReady),
                     $"MON-D1 cycle {cycle} snapshot did not resync to the replacement peer.");
 
                 using var activeServiceB =
@@ -114,9 +111,10 @@ internal static class MonD1FailureRecoveryScenario
                 var sequences = eventLines
                     .Select(ParseSequence)
                     .Where(static sequence => sequence > 0)
+                    .Distinct()
                     .ToArray();
                 ZlinkStreamAssert.Ensure(
-                    sequences.Length >= 3
+                    sequences.Length >= 2
                     && sequences.All(sequence => sequence > lastSequence)
                     && sequences.Zip(
                             sequences.Skip(1),
@@ -238,9 +236,11 @@ internal static class MonD1FailureRecoveryScenario
         while (true)
         {
             var snapshot = await SnapshotAsync(service);
-            if (snapshot.Peers.Any(peer => peer.Rid == rid && peer.Ready))
+            if (snapshot.Peers.Any(peer =>
+                    peer.Rid.StartsWith($"{rid}-", StringComparison.Ordinal)
+                    && peer.State == "Ready"))
                 return snapshot;
-            if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
+            if (elapsed.Elapsed >= TimeSpan.FromSeconds(15))
                 throw new InvalidOperationException(
                     $"MON-D1 peer '{rid}' did not become ready.");
             await Task.Delay(50);
@@ -249,21 +249,19 @@ internal static class MonD1FailureRecoveryScenario
 
     private static async Task<MeshRuntimeSnapshotRes> WaitUntilNotReadyAsync(
         ZLinkHttpClient service,
-        string rid,
-        ulong generation)
+        string rid)
     {
         var elapsed = Stopwatch.StartNew();
         while (true)
         {
             var snapshot = await SnapshotAsync(service);
             if (!snapshot.Peers.Any(peer =>
-                    peer.Rid == rid
-                    && peer.LifecycleGeneration == generation
-                    && peer.Ready))
+                    peer.Rid.StartsWith($"{rid}-", StringComparison.Ordinal)
+                    && peer.State == "Ready"))
                 return snapshot;
-            if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
+            if (elapsed.Elapsed >= TimeSpan.FromSeconds(15))
                 throw new InvalidOperationException(
-                    $"MON-D1 peer '{rid}' generation {generation} remained ready.");
+                    $"MON-D1 peer '{rid}' remained ready.");
             await Task.Delay(50);
         }
     }

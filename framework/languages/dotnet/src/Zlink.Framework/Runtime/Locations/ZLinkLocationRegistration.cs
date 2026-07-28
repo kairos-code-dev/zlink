@@ -1,9 +1,7 @@
 namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
-/// Raw location store registration collected by the options builder. The
-/// five store roles must share one physical store. Registration is either
-/// one store instance or the in-memory store.
+/// Raw location store registration collected by the options builder.
 /// </summary>
 internal sealed class ZLinkLocationRegistration
 {
@@ -13,9 +11,8 @@ internal sealed class ZLinkLocationRegistration
 
     public bool UseInMemoryStores { get; set; }
 
-    /// <summary>One physical store instance providing every store role
-    /// (draft 20.2). Optional contracts on the same instance (change stamp,
-    /// watch) are registered automatically.</summary>
+    /// <summary>The opaque provider instance used by the private repository
+    /// adapter.</summary>
     public IZLinkLocationStore? StoreInstance { get; set; }
 
     public IZLinkRelocationStore? RelocationStoreInstance { get; set; }

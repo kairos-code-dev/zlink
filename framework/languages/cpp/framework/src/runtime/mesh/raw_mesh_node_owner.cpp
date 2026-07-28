@@ -1217,6 +1217,27 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
             }
             const auto admission =
               _topology.admit (descriptor, connection_id);
+            if (admission == peer_admission_result_t::not_required) {
+                if (header.kind == protocol::command::hello) {
+                    (void) port->send (
+                      received->source_routing_id,
+                      {protocol::encode_route_mesh_admission (
+                        protocol::command::admit,
+                        _topology.local_descriptor ())});
+                } else {
+                    std::lock_guard lifecycle_lock (_lifecycle_mutex);
+                    try {
+                        std::lock_guard socket_lock (_socket_mutex);
+                        _router->disconnect (
+                          descriptor.advertised_endpoint);
+                    }
+                    catch (...) {
+                    }
+                    _connections.erase (
+                      received->source_routing_id);
+                }
+                return raw_mesh_pump_result_t::infrastructure;
+            }
             if (admission != peer_admission_result_t::admitted) {
                 const auto reason =
                   admission == peer_admission_result_t::mesh_mismatch ? 2u

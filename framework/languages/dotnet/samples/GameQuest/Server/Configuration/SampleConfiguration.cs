@@ -9,8 +9,7 @@ public static class SampleNames
     public const string GameApiChannel = "gamequest.session.api";
     public const string GameApiHandlerGroup = "game-api";
     public const string SessionActorType = "gamequest.session.actor";
-    public const string QuestOwnerChannel = "gamequest.quest.owner";
-    public const string QuestOwnerHandlerGroup = "quest-owner";
+    public const string PlayerQuestSpotType = "gamequest.player-quest";
     public const string StreamNode = "gamequest.stream";
     public const string ProgressPacket = nameof(QuestProgressNotify);
     public const string CompletedPacket = nameof(QuestCompletedNotify);

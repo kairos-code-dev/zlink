@@ -85,7 +85,8 @@ export class ZLinkSpotRuntimeOptionsFactory {
         parts,
         returnResponse,
         remoteBoundSessionTarget,
-        fallbackActorRef
+        fallbackActorRef,
+        requestTerminal
       ) => {
         const runtime = this.options.spotNodeRuntime();
         if (runtime === undefined) {
@@ -96,7 +97,8 @@ export class ZLinkSpotRuntimeOptionsFactory {
           parts,
           returnResponse,
           remoteBoundSessionTarget,
-          fallbackActorRef
+          fallbackActorRef,
+          requestTerminal
         );
       },
       channelClient: new DefaultZLinkChannelClient(this.options.registration, this.options.channelTransport),

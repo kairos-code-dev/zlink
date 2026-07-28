@@ -9,9 +9,9 @@ internal static class TdF4RequestTimeoutRecoveryScenario
         var spotRid = $"await-timeout-{Guid.NewGuid():N}";
         await context.EnsureSpotAsync(spotRid, "play-a");
         var requestId = $"TD-F4-{Guid.NewGuid():N}";
-        context.SendSpot(new AwaitTimeoutMsg(requestId, 700, 100), spotRid);
+        await context.SendSpotAsync(new AwaitTimeoutMsg(requestId, 700, 100), spotRid);
         await context.EvidenceAsync(requestId, "timeout-await-completed");
-        context.SendSpot(new ProbeMsg(requestId, "timeout-probe"), spotRid);
+        await context.SendSpotAsync(new ProbeMsg(requestId, "timeout-probe"), spotRid);
         var evidence = await context.EvidenceAsync(requestId, "probe-completed");
         ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains($"request={requestId}", StringComparison.Ordinal)

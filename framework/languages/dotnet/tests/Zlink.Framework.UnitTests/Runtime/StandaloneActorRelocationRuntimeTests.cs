@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Runtime;
 using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Backend.Contracts;
@@ -14,6 +15,376 @@ namespace Zlink.Framework.UnitTests.Runtime;
 
 public sealed class StandaloneActorRelocationRuntimeTests
 {
+    [Fact]
+    public void Reconciliation_accepts_only_the_exact_normalized_target_authority()
+    {
+        var targetRid = RoutingId.From("normalized-target");
+        var target = new ZLinkActorAuthorityPayload(
+            ZLinkActorAuthorityState.Ready,
+            "player",
+            "actor-1",
+            "entry-target",
+            9,
+            ZLinkSpotKind.Entry,
+            "target-owner",
+            7,
+            "mesh",
+            targetRid,
+            9);
+        var allocation = new ZLinkPlacementAllocation(
+            ZLinkPlacementAllocationState.Active,
+            ZLinkPlacementObjectKind.Actor,
+            target.StableType,
+            new ZLinkMeshNodeDescriptorKey(target.MeshName, targetRid),
+            target.NodeGeneration,
+            new ZLinkCapacityVector(1, 0, null));
+        var normalized = new ZLinkAuthoritySnapshot(
+            "version-1",
+            ZLinkActorAuthorityPayloadCodec.Encode(target),
+            12,
+            31,
+            target.OwnerId,
+            checked((long)target.OwnerLeaseGeneration),
+            allocation,
+            null,
+            DateTimeOffset.UtcNow);
+
+        Assert.True(ZLinkStandaloneActorRelocationRuntime.IsExactSteadyTarget(
+            normalized,
+            objectGeneration: 12,
+            authorityOwnerGeneration: 31,
+            target));
+        Assert.False(ZLinkStandaloneActorRelocationRuntime.IsExactSteadyTarget(
+            normalized with { AuthorityOwnerGeneration = 32 },
+            objectGeneration: 12,
+            authorityOwnerGeneration: 31,
+            target));
+        Assert.False(ZLinkStandaloneActorRelocationRuntime.IsExactSteadyTarget(
+            normalized with { OwnerId = "stale-owner" },
+            objectGeneration: 12,
+            authorityOwnerGeneration: 31,
+            target));
+        Assert.False(ZLinkStandaloneActorRelocationRuntime.IsExactSteadyTarget(
+            normalized with
+            {
+                Payload = ZLinkActorAuthorityPayloadCodec.Encode(
+                    target with { NodeGeneration = 10 })
+            },
+            objectGeneration: 12,
+            authorityOwnerGeneration: 31,
+            target));
+    }
+
+    [Fact]
+    public async Task Production_command35_normalizes_steady_before_applied_marker_and_is_idempotent()
+    {
+        HostedRecoveryActorFactory.Reset();
+        var suffix = Guid.NewGuid().ToString("N");
+        var endpoint = $"tcp://127.0.0.1:{FindFreeTcpPort()}";
+        var store = new ZLinkInMemoryLocationStore();
+        var relocationStore = new ProgressRelocationStore();
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(options =>
+        {
+            options.AddLocationStore(store);
+            options.AddRelocationStore(relocationStore);
+            options.AddRouteMesh("mesh")
+                .Listen(endpoint)
+                .SetRoutingIdPrefix($"completion-target-{suffix}")
+                .SetActorLimit(100)
+                .Objects()
+                .Server()
+                .AddActorFactory<HostedRecoveryActor, HostedRecoveryActorFactory>(
+                    "player",
+                    new ZLinkActorFactoryOptions(),
+                    ZLinkRelocationPolicy<HostedRecoveryActor>.Recreate);
+        });
+        await using var provider = services.BuildServiceProvider();
+        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+        var locations = provider.GetRequiredService<ZLinkLocationRuntime>();
+        var autoConnect = provider.GetRequiredService<ZLinkLocationAutoConnectHost>();
+        var replacementRid = runtime.PrepareLocationNodeRoutingId();
+        await locations.StartAsync(replacementRid, CancellationToken.None);
+        await runtime.StartAsync(CancellationToken.None);
+        await autoConnect.StartAsync(
+            await runtime.GetStartedStateForRoutingAsync(CancellationToken.None),
+            CancellationToken.None);
+        try
+        {
+            replacementRid = runtime.GetSpotNodeRuntime("mesh").Node.RoutingId;
+            var replacement = Assert.Single(
+                (await store.ListMeshNodesAsync("mesh", new ZLinkPageRequest(100)))
+                .Items,
+                descriptor => descriptor.Rid == replacementRid);
+            var source = await PublishActorNodeAsync(
+                store,
+                $"completion-source-owner-{suffix}",
+                RoutingId.From($"completion-source-{suffix}"),
+                lifecycleGeneration: 7);
+            var actorId = $"completion-actor-{suffix}";
+            var key = ZLinkActorAuthorityPayloadCodec.AuthorityKey(actorId);
+            var intent = System.Text.Encoding.UTF8.GetBytes($"create:{actorId}");
+            var reserved = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+                await store.ReserveAsync(
+                    new ZLinkObjectReservationRequest(
+                        ZLinkPlacementObjectKind.Actor,
+                        key,
+                        "player",
+                        $"inline:{actorId}",
+                        System.Security.Cryptography.SHA256.HashData(intent),
+                        intent.Length,
+                        new ZLinkMeshNodeDescriptorKey("mesh", source.Descriptor.Rid),
+                        source.Descriptor.LifecycleGeneration,
+                        source.Owner,
+                        new byte[] { 1 },
+                        new ZLinkCapacityVector(1, 0, null))));
+            var sourceActor = new ZLinkActorAuthorityPayload(
+                ZLinkActorAuthorityState.Ready,
+                "player",
+                actorId,
+                source.Descriptor.EntrySpotId!,
+                source.Descriptor.LifecycleGeneration,
+                ZLinkSpotKind.Entry,
+                source.Owner.OwnerId,
+                checked((ulong)source.Owner.LeaseGeneration),
+                "mesh",
+                source.Descriptor.Rid,
+                source.Descriptor.LifecycleGeneration);
+            var sourceSnapshot = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+                await store.CommitAsync(
+                    reserved.Reservation,
+                    ZLinkActorAuthorityPayloadCodec.Encode(sourceActor)))
+                .Snapshot;
+            var relocationId = Guid.NewGuid();
+            var boundRoute = default(ZLinkRemoteActorBoundSessionRoute);
+            var envelope = ZLinkCanonicalActorRelocationWriter.CreateInitial(
+                ZLinkStandaloneActorRelocationRuntime.CreateImmutableRoot(
+                    sourceSnapshot,
+                    sourceActor,
+                    replacement,
+                    relocationId,
+                    ReadOnlyMemory<byte>.Empty,
+                    [],
+                    boundRoute),
+                applicationVersion: 1);
+            var stored = await ZLinkRelocationTreeStore.PutAsync(
+                relocationStore,
+                envelope,
+                TimeSpan.FromHours(24),
+                CancellationToken.None);
+            var rawPrepare = ZLinkStandaloneActorRelocationRuntime.CreatePrepare(
+                sourceSnapshot,
+                sourceActor,
+                replacement,
+                envelope,
+                stored.Root,
+                boundSession: null,
+                applicationVersion: 1);
+            var prepare = rawPrepare with
+            {
+                Object = rawPrepare.Object with
+                {
+                    StableType = sourceActor.StableType
+                }
+            };
+            var capacity = Assert.IsType<
+                ZLinkRelocationCapacityReserveResult.Reserved>(
+                await store.ReserveRelocationCapacityAsync(
+                    new ZLinkRelocationCapacityReservationRequest(
+                        Guid.ParseExact(
+                            ZLinkCanonicalRelocationReservationOwner
+                                .CapacityFence(prepare.RelocationId, 1).Value,
+                            "N"),
+                        key,
+                        sourceSnapshot.StoreVersion,
+                        ZLinkPlacementObjectKind.Actor,
+                        "player",
+                        sourceSnapshot.Allocation.Descriptor,
+                        sourceSnapshot.Allocation.DescriptorLifecycleGeneration,
+                        source.Owner,
+                        new ZLinkMeshNodeDescriptorKey("mesh", replacement.Rid),
+                        replacement.LifecycleGeneration,
+                        new ZLinkLocationOwnerToken(
+                            replacement.OwnerId,
+                            replacement.LeaseGeneration),
+                        new ZLinkCapacityVector(1, 0, null))));
+            var targetAuthorityOwnerGeneration =
+                capacity.TargetAuthorityOwnerGeneration;
+            var standalone = runtime.StandaloneActorRelocationRuntime;
+            await standalone.StageTargetAsync(
+                prepare,
+                source.Descriptor.Rid,
+                targetAuthorityOwnerGeneration,
+                CancellationToken.None);
+
+            var targetActor = sourceActor with
+            {
+                CurrentSpotId = replacement.EntrySpotId!,
+                CurrentSpotGeneration = replacement.LifecycleGeneration,
+                OwnerId = replacement.OwnerId,
+                OwnerLeaseGeneration = checked((ulong)replacement.LeaseGeneration),
+                NodeRid = replacement.Rid,
+                NodeGeneration = replacement.LifecycleGeneration
+            };
+            var id = relocationId.ToByteArray(bigEndian: true);
+            var canonicalPayload = ZLinkCanonicalRelocationAuthorityStateCodec
+                .ReplaceRelocationState(
+                    ZLinkActorAuthorityPayloadCodec.Encode(targetActor),
+                    new ZLinkCanonicalRelocationAuthorityState(
+                        BinaryPrimitives.ReadUInt64BigEndian(id),
+                        BinaryPrimitives.ReadUInt64BigEndian(id.AsSpan(8)),
+                        1,
+                        source.Descriptor.Rid.ToHex(),
+                        source.Descriptor.LifecycleGeneration,
+                        source.Owner.OwnerId,
+                        checked((ulong)source.Owner.LeaseGeneration),
+                        replacement.Rid.ToHex(),
+                        replacement.LifecycleGeneration,
+                        replacement.OwnerId,
+                        checked((ulong)replacement.LeaseGeneration),
+                        targetAuthorityOwnerGeneration,
+                        replacement.OwnerId,
+                        checked((ulong)replacement.LeaseGeneration),
+                        replacement.Rid.ToHex(),
+                        replacement.LifecycleGeneration,
+                        (byte)ZLinkStandaloneActorCanonicalPhase.Committed,
+                        stored.Root.Reference,
+                        stored.Root.ChecksumCrc32c,
+                        1,
+                        0),
+                    envelope);
+            _ = Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
+                await store.CompareExchangeAuthorityAsync(
+                    key,
+                    sourceSnapshot.StoreVersion,
+                    new ZLinkAuthorityMutation.Put(
+                        canonicalPayload,
+                        ZLinkAuthorityGenerationTransition.NewOwner,
+                        new ZLinkLocationOwnerToken(
+                            replacement.OwnerId,
+                            replacement.LeaseGeneration),
+                        capacity.Fence)));
+            standalone.MarkAuthorityPublished(prepare);
+            await standalone.ActivatePublishedTargetAsync(
+                prepare,
+                CancellationToken.None);
+
+            var targetOwner = new ZLinkLocationOwnerToken(
+                replacement.OwnerId,
+                replacement.LeaseGeneration);
+            var coordinator =
+                new ZLinkStandaloneActorRelocationProgressCoordinator(
+                    store,
+                    relocationStore,
+                    new ZLinkStandaloneActorRelocationTargetFence(
+                        relocationId,
+                        1,
+                        replacement.Rid,
+                        replacement.LifecycleGeneration,
+                        targetOwner));
+            _ = await coordinator.AdvanceCanonicalPhaseAsync(
+                envelope,
+                ZLinkStandaloneActorCanonicalPhase.Activated,
+                ZLinkStandaloneActorCanonicalPhase.Cleaning,
+                targetOwner,
+                CancellationToken.None);
+            _ = await coordinator.PublishAdmissionReadyAuthorityAsync(
+                envelope,
+                targetOwner,
+                CancellationToken.None);
+
+            var complete = new ZLinkServiceWireCodec.RelocationCompleteRecord(
+                prepare.RelocationId,
+                prepare.TargetAttemptGeneration,
+                prepare.Coordinator,
+                1,
+                new ZLinkServiceWireCodec.RequestSourceFence(
+                    source.Owner.OwnerId,
+                    checked((ulong)source.Owner.LeaseGeneration),
+                    source.Descriptor.Rid,
+                    source.Descriptor.LifecycleGeneration),
+                1);
+            var prefix =
+                $"zlink-completion-{prepare.RelocationId.High:x16}"
+                + $"-{prepare.RelocationId.Low:x16}"
+                + $"-{prepare.TargetAttemptGeneration:x16}";
+            await ((IZLinkRelocationRepository)relocationStore)
+                .PutRelocationAtAsync(
+                $"{prefix}-terminal",
+                ZLinkCanonicalRelocationReservationOwner.EncodeTerminalReceipt(
+                    prepare,
+                    replacement.LifecycleGeneration,
+                    targetAuthorityOwnerGeneration),
+                TimeSpan.FromHours(24));
+            await using var owner = new ZLinkCanonicalRelocationReservationOwner(
+                store,
+                runtime.RelocationPermits,
+                "mesh",
+                replacement.Rid,
+                replacement.LifecycleGeneration,
+                TimeSpan.FromSeconds(5),
+                relocationStore: relocationStore,
+                standaloneActorRuntime: standalone);
+
+            Assert.False(relocationStore.Payloads.ContainsKey(
+                $"{prefix}-applied"));
+            var beforeCompletion =
+                Assert.IsType<ZLinkAuthorityReadResult.Found>(
+                await store.ReadAuthorityAsync(key));
+            Assert.True(ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                beforeCompletion.Snapshot.Payload.Span,
+                out var pendingCompletion));
+            Assert.Equal(
+                (byte)ZLinkStandaloneActorCanonicalPhase.Cleaning,
+                pendingCompletion.Phase);
+            Assert.Equal(1, pendingCompletion.SourceCleanupState);
+
+            await owner.CompleteAsync(
+                complete,
+                source.Descriptor.Rid,
+                CancellationToken.None);
+
+            Assert.True(relocationStore.Payloads.ContainsKey(
+                $"{prefix}-applied"));
+            Assert.True(runtime.TryGetCreatedActorState(
+                actorId,
+                out var completedActorState));
+            Assert.False(completedActorState.Handoff.BlocksLocalDispatch);
+            Assert.False(completedActorState.TryGetBoundSession(out _));
+            Assert.DoesNotContain(
+                stored.Root.Reference,
+                relocationStore.Payloads.Keys);
+            var steadyRead = Assert.IsType<ZLinkAuthorityReadResult.Found>(
+                await store.ReadAuthorityAsync(key));
+            Assert.False(ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                steadyRead.Snapshot.Payload.Span,
+                out _));
+            Assert.True(ZLinkActorAuthorityPayloadCodec.TryDecode(
+                steadyRead.Snapshot.Payload.Span,
+                out var steady));
+            Assert.Equal(targetActor, steady);
+
+            await owner.CompleteAsync(
+                complete,
+                source.Descriptor.Rid,
+                CancellationToken.None);
+            Assert.True(relocationStore.Payloads.ContainsKey(
+                $"{prefix}-applied"));
+            Assert.True(runtime.TryGetCreatedActorState(
+                actorId,
+                out var idempotentActorState));
+            Assert.False(idempotentActorState.Handoff.BlocksLocalDispatch);
+        }
+        finally
+        {
+            await autoConnect.StopAsync(CancellationToken.None);
+            await runtime.StopAsync(CancellationToken.None);
+            await locations.RemoveOwnedRowsBeforeRoutingIdReleaseAsync(
+                CancellationToken.None);
+            await locations.StopAsync(CancellationToken.None);
+        }
+    }
+
     [Fact]
     public void Canonical_target_import_is_idempotent_and_replays_fifo()
     {
@@ -68,6 +439,8 @@ public sealed class StandaloneActorRelocationRuntimeTests
         handoff.AcknowledgeReplayedFrame();
 
         Assert.True(
+            handoff.TryOpenCanonicalMaintenanceAdmission("handoff", 1));
+        Assert.True(
             handoff.TryCompleteCanonicalMaintenanceReplay("handoff"));
         var requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
             "source-owner",
@@ -92,6 +465,130 @@ public sealed class StandaloneActorRelocationRuntimeTests
     }
 
     [Fact]
+    public async Task Canonical_replay_reserves_trailing_before_live_admission()
+    {
+        var handoff = new ZLinkActorHandoffState(
+            "actor-1",
+            TimeProvider.System);
+        handoff.BeginCanonicalMaintenanceImport(
+            "handoff",
+            [AcceptedFrame(1)]);
+        handoff.MarkAuthorityCommitted("handoff", 42, 42);
+        _ = handoff.PrepareCanonicalMaintenanceReplay("handoff");
+        handoff.AcknowledgeCanonicalReplayThrough(1);
+        var requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
+            "source-owner",
+            3,
+            RoutingId.From("source"),
+            7);
+        using var captured = ZLinkActorHandoffFrames.Restore(
+            new ZLinkBackendActorRef(
+                RoutingId.From("target"),
+                "actor-1",
+                42),
+            [AcceptedFrame(2, requestSource)]);
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.Captured,
+            handoff.TryCapture(captured[0]));
+        using var concurrent = ZLinkActorHandoffFrames.Restore(
+            new ZLinkBackendActorRef(
+                RoutingId.From("target"),
+                "actor-1",
+                42),
+            [AcceptedFrame(3, requestSource)]);
+
+        Task<ZLinkActorHandoffCaptureResult>? concurrentCapture = null;
+        var reserved = new List<long>();
+        handoff.ReserveCanonicalMaintenanceTrailingAndOpenAdmission(
+            "handoff",
+            0,
+            frame =>
+            {
+                reserved.Add(frame.ArrivalIndex);
+                concurrentCapture = Task.Run(
+                    () => handoff.TryCapture(concurrent[0]));
+                Assert.False(concurrentCapture.Wait(
+                    TimeSpan.FromMilliseconds(50)));
+            });
+
+        Assert.Single(reserved);
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.NotSealed,
+            await concurrentCapture!);
+    }
+
+    [Fact]
+    public void Canonical_cutover_reserves_message_follow_before_new_owner_ingress()
+    {
+        var handoff = new ZLinkActorHandoffState(
+            "actor-1",
+            TimeProvider.System);
+        handoff.BeginCanonicalMaintenanceImport(
+            "handoff",
+            [AcceptedFrame(1)]);
+        handoff.MarkAuthorityCommitted("handoff", 42, 42);
+        _ = handoff.PrepareCanonicalMaintenanceReplay("handoff");
+        handoff.AcknowledgeCanonicalReplayThrough(1);
+        var source = new ZLinkServiceWireCodec.RequestSourceFence(
+            "source-owner",
+            3,
+            RoutingId.From("source"),
+            7);
+        var actor = new ZLinkBackendActorRef(
+            RoutingId.From("target"),
+            "actor-1",
+            42);
+        using var direct = ZLinkActorHandoffFrames.Restore(
+            actor,
+            [AcceptedFrame(2, source)]);
+        using var followed = ZLinkActorHandoffFrames.Restore(
+            actor,
+            [AcceptedFrame(3, source, messageFollowHopCount: 1)]);
+
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.Captured,
+            handoff.TryCapture(direct[0]));
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.Captured,
+            handoff.TryCapture(followed[0]));
+
+        var reserved = new List<ulong>();
+        handoff.ReserveCanonicalMaintenanceTrailingAndOpenAdmission(
+            "handoff",
+            1,
+            frame => reserved.Add(frame.RequestId));
+
+        Assert.Equal([3UL, 2UL], reserved);
+    }
+
+    [Fact]
+    public void Canonical_trailing_replay_acknowledges_the_completed_frame()
+    {
+        var handoff = new ZLinkActorHandoffState(
+            "actor-1",
+            TimeProvider.System);
+        handoff.BeginCanonicalMaintenanceImport(
+            "handoff",
+            [AcceptedFrame(1), AcceptedFrame(2)]);
+        handoff.MarkAuthorityCommitted("handoff", 42, 42);
+        _ = handoff.PrepareCanonicalMaintenanceReplay("handoff");
+        handoff.ReserveCanonicalMaintenanceTrailingAndOpenAdmission(
+            "handoff",
+            0,
+            static _ => { });
+
+        handoff.AcknowledgeReplayedFrame(2);
+
+        Assert.Equal(
+            [1L],
+            handoff.SnapshotFinalReplay()
+                .Select(static frame => frame.ArrivalIndex));
+        handoff.AcknowledgeCanonicalReplayThrough(1);
+        Assert.True(
+            handoff.TryCompleteCanonicalMaintenanceReplay("handoff"));
+    }
+
+    [Fact]
     public void Canonical_target_import_applies_the_bounded_backlog_gate()
     {
         var admission = new ZLinkBoundedIngressAdmission(
@@ -107,7 +604,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
                 "overflow",
                 [AcceptedFrame(1), AcceptedFrame(2)]));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorMoving, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
         Assert.Equal((0, 0L), admission.Snapshot());
         handoff.BeginCanonicalMaintenanceImport("retry", [AcceptedFrame(1)]);
         Assert.Equal((1, 1L), admission.Snapshot());
@@ -149,7 +646,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
         var error = Assert.Throws<ZLinkFrameworkException>(() =>
             handoff.MarkAuthorityCommitted("handoff", 42, 43));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorGenerationStale, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.InvalidOperation, error.Kind);
     }
 
     [Fact]
@@ -252,6 +749,49 @@ public sealed class StandaloneActorRelocationRuntimeTests
         Assert.Equal(3UL, sourceFence.OwnerLeaseGeneration);
         Assert.Equal(RoutingId.From("source"), sourceFence.NodeRid);
         Assert.Equal(7UL, sourceFence.NodeGeneration);
+    }
+
+    [Fact]
+    public void Immutable_root_preserves_exact_per_actor_user_spot_destination()
+    {
+        var source = SourceAuthority();
+        var authority = SourceActorAuthority();
+        var destination = new ZLinkStandaloneActorRelocationDestination(
+            "lobby-42",
+            73,
+            ZLinkSpotKind.User,
+            RoutingId.From("target"),
+            9,
+            "actors",
+            new ZLinkLocationOwnerToken("target-owner", 4));
+
+        var root = ZLinkStandaloneActorRelocationRuntime.CreateImmutableRoot(
+            source,
+            authority,
+            destination,
+            Guid.NewGuid(),
+            ReadOnlyMemory<byte>.Empty,
+            [],
+            default);
+
+        var participant = Assert.Single(root.Participants);
+        var recovery = ZLinkCanonicalParticipantRecoveryCodec.Decode(
+            participant.RecoveryPayload.Span);
+        Assert.True(ZLinkActorRelocationAuthorityPayloadCodec.TryDecode(
+            recovery.AuthorityPayload.Span,
+            out var relocating));
+        Assert.True(ZLinkActorAuthorityPayloadCodec.TryDecodeRelocating(
+            relocating.ApplicationPayload.Span,
+            out var targetAuthority));
+        Assert.Equal("lobby-42", targetAuthority.CurrentSpotId);
+        Assert.Equal(73UL, targetAuthority.CurrentSpotGeneration);
+        Assert.Equal(ZLinkSpotKind.User, targetAuthority.CurrentSpotKind);
+        Assert.Equal(RoutingId.From("target"), targetAuthority.NodeRid);
+        Assert.Equal(9UL, targetAuthority.NodeGeneration);
+        Assert.Equal("actors", targetAuthority.MeshName);
+        Assert.Equal("target-owner", targetAuthority.OwnerId);
+        Assert.Equal(4UL, targetAuthority.OwnerLeaseGeneration);
+        Assert.Equal(42UL, participant.ObjectGeneration);
     }
 
     [Fact]
@@ -557,8 +1097,8 @@ public sealed class StandaloneActorRelocationRuntimeTests
                     CancellationToken.None)
                 .AsTask());
 
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorLocationStale, error.Kind);
-        Assert.True(error.IsRetriable);
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
+        Assert.True(error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry);
     }
 
     [Fact]
@@ -586,7 +1126,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
                     CancellationToken.None)
                 .AsTask());
 
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorLocationStale, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
     }
 
     [Fact]
@@ -617,7 +1157,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
                     CancellationToken.None)
                 .AsTask());
 
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorLocationStale, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
     }
 
     [Fact]
@@ -1187,7 +1727,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
                         owner,
                         CancellationToken.None)
                     .AsTask());
-            Assert.Equal(ZLinkFrameworkErrorKind.ActorMoving, error.Kind);
+            Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
             Assert.Equal(version, Assert.IsType<ZLinkAuthorityReadResult.Found>(
                     await authorityStore.ReadAuthorityAsync(participant.AuthorityKey))
                 .Snapshot.StoreVersion);
@@ -1210,7 +1750,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
                 target.Rid,
                 target.LifecycleGeneration,
                 owner));
-        var sourceCleaned = await coordinator.CompleteSourceCleanupAsync(
+        var sourceCleaned = await coordinator.PublishAdmissionReadyAuthorityAsync(
             identity,
             owner,
             CancellationToken.None);
@@ -1472,7 +2012,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
                     () => runtime.RecoverPublishedRelocationsAsync(
                             CancellationToken.None)
                         .AsTask());
-                Assert.Equal(ZLinkFrameworkErrorKind.ActorMoving, waiting.Kind);
+                Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, waiting.Kind);
             }
             else
             {
@@ -1662,7 +2202,8 @@ public sealed class StandaloneActorRelocationRuntimeTests
 
     private static ZLinkActorHandoffFrame AcceptedFrame(
         long arrivalIndex,
-        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null)
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null,
+        byte messageFollowHopCount = 0)
     {
         var header = ZLinkStreamProtocolDefaults.EncodeHeader(
             new ZlinkStreamHeader(
@@ -1684,7 +2225,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
             arrivalIndex,
             new ZLinkBackendActorRouteContext(
                 new MeshOperationId(1, checked((ulong)arrivalIndex)),
-                0,
+                messageFollowHopCount,
                 7,
                 11,
                 3),
@@ -1943,6 +2484,23 @@ public sealed class StandaloneActorRelocationRuntimeTests
             var reference = contentAddressed
                 ? $"root-{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(payload.Span))}"
                 : $"root-{Interlocked.Increment(ref _next)}";
+            Payloads[reference] = payload.ToArray();
+            var now = DateTimeOffset.UtcNow;
+            return ValueTask.FromResult(new ZLinkRelocationStored(
+                reference,
+                ZLinkCrc32C.Compute(payload.Span),
+                now + retention,
+                now));
+        }
+
+        public ValueTask<ZLinkRelocationStored> PutRelocationAtAsync(
+            string reference,
+            ReadOnlyMemory<byte> payload,
+            TimeSpan retention,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ArgumentException.ThrowIfNullOrWhiteSpace(reference);
             Payloads[reference] = payload.ToArray();
             var now = DateTimeOffset.UtcNow;
             return ValueTask.FromResult(new ZLinkRelocationStored(

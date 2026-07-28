@@ -10,6 +10,7 @@ using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace ResilienceLifecycle.Client.Support;
 
@@ -33,21 +34,18 @@ internal static class EphemeralRouteClient
             .ConfigureLogging(static logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
+                services.AddSingleton(new E2eMessageFlowListener(
+                    Path.Combine(options.LogDir, $"ephemeral-{request.Marker}-flow.log"),
+                    $"ephemeral-{request.Marker}"));
                 services.AddZLinkFramework(framework =>
                 {
-                    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                        .SetConnectionString(options.RedisEndpoint)
-                        .SetKeyPrefix(options.RedisKeyPrefix)));
-                    framework.ConfigureDispatch()
-                        .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                        .TraceLogFile(Path.Combine(
-                            options.LogDir,
-                            $"ephemeral-{request.Marker}-flow.log"))
-                        .TraceLabel($"ephemeral-{request.Marker}");
+                    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; }));
+                    framework.ConfigureDispatch().Diagnostics
+                        .SetLevel(ZLinkDiagnosticsLevel.Normal);
                     var mesh = framework.AddRouteMesh(ResilienceLifecycleNames.Channel)
                         .Listen("tcp://127.0.0.1:0")
                         .SetRoutingIdPrefix("ephemeral");
-                    mesh.ChannelName(ResilienceLifecycleNames.ConsumerChannel);
+                    mesh.Channel(ResilienceLifecycleNames.Channel).Client();
                 });
             })
             .Build();
@@ -60,7 +58,6 @@ internal static class EphemeralRouteClient
             await WaitForReadyPeerAsync(runtime, locations, cancellationToken);
             var client = host.Services.GetRequiredService<IZLinkRouteClient>();
             return await client.RequestToChannel(
-                    ResilienceLifecycleNames.Channel,
                     ResilienceLifecycleNames.Channel,
                     request)
                 .Timeout(TimeSpan.FromSeconds(5))
@@ -81,32 +78,29 @@ internal static class EphemeralRouteClient
         string? lastSnapshot = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var snapshot = runtime.Snapshot(ResilienceLifecycleNames.Channel);
+            var snapshot = runtime.GetStatus(ResilienceLifecycleNames.Channel);
             lastSnapshot = string.Join(
                 ";",
                 snapshot.Peers.Select(peer =>
-                    $"{peer.Rid}:ready={peer.Ready}:channels=[{string.Join(",", peer.ChannelNames)}]"))
+                    $"{peer.NodeRid}:state={peer.State}"))
                 + "|local="
                 + string.Join(
                     ";",
                     snapshot.Channels.Select(channel =>
-                        $"{channel.ChannelName}:ready={channel.ReadyMemberCount}:selectable={channel.Selectable}"));
+                        $"{channel.ChannelName}:ready={channel.ReadyTargetCount}:selectable={channel.IsReady}"));
             if (snapshot.Peers.Any(peer =>
-                    peer.Ready
-                    && peer.ChannelNames.Contains(
-                        ResilienceLifecycleNames.Channel,
-                        StringComparer.Ordinal)))
+                    peer.State == ZLinkPeerState.Ready))
                 return;
             await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
         }
 
-        var descriptors = await locations.ListMeshNodeDescriptorsAsync(
-            ResilienceLifecycleNames.Channel,
-            cancellationToken);
+        var descriptors = await locations.ListTopologyAsync(
+            new ZLinkLocationTopologyFilter(ResilienceLifecycleNames.Channel),
+            cancellationToken: cancellationToken);
         var descriptorText = string.Join(
             ";",
-            descriptors.Select(descriptor =>
-                $"{descriptor.Rid}@{descriptor.Endpoint}:generation={descriptor.LifecycleGeneration}"));
+            descriptors.Items.Select(descriptor =>
+                $"{descriptor.NodeRid}@{descriptor.Endpoint}:updated={descriptor.UpdatedAt:O}"));
         throw new TimeoutException(
             "Ephemeral client did not observe a selectable provider: "
             + $"{lastSnapshot}|descriptors={descriptorText}.");

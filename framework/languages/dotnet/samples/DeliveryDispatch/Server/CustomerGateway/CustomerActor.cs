@@ -25,12 +25,12 @@ internal sealed class CustomerActor(
     }
 }
 
-internal sealed class CustomerActorFactory : IZLinkActorFactory
+internal sealed class CustomerActorFactory : IZLinkActorFactory<CustomerActor>
 {
-    public ValueTask<IZLinkActor> CreateAsync(
+    public ValueTask<CustomerActor> CreateAsync(
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
-        return ValueTask.FromResult<IZLinkActor>(new CustomerActor(context.ActorId, context));
+        return ValueTask.FromResult(new CustomerActor(context.ActorId, context));
     }
 }

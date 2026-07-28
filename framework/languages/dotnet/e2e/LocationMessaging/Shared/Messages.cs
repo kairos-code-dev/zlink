@@ -15,9 +15,8 @@ public sealed record PeerLocationRow(
     string? NodeRid,
     string Role,
     string Endpoint,
-    uint Weight,
-    string OwnerId,
-    ulong Generation);
+    bool Draining,
+    string State);
 
 public sealed record PeerLocationWaitReq(
     string MeshName,
@@ -25,7 +24,6 @@ public sealed record PeerLocationWaitReq(
     string NodeRid,
     bool Present,
     string? Endpoint = null,
-    uint? Weight = null,
     int TimeoutMilliseconds = 30000);
 
 public sealed record LocationStatusRes(

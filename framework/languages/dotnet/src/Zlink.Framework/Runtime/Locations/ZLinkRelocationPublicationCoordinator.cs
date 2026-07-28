@@ -125,16 +125,32 @@ internal sealed class ZLinkRelocationPublicationCoordinator(
                     Retention,
                     cancellationToken)
                 .ConfigureAwait(false);
-            publishedPayload = ZLinkRelocationAuthorityPayloadCodec.Encode(
-                new ZLinkRelocationAuthorityPayload(
-                    stored.Reference,
-                    stored.ChecksumCrc32c,
-                    request.Envelope.AggregateId,
-                    request.Envelope.AggregateGeneration,
-                    request.Envelope.InventoryDigest,
-                    request.TargetOwnerId,
-                    request.TargetOwnerLeaseGeneration,
-                    request.ApplicationAuthorityPayload));
+            if (!request.Envelope.CanonicalLogicalStream.IsEmpty)
+            {
+                if (!ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                        request.ApplicationAuthorityPayload.Span,
+                        out var canonical)
+                    || canonical.RelocationReference != stored.Reference
+                    || canonical.RelocationChecksumCrc32c
+                       != stored.ChecksumCrc32c)
+                    throw new InvalidDataException(
+                        "Canonical relocation publication payload does not match its immutable root.");
+                publishedPayload =
+                    request.ApplicationAuthorityPayload.ToArray();
+            }
+            else
+            {
+                publishedPayload = ZLinkRelocationAuthorityPayloadCodec.Encode(
+                    new ZLinkRelocationAuthorityPayload(
+                        stored.Reference,
+                        stored.ChecksumCrc32c,
+                        request.Envelope.AggregateId,
+                        request.Envelope.AggregateGeneration,
+                        request.Envelope.InventoryDigest,
+                        request.TargetOwnerId,
+                        request.TargetOwnerLeaseGeneration,
+                        request.ApplicationAuthorityPayload));
+            }
         }
         catch
         {
@@ -279,7 +295,7 @@ internal sealed class ZLinkRelocationPublicationCoordinator(
             envelope);
     }
 
-    internal async ValueTask ReleasePublishedAsync(
+    internal async ValueTask<ZLinkAuthoritySnapshot?> ReleasePublishedAsync(
         ZLinkAuthorityKey key,
         string reference,
         CancellationToken cancellationToken = default)
@@ -298,7 +314,7 @@ internal sealed class ZLinkRelocationPublicationCoordinator(
                 publication.Reference,
                 reference,
                 StringComparison.Ordinal))
-            return;
+            return null;
         var released = await authorityStore.CompareExchangeAuthorityAsync(
                 key,
                 found.Snapshot.StoreVersion,
@@ -309,8 +325,12 @@ internal sealed class ZLinkRelocationPublicationCoordinator(
                     null),
                 cancellationToken)
             .ConfigureAwait(false);
-        if (released is ZLinkAuthorityCompareExchangeResult.Stored)
+        if (released is ZLinkAuthorityCompareExchangeResult.Stored stored)
+        {
             await DeleteOrphanAsync(reference).ConfigureAwait(false);
+            return stored.Snapshot;
+        }
+        return null;
     }
 
     private static ZLinkRelocationEnvelope ValidateRoot(

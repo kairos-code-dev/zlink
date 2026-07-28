@@ -5,7 +5,11 @@ import type {
   ZLinkRouteMessageContext,
   ZLinkSessionActor
 } from '../../contracts';
-import { ZLinkSpotKind } from '../../contracts';
+import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException,
+  ZLinkSpotKind
+} from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import {
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
@@ -24,6 +28,10 @@ import {
   ZLINK_REMOTE_ACTOR_SESSION_BIND_PACKET
 } from '../actors/actor-packet-relay-wire';
 import { requestRoutedJsonReply } from '../actors/actor-routed-json-request';
+import {
+  attachActorMessageFollowContext,
+  verifyActorMessageFollowPayload
+} from '../actors/actor-message-follow-context';
 import { streamMetadataMap } from '../actors/bound-session-wire';
 import { normalizeRoutingId, routingIdsEqual } from '../routing-id';
 import type { DefaultZLinkSpotManager, ZLinkSpotNodeRuntimeManager } from '../spots';
@@ -151,6 +159,7 @@ export class ZLinkActorPacketRelay {
   ): Promise<{
     readonly ok: boolean;
     readonly error?: unknown;
+    readonly errorKind?: ZLinkFrameworkErrorKind;
     readonly response?: unknown;
     readonly deferredResponse?: boolean;
     readonly actorPacketTarget?: unknown;
@@ -171,6 +180,35 @@ export class ZLinkActorPacketRelay {
     let closeFrameMessages = true;
     try {
       const frameHeader = decodeStreamHeader(messageToBytes(header));
+      const messageFollowContext = relay.messageFollowContext;
+      if (messageFollowContext !== undefined) {
+        if (messageFollowContext.deadlineUnixMs !== undefined
+            && Date.now() >= messageFollowContext.deadlineUnixMs) {
+          throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.DeadlineExceeded,
+            `Actor request '${relay.actorId}' exceeded its Message Follow deadline.`
+          );
+        }
+        verifyActorMessageFollowPayload(messageFollowContext, [header, body]);
+      }
+      const relayNodeRid = relay.actorNodeRid ?? relay.bindingActorNodeRid;
+      const relayGeneration = relay.actorGeneration ?? relay.bindingActorGeneration;
+      const fallbackActorRef = relayNodeRid === undefined
+        || relayGeneration === undefined
+        ? undefined
+        : messageFollowContext === undefined
+          ? {
+              actorId: relay.actorId,
+              objectGeneration: BigInt(relayGeneration),
+              meshName: _routeContext.meshName,
+              nodeRid: normalizeRoutingId(relayNodeRid)
+            }
+          : attachActorMessageFollowContext({
+              actorId: relay.actorId,
+              objectGeneration: BigInt(relayGeneration),
+              meshName: _routeContext.meshName,
+              nodeRid: normalizeRoutingId(relayNodeRid)
+            }, messageFollowContext);
       if (frameHeader.name === ZLINK_REMOTE_ACTOR_SESSION_BIND_PACKET) {
         if (frameHeader.kind !== ZLinkStreamMessageKind.Send) {
           throw new Error('Remote actor session binding requires a send frame.');
@@ -212,20 +250,26 @@ export class ZLinkActorPacketRelay {
         };
       }
       const state = this.options.actorManager()?.getState(relay.actorId);
-      if (frameHeader.kind === ZLinkStreamMessageKind.Request && frameHeader.requestSeq !== undefined) {
+      if (
+        frameHeader.kind === ZLinkStreamMessageKind.Request
+        && frameHeader.requestSeq !== undefined
+        && relay.returnResponse !== true
+      ) {
         const dispatch = state?.spotId === undefined
           ? this.requireSpotNodeRuntime().dispatchEntryActorPacket(
               relay.actorId,
               [header, body],
               false,
-              remoteBoundSessionTarget
+              remoteBoundSessionTarget,
+              fallbackActorRef
             )
           : this.requireSpotManager().dispatchRoutedActorPacket(
               state.spotId,
               relay.actorId,
               [header, body],
               false,
-              remoteBoundSessionTarget
+              remoteBoundSessionTarget,
+              fallbackActorRef
             );
         closeFrameMessages = false;
         void dispatch.catch((error) =>
@@ -246,15 +290,17 @@ export class ZLinkActorPacketRelay {
         ? await this.requireSpotNodeRuntime().dispatchEntryActorPacket(
             relay.actorId,
             [header, body],
-            true,
-            remoteBoundSessionTarget
+            relay.returnResponse === true,
+            remoteBoundSessionTarget,
+            fallbackActorRef
           )
         : await this.requireSpotManager().dispatchRoutedActorPacket(
             state.spotId,
             relay.actorId,
             [header, body],
-            true,
-            remoteBoundSessionTarget
+            relay.returnResponse === true,
+            remoteBoundSessionTarget,
+            fallbackActorRef
           );
       return {
         ok: true,
@@ -266,7 +312,10 @@ export class ZLinkActorPacketRelay {
     } catch (error) {
       return {
         ok: false,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
+        errorKind: error instanceof ZLinkFrameworkException
+          ? error.kind
+          : ZLinkFrameworkErrorKind.RequestFailed
       };
     } finally {
       if (closeFrameMessages) {

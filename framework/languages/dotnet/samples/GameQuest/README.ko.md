@@ -24,12 +24,17 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 
 - `Shared/`는 클라이언트와 서버가 함께 쓰는 요청, 응답, 알림 계약을 담는다.
 - `Client/`는 두 플레이어의 stream connector를 열고 self-check 시나리오를 실행한다.
-- `Server/GameApi/`는 플레이어 session, 게임 이벤트 접수, owner route 전송, client push를 담당한다.
-- `Server/QuestMission/`은 `PlayerQuestSpot`을 호스팅하고, quest event stream replay와 projection 갱신을 담당한다.
+- `Server/GameApi/`는 플레이어 session과 게임 이벤트를 처리한 뒤 Player ID를 global SpotId로
+  사용해 `PlayerQuestSpot`에 직접 메시지를 보낸다. 첫 메시지는
+  `InstanceSpot("gamequest.player-quest")`를 명시하며, Framework가 owner node를 선택한다.
+- `Server/QuestMission/`은 actor-free Instance Spot factory를 제공하고, quest event stream replay와
+  projection 갱신을 담당한다.
 - 서버 프로세스들은 별도 registry 서비스 없이 공유 Redis location store에 위치를 등록하고
   자동 연결한다. quest event stream, read model, gameplay fact도 같은 실행의 Redis에 저장한다.
   session binding은 framework actor/session lifecycle이 location store를 통해 관리하며, 샘플이
   별도 binding schema를 만들지 않는다.
+- GameApi는 `IZLinkSpotManager.GetOrCreate`나 특정 NodeRid를 사용하지 않는다. 같은 Player ID의
+  이후 요청은 Location Store에 공개된 current owner로 전달된다.
 - shell/PowerShell runner는 실행마다 전용 Redis Docker 컨테이너를 직접 시작한다. 외부 Redis endpoint
   재사용 mode는 제공하지 않는다. container 이름, host port, Redis key prefix, log directory는
   sample 이름과 실행 id를 포함해 매 실행마다 달라지며 역할별 임시 config 파일에 기록한다.

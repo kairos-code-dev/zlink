@@ -116,6 +116,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
             _runtime,
             _nativeSpot,
             ChannelName,
+            SpotId,
             _packets,
             _actorJoins,
             _actors,

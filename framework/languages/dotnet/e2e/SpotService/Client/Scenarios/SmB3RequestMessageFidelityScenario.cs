@@ -23,7 +23,7 @@ internal static class SmB3RequestMessageFidelityScenario
             MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
-        await client.Request(new AuthReq(actorId, "complex actor", "play-a"))
+        await client.Request(new AuthReq(actorId, "complex actor"))
             .PacketName("AuthReq")
             .Async<AuthRes>();
         var complex = await client.Request(new ComplexActorReq(

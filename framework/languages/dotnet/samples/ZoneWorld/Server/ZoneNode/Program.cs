@@ -3,7 +3,6 @@ using Microsoft.Extensions.Configuration;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Locations.Redis;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.ZoneNode.Application.Node;
@@ -51,23 +50,28 @@ builder.Services.AddSingleton<NodePlayerCensus>();
 builder.Services.AddSingleton<MoveUseCase>();
 builder.Services.AddSingleton<PlayerMovement>();
 builder.Services.AddSingleton<IOpsReportPort, OpsReportAdapter>();
-builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSpotEvent>, LocalSpotEventHandler>();
 builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultRequestTimeout = TimeSpan.FromSeconds(15);
     var locations = options.ConfigureLocations();
     locations.RouteCacheMaxAge = TimeSpan.Zero;
     locations.MessageFollowDuration = TimeSpan.FromSeconds(5);
-    options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-        .SetConnectionString(shared.RedisEndpoint)
-        .SetKeyPrefix(shared.RedisKeyPrefix)));
+    options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+    {
+        redis.ConnectionString = shared.RedisEndpoint;
+        redis.KeyPrefix = shared.RedisKeyPrefix;
+    }));
+    options.AddRelocationStore(new ZLinkRedisRelocationStore(redis =>
+    {
+        redis.ConnectionString = shared.RedisEndpoint;
+        redis.KeyPrefix = $"{shared.RedisKeyPrefix}relocation:";
+    }));
     options.ConfigureDispatch()
         // Zone ticks continuously fan out state, border snapshots, and bot moves. Logging every
         // dispatch transition turns the sample log into a second high-volume workload and can
         // starve the stream scenarios that the runner is meant to verify. Keep failures visible
         // without tracing every successful tick.
-        .MessageFlow(ZLinkRuntimeMessageFlowMode.ErrorsOnly)
-        .TraceLabel(nodeId);
+        .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Errors);
     options.AddHandlersFromAssemblyOf(typeof(ZoneSpot));
 
     // The node that hosts no zone registers the broadcast subscriber and nothing else — no
@@ -82,8 +86,8 @@ builder.Services.AddZLinkFramework(options =>
     }
 
     // The zone spots and the player actors. A player entering a zone joins the spot named
-    // after it, and when that spot is on another node the join is the transfer — which is
-    // why the transfer adapter is not optional (§2.6).
+    // after it, and when that spot is on another node the join causes relocation — which is
+    // why the relocation adapter is not optional (§2.6).
     var mesh = options.AddRouteMesh(ZoneWorldNames.MeshName)
         .SetRoutingIdPrefix("zn")
         .Listen(node.MeshEndpoint);
@@ -99,10 +103,6 @@ builder.Services.AddZLinkFramework(options =>
             null,
             ZLinkRelocationPolicy<ZoneSpot>.Disabled);
     mesh.Channel(ZoneWorldNames.ZoneChannel).Server();
-
-    // Node operations use node-direct messaging to a runtime-discovered NodeRid.
-    mesh.AddRouteRequestHandler<ApplyNodeMaintenanceHandler>();
-    mesh.AddRouteRequestHandler<GetNodeDiagnosticsHandler>();
 
     options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)
         .ConnectSubscriber(shared.BroadcastEndpoint)

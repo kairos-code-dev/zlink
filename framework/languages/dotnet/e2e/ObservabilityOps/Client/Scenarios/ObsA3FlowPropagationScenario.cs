@@ -12,16 +12,19 @@ internal static class ObsA3FlowPropagationScenario
         var suffix = Guid.NewGuid().ToString("N");
         var actorId = $"obs-a3-{suffix}";
         var roomRid = $"room-a3-{suffix}";
-        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).AsyncRaw();
+        var room = (await context.PlayA.Post("/rooms")
+            .Body(new CreateRoomReq(roomRid))
+            .Async<CreateRoomRes>()).Body;
         var sessionActionLinesBefore = context.ReadFlowLines("session-a")
             .Count(line => line.Contains("packet=GameActionReq", StringComparison.Ordinal));
-        await context.Session.Post("/message-flow/off").AsyncRaw();
+        await context.Session.Post("/diagnostics/level")
+            .Query("level", "off").AsyncRaw();
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
-        await connector.Request(new JoinRoomReq(roomRid)).Async<JoinRoomRes>();
+        await context.JoinRoomAsync(connector, actorId, roomRid);
         var response = await connector.Request(new GameActionReq("obs-a3-off-hop")).Async<GameActionRes>();
         ZlinkStreamAssert.Ensure(response.Marker == "obs-a3-off-hop", "OBS-A3 action failed after the off hop.");
-        var playLines = context.ReadFlowLines("play-a");
+        var playLines = context.ReadFlowLines(room.NodeRid);
         var sessionLines = context.ReadFlowLines("session-a");
         ZlinkStreamAssert.Ensure(playLines.Any(line => line.Contains("packet=GameActionReq", StringComparison.Ordinal)
                                                      && line.Contains("flow=", StringComparison.Ordinal)),

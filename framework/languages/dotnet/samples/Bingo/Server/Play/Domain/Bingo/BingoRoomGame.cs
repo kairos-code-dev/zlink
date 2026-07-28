@@ -137,6 +137,31 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
         return state;
     }
 
+    public static BingoRoomGame Restore(
+        string roomId,
+        BingoRoomSettings settings,
+        BingoRoomState state)
+    {
+        var restored = new BingoRoomGame(roomId, settings);
+        foreach (var player in state.Players.OrderBy(static player => player.Seat))
+            restored.JoinPlayer(
+                player.ActorId,
+                player.DisplayName,
+                player.Wins,
+                player.Losses);
+
+        if (state.Status is BingoRoomStatus.Running or BingoRoomStatus.Finished)
+        {
+            foreach (var player in state.Players.Where(static player => player.Card.Count > 0))
+                restored.SubmitCard(
+                    player.ActorId,
+                    BingoCard.FromSubmittedNumbers(player.Card));
+            for (var i = 0; i < state.DrawSeq; i++)
+                restored.DrawNextNumber();
+        }
+        return restored;
+    }
+
     private IReadOnlyList<BingoGameEvent> PlayerJoinedEvents(
         BingoRoomPlayer joined,
         BingoRoomState state)

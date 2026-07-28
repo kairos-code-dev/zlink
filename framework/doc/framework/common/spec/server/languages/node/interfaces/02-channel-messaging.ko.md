@@ -314,9 +314,8 @@ export interface ZLinkSendHandler<TMessage> {
 subscriber 수신, remote Spot queue 수락과 application callback 완료는 기다리지 않는다. Queue capacity가
 부족하면 해당 family의 send timeout까지 capacity signal을 기다리고, deadline 안에 공간이 생기면 message를
 정확히 한 번 제출한다. `Backpressured`는 public terminal result나 즉시 발생하는 application exception이
-아니다. Timeout은 `DeadlineExceeded`, route 단절은 `RouteNotConnected`, runtime 종료는
-`RuntimeShutdown`으로 Promise를 reject한다. Actor·Spot·Mesh·session target 부재는 operation family가 정의한
-기존 오류 kind를 사용한다.
+아니다. Timeout은 `DeadlineExceeded`, route 단절은 `Unavailable`, runtime 종료는
+`ShuttingDown`으로 Promise를 reject한다. Actor·Spot·Mesh·session target 부재는 `NotFound`를 사용한다.
 
 `AbortSignal`이 `submit(...)` 또는 `relay(...)` 전에 이미 abort 상태이면 runtime admission을 시작하지 않고
 `AbortError`로 reject한다.

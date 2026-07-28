@@ -27,7 +27,7 @@ internal static class SmD9StreamInboundObserverScenario
             return ValueTask.CompletedTask;
         });
         await stream.Connect.Async();
-        await stream.Request(new AuthReq("actor-sm-d9", "observer", "play-a"))
+        await stream.Request(new AuthReq("actor-sm-d9", "observer"))
             .PacketName("AuthReq").Async<AuthRes>();
         await stream.Request(new ActorPingReq("observer-1"))
             .PacketName("ActorPingReq").Async<ActorPingRes>();

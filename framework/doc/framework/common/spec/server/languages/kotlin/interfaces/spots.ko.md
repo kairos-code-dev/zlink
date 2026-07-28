@@ -40,7 +40,7 @@ Missing authority에 `instanceSpot()`을 사용하면 placement가 선택한 Mes
 value 하나일 때만 그 type을 자동 선택한다. `inMesh`를 지정하면 그 Mesh가 type 선택 범위가 되며, 두 개
 이상이면 `instanceSpot(stableType)`이 필요하다. [Stable type](../../../../01-glossary.ko.md#stable-type) 인자는 Missing cold activation에만 사용하고
 existing authority를 resolve하는 데는 필요하지 않다. Caller가 명시한 type과 stored type이 다르면
-`SpotTypeMismatch`다.
+`TypeMismatch`다.
 `inMesh`는 Missing cold activation에서 Mesh를 선택할 때만 적용하며 existing [owner](../../../../01-glossary.ko.md#owner)를
 재배치하지 않는다. Wrapper가 이 fluent state를 유지한 채 `await()` 또는 `yield()`에서 Java call을
 종료한다.
@@ -402,4 +402,4 @@ no-op이다. Callback 완료 전에는 보류한 message와 timer를 실행하�
 Yield는 Channel·Spot·Actor request, I/O·CPU worker와 Actor·Spot create/get-or-create에만 제공한다.
 Entry Spot·Entry Actor·`PER_ACTOR`·Node·
 Channel·owner context 밖에서는 coroutine suspension, operation submission, queue mutation과 gate 반환 전에
-`InvalidConfiguration`으로 완료한다.
+`InvalidOperation`으로 완료한다.

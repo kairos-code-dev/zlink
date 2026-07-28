@@ -15,7 +15,9 @@ import {
 } from '../../packages/framework/src/runtime/foundation/service-relocation-runtime';
 import { encodeAuthorityKey } from '../../packages/framework/src/runtime/locations/authority-key-codec';
 import {
+  decodeMaintenanceReplyRelayAck,
   encodeMaintenanceReplyRelay,
+  encodeMaintenanceReplyRelayAck,
   encodeServiceWireFrozenActorApplicationRecord,
   type ServiceMaintenanceReplyRelay,
   type ServiceWireRequestSourceFence,
@@ -365,6 +367,7 @@ test('two host owners exchange independent reply relay and ACK with exact durabl
   const commands: number[] = [];
   let accepted = 0;
   let dropFirstAck = true;
+  let corruptSecondAckRoute = true;
   let sourceLeaseExpired = false;
   let staleAdmittedSource = false;
   let staleCoordinatorAuthority = false;
@@ -400,6 +403,16 @@ test('two host owners exchange independent reply relay and ACK with exact durabl
         commands.push(payload[3]!);
         if (payload[3] === 46 && dropFirstAck) {
           dropFirstAck = false;
+          return SubmitResult.Ok;
+        }
+        if (payload[3] === 46 && corruptSecondAckRoute) {
+          corruptSecondAckRoute = false;
+          const ack = decodeMaintenanceReplyRelayAck(payload);
+          void deliver(target, 'node-source',
+            encodeMaintenanceReplyRelayAck({
+              ...ack,
+              replyRouteId: ack.replyRouteId + 1n
+            }));
           return SubmitResult.Ok;
         }
         void deliver(target, 'node-source', payload);
@@ -472,8 +485,8 @@ test('two host owners exchange independent reply relay and ACK with exact durabl
   }).sendReplyRelay.bind(target);
 
   assert.equal(await sendReplyRelay('mesh-a', 'node-source', relay, sourceFence), 'alreadyTerminal');
-  assert.deepEqual(commands, [33, 46, 33, 46]);
-  assert.equal(accepted, 2);
+  assert.deepEqual(commands, [33, 46, 33, 46, 33, 46]);
+  assert.equal(accepted, 3);
 
   staleAdmittedSource = true;
   await assert.rejects(sendReplyRelay('mesh-a', 'node-source', {

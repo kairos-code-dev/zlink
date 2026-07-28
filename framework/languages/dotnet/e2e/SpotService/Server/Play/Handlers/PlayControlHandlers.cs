@@ -12,7 +12,6 @@ namespace SpotService.Server.Play.Handlers;
 [ZLinkHandlerGroup("play")]
 internal sealed class EnsureActorHandler(
     IZLinkActorManager actors,
-    NodeOptions node,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<EnsureActorReq, EnsureActorRes>
 {
@@ -32,8 +31,8 @@ internal sealed class EnsureActorHandler(
             _ => throw new InvalidOperationException("Actor creation was rejected.")
         };
 
-        evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
-        evidence.Add($"entry-joined|rid={node.Rid}|actor={request.ActorId}");
+        evidence.Add($"ensure-actor|rid={actor.NodeRid}|actor={request.ActorId}");
+        evidence.Add($"entry-joined|rid={actor.NodeRid}|actor={request.ActorId}");
         return new EnsureActorRes(
             actor.ActorId,
             actor.NodeRid.ToString(),
@@ -58,21 +57,6 @@ internal sealed class EntryJoinHandler(
         evidence.Add($"application-join-started|rid={node.Rid}|actor={request.ActorId}|key={request.Key}");
         return ValueTask.FromResult(new JoinRes(
             spot.Context.SpotId.ToString(), node.Rid, request.ActorId));
-    }
-}
-
-[ZLinkSpotRequestHandler("EntryReadinessReq")]
-internal sealed class EntryReadinessHandler(NodeOptions node)
-    : IZLinkSpotRequestHandler<ScenarioEntrySpot, EntryReadinessReq, EntryReadinessRes>
-{
-    public ValueTask<EntryReadinessRes> HandleAsync(
-        ScenarioEntrySpot spot,
-        EntryReadinessReq request,
-        CancellationToken cancellationToken)
-    {
-        _ = spot;
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(new EntryReadinessRes(node.Rid, request.Marker));
     }
 }
 
@@ -154,7 +138,7 @@ internal sealed class SpotTypeMismatchHandler(
                 .GetOrCreate(request.SpotRid, SpotServiceNames.AlternateSpotType)
                 .Async(cancellationToken);
         }
-        catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.SpotTypeMismatch)
+        catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.TypeMismatch)
         {
             evidence.Add($"spot-type-mismatch|rid={evidence.Rid}|spot={request.SpotRid}|kind={ex.Kind}");
             return new SpotTypeMismatchRes(request.SpotRid, true, ex.Kind.ToString(), first.State.ToString());

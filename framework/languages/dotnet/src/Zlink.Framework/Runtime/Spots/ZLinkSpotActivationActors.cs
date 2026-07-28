@@ -173,6 +173,52 @@ internal sealed partial class ZLinkSpotActivation
         return CommitActorJoinCoreAsync(actor, cancellationToken);
     }
 
+    internal void StageRelocatedPerActorMember(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState actorState)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(actorState);
+        if (ExecutionMode != ZLinkUserSpotExecutionMode.PerActor
+            || Spot is IZLinkInstanceSpot
+            || actor.Context.ActorId != actorState.ActorId)
+            throw new InvalidOperationException(
+                "A relocated Actor can attach only to its exact PerActor User Spot shell.");
+
+        actorState.JoinSpot(this);
+    }
+
+    internal void PublishRelocatedPerActorMember(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState actorState)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(actorState);
+        if (!ReferenceEquals(actorState.LiveActivation, this))
+            throw new InvalidOperationException(
+                "A relocated Actor must retain its staged PerActor shell binding "
+                + "until authority publication.");
+        _actors.Add(actor);
+    }
+
+    internal void AbortStagedRelocatedPerActorMember(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState actorState) =>
+        DetachRelocatedPerActorMember(actor, actorState);
+
+    internal void DetachRelocatedPerActorMember(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState actorState)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(actorState);
+        _actors.RemoveIfCurrent(actor);
+        actorState.LeaveSpotIfCurrent(this);
+        if (PerActorShellRelocationPlan is not null
+            && JoinedActorCount == 0)
+            _perActorMembersDrained.TrySetResult();
+    }
+
     public ValueTask PrepareTransferredActorJoinAndReplayAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState actorState,
@@ -218,7 +264,7 @@ internal sealed partial class ZLinkSpotActivation
     {
         var actor = actorState.Actor
                     ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        ZLinkFrameworkErrorKind.NotFound,
                         $"Actor '{actorState.ActorId}' has no transferred instance at commit.");
         return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
             ? NotifyJoinedActorCoreAsync(actor, cancellationToken)
@@ -236,7 +282,7 @@ internal sealed partial class ZLinkSpotActivation
         ArgumentNullException.ThrowIfNull(seal);
         var actor = actorState.Actor
                     ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        ZLinkFrameworkErrorKind.NotFound,
                         $"Actor '{actorState.ActorId}' has no transferred instance at commit.");
         return _serial.ExecuteSealedRelocationAsync(
             seal.QueueSeal,
@@ -255,7 +301,7 @@ internal sealed partial class ZLinkSpotActivation
 
         var actorRef = actorState.NativeActorRef
                        ?? throw new ZLinkFrameworkException(
-                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           ZLinkFrameworkErrorKind.NotFound,
                            $"Actor '{actorState.ActorId}' does not have a native Actor ref during handoff completion.");
         foreach (var frame in frames.OrderBy(static frame => frame.ArrivalIndex))
             ZLinkFrameworkDebugLog.SpotDiscovery(
@@ -273,7 +319,7 @@ internal sealed partial class ZLinkSpotActivation
     {
         var actorRef = actorState.NativeActorRef
                        ?? throw new ZLinkFrameworkException(
-                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           ZLinkFrameworkErrorKind.NotFound,
                            $"Actor '{actorState.ActorId}' does not have a native Actor ref during final handoff replay.");
         while (true)
         {
@@ -297,7 +343,7 @@ internal sealed partial class ZLinkSpotActivation
 
         var actorRef = actorState.NativeActorRef
                        ?? throw new ZLinkFrameworkException(
-                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           ZLinkFrameworkErrorKind.NotFound,
                            $"Actor '{actorState.ActorId}' does not have a native Actor ref during handoff rollback.");
         return _dispatcher.DispatchActorFramesAsync(
             ZLinkActorHandoffFrames.Restore(actorRef, frames),
@@ -531,10 +577,19 @@ internal sealed partial class ZLinkSpotActivation
         actorState.LeaveSpotIfCurrent(this);
 
         if (_runtime.LocationLifecycle is { } locations)
+        {
+            var entrySpot = _runtime.GetMeshNodeRuntime(SpotNodeName)
+                                .EntrySpotActivation
+                            ?? throw new ZLinkFrameworkException(
+                                ZLinkFrameworkErrorKind.NotFound,
+                                $"MeshNode '{SpotNodeName}' does not have an Entry Spot activation.");
             await locations.ActorOwnership.NotifyActorLeftSpotAsync(
                     actor.Context.ActorId,
+                    entrySpot.SpotId,
+                    entrySpot.ObjectGeneration,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
 
         if (_actorHandlers is not null
             && _actorHandlers.TryResolveLeft(actor.GetType(), out var descriptor)

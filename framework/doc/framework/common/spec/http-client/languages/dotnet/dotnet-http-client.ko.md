@@ -86,12 +86,11 @@ public delegate void ZLinkHttpCallback<T>(
 
 ## 6. 에러 매핑
 
-[공통 spec 9장](../../09-error-model.ko.md)을 따른다. .NET 표기는
-`ZLinkFrameworkErrorKind`(PascalCase: `RequestProtocolError`/`RequestFailed`/
-`PayloadDecodeFailed`) + `IsRetriable`.
+[공통 spec 9장](../../09-error-model.ko.md)을 따른다. .NET은
+`ZLinkFrameworkErrorKind`와 `ZLinkRetryAdvice`를 사용한다.
 
-- timeout은 `RequestFailed`(`IsRetriable=true`) + inner `TimeoutException`으로
-  보고한다(2026-07-12에 `TimeoutException` 직접 노출에서 회수). 호출자 취소는
+- timeout은 `DeadlineExceeded`와 `RetryAfterBackoff`, inner `TimeoutException`으로
+  보고한다. 호출자 취소는
   `OperationCanceledException` 그대로 전파된다.
 
 ## 7. 회귀 테스트 축

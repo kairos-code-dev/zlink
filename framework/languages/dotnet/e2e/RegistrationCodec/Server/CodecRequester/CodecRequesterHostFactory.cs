@@ -13,6 +13,7 @@ using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace RegistrationCodec.Server.CodecRequester;
 
@@ -34,18 +35,19 @@ internal static class CodecRequesterHostFactory
         });
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton(options);
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"{options.Rid}-flow.log"),
+            options.Rid));
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-                .TraceLabel(options.Rid);
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             framework.Codecs.Use(ZLinkProtobufCodec.Default);
             framework.Codecs.Use(ZLinkMessagePackCodec.Default);
             var mesh = framework.AddRouteMesh(RegistrationCodecNames.Channel)
                 .Listen("tcp://127.0.0.1:0")
                 .SetRoutingId(RoutingId.From(options.Rid));
-            mesh.ChannelName(RegistrationCodecNames.Channel).SetWeight(0);
+            mesh.Channel(RegistrationCodecNames.Channel).Client();
             mesh.PeerConnections.Connect(options.ChannelEndpoint);
         });
 
@@ -53,13 +55,14 @@ internal static class CodecRequesterHostFactory
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Rid }));
         app.MapGet("/topology/ready", (IZLinkRouteMeshRuntime runtime) =>
         {
-            var snapshot = runtime.Snapshot(RegistrationCodecNames.Channel);
+            var snapshot = runtime.GetStatus(RegistrationCodecNames.Channel);
             return Results.Ok(new
             {
-                ready = snapshot.Peers.Any(static peer => peer.Ready)
+                ready = snapshot.Peers.Any(static peer =>
+                            peer.State == ZLinkPeerState.Ready)
                         && snapshot.Channels.Any(static channel =>
                             channel.ChannelName == RegistrationCodecNames.Channel
-                            && channel.Selectable)
+                            && channel.IsReady)
             });
         });
         app.MapPost("/codec/protobuf/request", async (
@@ -68,7 +71,7 @@ internal static class CodecRequesterHostFactory
         {
             try
             {
-                var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel,
+                var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel,
                         new StringValue { Value = "rc-b5" })
                     .Timeout(TimeSpan.FromSeconds(2))
                     .Async<StringValue>(cancellationToken);
@@ -83,7 +86,7 @@ internal static class CodecRequesterHostFactory
             IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel,
+            var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel,
                     new JsonEchoReq("rc-b5-json"))
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<EchoRes>(cancellationToken);

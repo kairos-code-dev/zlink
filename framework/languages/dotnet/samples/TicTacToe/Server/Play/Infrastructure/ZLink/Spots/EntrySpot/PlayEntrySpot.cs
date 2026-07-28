@@ -24,7 +24,7 @@ internal sealed class PlayEntrySpot(
             SampleTopics.PlayerMilestone);
     }
 
-    public ValueTask OnCreateActorAsync(
+    public ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
         PlayActor actor,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
@@ -33,7 +33,7 @@ internal sealed class PlayEntrySpot(
         logger.LogInformation(
             "entry spot: actor created. actor={ActorId}",
             actor.ActorId);
-        return ValueTask.CompletedTask;
+        return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(

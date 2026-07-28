@@ -382,22 +382,31 @@ Callback 동시 실행 수는 unit 수와 payload byte 제한에서 따로 계�
 크기가 작아져도 해당 이동이 memory 사용을 끝낼 때까지 다른 payload 이동을
 시작하지 않는다. Actor 하나와 Instance Spot은 256 MiB 제한 안에서만 진행한다.
 
-### 7.1 Actor별 서비스 중단 시간 목표
+### 7.1 Relocation unit별 서비스 중단 시간 목표
 
-Entry Spot과 `PerActor` User Spot의 Actor relocation은 Actor queue가 다음 작업을
-시작하지 못하게 막은 시점부터 target Actor admission을 연 시점까지 기본 1초
-이내를 목표로 한다. 현재 실행 중인 turn이 끝나기를 기다리는 시간과 host 전체
-relocation 시간은 이 측정에 포함하지 않는다.
+| 대상 | 측정 unit |
+|---|---|
+| Entry Spot Actor | Actor 하나 |
+| `PerActor` User Spot | Spot direct admission 하나와 Actor 각각 |
+| `SpotWide` User Spot | Spot과 member Actor를 포함한 aggregate 하나 |
+| Instance Spot | Spot 하나 |
 
-1초는 timeout이나 correctness 조건이 아니다. 초과해도 현재 Actor relocation을
-취소하거나 source로 rollback하지 않는다. Framework는 같은 operation을 계속하여
-target restore, owner CAS, source relay와 target admission을 완료한다. 느린 Actor
-하나가 다른 Actor의 처리와 relocation, target의 `ToSpot`, Create와 Join을 막지
-않도록 Actor unit과 callback 동시 실행 제한만 소비한다.
+측정은 source admission seal이 적용된 시점에 시작한다. Target reservation, inbound
+unit permit, Restore 실행 슬롯, 예상 payload memory permit, 현재 turn과 application
+safe point를 확보하기 전의 대기 시간은 제외한다. 이 준비는 source admission을
+막기 전에 끝내야 한다. Seal 뒤에 실행하는 Capture, encoding, Store 기록, authority
+변경, target Restore, queue·timer 복원은 모두 측정에 포함한다. Target이 held work를
+먼저 복원하고 local admission을 연 뒤 source에 ACK하면 측정을 끝낸다.
 
-Host operation deadline이 끝나면 새 Actor relocation을 시작하지 않는다. 이미
-시작한 Actor는 owner 변경 전 안전한 abort 또는 owner 변경 뒤 target recovery까지
-진행한다. 아직 source에 남은 Actor가 있으면 host는 `Relocated`가 되지 않는다.
+각 unit은 기본 1초 이내를 목표로 한다. 1초는 timeout이나 correctness 조건이
+아니다. 초과해도 relocation을 취소하거나 source로 rollback하지 않는다.
+Framework는 같은 operation을 target admission 개방까지 계속하고 warning과
+`zlink.relocation.interruption` histogram을 기록한다. Source application close와
+resource cleanup은 target admission-open ACK 뒤에 수행한다.
+
+Host operation deadline이 끝나면 새 unit relocation을 시작하지 않는다. 이미
+시작한 unit은 owner 변경 전 안전한 abort 또는 owner 변경 뒤 target recovery까지
+진행한다. 아직 source에 남은 unit이 있으면 host는 `Relocated`가 되지 않는다.
 
 ## 8. Unit 하나를 이전하는 순서
 
@@ -421,6 +430,12 @@ Framework는 현재 실행 중인 turn까지만 완료하고 다음 turn 전에 
    가리키게 바꾼다.
 7. Target이 복원 완료를 확인한 뒤 새 application 작업을 받고 사용하던 동시 실행
    수와 memory를 반환한다.
+
+Bound session이 있는 Actor는 session owner의 route commit ACK와 ingress unseal을
+먼저 확인한다. 그다음 local session route를 확정하고 authority를 steady 상태로
+바꾼다. Steady 상태로 바꾼 뒤에는 비동기 I/O를 기다리지 않고 target admission을
+연다. Unseal이 실패하면 authority를 relocation 상태로 유지하므로 같은 attempt가
+누락된 단계부터 다시 진행할 수 있다.
 
 | Policy | 처리 |
 |---|---|
@@ -482,7 +497,7 @@ request를 중복 처리하지 않도록 operation 하나를 구분하는 값은
 | Resource | 이동 규칙 |
 |---|---|
 | 새 작업 차단 뒤 도착한 message | Source는 최대 1,024 record와 저장 크기 16 MiB까지 임시 보관한다. Owner 변경이 성공하면 operation identity와 ObjectGeneration을 유지해 target에 전달한다. 변경을 취소하면 도착 순서대로 source queue에 되돌린다. |
-| 임시 보관 한도 초과 | Request는 다시 시도할 수 있는 `SpotMoving`, one-way operation은 moving drop으로 끝난다. Framework는 새 operation identity를 만들어 자동 재제출하지 않는다. |
+| 임시 보관 한도 초과 | Request는 `Unavailable`, one-way operation은 moving drop으로 끝난다. Framework는 새 operation identity를 만들어 자동 재제출하지 않는다. |
 | `SpotWide`·Instance Spot timer | Runtime handle과 continuation은 이전하지 않는다. Logical registration, 다음 실행 시각과 pending tick을 이전하며 target이 queue 순서에 맞춰 자동 복원한다. Application은 timer를 중복 capture하거나 restore에서 다시 등록하지 않는다. |
 | Entry·`PerActor` Actor timer | Actor queue와 함께 Actor owner로 이전한다. Spot-level application timer는 이전하지 않으며 유지해야 하는 schedule은 application의 외부 state에서 관리한다. |
 | Actor에 연결된 session | Request·reply와 push를 같은 연결에서 교환하는 [STREAM session](01-glossary.ko.md#stream-session)의 physical connection은 유지한다. 같은 ObjectGeneration에서 해당 Actor의 [binding route](01-glossary.ko.md#binding-route), 전달 권한과 generation만 target을 가리키게 바꾸고 ACK를 기다린다. 다른 Actor route는 바꾸지 않는다. |
@@ -524,7 +539,7 @@ owner를 기준으로 복구를 끝낸다. 이미 바꾼 owner와 Actor membersh
 
 Location Store가 가리키는 payload가 영구적으로 없거나 checksum 또는 이동 대상
 목록의 내용 확인값이 다르면 다시 시도해도 복구할 수 없는
-`RelocationDataLost`다. 이전 payload를 추측하거나 source로 되돌리지 않는다.
+`DataLost`다. 이전 payload를 추측하거나 source로 되돌리지 않는다.
 판정과 복구는
 [42 Relocation Store](23-relocation-store-redis.ko.md)가 정의한다.
 
@@ -645,6 +660,6 @@ node RID, endpoint, session ID와 relocation ID를
 | Unit gate | Outbound 64, inbound 64, payload 256 MiB, `Capture`와 `Restore` 각각 8, participant별 64 MiB를 검증한다. Permit은 한 번에 모두 얻어야 하며 oversized aggregate는 다른 payload가 없을 때 하나만 실행해야 한다. |
 | Handoff | `SpotWide` User Spot aggregate를 한 번에 commit하고 queue, journal, timer와 pending tick을 함께 이전하는지 검증한다. Hold는 1,024 record와 16 MiB를 넘지 않으며 timer를 자동 복원하고 session route ACK 뒤 admission을 열어야 한다. Instance Spot을 숨겨서 새로 만들면 안 된다. |
 | PerActor handoff | Entry Spot과 `PerActor` User Spot이 Actor만 독립적으로 이전하고 Spot adapter나 membership callback을 호출하지 않는지 검증한다. Spot authority 전환 뒤 `ToSpot`·Create·Join은 target, `ToActor`는 Actor별 current owner를 사용해야 한다. Message Follow가 operation identity, ObjectGeneration, deadline, correlation과 reply route를 유지하고 relay 완료 뒤 target direct queue를 열어야 한다. |
-| Interruption 목표 | Actor queue seal부터 target admission까지 1초를 측정하되 초과를 failure, rollback 또는 retry 조건으로 사용하지 않는지 검증한다. Host deadline 뒤에는 새 unit을 시작하지 않고 이미 시작한 unit을 안전한 terminal 상태까지 처리해야 한다. |
+| Interruption 목표 | Actor, Instance Spot, `SpotWide` User Spot과 `PerActor` Spot direct admission·Actor 각각에 대해 admission seal부터 target admission-open ACK까지 1초를 측정한다. 초과를 failure, rollback 또는 retry 조건으로 사용하지 않는다. Host deadline 뒤에는 새 unit을 시작하지 않고 이미 시작한 unit을 안전한 terminal 상태까지 처리한다. |
 | Failure | Commit 전에는 source를 복원하고 commit 뒤에는 published authority를 기준으로 복구하는지 검증한다. 정확한 `Blocked` reason을 반환하고 terminal result를 한 번만 완료하며 descriptor rollback을 확인할 수 없으면 bounded teardown을 수행해야 한다. |
 | Cleanup과 관측 | Barrier가 끝날 때까지 lease를 갱신하고 accepted request를 한 번만 완료하는지 검증한다. Callback failure를 정해진 reason으로 분류하며 state, outcome, reason, event와 metric이 wire 값과 일치해야 한다. Topology cleanup은 다른 authority를 변경하면 안 된다. |

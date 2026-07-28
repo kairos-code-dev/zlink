@@ -43,7 +43,7 @@ zlinkBuilder.Services.AddZLinkFramework(framework =>
     var mesh = framework.AddRouteMesh("bench")
         .Listen("tcp://127.0.0.1:0")
         .SetRoutingId(RoutingId.From("bench-client"));
-    mesh.ChannelName("bench").SetWeight(0);
+    mesh.Channel("bench").Client();
     mesh.PeerConnections.Connect(
         RoutingId.From("bench-server"),
         options.ZLinkEndpoint);
@@ -93,7 +93,7 @@ foreach (var payloadSize in options.PayloadSizes)
                 options.ZLinkStatsUrl,
                 async (payload, ct) =>
                 {
-                    return await zlink.RequestToChannel("bench", "bench", payload)
+                    return await zlink.RequestToChannel("bench", payload)
                         .Async<BenchPayload>(ct);
                 }));
             Console.Error.WriteLine("[bench] finished zlink-framework-dotnet-request-serial");
@@ -135,7 +135,7 @@ foreach (var payloadSize in options.PayloadSizes)
                 options.ZLinkStatsUrl,
                 async (payload, ct) =>
                 {
-                    return await zlink.RequestToChannel("bench", "bench", payload)
+                    return await zlink.RequestToChannel("bench", payload)
                         .Async<BenchPayload>(ct);
                 }));
             Console.Error.WriteLine("[bench] finished zlink-framework-dotnet-request-window");
@@ -174,7 +174,7 @@ foreach (var payloadSize in options.PayloadSizes)
                 options.ZLinkStatsUrl,
                 async (_, payload, ct) =>
                 {
-                    var submit = await zlink.SendToChannel("bench", "bench", payload)
+                    var submit = await zlink.SendToChannel("bench", payload)
                         .SubmitAsync(ct);
                     if (submit.Status != ZLinkSubmitStatus.Submitted)
                         throw new InvalidOperationException(

@@ -32,7 +32,8 @@ internal sealed class PlayerActorRelocationAdapter
                 actor.ZoneId,
                 actor.IsBot,
                 actor.DirX,
-                actor.DirY)));
+                actor.DirY,
+                actor.ProcessedJoinOperations)));
     }
 
     public ValueTask RestoreAsync(
@@ -55,6 +56,7 @@ internal sealed class PlayerActorRelocationAdapter
             restored.IsBot,
             restored.DirX,
             restored.DirY);
+        actor.RestoreProcessedJoinOperations(restored.ProcessedJoinOperations);
         return ValueTask.CompletedTask;
     }
 
@@ -64,5 +66,6 @@ internal sealed class PlayerActorRelocationAdapter
         string ZoneId,
         bool IsBot,
         int DirX,
-        int DirY);
+        int DirY,
+        IReadOnlyCollection<ZLinkActorJoinOperationId> ProcessedJoinOperations);
 }

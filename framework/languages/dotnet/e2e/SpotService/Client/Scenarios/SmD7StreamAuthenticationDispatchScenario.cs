@@ -19,7 +19,7 @@ internal static class SmD7StreamAuthenticationDispatchScenario
             MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
-        var authReply = await client.Request(new AuthReq("actor-sm-d7", "stream auth", "play-a"))
+        var authReply = await client.Request(new AuthReq("actor-sm-d7", "stream auth"))
             .PacketName("AuthReq").Async<AuthRes>();
         ZlinkStreamAssert.Ensure(authReply.ActorId == "actor-sm-d7", "SM-D7 auth reply actor mismatch.");
         var reply = await client.Request(new ActorPingReq("auth-ok"))

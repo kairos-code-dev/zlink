@@ -82,7 +82,6 @@ internal sealed class ObserverIsolationProbe(
     {
         await foreach (var runtimeEvent in runtime.ObserveAsync(
                            meshName,
-                           capacity: 128,
                            cancellationToken))
         {
             lock (_gate)
@@ -96,7 +95,6 @@ internal sealed class ObserverIsolationProbe(
     {
         await using var events = runtime.ObserveAsync(
                 meshName,
-                capacity: 1,
                 cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
         if (!await events.MoveNextAsync().ConfigureAwait(false))

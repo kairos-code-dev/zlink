@@ -44,12 +44,11 @@ internal sealed class ZLinkSpotRouteDispatcher(
                 header.FlowOrigin,
                 dispatchErrors.Flow.CaptureEnabled,
                 ZLinkFlowOrigin.Inbound);
-            var dispatchSpotId = received.SpotId?.ToString() ?? spotId;
             var kind = header.Kind == ZLinkMessageKind.Request
                 ? ZLinkDispatchMessageKind.Request
                 : ZLinkDispatchMessageKind.Send;
             var kindName = header.Kind == ZLinkMessageKind.Request ? "Request" : "Send";
-            var scope = CreateScope(header, kind, kindName, dispatchSpotId);
+            var scope = CreateScope(header, kind, kindName);
 
             scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Received);
 
@@ -62,7 +61,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                 if (header.Kind == ZLinkMessageKind.Request)
                 {
                     var error = new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.HandlerNotFound,
+                        ZLinkFrameworkErrorKind.NotFound,
                         $"No SPOT route request handler is registered for '{channelName}:{header.MessageName}'.");
                     scope.HandlerMissing(
                         _logger,
@@ -94,7 +93,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         ZLinkDispatchErrorAction.ReplyError,
                         out message,
                         ex => decodeError = new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                        ZLinkFrameworkErrorKind.ProtocolError,
                         $"PayloadDecodeFailed: failed to decode SPOT route request payload for '{channelName}:{header.MessageName}'.",
                         innerException: ex)))
                 {
@@ -177,8 +176,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
     private ZLinkDispatchFlowScope CreateScope(
         ZLinkEnvelopeHeader header,
         ZLinkDispatchMessageKind kind,
-        string kindName,
-        string dispatchSpotId)
+        string kindName)
     {
         return new ZLinkDispatchFlowScope(
             ZLinkDispatchErrorSurface.SpotRoute,
@@ -189,7 +187,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
             channelName,
             header.ContentType,
             header.CorrelationId,
-            spotId: dispatchSpotId);
+            spotId: spotId);
     }
 
     private void ReplyError(
@@ -210,7 +208,6 @@ internal sealed class ZLinkSpotRouteDispatcher(
         ZLinkEnvelopeProtocolException protocolError)
     {
         var header = protocolError.Header;
-        var dispatchSpotId = received.SpotId?.ToString() ?? spotId;
         var isRequest = received.RequestSeq.HasValue;
         var canReply = isRequest && ZLinkEnvelopeCodec.CanCorrelateReply(header);
         var validFlow = ZLinkEnvelopeCodec.ValidFlow(header);
@@ -230,7 +227,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                 : ZLinkDispatchErrorAction.Drop,
             header.MessageName,
             channelName,
-            SpotId: dispatchSpotId,
+            SpotId: spotId,
             CorrelationId: header.CorrelationId,
             Exception: protocolError));
         if (!canReply) return;

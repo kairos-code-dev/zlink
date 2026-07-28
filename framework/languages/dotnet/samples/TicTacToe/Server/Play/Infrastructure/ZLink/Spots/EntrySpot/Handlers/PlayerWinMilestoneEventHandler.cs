@@ -1,5 +1,6 @@
 using TicTacToe.Server.Configuration;
 using TicTacToe.Shared.Contracts;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
@@ -13,8 +14,10 @@ internal sealed class PlayerWinMilestoneEventHandler(
     public async ValueTask HandleAsync(
         PlayEntrySpot spot,
         PlayerWinMilestoneEvent message,
+        ZLinkPublishMessageContext context,
         CancellationToken cancellationToken)
     {
+        _ = context;
         logger.LogInformation(
             "entry spot: milestone event received. actor={ActorId}, roomId={RoomId}, wins={Wins}",
             message.ActorId,

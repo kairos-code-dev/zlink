@@ -3,10 +3,8 @@ using StackExchange.Redis;
 namespace Zlink.Framework.Locations.Redis;
 
 /// <summary>
-/// Connection and key namespace settings for the official Redis location
-/// store. Every location row, generation counter, owner lease, index, and
-/// change stamp lives under <see cref="KeyPrefix"/>, so two deployments (or
-/// two test runs) sharing one Redis stay isolated by using distinct prefixes.
+/// Connection, key namespace, and operation timeout settings for the Redis
+/// Location Store.
 /// </summary>
 public sealed class ZLinkRedisLocationOptions
 {
@@ -20,30 +18,12 @@ public sealed class ZLinkRedisLocationOptions
     /// <see cref="ConnectionString"/>.</summary>
     public ConfigurationOptions? ConfigurationOptions { get; set; }
 
-    /// <summary>Required key namespace, for example "zlink:e2e". The store
-    /// never reads or writes keys outside this prefix.</summary>
+    /// <summary>Required key namespace, for example "zlink:e2e".</summary>
     public string KeyPrefix { get; set; } = string.Empty;
 
-    public ZLinkRedisLocationOptions SetConnectionString(string connectionString)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(connectionString);
-        ConnectionString = connectionString;
-        return this;
-    }
-
-    public ZLinkRedisLocationOptions SetConfiguration(ConfigurationOptions configuration)
-    {
-        ArgumentNullException.ThrowIfNull(configuration);
-        ConfigurationOptions = configuration;
-        return this;
-    }
-
-    public ZLinkRedisLocationOptions SetKeyPrefix(string keyPrefix)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(keyPrefix);
-        KeyPrefix = keyPrefix;
-        return this;
-    }
+    /// <summary>Maximum time allowed for one Store operation, including
+    /// connection acquisition and the Redis command.</summary>
+    public TimeSpan OperationTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
     internal ConfigurationOptions BuildConfiguration()
     {
@@ -73,5 +53,10 @@ public sealed class ZLinkRedisLocationOptions
                 "ZLinkRedisLocationOptions requires ConnectionString or ConfigurationOptions.",
                 nameof(ConnectionString));
         }
+
+        if (OperationTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(
+                nameof(OperationTimeout),
+                "OperationTimeout must be greater than zero.");
     }
 }

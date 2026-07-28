@@ -6,7 +6,6 @@ global using Zlink.Framework.Contracts.Codecs;
 global using Zlink.Framework.Contracts.Configuration;
 global using Zlink.Framework.Contracts.Dispatch;
 global using Zlink.Framework.Contracts.Handlers;
-global using Zlink.Framework.Contracts.Eventing;
 global using Zlink.Framework.Contracts.Locations;
 global using Zlink.Framework.Contracts.Spots;
 global using Zlink.Framework.Contracts.Streams;

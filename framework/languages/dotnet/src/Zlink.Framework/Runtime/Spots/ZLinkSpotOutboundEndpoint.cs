@@ -49,12 +49,24 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         var timedOut = false;
         try
         {
-            return await outbound.RequestToChannelAsync(
-                    channelName,
-                    parts,
-                    requestTimeout,
-                    cancellationToken,
-                    metadata).ConfigureAwait(false);
+            return runtime.Registration.Channels.TryGetValue(
+                       channelName,
+                       out var channel)
+                   && channel.HasClientServerClient
+                ? await runtime.RequestToChannelAsync(
+                        channelName,
+                        parts,
+                        requestTimeout,
+                        cancellationToken,
+                        metadata)
+                    .ConfigureAwait(false)
+                : await outbound.RequestToChannelAsync(
+                        channelName,
+                        parts,
+                        requestTimeout,
+                        cancellationToken,
+                        metadata)
+                    .ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
@@ -80,7 +92,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return outbound.TrySendToChannelOnce(channelName, parts, metadata);
     }
 
-    public ValueTask<ZLinkOneWaySubmitResult> SendToChannelAsync(
+    public async ValueTask<ZLinkOneWaySubmitResult> SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
@@ -88,7 +100,22 @@ internal sealed class ZLinkSpotOutboundEndpoint(
     {
         activation.EnsureOperationAllowed();
         using var operation = runtime.EnterOperation();
-        return outbound.SendToChannelAsync(channelName, parts, cancellationToken, metadata);
+        return runtime.Registration.Channels.TryGetValue(
+                   channelName,
+                   out var channel)
+               && channel.HasClientServerClient
+            ? await runtime.SendToChannelAsync(
+                    channelName,
+                    parts,
+                    cancellationToken,
+                    metadata)
+                .ConfigureAwait(false)
+            : await outbound.SendToChannelAsync(
+                    channelName,
+                    parts,
+                    cancellationToken,
+                    metadata)
+                .ConfigureAwait(false);
     }
 
     public ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(

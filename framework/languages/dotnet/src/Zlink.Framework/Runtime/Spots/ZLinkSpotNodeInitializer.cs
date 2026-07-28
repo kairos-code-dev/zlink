@@ -24,6 +24,7 @@ internal sealed class ZLinkSpotNodeInitializer(
             var node = spotAdapter.CreateSpotNode(state.Context, meshName);
             var nodeRoutingId = PrepareNodeRoutingId(spotNodeRegistration);
             node.SetRoutingId(nodeRoutingId);
+            node.SetObjectRole(spotNodeRegistration.ObjectRole);
             node.ApplyRoleConfig(
                 spotNodeRegistration.SpotPublisherConfig,
                 subscriber: null);
@@ -49,10 +50,10 @@ internal sealed class ZLinkSpotNodeInitializer(
             }
             foreach (var membership in spotNodeRegistration.ChannelMemberships)
             {
+                if (!membership.IsServer)
+                    continue;
                 node.AddChannel(membership.ChannelName);
-                node.SetChannelWeight(
-                    membership.ChannelName,
-                    membership.IsServer ? (uint)membership.Weight : 0);
+                node.SetChannelWeight(membership.ChannelName, (uint)membership.Weight);
             }
 
             ZLinkMeshNodeStartupState? startupState = null;
@@ -89,7 +90,7 @@ internal sealed class ZLinkSpotNodeInitializer(
                                     nodeRoutingId,
                                     descriptor.EntrySpotId)
                                 .ConfigureAwait(false)
-                            : ZLinkFrameworkErrorKind.RoutingIdConflict;
+                            : ZLinkFrameworkErrorKind.AlreadyExists;
                         throw CreateClaimFailure(
                             spotNodeRegistration,
                             nodeRoutingId,

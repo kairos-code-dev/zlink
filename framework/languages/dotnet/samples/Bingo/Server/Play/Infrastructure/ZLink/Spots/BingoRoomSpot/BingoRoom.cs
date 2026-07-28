@@ -29,6 +29,37 @@ internal sealed class BingoRoom(
 
     public IZLinkSpotContext Context { get; } = context;
 
+    internal (BingoRoomSettings Settings, BingoRoomState State) CaptureRelocationState()
+    {
+        return (_settings, _game?.Snapshot() ?? new BingoRoomState
+        {
+            RoomId = Context.SpotId,
+            Status = BingoRoomStatus.Running
+        });
+    }
+
+    internal void RestoreRelocationState(
+        BingoRoomSettings settings,
+        BingoRoomState state)
+    {
+        _settings = settings;
+        _game = settings.IsObserver
+            ? null
+            : BingoRoomGame.Restore(Context.SpotId, settings, state);
+    }
+
+    public ValueTask OnRelocationReadyCompletedAsync(
+        ZLinkSpotRelocationReadyCompletion completion,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        logger.LogInformation(
+            "bingo room: relocation-ready completed. room={RoomId}, outcome={Outcome}",
+            Context.SpotId,
+            completion.Outcome);
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask OnClosingAsync(
         ZLinkSpotClosingContext context,
         CancellationToken cleanupCancellationToken)
@@ -110,6 +141,8 @@ internal sealed class BingoRoom(
                 .Send(new BingoGameStartedNotify { State = _game.Snapshot() })
                 .Async(cancellationToken);
 
+        if (_settings.IsObserver)
+            Context.RelocationReady().Defer();
     }
 
     public async ValueTask OnLeaveActorAsync(
@@ -209,6 +242,11 @@ internal sealed class BingoRoom(
     internal BingoGameChange DrawNextNumber()
     {
         return RequireGame().DrawNextNumber();
+    }
+
+    internal void DeferRelocationAtRoundBoundary()
+    {
+        Context.RelocationReady().Defer();
     }
 
     internal async ValueTask PublishAsync(
@@ -313,8 +351,9 @@ internal sealed class BingoRoom(
                     ItemId = message.ItemId,
                     ItemName = message.ItemName,
                     Rarity = message.Rarity
-                })
+            })
             .Async(cancellationToken);
+        Context.RelocationReady().Defer();
     }
 
     internal async ValueTask<bool> StopObservingAsync(PlayerActor actor, string roomId,

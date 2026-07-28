@@ -33,7 +33,7 @@ gate를 반납하는 terminal만 `Yield`·`yield`라는 이름을 사용한다.
 `Yield`는 `SpotWide` User Spot과 Instance Spot에서 실행하는 Channel·Spot·Actor request, CPU·I/O worker와
 Actor·Spot create·get-or-create call에만 제공한다. Create·get-or-create의 `Yield`는 naming 적용 범위를
 넓히는 규칙이 아니라 별도 object execution 특례다. Entry Spot, `PerActor`, Entry Actor, Node·Channel
-handler와 owner turn 밖에서는 operation submission과 queue 변경 전에 `InvalidConfiguration`으로 끝난다.
+handler와 owner turn 밖에서는 operation submission과 queue 변경 전에 `InvalidOperation`으로 끝난다.
 Actor join, send, publish, timer 등록, close와 destroy에는 제공하지 않는다.
 
 `SpotWide` member Actor가 `Yield`하면 Actor FIFO claim은 유지하고 shared Spot gate만 반납한다. 따라서 같은
@@ -51,8 +51,8 @@ Join call에는 일반 비동기 terminal, `Yield`와 one-way terminal을 제공
 
 CPU 작업과 비동기 I/O 작업은 Framework가 소유한 bounded worker scheduler에 제출한다. Worker call이
 계산한 application 결과 type은 유지하고, 허용된 `SpotWide`·Instance 문맥에서는 같은 결과를 `Yield`로
-기다릴 수 있다. Queue가 가득 차면 `WorkerQueueFull`, [deadline](01-glossary.ko.md#deadline)을 넘으면
-`WorkerTimedOut`, 작업이 실패하면 `WorkerFailed`로 완료한다. Timeout이나 cancellation 뒤 늦게 끝난
+기다릴 수 있다. Queue가 가득 차면 `CapacityExceeded`, [deadline](01-glossary.ko.md#deadline)을 넘으면
+`DeadlineExceeded`, 작업이 실패하면 `InternalFailure`로 완료한다. Timeout이나 cancellation 뒤 늦게 끝난
 작업은 두 번째 terminal 결과를 만들지 않는다.
 
 ### 1.3 One-way submit
@@ -75,13 +75,13 @@ Queue capacity가 부족하면 Framework는 해당 family의 send timeout까지 
 
 | 실패 | 오류 분류 |
 |---|---|
-| Actor authority 없음 | `ActorRouteNotFound` |
-| Spot authority 없음 | `SpotRouteNotFound` |
-| Mesh나 선택 가능한 Server 없음 | 기존 `MeshNotFound` 또는 operation별 target-not-found kind |
-| 사용할 route가 없음 | `RouteNotConnected` |
+| Actor authority 없음 | `NotFound` |
+| Spot authority 없음 | `NotFound` |
+| Mesh나 선택 가능한 Server 없음 | `NotFound` |
+| 사용할 route가 없음 | `Unavailable` |
 | admission deadline 만료 | `DeadlineExceeded` |
-| runtime이 새 admission을 받지 않음 | `RuntimeShutdown`(`36`) |
-| 같은 call의 terminal을 두 번 실행 | `AlreadySubmitted` |
+| runtime이 새 admission을 받지 않음 | `ShuttingDown` |
+| 같은 call의 terminal을 두 번 실행 | `InvalidOperation` |
 
 Pending admission은 caller가 지정한 Node RID, global Spot·Actor ID와 session binding token을 유지한다.
 Send-ready signal 뒤 다른 logical target으로 바꾸지 않는다. RouteMesh·ClientServer select-one Channel은
@@ -205,7 +205,7 @@ Handler가 `Yield` 전에 또는 `Yield` 뒤 continuation에서 Join을 등록�
 재개하는 값으로 반환하지 않고 이동 대상 Actor의 completion callback으로 전달한다.
 
 Framework는 handler가 열어 둔 registration scope 안에서만 `Defer()`를 허용한다.
-Scope가 닫힌 뒤 호출하면 `InvalidConfiguration`이다. Handler가 시작했지만 기다리지
+Scope가 닫힌 뒤 호출하면 `InvalidOperation`이다. Handler가 시작했지만 기다리지
 않은 detached task에서 호출하는 것은 application contract 위반이며, Framework가
 모든 언어에서 이 오용을 scope가 닫히기 전에 검출한다고 보장하지 않는다.
 

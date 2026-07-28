@@ -11,6 +11,7 @@ using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace AutomaticTurnDispatch.Server.Play;
 
@@ -33,22 +34,22 @@ internal static class PlayHostFactory
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
         builder.Services.AddSingleton(new NodeOptions(options.Rid));
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"{options.Rid}-flow.log"),
+            options.Rid));
         builder.Services.AddZLinkHttpClient("external-api", http => http
             .BaseUrl(options.ExternalApiBaseUrl)
             .Timeout(TimeSpan.FromSeconds(5)));
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint)
-                .SetKeyPrefix(options.RedisKeyPrefix)));
-            framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint)
-                .SetKeyPrefix($"{options.RedisKeyPrefix}:relocation")));
+            // Actor Join callbacks intentionally hold admission for 350 ms.
+            // Leave deterministic time for transport and Store work.
+            framework.DefaultRequestTimeout = TimeSpan.FromSeconds(2);
+            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; }));
+            framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = $"{options.RedisKeyPrefix}:relocation"; }));
             framework.AddHandlersFromAssemblyOf(typeof(Program));
-            framework.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-                .TraceLabel(options.Rid);
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             var controlMesh = framework.AddRouteMesh(AutomaticTurnDispatchNames.ControlChannel)
                 .Listen(options.ControlEndpoint)
                 .SetRoutingIdPrefix(options.Rid);
@@ -118,14 +119,14 @@ internal static class PlayHostFactory
                 }
             }
 
-            var snapshot = runtime.Snapshot(meshName);
+            var snapshot = runtime.GetStatus(meshName);
             var ready = snapshot.Peers.Any(peer =>
-                peer.Ready
+                peer.State == ZLinkPeerState.Ready
                 && (string.Equals(
-                        peer.Rid.ToString(),
+                        peer.NodeRid.ToString(),
                         rid,
                         StringComparison.Ordinal)
-                    || peer.Rid.ToString().StartsWith(
+                    || peer.NodeRid.ToString().StartsWith(
                         $"{rid}-",
                         StringComparison.Ordinal)));
             return Results.Ok(new { ready });

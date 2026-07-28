@@ -10,12 +10,13 @@ namespace ZoneWorld.Server.Gateway.Infrastructure.ZLink.Sessions;
 /// actor, and relays everything else to it.
 ///
 /// The binding is what keeps the connection alive across a zone change: when the actor
-/// transfers to another node, the bound session follows it, so the client never
+/// relocates to another node, the bound session follows it, so the client never
 /// reconnects (ZW-B2).
 /// </summary>
 public sealed class PlayerSession(
     IZLinkSessionContext context,
     PlayerSessionBinder binder,
+    RelocationProbeService relocationProbes,
     ILogger<PlayerSession> logger) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
@@ -40,7 +41,7 @@ public sealed class PlayerSession(
             "stream error. session={SessionId}, code={Code}, message={Message}",
             Context.SessionId,
             error.Error,
-            error.Diagnostic?.Message);
+            error.Message);
         return ValueTask.CompletedTask;
     }
 
@@ -49,6 +50,23 @@ public sealed class PlayerSession(
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
+        if (dispatch.PacketName == nameof(RelocationPairReq))
+        {
+            await Context.Client
+                .Reply(await relocationProbes.SelectPairAsync(cancellationToken))
+                .Async(cancellationToken);
+            return;
+        }
+
+        if (dispatch.PacketName == nameof(ActorLocationProbeReq))
+        {
+            var request = payload.Decode<ActorLocationProbeReq>();
+            await Context.Client
+                .Reply(await relocationProbes.FindActorAsync(request.ActorId, cancellationToken))
+                .Async(cancellationToken);
+            return;
+        }
+
         if (Context.Actors.Bound.Count == 0)
         {
             if (dispatch.PacketName != nameof(JoinWorldReq))

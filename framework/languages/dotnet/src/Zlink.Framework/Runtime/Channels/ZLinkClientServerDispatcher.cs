@@ -87,9 +87,9 @@ internal sealed class ZLinkClientServerDispatcher(
                     channelName,
                     header,
                     new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.RequestRejected,
+                        ZLinkFrameworkErrorKind.Rejected,
                         $"ClientServer channel '{channelName}' application queue is full.",
-                        isRetriable: true)),
+                        retryAdvice: ZLinkRetryAdvice.RetryAfterBackoff)),
                 null,
                 null);
         }

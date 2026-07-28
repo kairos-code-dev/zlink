@@ -151,7 +151,7 @@ source에서 `Continued`, 이동했으면 target에서 `Relocated` completion을
 Callback 완료 전에는 보류한 application message와 timer를 실행하지 않는다.
 
 기본 `AnyTurnBoundary`, `PerActor`, Entry·Instance Spot, Spot turn 밖과 같은 turn의
-중복 `defer()`는 queue mutation 전에 `InvalidConfiguration`으로 실패한다. `defer()`
+중복 `defer()`는 queue mutation 전에 `InvalidOperation`으로 실패한다. `defer()`
 뒤 같은 turn의 다른 Framework operation도 같은 오류다. Recovery에서 callback이
 다시 실행될 수 있으므로 구현한 callback은 retry-safe해야 한다.
 
@@ -256,12 +256,12 @@ Entry·User·Instance SpotId는 UTF-8 encoded 크기 1..255 bytes의 global stri
 비교하고 normalization하지 않는다. Object generation은 positive signed-63-bit 값이다. MeshName과 NodeRid는
 조회 시점의 route [snapshot](../../../../01-glossary.ko.md#snapshot)이며 identity key에 포함하지 않는다.
 
-Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal
-`submit(...)`을 두 번 호출하면 `AlreadySubmitted`다. User Spot `create`는 Framework가 새 global Spot ID를 발급한다.
+Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하거나 terminal
+`submit(...)`을 두 번 호출하면 `InvalidOperation`이다. User Spot `create`는 Framework가 새 global Spot ID를 발급한다.
 `getOrCreate`는 같은 User kind·[stable type](../../../../01-glossary.ko.md#stable-type)의
 ready Spot을 `existing`으로 반환한다. Creating이면 authority 변경을 기다리고, Ready가
 되면 `existing`, cleanup으로 Missing이 되면 새 reservation을 경쟁한다. Kind나 type이 다르면
-`SpotTypeMismatch`, [deadline](../../../../01-glossary.ko.md#deadline) 안에 terminal state가 되지 않으면 `DeadlineExceeded`다.
+`TypeMismatch`, [deadline](../../../../01-glossary.ko.md#deadline) 안에 terminal state가 되지 않으면 `DeadlineExceeded`다.
 
 `close(spotRef)`는 exact incarnation만 닫는다. Generation이 다르면 `SpotGenerationStale`, 이동 중이면
 retriable `SpotMoving`이다. Framework는 current ref를 다시 찾아 다른 incarnation을 닫지 않는다.
@@ -273,10 +273,10 @@ target-not-found다. `instanceSpot()`은 선택한 Mesh의 serving descriptor에
 등록한 것은 distinct type 하나다. `inMesh`는 Missing cold activation의 최초 Mesh를
 선택할 때만 사용하고 existing [owner](../../../../01-glossary.ko.md#owner)의 current Mesh를 제한하지 않는다.
 
-선택한 Mesh에 Instance type이 없으면 send는 `TargetNotFound`, request는 `RequestTargetNotFound`로 끝난다.
-Distinct type이 여러 개인데 type을 생략하면 `InvalidConfiguration`이다. [Ready](../../../../01-glossary.ko.md#ready) Instance authority가 있으면 저장된
+선택한 Mesh에 Instance type이 없으면 send와 request 모두 `NotFound`로 끝난다.
+Distinct type이 여러 개인데 type을 생략하면 `InvalidOperation`이다. [Ready](../../../../01-glossary.ko.md#ready) Instance authority가 있으면 저장된
 stable type을 사용하므로 caller가 type을 다시 제공하지 않아도 된다. Instance marker를 사용했는데 existing
-authority가 User Spot이거나 명시한 type과 authority type이 다르면 `SpotTypeMismatch`다.
+authority가 User Spot이거나 명시한 type과 authority type이 다르면 `TypeMismatch`다.
 
 ### Instance Spot cold activation과 첫 message
 
@@ -301,7 +301,7 @@ Terminal call은 다음 순서로 기존 Instance Spot을 사용하거나 새 In
    capacity를 게시한다.
 7. Runtime은 first record를 local queue의 첫 항목으로 복원한 뒤 handler barrier를 연다. Source는 Ready
    뒤 같은 message를 다시 보내지 않는다. Authority와 일치하지 않는 local instance는 message를 처리하지
-   못하도록 fence한다. Existing User kind나 다른 Instance type은 `SpotTypeMismatch`다.
+   못하도록 fence한다. Existing User kind나 다른 Instance type은 `TypeMismatch`다.
 8. Recovery data를 추적하는 recovery pointer는 첫 handler의 terminal completion을 durable하게 기록하고
    replay cursor를 inbox sequence까지 갱신한 뒤에만 Preserve CAS로 제거한다. Queue에 제출했다는 사실만으로
    제거하지 않는다.

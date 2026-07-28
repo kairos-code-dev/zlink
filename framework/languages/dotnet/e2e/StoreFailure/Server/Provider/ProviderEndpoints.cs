@@ -63,16 +63,22 @@ internal static class ProviderEndpoints
             evidence.Clear();
             return Results.Ok(new { status = "cleared" });
         });
-        app.MapPost("/drain", async (IZLinkDrainControl drain) =>
+        app.MapPost("/drain", async (IZLinkFrameworkRuntime runtime) =>
         {
-            var result = await drain.DrainAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
-            return result switch
-            {
-                Drained => Results.Ok(new DrainResultRes("drained", null)),
-                ForceStopped forced => Results.Ok(
-                    new DrainResultRes("force_stopped", forced.Reason.ToString())),
-                _ => throw new InvalidOperationException("Unknown drain result.")
-            };
+            var relocation = await runtime.RelocateAsync(
+                new ZLinkFrameworkRelocationOptions
+                {
+                    Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance,
+                    Deadline = TimeSpan.FromSeconds(30)
+                });
+            if (relocation.Outcome != ZLinkFrameworkRelocationOutcome.Relocated)
+                return Results.Ok(new DrainResultRes(
+                    relocation.Outcome.ToString(),
+                    relocation.Reason.ToString()));
+            var result = await runtime.ShutdownAsync(TimeSpan.FromSeconds(30));
+            return Results.Ok(new DrainResultRes(
+                result.Outcome.ToString(),
+                result.Reason.ToString()));
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {
@@ -97,7 +103,7 @@ internal static class ProviderEndpoints
             var elapsed = Stopwatch.StartNew();
             while (elapsed.Elapsed < timeout)
             {
-                var weight = runtimeOptions.Channel(StoreFailureNames.Channel, StoreFailureNames.Channel).Weight;
+                var weight = runtimeOptions.Channel(StoreFailureNames.Channel).Weight;
                 if (weight == request.Expected) return Results.Ok(new { weight });
 
                 await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);

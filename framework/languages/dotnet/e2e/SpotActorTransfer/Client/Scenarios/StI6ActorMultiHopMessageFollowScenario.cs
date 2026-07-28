@@ -1,3 +1,4 @@
+// Verifies Actor Message Follow across multiple relocation hops without duplicate handling.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;

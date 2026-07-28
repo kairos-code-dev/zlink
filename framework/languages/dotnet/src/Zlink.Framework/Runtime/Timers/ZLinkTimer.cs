@@ -104,6 +104,29 @@ internal sealed class ZLinkTimer : IZLinkTimer
             return SnapshotUnderLock();
     }
 
+    internal void RestoreFrozen(ZLinkTimerLogicalSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        lock (_scheduleGate)
+        {
+            ObjectDisposedException.ThrowIf(IsDisposed, this);
+            if (_resume is null)
+                throw new InvalidOperationException(
+                    "A logical timer can only be restored while frozen.");
+            if (!string.Equals(_name, snapshot.Name, StringComparison.Ordinal)
+                || _period != snapshot.Period
+                || _callbacks.Options != snapshot.Options)
+                throw new InvalidDataException(
+                    $"Logical timer '{snapshot.Name}' does not match its target registration.");
+
+            _startedAt = snapshot.StartedAt;
+            _deliveryIndex = snapshot.DeliveryIndex;
+            _lastScheduledIndex = snapshot.LastScheduledIndex;
+            _nextScheduledAt = snapshot.NextScheduledAt;
+            _pendingTick = snapshot.PendingTick;
+        }
+    }
+
     internal void Resume()
     {
         TaskCompletionSource? resume;
@@ -209,6 +232,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
 
     private async Task RunAsync(CancellationToken cancellationToken)
     {
+        await Task.Yield();
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();

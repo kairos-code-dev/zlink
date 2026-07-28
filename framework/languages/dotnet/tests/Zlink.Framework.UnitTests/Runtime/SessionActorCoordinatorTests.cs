@@ -362,7 +362,11 @@ public sealed class SessionActorCoordinatorTests
         Assert.Single(stream.Writes);
         Assert.True(runtime.TryGetSessionActorBinding(actor.ActorId, out var afterReply));
         Assert.Equal(1, afterReply.ActiveFrames);
-        runtime.CompleteRemoteSessionActorRequest(actor.ActorId, 26);
+        runtime.CompleteRemoteSessionActorRequest(
+            actor.ActorId,
+            binding.ObjectGeneration,
+            binding.BindingToken,
+            26);
         Assert.True(runtime.TryGetSessionActorBinding(actor.ActorId, out var completed));
         Assert.Equal(0, completed.ActiveFrames);
     }
@@ -390,7 +394,11 @@ public sealed class SessionActorCoordinatorTests
         Assert.True(runtime.TryGetSessionActorBinding(actor.ActorId, out var binding));
 
         _ = runtime.TrackRemoteSessionActorRequest(actor.ActorId, 23, binding.BindingToken);
-        runtime.CompleteRemoteSessionActorRequest(actor.ActorId, 23);
+        runtime.CompleteRemoteSessionActorRequest(
+            actor.ActorId,
+            binding.ObjectGeneration,
+            binding.BindingToken,
+            23);
         await Task.Delay(40);
         var replacementCapability = runtime.TrackRemoteSessionActorRequest(
             actor.ActorId,
@@ -408,6 +416,90 @@ public sealed class SessionActorCoordinatorTests
             [6],
             CancellationToken.None);
         Assert.Single(stream.Writes);
+    }
+
+    [Fact]
+    public async Task Rebind_Removes_The_Previous_Generation_Pending_Request()
+    {
+        var runtime = CreateRuntime();
+        var previousStream = new TestStream(RoutingId.From("session-previous"));
+        var previousContext = new ZLinkSessionContext(
+            runtime,
+            previousStream,
+            new TestSessionHandlerRegistry(),
+            static () => ValueTask.CompletedTask,
+            static _ => ValueTask.CompletedTask);
+        var previousActor = new ActorRef(
+            "actor-recreated",
+            1,
+            "actors",
+            RoutingId.From("actor-node-old"));
+        await previousContext.ActorCoordinator.BindOrGetActorAsync(
+            previousContext,
+            previousActor,
+            CancellationToken.None);
+        Assert.True(runtime.TryGetSessionActorBinding(
+            previousActor.ActorId,
+            out var previousBinding));
+        var previousCapability = runtime.TrackRemoteSessionActorRequest(
+            previousActor.ActorId,
+            requestId: 2,
+            previousBinding.BindingToken);
+
+        var replacementStream = new TestStream(RoutingId.From("session-replacement"));
+        var replacementContext = new ZLinkSessionContext(
+            runtime,
+            replacementStream,
+            new TestSessionHandlerRegistry(),
+            static () => ValueTask.CompletedTask,
+            static _ => ValueTask.CompletedTask);
+        var replacementActor = new ActorRef(
+            previousActor.ActorId,
+            2,
+            "actors",
+            RoutingId.From("actor-node-new"));
+        await replacementContext.ActorCoordinator.BindOrGetActorAsync(
+            replacementContext,
+            replacementActor,
+            CancellationToken.None);
+        Assert.True(runtime.TryGetSessionActorBinding(
+            replacementActor.ActorId,
+            out var replacementBinding));
+        Assert.NotEqual(
+            previousBinding.BindingToken,
+            replacementBinding.BindingToken);
+        Assert.Equal(2UL, replacementBinding.ObjectGeneration);
+
+        var replacementCapability = runtime.TrackRemoteSessionActorRequest(
+            replacementActor.ActorId,
+            requestId: 2,
+            replacementBinding.BindingToken);
+        Assert.NotEqual(previousCapability, replacementCapability);
+
+        await runtime.DeliverRemoteActorReplyAsync(
+            previousActor.ActorId,
+            requestId: 2,
+            ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+            previousCapability,
+            previousActor.NodeRid,
+            previousActor.NodeRid,
+            [1],
+            CancellationToken.None);
+        Assert.Empty(previousStream.Writes);
+        Assert.Empty(replacementStream.Writes);
+
+        await runtime.DeliverRemoteActorReplyAsync(
+            replacementActor.ActorId,
+            requestId: 2,
+            ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+            replacementCapability,
+            replacementActor.NodeRid,
+            replacementActor.NodeRid,
+            [2],
+            CancellationToken.None);
+        Assert.Empty(previousStream.Writes);
+        Assert.Single(replacementStream.Writes);
+        Assert.Equal(new byte[] { 2 }, replacementStream.Writes[0].Payload);
     }
 
     [Fact]
@@ -429,7 +521,11 @@ public sealed class SessionActorCoordinatorTests
         _ = runtime.TrackRemoteSessionActorRequest(actor.ActorId, 25, binding.BindingToken);
         await Task.Delay(80);
         _ = runtime.TrackRemoteSessionActorRequest(actor.ActorId, 25, binding.BindingToken);
-        runtime.CompleteRemoteSessionActorRequest(actor.ActorId, 25);
+        runtime.CompleteRemoteSessionActorRequest(
+            actor.ActorId,
+            binding.ObjectGeneration,
+            binding.BindingToken,
+            25);
     }
 
     [Fact]
@@ -453,7 +549,7 @@ public sealed class SessionActorCoordinatorTests
                 new[] { payload },
                 SendFlags.DontWait));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorSessionNotBound, exception.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.InvalidOperation, exception.Kind);
     }
 
     [Fact]
@@ -634,7 +730,7 @@ public sealed class SessionActorCoordinatorTests
                 payload,
                 static (_, _, _) => ValueTask.CompletedTask,
                 CancellationToken.None));
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorSessionNotBound, staleRelay.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.InvalidOperation, staleRelay.Kind);
 
         await stale.NotifyDisconnectedAsync();
 
@@ -649,6 +745,38 @@ public sealed class SessionActorCoordinatorTests
             out var currentContext));
         Assert.Same(sessionB, currentContext);
         Assert.Equal(actorX.ObjectGeneration, current.Ref.ObjectGeneration);
+    }
+
+    [Fact]
+    public void Remote_Bound_Relay_Requires_The_Current_Session_Node_And_Session_Rid()
+    {
+        var currentNode = RoutingId.From("session-node-b");
+        var currentSession = RoutingId.From("session-b");
+        var binding = new ZLinkActorBoundSession(
+            currentNode,
+            currentSession,
+            "binding-b",
+            BindingGeneration: 2,
+            ObjectGeneration: 7,
+            AuthorityOwnerGeneration: 3,
+            MeshName: "actors",
+            TargetNodeGeneration: 4,
+            OwnerLeaseGeneration: 5,
+            SessionOwnerNodeGeneration: 6,
+            AcceptedHighWater: 0);
+
+        Assert.True(ZLinkActorBoundSessionRelay.MatchesRelaySource(
+            binding,
+            currentNode,
+            currentSession));
+        Assert.False(ZLinkActorBoundSessionRelay.MatchesRelaySource(
+            binding,
+            RoutingId.From("session-node-a"),
+            currentSession));
+        Assert.False(ZLinkActorBoundSessionRelay.MatchesRelaySource(
+            binding,
+            currentNode,
+            RoutingId.From("session-a")));
     }
 
     [Fact]
@@ -886,6 +1014,9 @@ public sealed class SessionActorCoordinatorTests
                 Assert.Equal(previous.BindingToken, request.BindingToken);
                 Assert.Equal(previous.BindingGeneration, request.BindingGeneration);
                 Assert.Equal(previous.ObjectGeneration, request.ObjectGeneration);
+                Assert.Equal(previous.SessionNodeRid, request.SessionNodeRid);
+                Assert.Equal(previous.SessionRid, request.SessionRid);
+                Assert.Equal(previous.AcceptedHighWater, request.AcceptedHighWater);
                 return ValueTask.FromResult(
                     new ZLinkRemoteSessionUnbindResponse(true));
             },
@@ -1269,7 +1400,7 @@ public sealed class SessionActorCoordinatorTests
                 static (_, _, _) => ValueTask.CompletedTask,
                 CancellationToken.None));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.NotFound, error.Kind);
         Assert.Equal(0, directory.Calls);
         Assert.Equal(actor, Assert.Single(context.Actors.Bound).Ref);
     }
@@ -1309,6 +1440,176 @@ public sealed class SessionActorCoordinatorTests
         Assert.Equal(0, directory.Calls);
     }
 
+    [Fact]
+    public void Session_Owner_Tombstone_Rejects_Every_Late_Commit_Until_Expiry()
+    {
+        var time = new ManualTimeProvider();
+        var table = new ZLinkSessionActorBindingTable(
+            TimeSpan.FromSeconds(1),
+            time,
+            maxTombstones: 2);
+        var runtime = CreateRuntime();
+        var context = CreateSessionContext(runtime, "session-tombstone");
+        var sessionRid = context.RoutingId!.Value;
+        var route = SessionBindingRoute(
+            "actor-tombstone",
+            targetNodeGeneration: 3);
+        var actor = new ZLinkSessionActor(
+            context,
+            route.Ref.ActorId,
+            sessionRid,
+            "binding-tombstone");
+        _ = table.Bind(
+            route.Ref.ActorId,
+            context,
+            actor.BindingToken,
+            actor,
+            bindingGeneration: 5,
+            route,
+            sessionOwnerNodeGeneration: 7);
+
+        table.Tombstone(
+            route.Ref.ActorId,
+            sessionRid,
+            actor.BindingToken,
+            bindingGeneration: 5,
+            sessionOwnerNodeGeneration: 7,
+            route);
+
+        Assert.Equal(1, table.TombstoneCount);
+        AssertLateCommitRejected();
+        AssertLateCommitRejected();
+        Assert.Equal(1, table.TombstoneCount);
+
+        time.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, table.TombstoneCount);
+        _ = table.Bind(
+            route.Ref.ActorId,
+            context,
+            actor.BindingToken,
+            actor,
+            bindingGeneration: 5,
+            route,
+            sessionOwnerNodeGeneration: 7);
+        Assert.True(table.TryGet(
+            route.Ref.ActorId,
+            actor.BindingToken,
+            out ZLinkSessionBindingEntry _));
+        return;
+
+        void AssertLateCommitRejected()
+        {
+            var error = Assert.Throws<ZLinkFrameworkException>(() =>
+                table.Bind(
+                    route.Ref.ActorId,
+                    context,
+                    actor.BindingToken,
+                    actor,
+                    bindingGeneration: 5,
+                    route,
+                    sessionOwnerNodeGeneration: 7));
+            Assert.Equal(ZLinkFrameworkErrorKind.InvalidOperation, error.Kind);
+            Assert.Equal(ZLinkRetryAdvice.DoNotRetry, error.RetryAdvice);
+        }
+    }
+
+    [Fact]
+    public void Session_Owner_Tombstone_Requires_The_Full_Actor_Route_Fence()
+    {
+        var table = new ZLinkSessionActorBindingTable(
+            TimeSpan.FromSeconds(30));
+        var runtime = CreateRuntime();
+        var context = CreateSessionContext(runtime, "session-full-fence");
+        var sessionRid = context.RoutingId!.Value;
+        var route = SessionBindingRoute(
+            "actor-full-fence",
+            targetNodeGeneration: 3);
+        var actor = new ZLinkSessionActor(
+            context,
+            route.Ref.ActorId,
+            sessionRid,
+            "binding-full-fence");
+        _ = table.Bind(
+            route.Ref.ActorId,
+            context,
+            actor.BindingToken,
+            actor,
+            bindingGeneration: 5,
+            route,
+            sessionOwnerNodeGeneration: 7);
+        var reusedRidFromAnotherLifecycle = SessionBindingRoute(
+            route.Ref.ActorId,
+            targetNodeGeneration: 4);
+
+        var error = Assert.Throws<ZLinkFrameworkException>(() =>
+            table.Tombstone(
+                route.Ref.ActorId,
+                sessionRid,
+                actor.BindingToken,
+                bindingGeneration: 5,
+                sessionOwnerNodeGeneration: 7,
+                reusedRidFromAnotherLifecycle));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.InvalidOperation, error.Kind);
+        Assert.True(table.TryGet(
+            route.Ref.ActorId,
+            actor.BindingToken,
+            out ZLinkSessionBindingEntry retained));
+        Assert.Equal(route, retained.Route);
+        Assert.Equal(0, table.TombstoneCount);
+    }
+
+    [Fact]
+    public void Session_Owner_Tombstone_Capacity_Fails_Closed()
+    {
+        var table = new ZLinkSessionActorBindingTable(
+            TimeSpan.FromMinutes(1),
+            maxTombstones: 2);
+        var routeA = SessionBindingRoute("actor-capacity-a", 1);
+        var routeB = SessionBindingRoute("actor-capacity-b", 1);
+        var routeC = SessionBindingRoute("actor-capacity-c", 1);
+
+        AddTombstone(routeA, "session-a", "binding-a");
+        AddTombstone(routeB, "session-b", "binding-b");
+        var capacity = Assert.Throws<ZLinkFrameworkException>(() =>
+            AddTombstone(routeC, "session-c", "binding-c"));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, capacity.Kind);
+        Assert.Equal(2, table.TombstoneCount);
+        return;
+
+        void AddTombstone(
+            ZLinkSessionBindingRoute route,
+            string session,
+            string token)
+        {
+            table.Tombstone(
+                route.Ref.ActorId,
+                RoutingId.From(session),
+                token,
+                bindingGeneration: 1,
+                sessionOwnerNodeGeneration: 1,
+                route);
+        }
+    }
+
+    private static ZLinkSessionBindingRoute SessionBindingRoute(
+        string actorId,
+        ulong targetNodeGeneration)
+    {
+        const string meshName = "actors";
+        return ZLinkSessionBindingRoute.Create(
+            new ActorRef(
+                actorId,
+                11,
+                meshName,
+                RoutingId.From("actor-node")),
+            meshName,
+            targetNodeGeneration,
+            authorityOwnerGeneration: 13,
+            ownerLeaseGeneration: 17);
+    }
+
     private static ZLinkSessionContext CreateSessionContext(
         ZLinkFrameworkRuntime runtime,
         string sessionRid)
@@ -1324,6 +1625,8 @@ public sealed class SessionActorCoordinatorTests
     private static ZLinkRemoteSessionPreviousBinding PreviousBinding(
         string nodeRid) => new(
         RoutingId.From(nodeRid).ToBytes().ToArray(),
+        RoutingId.From("session-node").ToBytes().ToArray(),
+        RoutingId.From("session-rid").ToBytes().ToArray(),
         "old-token",
         7,
         11,
@@ -1331,7 +1634,8 @@ public sealed class SessionActorCoordinatorTests
         13,
         17,
         19,
-        23);
+        23,
+        29);
 
     private static ZLinkFrameworkRuntime CreateRuntime(
         IZLinkActorResolver? actorDirectory = null,

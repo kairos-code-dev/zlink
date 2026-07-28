@@ -57,7 +57,7 @@ internal readonly record struct ZLinkSessionBindingRoute
                 ownerLeaseGeneration,
                 out var route))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{actor.ActorId}' binding requires an exact Mesh, node lifecycle, and owner lease.");
         return route;
     }
@@ -148,9 +148,35 @@ internal readonly record struct ZLinkSessionBindingKey(
     string ActorId,
     string BindingToken);
 
+internal readonly record struct ZLinkSessionBindingTombstone(
+    RoutingId SessionRid,
+    ulong BindingGeneration,
+    ulong SessionOwnerNodeGeneration,
+    ZLinkSessionBindingRoute ActorRoute,
+    DateTimeOffset ExpiresAt);
+
 internal sealed class ZLinkSessionActorBindingTable
 {
     private readonly Dictionary<ZLinkSessionBindingKey, ZLinkSessionBindingEntry> _entries = new();
+    private readonly Dictionary<ZLinkSessionBindingKey, ZLinkSessionBindingTombstone>
+        _tombstones = new();
+    private readonly TimeSpan _tombstoneRetention;
+    private readonly TimeProvider _timeProvider;
+    private readonly int _maxTombstones;
+
+    public ZLinkSessionActorBindingTable(
+        TimeSpan tombstoneRetention,
+        TimeProvider? timeProvider = null,
+        int maxTombstones = 4_096)
+    {
+        _tombstoneRetention = tombstoneRetention > TimeSpan.Zero
+            ? tombstoneRetention
+            : TimeSpan.FromSeconds(30);
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _maxTombstones = maxTombstones > 0
+            ? maxTombstones
+            : 4_096;
+    }
 
     public ZLinkSessionBindingEntry[] Bind(
         string actorId,
@@ -163,10 +189,26 @@ internal sealed class ZLinkSessionActorBindingTable
     {
         if (!string.Equals(actorId, route.Ref.ActorId, StringComparison.Ordinal))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{actorId}' binding route identifies a different Actor.");
         lock (_entries)
         {
+            PurgeExpiredTombstones();
+            var key = new ZLinkSessionBindingKey(actorId, bindingToken);
+            if (_tombstones.TryGetValue(key, out var tombstone))
+            {
+                var exact = tombstone.SessionRid == actorRef.SessionRid
+                            && tombstone.BindingGeneration == bindingGeneration
+                            && tombstone.SessionOwnerNodeGeneration
+                            == sessionOwnerNodeGeneration
+                            && tombstone.ActorRoute == route;
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.InvalidOperation,
+                    exact
+                        ? $"Actor '{actorId}' session binding was replaced before local commit."
+                        : $"Actor '{actorId}' reused a tombstoned binding token with conflicting identity fields.",
+                    ZLinkRetryAdvice.DoNotRetry);
+            }
             var replaced = _entries
                 .Where(entry => string.Equals(entry.Key.ActorId, actorId, StringComparison.Ordinal))
                 .Select(entry => entry.Value)
@@ -177,7 +219,7 @@ internal sealed class ZLinkSessionActorBindingTable
                 entry.DrainSignal?.TrySetResult();
             }
 
-            _entries[new ZLinkSessionBindingKey(actorId, bindingToken)] = new ZLinkSessionBindingEntry(
+            _entries[key] = new ZLinkSessionBindingEntry(
                 context,
                 bindingToken,
                 actorRef,
@@ -186,6 +228,84 @@ internal sealed class ZLinkSessionActorBindingTable
                 sessionOwnerNodeGeneration,
                 AcceptedHighWater: 0);
             return replaced;
+        }
+    }
+
+    public void Tombstone(
+        string actorId,
+        RoutingId sessionRid,
+        string bindingToken,
+        ulong bindingGeneration,
+        ulong sessionOwnerNodeGeneration,
+        ZLinkSessionBindingRoute actorRoute)
+    {
+        lock (_entries)
+        {
+            PurgeExpiredTombstones();
+            var key = new ZLinkSessionBindingKey(actorId, bindingToken);
+            if (_entries.TryGetValue(key, out var current)
+                && (current.ActorRef.SessionRid != sessionRid
+                    || current.BindingGeneration != bindingGeneration
+                    || current.SessionOwnerNodeGeneration
+                    != sessionOwnerNodeGeneration
+                    || current.Route != actorRoute))
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.InvalidOperation,
+                    $"Actor '{actorId}' session binding tombstone does not match the current route.",
+                    ZLinkRetryAdvice.DoNotRetry);
+            if (_tombstones.TryGetValue(key, out var existingTombstone))
+            {
+                if (existingTombstone.SessionRid != sessionRid
+                    || existingTombstone.BindingGeneration != bindingGeneration
+                    || existingTombstone.SessionOwnerNodeGeneration
+                    != sessionOwnerNodeGeneration
+                    || existingTombstone.ActorRoute != actorRoute)
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.InvalidOperation,
+                        $"Actor '{actorId}' session binding tombstone reused one token with conflicting identity fields.",
+                        ZLinkRetryAdvice.DoNotRetry);
+                return;
+            }
+            if (!_tombstones.ContainsKey(key)
+                && _tombstones.Count >= _maxTombstones)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.Unavailable,
+                    "Session binding tombstone capacity is exhausted.",
+                    ZLinkRetryAdvice.RetryAfterBackoff);
+            _tombstones[key] = new ZLinkSessionBindingTombstone(
+                sessionRid,
+                bindingGeneration,
+                sessionOwnerNodeGeneration,
+                actorRoute,
+                _timeProvider.GetUtcNow() + _tombstoneRetention);
+            if (_entries.TryGetValue(key, out var entry))
+            {
+                _entries.Remove(key);
+                entry.DrainSignal?.TrySetResult();
+            }
+        }
+    }
+
+    private void PurgeExpiredTombstones()
+    {
+        if (_tombstones.Count == 0) return;
+        var now = _timeProvider.GetUtcNow();
+        foreach (var key in _tombstones
+                     .Where(entry => entry.Value.ExpiresAt <= now)
+                     .Select(static entry => entry.Key)
+                     .ToArray())
+            _tombstones.Remove(key);
+    }
+
+    internal int TombstoneCount
+    {
+        get
+        {
+            lock (_entries)
+            {
+                PurgeExpiredTombstones();
+                return _tombstones.Count;
+            }
         }
     }
 
@@ -577,6 +697,7 @@ internal sealed class ZLinkSessionActorBindingTable
             foreach (var entry in _entries.Values)
                 entry.DrainSignal?.TrySetResult();
             _entries.Clear();
+            _tombstones.Clear();
         }
     }
 }

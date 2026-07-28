@@ -25,6 +25,18 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         Assert.Contains(
             services,
             descriptor => descriptor.ServiceType == typeof(ZLinkRemoteSessionUnbindRouteHandler));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ZLinkSessionRouteSealHandler));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ZLinkSessionRouteAbortHandler));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ZLinkSessionRouteCommitHandler));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ZLinkSessionRouteUnsealHandler));
     }
 
     [Fact]
@@ -469,7 +481,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var mesh = options.AddRouteMesh("actor-node");
                 mesh.Channel("actor-node").Server();
-                mesh.Objects().Client();
+                mesh.Objects().Server();
                 {
                     var spot = mesh;
                     {
@@ -480,7 +492,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var mesh = options.AddRouteMesh("actor-node-2");
                 mesh.Channel("actor-node-2").Server();
-                mesh.Objects().Client();
+                mesh.Objects().Server();
                 mesh.Listen("tcp://127.0.0.1:7303");
             }
             {
@@ -497,6 +509,51 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         Assert.Single(registration.StreamNodes);
         Assert.Equal(2, registration.SpotNodes.Count);
         Assert.True(registration.StreamNodes["stream.node"].ActorDispatchEnabled);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Allows_ObjectClient_With_ChannelServer()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.UseTestLocationStore();
+            var node = options.AddRouteMesh("client-node")
+                .Listen("inproc://client-node");
+            node.Objects().Client();
+            node.Channel("orders").Server().SetWeight(0);
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+        var nodeRegistration = Assert.Single(registration.SpotNodes.Values);
+        Assert.Equal(ZLinkMeshNodeObjectRole.Client, nodeRegistration.ObjectRole);
+        var channel = Assert.Single(nodeRegistration.ChannelMemberships);
+        Assert.True(channel.IsServer);
+        Assert.Equal(0, channel.Weight);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_Rejects_ObjectClient_With_NodeDirectHandler()
+    {
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.UseTestLocationStore();
+                var node = options.AddRouteMesh("client-node")
+                    .Listen("inproc://client-node");
+                node.Objects().Client();
+                node.AddRouteRequestHandler<
+                    TestRouteRequestHandler,
+                    TestRouteRequest,
+                    TestRouteReply>();
+            }));
+
+        Assert.Contains("Object Client", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Node-direct handlers", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

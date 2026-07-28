@@ -21,7 +21,7 @@ internal static class SmB7ActorLifecycleOrderScenario
             MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
-        await client.Request(new AuthReq(actorId, "order", "play-a"))
+        await client.Request(new AuthReq(actorId, "order"))
             .PacketName("AuthReq")
             .Async<AuthRes>();
         var replies = new[]

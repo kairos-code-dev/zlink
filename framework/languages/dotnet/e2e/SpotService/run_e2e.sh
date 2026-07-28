@@ -100,7 +100,7 @@ case "$SCENARIO_SET" in
     NEED_SESSION_NODES=0
     NEED_PLAY_B=0
     ;;
-  sm-d1-d6|sm-d10|sm-d12|sm-g1)
+  sm-d1-d6|sm-d4a|sm-d10|sm-d12|sm-g1)
     NEED_SESSION_B=1
     ;;
   default-batch)
@@ -113,6 +113,7 @@ case "$SCENARIO_SET" in
 esac
 if scenario_selector_contains sm-d1-d6 \
   || scenario_selector_contains sm-d10 \
+  || scenario_selector_contains sm-d4a \
   || scenario_selector_contains sm-d12 \
   || scenario_selector_contains sm-g1; then
   NEED_SESSION_B=1
@@ -402,9 +403,10 @@ wait_control_route() {
   local source_url="$1"
   local target_rid="$2"
   local name="$3"
+  local timeout_seconds="${4:-$ROUTE_READINESS_TIMEOUT_SECONDS}"
   local payload deadline_ns
   payload="{\"value\":\"ready-${name}\"}"
-  deadline_ns="$(python3 - "$ROUTE_READINESS_TIMEOUT_SECONDS" <<'PY'
+  deadline_ns="$(python3 - "$timeout_seconds" <<'PY'
 import sys
 import time
 
@@ -434,7 +436,7 @@ PY
     fi
     sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Control route ${name} was not ready within ${ROUTE_READINESS_TIMEOUT_SECONDS}s via ${source_url} -> ${target_rid}" >&2
+  echo "Control route ${name} was not ready within ${timeout_seconds}s via ${source_url} -> ${target_rid}" >&2
   return 1
 }
 
@@ -442,8 +444,9 @@ wait_spot_route() {
   local source_url="$1"
   local target_rid="$2"
   local name="$3"
+  local timeout_seconds="${4:-$ROUTE_READINESS_TIMEOUT_SECONDS}"
   local deadline_ns
-  deadline_ns="$(python3 - "$ROUTE_READINESS_TIMEOUT_SECONDS" <<'PY'
+  deadline_ns="$(python3 - "$timeout_seconds" <<'PY'
 import sys
 import time
 
@@ -470,7 +473,7 @@ PY
     fi
     sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Spot route ${name} was not ready within ${ROUTE_READINESS_TIMEOUT_SECONDS}s via ${source_url} -> ${target_rid}" >&2
+  echo "Spot route ${name} was not ready within ${timeout_seconds}s via ${source_url} -> ${target_rid}" >&2
   return 1
 }
 
@@ -916,10 +919,10 @@ run_client() {
     next_line=$(($(wc -l <"$LOG_DIR/client.stdout.log") + 1))
     wait_for_log_after client.stdout "spot-service sm-g1 restart-1-ready" "$first_line" 300
     restart_play_a
-    wait_control_route "$SESSION_A_HTTP" play-a session-a-play-a-restarted
+    wait_control_route "$SESSION_A_HTTP" play-a session-a-play-a-restarted 15
+    wait_spot_route "$SESSION_A_HTTP" play-a session-a-play-a-restarted 15
     if ! wait_for_log_after client.stdout "spot-service sm-g1 crash-2-ready" "$next_line" 300; then
       curl -fsS "$PLAY_A_HTTP/mesh-snapshot" || true
-      curl -fsS "$PLAY_A_HTTP/entry-self-check" || true
       wait "$client_pid" || true
       return 1
     fi
@@ -1069,6 +1072,7 @@ elif [[ "$SCENARIO_SET" == "all" || "$SCENARIO_SET" == "default-batch" ]]; then
   run_client sm-d1-d6
   run_client sm-d3
   run_client sm-d4
+  run_client sm-d4a
   run_client sm-d5
   run_client sm-d5a
   run_client sm-d7

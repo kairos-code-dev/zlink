@@ -10,7 +10,9 @@ internal sealed record ServerOptions(
     string? PeerRid = null,
     string? PeerEndpoint = null,
     string? FanoutEndpoint = null,
-    string? EvidenceFile = null)
+    string? EvidenceFile = null,
+    string? RedisEndpoint = null,
+    string? RedisKeyPrefix = null)
 {
     public static ServerOptions Parse(string[] args) =>
         E2eConfiguration.Load<ServerOptions>(args);

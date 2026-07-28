@@ -166,8 +166,14 @@ void mesh_node_runtime_t::start ()
     if (!_state->routing_id) {
         throw configuration_error ("MeshNode routing id is required");
     }
-    if (_state->channels.empty ()) {
+    if (_state->channels.empty ()
+        && _state->object_role != object_role_t::client) {
         throw configuration_error ("MeshNode requires at least one ChannelName");
+    }
+    if (_state->object_role == object_role_t::client
+        && _state->has_node_direct_handler) {
+        throw configuration_error (
+          "Object Client cannot register application Node direct handlers");
     }
     if (_state->socket.send_timeout
         && (_state->socket.send_timeout->count () <= 0
@@ -207,6 +213,12 @@ void mesh_node_runtime_t::start ()
               _state->socket.max_message_size > 0
                 ? static_cast<std::uint32_t> (_state->socket.max_message_size)
                 : 4u * 1024u * 1024u,
+            .object_role =
+              _state->object_role == object_role_t::client
+                ? runtime::mesh::service_object_role_t::client
+                : _state->object_role == object_role_t::server
+                    ? runtime::mesh::service_object_role_t::server
+                    : runtime::mesh::service_object_role_t::none,
             .placement_weight = _state->placement_weight},
           _state->socket.mailbox_message_budget,
           _state->socket.mailbox_byte_budget,
@@ -1172,6 +1184,41 @@ mesh_node_runtime_t::wait_for_completion (
     return result_t<operation_completion_t>::success (std::move (completion));
 }
 
+std::optional<zlink::submit_result_t>
+mesh_node_runtime_t::classify_node_direct_target (
+  const zlink::routing_id_t &target) const
+{
+    if (!_user_spot_store)
+        return std::nullopt;
+    try {
+        location_page_request_t page;
+        for (;;) {
+            const auto listed =
+              _user_spot_store
+                ->list_mesh_nodes (_state->mesh_name, page)
+                .result ()
+                .value ();
+            const auto found = std::find_if (
+              listed.items.begin (), listed.items.end (),
+              [&target] (const mesh_node_descriptor_t &descriptor) {
+                  return descriptor.rid == target;
+              });
+            if (found != listed.items.end ()) {
+                return found->object_role == object_role_t::client
+                  ? std::optional<zlink::submit_result_t> (
+                      zlink::submit_result_t::not_found)
+                  : std::nullopt;
+            }
+            if (!listed.continuation_token)
+                return zlink::submit_result_t::not_found;
+            page.continuation_token = listed.continuation_token;
+        }
+    }
+    catch (...) {
+        return std::nullopt;
+    }
+}
+
 zlink::submit_result_t
 mesh_node_runtime_t::send_to_node (const zlink::routing_id_t &target,
                                    const std::vector<zlink::message_t> &parts,
@@ -1183,6 +1230,8 @@ mesh_node_runtime_t::send_to_node (const zlink::routing_id_t &target,
     runtime::messaging::note_submit_attempt (
       node_submit_target (target), this, one_way_send_timeout (*_state),
       _state->max_pending);
+    if (const auto classified = classify_node_direct_target (target))
+        return *classified;
     (void) metadata;
     return _node->send_to_node (target, parts);
 }
@@ -1206,6 +1255,8 @@ zlink::submit_result_t mesh_node_runtime_t::request_to_node (
     if (!_node) {
         throw configuration_error ("MeshNode has not started");
     }
+    if (const auto classified = classify_node_direct_target (target))
+        return *classified;
     (void) metadata;
     return _node->request_to_node (
       target, parts, operation_id, timeout);
@@ -1640,6 +1691,13 @@ mesh_node_builder_t &mesh_node_builder_t::set_routing_id (zlink::routing_id_t ro
     return *this;
 }
 
+mesh_node_builder_t &mesh_node_builder_t::set_object_role (object_role_t role)
+{
+    std::lock_guard lock (_state->mutex);
+    _state->object_role = role;
+    return *this;
+}
+
 mesh_node_builder_t &
 mesh_node_builder_t::set_placement_weight (int weight)
 {
@@ -1704,6 +1762,12 @@ mesh_node_builder_t::set_default_request_timeout (std::chrono::milliseconds time
     std::lock_guard lock (_state->mutex);
     _state->default_request_timeout = timeout;
     return *this;
+}
+
+void mesh_node_builder_t::mark_node_direct_handler ()
+{
+    std::lock_guard lock (_state->mutex);
+    _state->has_node_direct_handler = true;
 }
 
 spot_node_builder_t &mesh_node_builder_t::spot_builder ()

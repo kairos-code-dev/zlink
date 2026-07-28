@@ -831,8 +831,29 @@ int main ()
     /* CPP-G0-E2E-004 — ST-A1 verifies lifecycle evidence in contract order. */
     gate.require (transfer_client.find ("assert_evidence_sequence") != std::string::npos,
                   "CPP-G0-E2E-004", "ST-A1 has no cross-kind evidence order assertion");
-    gate.require (transfer_server.find ("location_committed") != std::string::npos,
-                  "CPP-G0-E2E-004", "SpotActorTransfer emits no location_committed evidence");
+    gate.require (transfer_server.find ("authority_committed") != std::string::npos,
+                  "CPP-G0-E2E-004", "SpotActorTransfer emits no authority_committed evidence");
+    const auto st_a1 =
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_a1_scenario.hpp");
+    const auto st_a1_admission = st_a1.find ("|admission|");
+    const auto st_a1_commit = st_a1.find ("|authority_committed|");
+    const auto st_a1_leave = st_a1.find ("|leave|");
+    const auto st_a1_joined = st_a1.find ("|joined|");
+    const auto st_a1_reply = st_a1.find ("|success_reply|");
+    gate.require (
+      st_a1.find ("spot.node_rid == \"actor-a\"") != std::string::npos
+        && st_a1.find ("actor.node_rid == \"actor-a\"") != std::string::npos,
+      "CPP-G0-E2E-004", "ST-A1 does not require a same-node Actor and Spot");
+    gate.require (
+      st_a1_admission < st_a1_commit && st_a1_commit < st_a1_leave
+        && st_a1_leave < st_a1_joined && st_a1_joined < st_a1_reply,
+      "CPP-G0-E2E-004",
+      "ST-A1 lifecycle order is not admission, authority commit, leave, joined, reply");
+    gate.require (
+      st_a1.find ("get_relocation_store_activity") != std::string::npos
+        && st_a1.find ("message_follow") != std::string::npos,
+      "CPP-G0-E2E-004",
+      "ST-A1 does not reject Relocation Store or Message Follow activity");
 
     /* E2E-CP-49 — ST-E2 fails transfer before commit and preserves the source binding. */
     const auto st_e2 =
@@ -876,6 +897,10 @@ int main ()
                     && st_b1.find ("source_cleanup") != std::string::npos,
                   "E2E-CP-51",
                   "ST-B1 does not require commit_ack and source_cleanup evidence");
+    gate.require (
+      st_b1.find ("|location_committed|") < st_b1.find ("|joined|"),
+      "E2E-CP-51",
+      "ST-B1 does not require authority commit before target joined");
     const auto st_b3 =
       read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_b3_scenario.hpp");
     gate.require (st_b3.find ("commit_ack") != std::string::npos

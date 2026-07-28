@@ -71,6 +71,22 @@ test('Node registration rejects incomplete MeshNode capabilities before startup'
 
 });
 
+test('Object Client RouteMesh rejects application Node-direct handlers', () => {
+  class NodeNotice {}
+  assert.throws(
+    () => framework.createFrameworkRegistration(
+      framework.createFrameworkOptions((builder) => {
+        const mesh = builder
+          .addRouteMesh('client-only')
+          .listen('tcp://127.0.0.1:0');
+        mesh.objects().client();
+        mesh.addRouteSendHandler(NodeNotice);
+      })
+    ),
+    /Object Client RouteMesh 'client-only' cannot register Node-direct handlers/
+  );
+});
+
 test('Node registration requires durable Actor transfer authority when transfer adapters are enabled', () => {
   class Player {}
   class PlayerTransferAdapter {}

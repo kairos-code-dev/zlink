@@ -155,13 +155,23 @@ internal sealed class ZLinkStandaloneActorRelocationTakeoverCoordinator(
             if (reservation is ZLinkRelocationCapacityReserveResult.TargetUnavailable
                 or ZLinkRelocationCapacityReserveResult.PlacementCapacityExhausted)
                 continue;
-            var capacityFence = reservation switch
+            var (capacityFence, targetAuthorityOwnerGeneration) =
+                reservation switch
             {
-                ZLinkRelocationCapacityReserveResult.Reserved reserved => reserved.Fence,
-                ZLinkRelocationCapacityReserveResult.AlreadyReserved already => already.Fence,
+                ZLinkRelocationCapacityReserveResult.Reserved reserved =>
+                    (reserved.Fence,
+                        reserved.TargetAuthorityOwnerGeneration),
+                ZLinkRelocationCapacityReserveResult.AlreadyReserved already =>
+                    (already.Fence,
+                        already.TargetAuthorityOwnerGeneration),
                 _ => throw new InvalidOperationException(
                     "Location Store returned an invalid relocation capacity result.")
             };
+            if (targetAuthorityOwnerGeneration
+                    <= current.Snapshot.AuthorityOwnerGeneration
+                || targetAuthorityOwnerGeneration > long.MaxValue)
+                throw DataLost(
+                    "Replacement capacity reservation returned an invalid target authority generation.");
 
             var node = runtime.GetSpotNodeRuntime(candidate.Rid);
             var relocation = node.Registration.ActorRelocations[recovery.StableType];
@@ -206,9 +216,9 @@ internal sealed class ZLinkStandaloneActorRelocationTakeoverCoordinator(
                                     .SnapshotRelocationContentType
                                 : ZLinkRemoteActorJoinPackets
                                     .RecreateRelocationContentType,
-                            participant.ApplicationState),
+                        participant.ApplicationState),
                         participant.ObjectGeneration,
-                        checked(current.Snapshot.AuthorityOwnerGeneration + 1),
+                        targetAuthorityOwnerGeneration,
                         ZLinkActorClaimMode.StagedRelocation,
                         publishActorRef: false,
                         cancellationToken)
@@ -442,19 +452,19 @@ internal sealed class ZLinkStandaloneActorRelocationTakeoverCoordinator(
 
     private static ZLinkFrameworkException TargetUnavailable(string actorId) =>
         new(
-            ZLinkFrameworkErrorKind.RelocationTargetUnavailable,
+            ZLinkFrameworkErrorKind.Unavailable,
             $"Actor '{actorId}' has no eligible local replacement target.",
-            isRetriable: true);
+            retryAdvice: ZLinkRetryAdvice.RetryAfterBackoff);
 
     private static ZLinkFrameworkException Moving(string actorId, string reason) =>
         new(
-            ZLinkFrameworkErrorKind.ActorMoving,
+            ZLinkFrameworkErrorKind.Unavailable,
             $"Actor '{actorId}' recovery will retry because {reason}.",
-            isRetriable: true);
+            retryAdvice: ZLinkRetryAdvice.RetryAfterBackoff);
 
     private static ZLinkFrameworkException DataLost(string message) =>
         new(
-            ZLinkFrameworkErrorKind.RelocationDataLost,
+            ZLinkFrameworkErrorKind.DataLost,
             message,
-            isRetriable: false);
+            retryAdvice: ZLinkRetryAdvice.DoNotRetry);
 }

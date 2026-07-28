@@ -6,7 +6,7 @@ entry _rels/.rels
 entry lib/net8.0/Zlink.Framework.Locations.Redis.dll
 entry lib/net8.0/Zlink.Framework.Locations.Redis.xml
 entry package/services/metadata/core-properties/{CORE_PROPERTIES}.psmdcp
-content-sha256 lib/net8.0/Zlink.Framework.Locations.Redis.xml=ceee4e1bbc0034aa0ba3c521de2ef34da6719e0461739e62235f9650cd61a2db
+content-sha256 lib/net8.0/Zlink.Framework.Locations.Redis.xml=3562d5a4fecdbf36ded6d32c72d039147724773c2be37290710ba15412b01856
 metadata authors=Zlink.Framework.Locations.Redis
 metadata description=Official Redis location store extension for the ZLink .NET framework.
 metadata id=Zlink.Framework.Locations.Redis
@@ -17,5 +17,4 @@ metadata version={VERSION}
 metadata repository commit={COMMIT} type=git
 dependency-group targetFramework=net8.0
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=StackExchange.Redis version=2.8.31
-dependency targetFramework=net8.0 exclude=Build,Analyzers id=System.Text.Json version=8.0.5
-dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework version={VERSION}
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework.Provider.Abstractions version=[{VERSION}]

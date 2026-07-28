@@ -40,6 +40,8 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private readonly ZLinkLocationLifecycle? _locationLifecycle;
     private readonly ZLinkLocationRuntime? _locationRuntime;
     private readonly ZLinkRelocationPermitPool _relocationPermits;
+    private readonly ZLinkRelocationInterruptionObserver
+        _relocationInterruption;
     private readonly IZLinkAutoConnectTopologyQuery? _topologyQuery;
     private readonly ZLinkSpotRouteRouterDispatcher _spotRouteRouter;
     private readonly ZLinkSpotRuntimeManager _spots;
@@ -48,6 +50,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private readonly object _workerPoolGate = new();
     private ZLinkMessageFlowTracer? _flow;
     private ILogger? _actorHandoffLogger;
+    private ILogger? _timerLogger;
     private ZLinkRuntimeErrorSink? _generationErrorSink = new();
     private int _lifecyclePhase;
     private ZLinkFrameworkComponentState? _state;
@@ -68,7 +71,9 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     {
         Services = services;
         _actorHandoffAdmissions = new ZLinkActorHandoffAdmissions(
-            diagnostic: LogActorHandoff);
+            diagnostic: LogActorHandoff,
+            abortCapacityReservation:
+                AbortActorHandoffCapacityReservationAsync);
         _backendAdapterFactory = backendAdapterFactory;
         _autoConnect = services.GetService<ZLinkLocationAutoConnectHost>();
         Registration = registration;
@@ -78,6 +83,9 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         _topologyQuery = services.GetService<IZLinkAutoConnectTopologyQuery>();
         _relocationPermits = new ZLinkRelocationPermitPool(
             registration.Locations.Options);
+        _relocationInterruption =
+            new ZLinkRelocationInterruptionObserver(
+                services.GetService<ILoggerFactory>());
         var components = ZLinkFrameworkRuntimeComponentFactory.Create(
             this,
             services,
@@ -160,12 +168,41 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     internal void TryReportUnhandledCallbackException(Exception exception) =>
         Volatile.Read(ref _generationErrorSink)?.ReportUnhandledCallbackException(exception);
 
+    internal void ReportTimerFailure(
+        string sourceName,
+        string spotId,
+        bool isEntrySpot,
+        string timerName,
+        Type handlerType,
+        ZLinkTimerTick tick,
+        Exception exception,
+        bool stopped)
+    {
+        TryReportUnhandledCallbackException(exception);
+        _timerLogger ??= Services.GetService<ILoggerFactory>()?
+            .CreateLogger("Zlink.Framework.SpotTimer");
+        _timerLogger?.LogError(
+            exception,
+            "Spot timer handler failed. source={SourceName} spot={SpotId} entry={IsEntrySpot} timer={TimerName} handler={HandlerType} delivery={DeliveryIndex} scheduled={ScheduledIndex} stopped={Stopped}",
+            sourceName,
+            spotId,
+            isEntrySpot,
+            timerName,
+            handlerType.FullName ?? handlerType.Name,
+            tick.DeliveryIndex,
+            tick.ScheduledIndex,
+            stopped);
+    }
+
     internal IServiceProvider Services { get; }
 
     internal ZLinkDrainAdmissionGate DrainAdmission => _drainAdmission;
 
     internal ZLinkRelocationPermitPool RelocationPermits =>
         _relocationPermits;
+
+    internal ZLinkRelocationInterruptionObserver
+        RelocationInterruption => _relocationInterruption;
 
     internal async ValueTask<bool> DrainStreamSessionsAsync(CancellationToken cancellationToken)
     {
@@ -180,6 +217,16 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     internal async ValueTask<ZLinkSpotDrainResult> TryDrainSpotsAsync(
         bool relocate,
         CancellationToken cancellationToken)
+        => await TryDrainSpotsAsync(
+                relocate,
+                ZLinkSpotRelocationPhase.Aggregates,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    private async ValueTask<ZLinkSpotDrainResult> TryDrainSpotsAsync(
+        bool relocate,
+        ZLinkSpotRelocationPhase phase,
+        CancellationToken cancellationToken)
     {
         var state = _state;
         if (state is null) return new ZLinkSpotDrainResult(true, 0);
@@ -190,6 +237,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             var result = await spotNode.TryDrainSpotsAsync(
                     relocate,
                     _relocationTargetSelection,
+                    phase,
                     cancellationToken)
                 .ConfigureAwait(false);
             drained &= result.Completed;
@@ -198,6 +246,18 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         }
         return new ZLinkSpotDrainResult(drained, committedUnitCount);
     }
+
+    internal async ValueTask<ZLinkRelocationWorkloadDrainResult>
+        DrainRelocationWorkloadsAsync(
+            ZLinkRelocationWorkloadDrainControl control)
+        => await new ZLinkRelocationWorkloadCoordinator(
+                (phase, token) => TryDrainSpotsAsync(
+                    relocate: true,
+                    phase,
+                    token),
+                DrainActorsAsync)
+            .DrainAsync(control)
+            .ConfigureAwait(false);
 
     internal async ValueTask<bool> QuiesceServingChannelsForDrainAsync(
         ZLinkLocationAutoConnectHost? autoConnect,
@@ -217,7 +277,15 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                 continue;
 
             foreach (var membership in registration.ChannelMemberships)
-                spotNode.Node.SetChannelWeight(membership.ChannelName, 0);
+            {
+                // Client membership does not own a serving weight. Only a
+                // RouteMesh Channel Server is removed from new selection
+                // before drain seals application admission.
+                if (membership.IsServer)
+                    spotNode.Node.SetChannelWeight(
+                        membership.ChannelName,
+                        0);
+            }
 
             var meshName = registration.SpotMeshChannelName ?? registration.SpotNodeName;
             published &= await PublishWeightAsync(
@@ -395,7 +463,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         return state.SpotNodes.Values.SingleOrDefault(
                    node => node.Node.RoutingId == nodeRid)
                ?? throw new ZLinkFrameworkException(
-                   ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                   ZLinkFrameworkErrorKind.NotFound,
                    $"MeshNode '{nodeRid}' is not hosted by this runtime.");
     }
 
@@ -444,17 +512,6 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         return registration is null
             ? RoutingId.From(Guid.NewGuid().ToString("n"))
             : ZLinkSpotNodeInitializer.PrepareNodeRoutingId(registration);
-    }
-
-    internal ValueTask PublishRuntimeEventAsync<TEvent>(
-        TEvent @event,
-        CancellationToken cancellationToken)
-        where TEvent : IZLinkRuntimeEvent
-    {
-        var publisher = Services.GetService<IZLinkRuntimeEventPublisher>();
-        return publisher is null
-            ? ValueTask.CompletedTask
-            : publisher.PublishAsync(@event, cancellationToken);
     }
 
     public async ValueTask StartAsync(CancellationToken cancellationToken)
@@ -602,7 +659,8 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                 .ConfigureAwait(false);
         Capture(_standaloneActorRelocationRuntime.ReleaseRetainedPermits);
         if (state is not null) DetachErrorSink(state.ErrorSink);
-        Capture(ResetActorRuntimeGeneration);
+        await CaptureAsync(ResetActorRuntimeGenerationAsync)
+            .ConfigureAwait(false);
         if (_locationLifecycle is not null)
             await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);
 

@@ -82,6 +82,7 @@ export interface ServiceMaintenanceReplyRelayAck {
   readonly relocation: ServiceWireOperationId;
   readonly coordinator: ServiceWireRelocationCoordinatorFence;
   readonly operation: ServiceWireOperationId;
+  readonly replyRouteId: bigint;
   readonly requestSource: ServiceWireRequestSourceFence;
   readonly status: 'terminalReceived' | 'alreadyTerminal';
 }
@@ -1290,6 +1291,7 @@ export function encodeMaintenanceReplyRelayAck(value: ServiceMaintenanceReplyRel
     wireId(value.relocation, 'relocation'),
     coordinatorFence(value.coordinator),
     wireId(value.operation, 'operation'),
+    u64(value.replyRouteId),
     requestSourceFence(value.requestSource),
     Buffer.of(value.status === 'terminalReceived' ? 1 : 2)
   );
@@ -1305,6 +1307,7 @@ export function decodeMaintenanceReplyRelayAck(frame: Uint8Array): ServiceMainte
   const relocation = reader.operationId('relocation');
   const coordinator = reader.coordinatorFence();
   const operation = reader.operationId('operation');
+  const replyRouteId = reader.nonZeroU64('replyRouteId');
   const requestSource = reader.requestSourceFence();
   const statusValue = reader.u8('status');
   if (statusValue !== 1 && statusValue !== 2) fail('Invalid replyRelayAck status.');
@@ -1313,6 +1316,7 @@ export function decodeMaintenanceReplyRelayAck(frame: Uint8Array): ServiceMainte
     relocation,
     coordinator,
     operation,
+    replyRouteId,
     requestSource,
     status: statusValue === 1 ? 'terminalReceived' : 'alreadyTerminal'
   };

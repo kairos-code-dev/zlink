@@ -19,7 +19,7 @@ import { ZLinkConfigurationException } from '../configuration';
 import { readZLinkDecoratorMetadata } from '../../contracts/Handlers/Attributes';
 import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
 import type { ZLinkMessageSerializer } from '../../contracts';
-import { actorJoinIdentity, createActorMembership } from './actor-lifecycle-snapshot';
+import { actorJoinIdentity } from './actor-lifecycle-snapshot';
 import { runActorHandlerWithDeferredJoins } from './actor-join-deferred-scope';
 
 export enum ZLinkActorPacketKind {
@@ -197,20 +197,20 @@ export class ZLinkSpotActorDispatcher {
   ): Promise<void> {
     return this.execute(async () => {
       await commit();
-      await this.options.spot.onJoinedActor(createActorMembership(actor));
+      await this.options.spot.onJoinedActor(actor);
     });
   }
 
   notifyJoinActor(actor: ZLinkActor): Promise<void> {
-    return this.execute(() => this.options.spot.onJoinedActor(createActorMembership(actor)));
+    return this.execute(() => this.options.spot.onJoinedActor(actor));
   }
 
   notifyLeaveActor(actor: ZLinkActor): Promise<void> {
-    return this.execute(() => this.options.spot.onLeaveActor(createActorMembership(actor)));
+    return this.execute(() => this.options.spot.onLeaveActor(actor));
   }
 
   notifyDisconnectActor(actor: ZLinkActor): Promise<void> {
-    return this.execute(() => this.options.spot.onDisconnectActor(createActorMembership(actor)));
+    return this.execute(() => this.options.spot.onDisconnectActor?.(actor));
   }
 
   private requirePacket(

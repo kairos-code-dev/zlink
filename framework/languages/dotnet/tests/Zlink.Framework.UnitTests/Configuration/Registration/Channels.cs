@@ -211,9 +211,9 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 options.ConfigureDispatch().Unhandled.Send = ZLinkUnhandledDispatchAction.ReplyError));
         Assert.Contains("send dispatch cannot use ReplyError", send.Message, StringComparison.Ordinal);
 
-        var sampleRate = Assert.Throws<ZLinkConfigurationException>(() =>
+        var sampleRate = Assert.Throws<ArgumentOutOfRangeException>(() =>
             services.AddZLinkFramework(options =>
-                options.ConfigureDispatch().TraceSampleRate(1.1d)));
-        Assert.Contains("SampleRate must be between", sampleRate.Message, StringComparison.Ordinal);
+                options.ConfigureDispatch().Diagnostics.SetSampleRate(1.1d)));
+        Assert.Equal("rate", sampleRate.ParamName);
     }
 }

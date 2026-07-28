@@ -28,7 +28,10 @@ internal sealed partial class ZLinkFrameworkRuntime
             && channel.HasClientServerClient)
         {
             if (!metadata.IsEmpty)
+            {
+                ZLinkMessageParts.DisposeAll(parts);
                 throw ZLinkClassicCallSupport.MetadataNotSupported();
+            }
             return await GetClientServerClientRuntime(channelName)
                 .SendAsync(parts, cancellationToken)
                 .ConfigureAwait(false);
@@ -51,7 +54,10 @@ internal sealed partial class ZLinkFrameworkRuntime
             && channel.HasClientServerClient)
         {
             if (!metadata.IsEmpty)
+            {
+                ZLinkMessageParts.DisposeAll(parts);
                 throw ZLinkClassicCallSupport.MetadataNotSupported();
+            }
             return await GetClientServerClientRuntime(channelName)
                 .RequestAsync(
                     parts,
@@ -86,17 +92,24 @@ internal sealed partial class ZLinkFrameworkRuntime
         };
     }
 
-    /// <summary>
-    /// Classifies the target from the auto-connect reconciler's desired-set
-    /// snapshot — never from the store, so the send path stays free of
-    /// hidden store I/O. True: a known route mesh peer, the route socket is
-    /// the delivery path. False: the mesh does not know this rid (a spot
-    /// rid or a stale node) — the egress owns it. Null: no loop manages
-    /// this mesh yet, keep the default ordering.
-    /// </summary>
-    private bool? IsKnownRouteMeshPeer(string routerChannelId, RoutingId targetNodeRid)
+    private ZLinkRouteMeshTargetClassification ClassifyAutomaticRouteMeshTarget(
+        ZLinkSpotNodeRuntime nodeRuntime,
+        string meshName,
+        RoutingId targetNodeRid)
     {
-        return _topologyQuery?.IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
+        var classification = _topologyQuery?.ClassifyRouteMeshTarget(
+                meshName,
+                targetNodeRid)
+            ?? ZLinkRouteMeshTargetClassification.Unknown;
+        if (classification
+            != ZLinkRouteMeshTargetClassification.RequiredNotConnected)
+            return classification;
+
+        return nodeRuntime.Node.MeshPeers().Any(peer =>
+            peer.RoutingId == targetNodeRid
+            && peer.State == MeshPeerState.Admitted)
+                ? ZLinkRouteMeshTargetClassification.ReadyEligible
+                : classification;
     }
 
     internal void EnsureKnownRouteMeshPeer(
@@ -105,26 +118,58 @@ internal sealed partial class ZLinkFrameworkRuntime
         string targetDescription)
     {
         var nodeRuntime = GetMeshNodeRuntime(routerChannelId);
-        if (nodeRuntime.Node.RoutingId == targetNodeRid) return;
+        if (nodeRuntime.Node.RoutingId == targetNodeRid)
+        {
+            if (nodeRuntime.Registration.ObjectRole
+                == ZLinkMeshNodeObjectRole.Client)
+                throw CreateUnknownRouteTargetException(
+                    routerChannelId,
+                    targetNodeRid,
+                    targetDescription);
+            return;
+        }
 
         if (nodeRuntime.UsesManualRouterAcquisition)
         {
-            if (nodeRuntime.TryClassifyManualRouterTarget(targetNodeRid, out var connected))
+            switch (nodeRuntime.ClassifyManualRouterTarget(targetNodeRid))
             {
-                if (connected) return;
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RouteNotConnected,
+                case ZLinkRouteMeshTargetClassification.ReadyEligible:
+                    return;
+                case ZLinkRouteMeshTargetClassification.RequiredNotConnected:
+                    throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Route channel '{routerChannelId}' is not connected to node '{targetNodeRid}' for {targetDescription}.",
-                    isRetriable: true);
+                    retryAdvice: ZLinkRetryAdvice.RetryAfterBackoff);
+                case ZLinkRouteMeshTargetClassification.ObjectClientTarget:
+                case ZLinkRouteMeshTargetClassification.Unknown:
+                    throw CreateUnknownRouteTargetException(
+                        routerChannelId,
+                        targetNodeRid,
+                        targetDescription);
+                default:
+                    throw new InvalidOperationException(
+                        "Unknown RouteMesh target classification.");
             }
-
-            throw CreateUnknownRouteTargetException(
-                routerChannelId, targetNodeRid, targetDescription);
         }
 
-        if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) != false) return;
-
-        throw CreateUnknownRouteTargetException(routerChannelId, targetNodeRid, targetDescription);
+        switch (ClassifyAutomaticRouteMeshTarget(
+                    nodeRuntime,
+                    routerChannelId,
+                    targetNodeRid))
+        {
+            case ZLinkRouteMeshTargetClassification.ReadyEligible:
+            case ZLinkRouteMeshTargetClassification.RequiredNotConnected:
+                return;
+            case ZLinkRouteMeshTargetClassification.ObjectClientTarget:
+            case ZLinkRouteMeshTargetClassification.Unknown:
+                throw CreateUnknownRouteTargetException(
+                    routerChannelId,
+                    targetNodeRid,
+                    targetDescription);
+            default:
+                throw new InvalidOperationException(
+                    "Unknown RouteMesh target classification.");
+        }
     }
 
     internal async ValueTask<ZLinkOneWaySubmitResult> SendToSpotViaRouterChannelAsync(
@@ -257,7 +302,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         Exception? innerException = null)
     {
         return new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.RequestTargetNotFound,
+            ZLinkFrameworkErrorKind.NotFound,
             $"Route channel '{routerChannelId}' does not know node '{targetNodeRid}' for {targetDescription}.",
             innerException: innerException);
     }

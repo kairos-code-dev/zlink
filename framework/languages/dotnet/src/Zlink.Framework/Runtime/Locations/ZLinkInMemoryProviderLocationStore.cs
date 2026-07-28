@@ -19,6 +19,7 @@ internal sealed class ZLinkInMemoryProviderLocationStore(
     private readonly Dictionary<string, Snapshot> _snapshots =
         new(StringComparer.Ordinal);
     private ulong _version;
+    private DateTimeOffset? _nextEntryExpiry;
 
     public ValueTask<ZLinkStoreReadResult> ReadAsync(
         ZLinkStoreKey key,
@@ -84,6 +85,13 @@ internal sealed class ZLinkInMemoryProviderLocationStore(
                             put.Retention is { } retention
                                 ? now + retention
                                 : null);
+                        if (put.Retention is { } putRetention)
+                        {
+                            var expiresAt = now + putRetention;
+                            if (_nextEntryExpiry is null
+                                || expiresAt < _nextEntryExpiry.Value)
+                                _nextEntryExpiry = expiresAt;
+                        }
                         versions.Add(put.Key, version);
                         break;
                     }
@@ -199,13 +207,20 @@ internal sealed class ZLinkInMemoryProviderLocationStore(
 
     private void RemoveExpiredNoLock(DateTimeOffset now)
     {
-        foreach (var key in _entries
-                     .Where(pair => pair.Value.ExpiresAt <= now)
-                     .Select(static pair => pair.Key)
-                     .ToArray())
+        if (_nextEntryExpiry is null || now < _nextEntryExpiry) return;
+        DateTimeOffset? nextExpiry = null;
+        foreach (var pair in _entries.ToArray())
         {
-            _entries.Remove(key);
+            if (pair.Value.ExpiresAt <= now)
+            {
+                _entries.Remove(pair.Key);
+                continue;
+            }
+            if (pair.Value.ExpiresAt is { } expiresAt
+                && (nextExpiry is null || expiresAt < nextExpiry.Value))
+                nextExpiry = expiresAt;
         }
+        _nextEntryExpiry = nextExpiry;
     }
 
     private void RemoveExpiredSnapshotsNoLock(DateTimeOffset now)

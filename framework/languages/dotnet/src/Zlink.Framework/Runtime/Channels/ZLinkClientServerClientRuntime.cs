@@ -151,14 +151,21 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         Interlocked.Increment(ref _pendingRequests);
         try
         {
-            var target = await WaitForReadyAsync(cancellationToken)
+            var deadline = DateTime.UtcNow + timeout;
+            var target = await WaitForReadyAsync(timeout, cancellationToken)
                 .ConfigureAwait(false);
             if (target is null)
             {
                 ZLinkMessageParts.DisposeAll(parts);
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestTargetNotFound,
-                    $"ClientServer channel '{_channelName}' has no ready server.");
+                throw new TimeoutException(
+                    $"ClientServer channel '{_channelName}' had no ready server before the request deadline.");
+            }
+            var remaining = deadline - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                ZLinkMessageParts.DisposeAll(parts);
+                throw new TimeoutException(
+                    $"ClientServer channel '{_channelName}' had no request time remaining after route admission.");
             }
             return await ZLinkRawRequestSubmitter.SubmitAsync(
                     target.Submitter,
@@ -168,7 +175,7 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                         callback,
                         SendFlags.DontWait,
                         nativeTimeout),
-                    timeout,
+                    remaining,
                     $"ClientServer request failed for '{_channelName}': {{0}}.",
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -469,12 +476,19 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
     }
 
     private async ValueTask<Connection?> WaitForReadyAsync(
+        CancellationToken cancellationToken) =>
+        await WaitForReadyAsync(
+                _requestTimeout < TimeSpan.FromSeconds(5)
+                    ? _requestTimeout
+                    : TimeSpan.FromSeconds(5),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    private async ValueTask<Connection?> WaitForReadyAsync(
+        TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow
-            + (_requestTimeout < TimeSpan.FromSeconds(5)
-                ? _requestTimeout
-                : TimeSpan.FromSeconds(5));
+        var deadline = DateTime.UtcNow + timeout;
         while (true)
         {
             if (SelectReady() is { } ready)

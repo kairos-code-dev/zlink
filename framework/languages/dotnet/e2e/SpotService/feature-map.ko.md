@@ -59,11 +59,11 @@
 | SM-E3 | 구현 | idle timer가 spot close를 수행하고 closed spot request가 실패하는 marker가 있다. |
 | SM-E4 | 구현 | timer overrun policy marker가 있다. |
 | SM-F1 | 구현 | client/server channel to target spot marker가 있다. |
-| SM-F2 | 구현 | 두 MeshNode를 사용한 remote `SpotHandle` request/send가 target owner Spot에 도달하는 marker를 최신 `default-batch` 실행에서 확인했다. |
+| SM-F2 | 구현·process 통과 | `play-b`에 배치한 User Spot을 `play-a` 역할 server가 global Spot ID만으로 request/send한다. Target handler의 request·send evidence와 source handler 0건을 확인했다. 실제 process 증거는 `logs/20260728-233321-3170089`이며 이전 local `play-a` 실행은 remote owner 증거로 사용하지 않는다. |
 | SM-F3 | 구현 | client/server egress와 route-mesh egress를 같은 spot에 혼재해 처리한 marker가 있다. |
 | SM-F4 | 구현 | missing target spot route request 실패 marker가 있다. malformed relay packet 주입은 public E2E 표면이 아니므로 직접 scenario로 만들지 않는다. |
 | SM-F5 | 구현 | target user Spot을 public manager로 닫은 뒤 해당 Spot 경로만 실패하고 같은 route channel의 일반 request는 계속 성공하는 marker가 있다. |
-| SM-F6 | 구현 | `sm-f6` runner에서 같은 MeshName의 두 MeshNode만 사용한 remote `SpotHandle` request/send와 source Actor의 public join이 target owner Spot에 도달하는 marker를 확인했다. |
+| SM-F6 | 구현 | `sm-f6` runner에서 같은 MeshName의 두 MeshNode만 사용한다. Source는 global Spot ID만으로 remote request/send를 제출하고 public Actor join을 실행하며, target owner Spot의 handler evidence를 확인한다. |
 | SM-G1 | 구현 | play-a를 강제 종료한 뒤 play-b 요청이 계속 성공하고, 같은 endpoint·RID로 play-a를 재기동한 뒤 gateway와 session request/reply가 모두 복구되는 것을 확인했다. 이어 play-a를 다시 종료하고 play-b가 재배치된 actor 요청을 처리하는 경로까지 통과했다. 증거: `logs/20260720-011511-1678310/`. |
 | SM-G2 | 구현 | node B 추가 뒤 기존 Spot·actor owner 유지와 신규 Spot·actor의 명시적 node B 배치를 `sm-g2` 실행에서 확인했다. |
 | SM-G3 | 구현 | 같은 user spot에 여러 stream session이 동시에 join/request/leave를 수행하고 actor별 join/leave lifecycle evidence가 1회씩 남는지 확인한다. |

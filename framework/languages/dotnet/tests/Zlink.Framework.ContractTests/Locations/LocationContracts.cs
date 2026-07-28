@@ -167,6 +167,38 @@ public sealed class LocationContracts
         Assert.DoesNotContain(typeof(ZLinkSpotLocationKey).FullName, exportedTypeNames);
         Assert.DoesNotContain(typeof(ZLinkActorLocationKey).FullName, exportedTypeNames);
         Assert.DoesNotContain(typeof(ZLinkLocationAutoConnectType).FullName, exportedTypeNames);
+        foreach (var internalType in new[]
+                 {
+                     "ZLinkMeshNodeDescriptor",
+                     "ZLinkMeshNodeDescriptorKey",
+                     "ZLinkClientServerServerDescriptor",
+                     "ZLinkFanoutPublisherDescriptor",
+                     "ZLinkLocationOwnerToken",
+                     "ZLinkOwnerLeaseClaimResult",
+                     "ZLinkOwnerLeaseRenewResult",
+                     "ZLinkOwnerLeaseReleaseResult",
+                     "ZLinkOwnerLeaseReadResult",
+                     "ZLinkLocationWriteResult",
+                     "ZLinkLocationWriteStatus",
+                     "ZLinkLocationWriteIntent",
+                     "ZLinkPlacementCapacity",
+                     "ZLinkPopulationCapacity",
+                     "ZLinkSpotTypeCapacity",
+                     "ZLinkActivationConcurrency",
+                     "ZLinkPlacementObjectKind",
+                     "ZLinkObjectCapability",
+                     "ZLinkObjectMaintenancePolicyKind",
+                     "ZLinkMeshNodeObjectRole"
+                 })
+        {
+            Assert.DoesNotContain(
+                $"Zlink.Framework.Contracts.Locations.{internalType}",
+                exportedTypeNames);
+        }
+
+        Assert.DoesNotContain(
+            typeof(IZLinkLocationRuntimeQuery).GetMethods(),
+            static method => method.Name == "ListMeshNodeDescriptorsAsync");
     }
 
     [Fact]
@@ -186,9 +218,6 @@ public sealed class LocationContracts
         Assert.True(ready);
 
         // Runtime query never goes through a cache, so it takes no freshness.
-        var descriptors = await query.ListMeshNodeDescriptorsAsync("play");
-        Assert.Single(descriptors.Items);
-
         var topology = await query.ListTopologyAsync(new ZLinkLocationTopologyFilter(MeshName: "play"));
         Assert.Single(topology.Items);
 
@@ -336,17 +365,6 @@ public sealed class LocationContracts
                 LastError: null,
                 OwnerLeaseHealthy: true,
                 OwnerLeaseRenewedAt: StoreNow));
-
-        public ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>>
-            ListMeshNodeDescriptorsAsync(
-            string meshName,
-            ZLinkPageRequest page = default,
-            CancellationToken cancellationToken = default)
-        {
-            IReadOnlyList<ZLinkMeshNodeDescriptor> items = [MakeDescriptor("owner-a")];
-            return ValueTask.FromResult(
-                new ZLinkLocationPage<ZLinkMeshNodeDescriptor>(items, null));
-        }
 
         public ValueTask<ZLinkLocationPage<ZLinkLocationTopologyEntry>> ListTopologyAsync(
             ZLinkLocationTopologyFilter filter,

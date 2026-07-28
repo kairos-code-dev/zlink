@@ -34,6 +34,7 @@ internal sealed class ZLinkActorHandoffState(
     private bool _abortRestoreAdmissionsReleased;
     private TaskCompletionSource<ZLinkRemoteActorJoinReply>? _preparation;
     private TaskCompletionSource? _sourceCompletion;
+    private Task? _canonicalMaintenanceDrain;
 
     public void BeginCapture()
     {
@@ -45,6 +46,7 @@ internal sealed class ZLinkActorHandoffState(
                 or ZLinkActorSourceHandoffPhase.MessageFollowCommitted
                 || _targetPhase is ZLinkActorTargetHandoffPhase.Importing
                     or ZLinkActorTargetHandoffPhase.Replaying
+                    or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
                     or ZLinkActorTargetHandoffPhase.Quarantined)
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' already has an active handoff transaction.");
@@ -52,6 +54,7 @@ internal sealed class ZLinkActorHandoffState(
             _handoffId = null;
             _joinRequest = null;
             _preparation = null;
+            _canonicalMaintenanceDrain = null;
             _targetPhase = ZLinkActorTargetHandoffPhase.Idle;
             _sourceTrailingImported = false;
             _sourceCaptureSealed = false;
@@ -79,6 +82,15 @@ internal sealed class ZLinkActorHandoffState(
                     or ZLinkActorSourceHandoffPhase.CutoverPending
                     or ZLinkActorSourceHandoffPhase.AbortRestoring
                     or ZLinkActorSourceHandoffPhase.MessageFollowCommitted;
+        }
+    }
+
+    internal bool CapturesSourceIngress
+    {
+        get
+        {
+            lock (_gate)
+                return _sourcePhase == ZLinkActorSourceHandoffPhase.Capturing;
         }
     }
 
@@ -258,6 +270,7 @@ internal sealed class ZLinkActorHandoffState(
                 or ZLinkActorTargetHandoffPhase.NotifyingJoined
                 or ZLinkActorTargetHandoffPhase.Prepared
                 or ZLinkActorTargetHandoffPhase.Replaying
+                or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
                 or ZLinkActorTargetHandoffPhase.Quarantined)
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' already has an active handoff '{_handoffId}'.");
@@ -304,6 +317,7 @@ internal sealed class ZLinkActorHandoffState(
                 && _targetPhase is ZLinkActorTargetHandoffPhase.Importing
                     or ZLinkActorTargetHandoffPhase.AuthorityCommitted
                     or ZLinkActorTargetHandoffPhase.Replaying
+                    or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
                     or ZLinkActorTargetHandoffPhase.Completed)
                 return;
             if (_sourcePhase is ZLinkActorSourceHandoffPhase.Capturing
@@ -314,12 +328,14 @@ internal sealed class ZLinkActorHandoffState(
                     or ZLinkActorTargetHandoffPhase.NotifyingJoined
                     or ZLinkActorTargetHandoffPhase.Prepared
                     or ZLinkActorTargetHandoffPhase.Replaying
+                    or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
                     or ZLinkActorTargetHandoffPhase.Quarantined)
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' already has an active handoff transaction.");
             _handoffId = handoffId;
             _joinRequest = null;
             _preparation = null;
+            _canonicalMaintenanceDrain = null;
             _targetPhase = ZLinkActorTargetHandoffPhase.Importing;
             _sourceIngressAdmission.ReleaseAll();
             _sourceHoldAdmission.ReleaseAll();
@@ -348,9 +364,9 @@ internal sealed class ZLinkActorHandoffState(
                     if (!_targetIngressAdmission.TryAcquire(
                             frame.CanonicalEncodedLength))
                         throw new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.ActorMoving,
+                            ZLinkFrameworkErrorKind.Unavailable,
                             $"Actor '{actorId}' canonical target backlog exceeds its bound.",
-                            true);
+                            ZLinkRetryAdvice.RetryAfterBackoff);
                     _frames.Add(frame);
                     previousSequence = frame.ArrivalIndex;
                 }
@@ -400,16 +416,16 @@ internal sealed class ZLinkActorHandoffState(
                 || requiredBytes
                     > _targetIngressAdmission.RemainingByteCapacity)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' canonical target backlog exceeds its negotiated bound.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             foreach (var frame in ordered)
             {
                 if (!_targetIngressAdmission.TryAcquire(frame.CanonicalEncodedLength))
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorMoving,
+                        ZLinkFrameworkErrorKind.Unavailable,
                         $"Actor '{actorId}' canonical target backlog exceeds its negotiated bound.",
-                        true);
+                        ZLinkRetryAdvice.RetryAfterBackoff);
                 _frames.Add(frame);
                 _arrivalIndex++;
             }
@@ -440,7 +456,7 @@ internal sealed class ZLinkActorHandoffState(
         if (sourceObjectGeneration == 0
             || targetObjectGeneration != sourceObjectGeneration)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorGenerationStale,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor '{actorId}' target changed ObjectGeneration during handoff.");
 
         lock (_gate)
@@ -461,6 +477,7 @@ internal sealed class ZLinkActorHandoffState(
                        or ZLinkActorTargetHandoffPhase.NotifyingJoined
                        or ZLinkActorTargetHandoffPhase.Prepared
                        or ZLinkActorTargetHandoffPhase.Replaying
+                       or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
                        or ZLinkActorTargetHandoffPhase.Completed;
     }
 
@@ -499,6 +516,7 @@ internal sealed class ZLinkActorHandoffState(
                 or ZLinkActorTargetHandoffPhase.NotifyingJoined
                 or ZLinkActorTargetHandoffPhase.Prepared
                 or ZLinkActorTargetHandoffPhase.Replaying
+                or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
                 or ZLinkActorTargetHandoffPhase.Quarantined))
                 return;
             _preparation?.TrySetResult(reply);
@@ -542,6 +560,7 @@ internal sealed class ZLinkActorHandoffState(
             _joinRequest = null;
             _targetPhase = ZLinkActorTargetHandoffPhase.RolledBack;
             _preparation = null;
+            _canonicalMaintenanceDrain = null;
         }
     }
 
@@ -553,7 +572,10 @@ internal sealed class ZLinkActorHandoffState(
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' cannot complete an inactive handoff.");
             if (_targetPhase == ZLinkActorTargetHandoffPhase.Completed)
+            {
+                _canonicalMaintenanceDrain = null;
                 return;
+            }
             if (_targetPhase != ZLinkActorTargetHandoffPhase.Replaying
                 || _frames.Count != 0)
                 throw new InvalidOperationException(
@@ -770,13 +792,93 @@ internal sealed class ZLinkActorHandoffState(
                    && _targetPhase == ZLinkActorTargetHandoffPhase.Completed;
     }
 
+    internal bool TryOpenCanonicalMaintenanceAdmission(
+        string handoffId,
+        long queuedThroughArrivalIndex)
+    {
+        lock (_gate)
+        {
+            if (!string.Equals(_handoffId, handoffId,
+                    StringComparison.Ordinal)
+                || _targetPhase != ZLinkActorTargetHandoffPhase.Replaying)
+                return false;
+            if (_frames.Any(frame =>
+                    frame.ArrivalIndex > queuedThroughArrivalIndex))
+                return false;
+            _targetPhase =
+                ZLinkActorTargetHandoffPhase.AdmissionOpenDraining;
+            return true;
+        }
+    }
+
+    internal void ReserveCanonicalMaintenanceTrailingAndOpenAdmission(
+            string handoffId,
+            long queuedThroughArrivalIndex,
+            Action<ZLinkActorHandoffFrame> reserveReplay)
+    {
+        ArgumentNullException.ThrowIfNull(reserveReplay);
+        lock (_gate)
+        {
+            if (!string.Equals(_handoffId, handoffId,
+                    StringComparison.Ordinal)
+                || _targetPhase != ZLinkActorTargetHandoffPhase.Replaying)
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' cannot open canonical maintenance admission.");
+            var trailing = _frames
+                .Where(frame =>
+                    frame.ArrivalIndex > queuedThroughArrivalIndex)
+                // Frames relayed by the previous owner were accepted before
+                // the authority cutover. They must reserve execution before
+                // direct ingress that observed the new owner, even when the
+                // network delivers the direct frame first.
+                .OrderBy(static frame =>
+                    frame.RouteContext.MessageFollowHopCount == 0 ? 1 : 0)
+                .ThenBy(static frame => frame.ArrivalIndex)
+                .ToArray();
+            foreach (var frame in trailing)
+                reserveReplay(frame);
+            // New target ingress can bypass capture only after every
+            // preserved frame has reserved its mailbox position.
+            _targetPhase =
+                ZLinkActorTargetHandoffPhase.AdmissionOpenDraining;
+        }
+    }
+
+    internal void RegisterCanonicalMaintenanceDrain(
+        string handoffId,
+        Task drain)
+    {
+        ArgumentNullException.ThrowIfNull(drain);
+        lock (_gate)
+        {
+            if (!string.Equals(_handoffId, handoffId,
+                    StringComparison.Ordinal)
+                || _targetPhase
+                   != ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
+                || _canonicalMaintenanceDrain is not null)
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' cannot register the canonical drain.");
+            _canonicalMaintenanceDrain = drain;
+        }
+    }
+
+    internal Task? GetCanonicalMaintenanceDrain(string handoffId)
+    {
+        lock (_gate)
+            return string.Equals(_handoffId, handoffId,
+                StringComparison.Ordinal)
+                ? _canonicalMaintenanceDrain
+                : null;
+    }
+
     internal bool TryCompleteCanonicalMaintenanceReplay(string handoffId)
     {
         lock (_gate)
         {
             if (!string.Equals(_handoffId, handoffId,
                     StringComparison.Ordinal)
-                || _targetPhase != ZLinkActorTargetHandoffPhase.Replaying
+                || _targetPhase
+                   != ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
                 || _frames.Count != 0)
                 return false;
             _targetPhase = ZLinkActorTargetHandoffPhase.Completed;
@@ -789,7 +891,9 @@ internal sealed class ZLinkActorHandoffState(
     {
         lock (_gate)
         {
-            if (_targetPhase != ZLinkActorTargetHandoffPhase.Replaying)
+            if (_targetPhase is not (
+                    ZLinkActorTargetHandoffPhase.Replaying
+                    or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining))
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' target handoff replay is not active.");
             return _frames.ToArray();
@@ -800,7 +904,9 @@ internal sealed class ZLinkActorHandoffState(
     {
         lock (_gate)
         {
-            if (_targetPhase != ZLinkActorTargetHandoffPhase.Replaying)
+            if (_targetPhase is not (
+                    ZLinkActorTargetHandoffPhase.Replaying
+                    or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining))
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' cannot acknowledge replay outside target replay.");
             if (_frames.Count == 0)
@@ -814,11 +920,35 @@ internal sealed class ZLinkActorHandoffState(
         }
     }
 
+    internal void AcknowledgeReplayedFrame(long arrivalIndex)
+    {
+        lock (_gate)
+        {
+            if (_targetPhase is not (
+                    ZLinkActorTargetHandoffPhase.Replaying
+                    or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining))
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' cannot acknowledge replay outside target replay.");
+            var index = _frames.FindIndex(frame =>
+                frame.ArrivalIndex == arrivalIndex);
+            if (index < 0)
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' does not have replay frame '{arrivalIndex}' to acknowledge.");
+            var removed = _frames[index];
+            _frames.RemoveAt(index);
+            if (removed.CanonicalEncodedLength > 0)
+                _targetIngressAdmission.Release(
+                    removed.CanonicalEncodedLength);
+        }
+    }
+
     internal void AcknowledgeCanonicalReplayThrough(ulong acceptedSequence)
     {
         lock (_gate)
         {
-            if (_targetPhase != ZLinkActorTargetHandoffPhase.Replaying)
+            if (_targetPhase is not (
+                    ZLinkActorTargetHandoffPhase.Replaying
+                    or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining))
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' cannot acknowledge canonical replay outside target replay.");
             while (_frames.Count != 0
@@ -995,6 +1125,7 @@ internal sealed class ZLinkActorHandoffState(
                 _handoffId = null;
                 _joinRequest = null;
                 _preparation = null;
+                _canonicalMaintenanceDrain = null;
                 _sourceCompletion?.TrySetResult();
                 _sourceCompletion = null;
                 _staleSourceActor = null;
@@ -1027,6 +1158,7 @@ internal sealed class ZLinkActorHandoffState(
                 _handoffId = null;
                 _joinRequest = null;
                 _preparation = null;
+                _canonicalMaintenanceDrain = null;
                 _sourceCompletion?.TrySetException(failure);
                 _sourceCompletion = null;
                 _staleSourceActor = null;
@@ -1199,6 +1331,7 @@ internal enum ZLinkActorTargetHandoffPhase
     NotifyingJoined,
     Prepared,
     Replaying,
+    AdmissionOpenDraining,
     Completed,
     Quarantined,
     RolledBack

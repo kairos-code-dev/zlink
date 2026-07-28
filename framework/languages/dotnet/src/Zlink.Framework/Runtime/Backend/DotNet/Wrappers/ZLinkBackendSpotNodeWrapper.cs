@@ -15,11 +15,13 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     IZLinkBackendCanonicalRelocationReservation,
     IZLinkBackendAuthorityObserver,
     IZLinkBackendRequestSourceFenceObserver,
-    IZLinkBackendLocalActorAuthorityReader
+    IZLinkBackendLocalActorAuthorityReader,
+    IZLinkBackendActorMessageFollowIngress
 {
     private readonly IMeshNode _node;
     private readonly ZLinkMeshCompletionTable _completions = new();
     private readonly ZLinkMeshDispatchPump _pump;
+    private readonly ActorMessageFollowIngressAdapter _messageFollowIngress;
     private readonly ConcurrentDictionary<string, ulong> _peerIntents =
         new(StringComparer.Ordinal);
     private readonly ZLinkSpotSubscriptionTracker _subscriptions = new();
@@ -39,6 +41,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     {
         _node = node;
         _pump = new ZLinkMeshDispatchPump(node, _completions);
+        _messageFollowIngress = new ActorMessageFollowIngressAdapter(_pump);
+        _node.SetActorMessageFollowIngressTarget(_messageFollowIngress);
     }
 
     internal IMeshNode NativeNode => _node;
@@ -59,6 +63,10 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     public void ObserveRequestSourceFence(
         ZLinkServiceWireCodec.RequestSourceFence source) =>
         _pump.ObserveRequestSourceFence(source);
+
+    public void SetActorMessageFollowIngressHandler(
+        Func<IReadOnlyList<ZLinkBackendActorPart>, bool> handler) =>
+        _messageFollowIngress.SetHandler(handler);
 
     public void ObserveActorAuthority(
         ZLinkBackendActorRef actor,
@@ -110,6 +118,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     public void SetRoutingId(RoutingId routingId)
     {
         _node.SetRoutingId(routingId);
+    }
+
+    public void SetObjectRole(ZLinkMeshNodeObjectRole objectRole)
+    {
+        _node.SetObjectRole(objectRole);
     }
 
     // Pub/sub routing ids and role config have no MeshNode equivalent (publishing
@@ -342,8 +355,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
                 terminal.TrySetException(new ZLinkFrameworkException(
                     record.FailureErrno
                     == (int)ServiceWireConstants.FrameworkErrorCode.SpotGenerationStale
-                        ? ZLinkFrameworkErrorKind.SpotGenerationStale
-                        : ZLinkFrameworkErrorKind.SpotCreateFailed,
+                        ? ZLinkFrameworkErrorKind.InvalidOperation
+                        : ZLinkFrameworkErrorKind.InternalFailure,
                     "Remote Instance Spot activation failed."));
             }
         }))
@@ -387,8 +400,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
                 terminal.TrySetException(new ZLinkFrameworkException(
                     record.FailureErrno
                     == (int)ServiceWireConstants.FrameworkErrorCode.SpotGenerationStale
-                        ? ZLinkFrameworkErrorKind.SpotGenerationStale
-                        : ZLinkFrameworkErrorKind.SpotMoving,
+                        ? ZLinkFrameworkErrorKind.InvalidOperation
+                        : ZLinkFrameworkErrorKind.Unavailable,
                     "Remote User Spot create failed."));
             }
         }))
@@ -438,7 +451,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             {
                 ZLinkMessageParts.DisposeAll(parts);
                 terminal.TrySetException(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorCreateFailed,
+                    ZLinkFrameworkErrorKind.InternalFailure,
                     "Remote Actor create failed."));
             }
         }))
@@ -482,11 +495,13 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             terminal.TrySetException(new ZLinkFrameworkException(
                 record.FailureErrno
                 == (int)ServiceWireConstants.FrameworkErrorCode.ActorRouteNotFound
-                    ? ZLinkFrameworkErrorKind.ActorRouteNotFound
-                    : ZLinkFrameworkErrorKind.ActorLocationStale,
+                    ? ZLinkFrameworkErrorKind.NotFound
+                    : ZLinkFrameworkErrorKind.Unavailable,
                 $"Remote Actor destroy failed for '{actor.ActorId}'.",
                 record.FailureErrno
-                != (int)ServiceWireConstants.FrameworkErrorCode.ActorRouteNotFound));
+                != (int)ServiceWireConstants.FrameworkErrorCode.ActorRouteNotFound
+                    ? ZLinkRetryAdvice.RetryAfterBackoff
+                    : ZLinkRetryAdvice.DoNotRetry));
         }))
             throw new InvalidOperationException(
                 "Remote Actor destroy did not return an operation id.");
@@ -522,9 +537,15 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
                 terminal.TrySetException(new ZLinkFrameworkException(
                     record.FailureErrno
                     == (int)ServiceWireConstants.FrameworkErrorCode.SpotGenerationStale
-                        ? ZLinkFrameworkErrorKind.SpotGenerationStale
-                        : ZLinkFrameworkErrorKind.SpotMoving,
-                    "Remote User Spot close failed."));
+                        ? ZLinkFrameworkErrorKind.InvalidOperation
+                        : ZLinkFrameworkErrorKind.Unavailable,
+                    "Remote User Spot close failed: "
+                    + $"result={record.TerminalResult}; "
+                    + $"failure={record.FailureErrno}.",
+                    record.FailureErrno
+                    == (int)ServiceWireConstants.FrameworkErrorCode.SpotMoving
+                        ? ZLinkRetryAdvice.RetryAfterBackoff
+                        : ZLinkRetryAdvice.DoNotRetry));
         }))
             throw new InvalidOperationException(
                 "Remote User Spot close did not return an operation id.");
@@ -759,7 +780,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         var nodeRid = _node.RoutingId;
         if (nodeRid.IsEmpty)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorCreateFailed,
+                ZLinkFrameworkErrorKind.InternalFailure,
                 $"Actor '{actorId}' was created on a node without a concrete routing id.");
 
         return actorRef with { NodeRid = nodeRid };
@@ -1076,5 +1097,59 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             await _node.ForceStopAsync(cancellationToken).ConfigureAwait(false);
         else
             await _node.DisposeAsync().ConfigureAwait(false);
+    }
+
+    internal sealed class ActorMessageFollowIngressAdapter(
+        ZLinkMeshDispatchPump pump) : IActorMessageFollowIngressTarget
+    {
+        private Func<IReadOnlyList<ZLinkBackendActorPart>, bool>? _handler;
+
+        internal void SetHandler(
+            Func<IReadOnlyList<ZLinkBackendActorPart>, bool> handler)
+        {
+            ArgumentNullException.ThrowIfNull(handler);
+            if (Interlocked.CompareExchange(ref _handler, handler, null)
+                is { } existing
+                && !ReferenceEquals(existing, handler))
+                throw new InvalidOperationException(
+                    "An Actor Message Follow ingress handler is already registered.");
+        }
+
+        public bool TryFollow(ActorMessageFollowIngress ingress)
+        {
+            var handler = Volatile.Read(ref _handler);
+            if (handler is null || ingress.Parts.Count == 0)
+                return false;
+            var actor = ingress.TargetActor.ToBackend();
+            var flags = ingress.Reply is null ? 0u : 1u;
+            var requestSource = pump.ResolveRequestSourceFence(
+                ingress.SourceNodeRid,
+                ingress.SourceNodeGeneration);
+            var route = new ZLinkBackendActorRouteContext(
+                ingress.OperationId,
+                ingress.MessageFollowHopCount,
+                ingress.TargetNodeGeneration,
+                ingress.AuthorityOwnerGeneration,
+                ingress.OwnerLeaseGeneration,
+                ingress.ReplyRouteId,
+                flags,
+                DeadlineUnixMs: ingress.DeadlineUnixMs);
+            var parts = new ZLinkBackendActorPart[ingress.Parts.Count];
+            for (var index = 0; index < parts.Length; index++)
+                parts[index] = new ZLinkBackendActorPart(
+                    actor,
+                    ingress.SourceNodeRid,
+                    default,
+                    ingress.ReplyRouteId,
+                    flags,
+                    ingress.Parts[index],
+                    index + 1 < parts.Length,
+                    RouteContext: route,
+                    SourceNodeGeneration: ingress.SourceNodeGeneration,
+                    RequestSource: requestSource,
+                    DirectReply: index == 0 ? ingress.Reply : null,
+                    ApplicationMetadata: ingress.ApplicationMetadata);
+            return handler(parts);
+        }
     }
 }

@@ -234,7 +234,9 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
                 return;
             }
             catch (ZLinkFrameworkException error) when (
-                error.Kind == ZLinkFrameworkErrorKind.RequestFailed && error.IsRetriable)
+                error.Kind is ZLinkFrameworkErrorKind.Unavailable
+                    or ZLinkFrameworkErrorKind.DeadlineExceeded
+                && error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry)
             {
             }
 
@@ -258,7 +260,8 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
                 await client.Post("/shutdown").AsyncRaw();
             }
             catch (ZLinkFrameworkException error) when (
-                error.Kind == ZLinkFrameworkErrorKind.RequestFailed)
+                error.Kind is ZLinkFrameworkErrorKind.Unavailable
+                    or ZLinkFrameworkErrorKind.DeadlineExceeded)
             {
                 if (!process.HasExited) process.Kill(true);
             }

@@ -647,6 +647,29 @@ final class MeshNodeRouteRequestCall implements ZLinkRequestCall {
                 target.toString(), null, null, null));
         }
         try {
+            java.util.Optional<Integer> classified =
+                node.classifyNodeSendTarget(target);
+            if (classified.isPresent()) {
+                int status = classified.orElseThrow();
+                result.completeExceptionally(switch (status) {
+                    case ZLinkOneWayCalls.TARGET_NOT_FOUND ->
+                        new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND,
+                            "RouteMesh node request target was not found: "
+                                + target);
+                    case ZLinkOneWayCalls.ROUTE_NOT_CONNECTED ->
+                        new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                            "RouteMesh node request route is not connected: "
+                                + target);
+                    default -> new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                        "RouteMesh node request target classification failed: "
+                            + status);
+                });
+                return systems.zlink.framework.execution
+                    .ZLinkAsyncSerialQueue.manageCurrent(result);
+            }
             boolean submitted = node.requestToNode(
                 target,
                 metadata.encode(),

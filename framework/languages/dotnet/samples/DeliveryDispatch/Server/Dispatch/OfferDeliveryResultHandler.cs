@@ -20,7 +20,7 @@ internal sealed class OfferDeliveryResultHandler(
 {
     public async ValueTask HandleAsync(
         OfferDeliveryResultMsg message,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         var offer = offers.Settle(message.DeliveryId, message.Attempt);

@@ -3,6 +3,7 @@ import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkMeshNodeState,
+  ZLinkPeerState,
   type ZLinkMeshNodeSnapshot,
   type ZLinkMeshRuntimeEvent,
   type ZLinkRouteMeshRuntime
@@ -91,7 +92,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
       lifecycleGeneration: peer.lifecycleGeneration,
       descriptorRevision: peer.descriptorRevision,
       endpoint: peer.endpoint,
-      admissionState: peerStateName(peer.state),
+      state: peerState(peer.state),
       ready: peer.state === 3 && peer.routingId !== null,
       drainState: peer.state === 4 ? 'draining' : 'active',
       channelNames: [...(peerChannels[index]?.names ?? [])],
@@ -432,13 +433,16 @@ function backendState(state: number): ZLinkMeshNodeState {
   }
 }
 
-function peerStateName(state: number): string {
+function peerState(state: number): ZLinkPeerState {
   switch (state) {
-    case 1: return 'configured';
-    case 2: return 'connecting';
-    case 3: return 'ready';
-    case 4: return 'draining';
-    default: return 'closed';
+    case 3: return ZLinkPeerState.Ready;
+    case 4: return ZLinkPeerState.Draining;
+    case 6: return ZLinkPeerState.NotRequired;
+    case 1:
+    case 2:
+      return ZLinkPeerState.Connecting;
+    default:
+      return ZLinkPeerState.NotConnected;
   }
 }
 

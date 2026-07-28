@@ -8,19 +8,33 @@ internal static class ZLinkLocationStorePages
             string meshName,
             CancellationToken cancellationToken = default)
     {
-        var rows = new List<ZLinkMeshNodeDescriptor>();
-        string? continuationToken = null;
-        do
+        for (var attempt = 0; attempt < 4; attempt++)
         {
-            var page = await store.ListMeshNodesAsync(
-                    meshName,
-                    new ZLinkPageRequest(1000, continuationToken),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            rows.AddRange(page.Items);
-            continuationToken = page.ContinuationToken;
-        } while (continuationToken is not null);
+            var rows = new List<ZLinkMeshNodeDescriptor>();
+            string? continuationToken = null;
+            try
+            {
+                do
+                {
+                    var page = await store.ListMeshNodesAsync(
+                            meshName,
+                            new ZLinkPageRequest(1000, continuationToken),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    rows.AddRange(page.Items);
+                    continuationToken = page.ContinuationToken;
+                } while (continuationToken is not null);
 
-        return rows;
+                return rows;
+            }
+            catch (ZLinkLocationSnapshotExpiredException)
+                when (attempt < 3)
+            {
+                // The discarded rows belong to an expired snapshot. The
+                // retry starts from a new provider snapshot.
+            }
+        }
+
+        throw new ZLinkLocationSnapshotExpiredException();
     }
 }

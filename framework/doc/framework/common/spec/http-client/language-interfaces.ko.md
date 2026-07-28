@@ -83,10 +83,10 @@ Awaitable을 쓰지 않는 호출자를 위한 callback
 
 | | 예외/실패 타입 | kind 접근 |
 | --- | --- | --- |
-| cpp | `framework_exception_t` / `result_t` | `framework_error_kind_t` (snake_case, framework 공용 22종) + boundary 상태(`timed_out` 등)는 `code()` |
-| dotnet | `ZLinkFrameworkException` | `ZLinkFrameworkErrorKind` (PascalCase) + `IsRetriable` |
-| java/kotlin | `ZLinkFrameworkException` | `kind()` (UPPER_SNAKE) + `retriable()` |
-| node | `ZLinkFrameworkException` | `ZLinkFrameworkErrorKind` (camelCase) + `isRetriable` |
+| C++ | `framework_exception_t` / `result_t` | Framework 공통 kind와 retry advice |
+| .NET | `ZLinkFrameworkException` | `ZLinkFrameworkErrorKind`와 `ZLinkRetryAdvice` |
+| Java/Kotlin | `ZLinkFrameworkException` | `kind()`와 `retryAdvice()` |
+| Node.js | `ZLinkFrameworkException` | Framework 공통 kind와 `retryAdvice` |
 
 ## 2. 언어별 공개 표면 요약 (비규범)
 

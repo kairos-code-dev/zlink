@@ -433,12 +433,12 @@ internal sealed class ZLinkActorOperationTarget(
 
     private static ZLinkFrameworkException Stale(string actorId, string message) =>
         new(
-            ZLinkFrameworkErrorKind.ActorLocationStale,
+            ZLinkFrameworkErrorKind.Unavailable,
             string.IsNullOrEmpty(actorId) ? message : $"Actor '{actorId}': {message}",
-            true);
+            ZLinkRetryAdvice.RetryAfterBackoff);
 
     private static ZLinkFrameworkException Protocol(string actorId, string message) =>
         new(
-            ZLinkFrameworkErrorKind.RequestProtocolError,
+            ZLinkFrameworkErrorKind.ProtocolError,
             string.IsNullOrEmpty(actorId) ? message : $"Actor '{actorId}': {message}");
 }

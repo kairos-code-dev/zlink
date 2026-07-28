@@ -8,7 +8,7 @@ internal sealed class ProfileRequestHandler(EvidenceStore evidence, FaultState f
 {
     public async ValueTask<ProfileRes> HandleAsync(
         ProfileReq request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
@@ -34,7 +34,7 @@ internal sealed class ProfileCommandHandler(EvidenceStore evidence)
 {
     public ValueTask HandleAsync(
         ProfileMsg command,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;

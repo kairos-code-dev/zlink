@@ -83,12 +83,20 @@ export interface ZLinkMeshChannelRuntimeOptions {
   weight: number;
 }
 
+export enum ZLinkPeerState {
+  Connecting = 0,
+  Ready = 1,
+  Draining = 2,
+  NotConnected = 3,
+  NotRequired = 4
+}
+
 export interface ZLinkMeshPeerSnapshot {
   readonly rid: RoutingId;
   readonly lifecycleGeneration: bigint;
   readonly descriptorRevision: bigint;
   readonly endpoint: string;
-  readonly admissionState: string;
+  readonly state: ZLinkPeerState;
   readonly ready: boolean;
   readonly drainState: string;
   readonly channelNames: readonly string[];

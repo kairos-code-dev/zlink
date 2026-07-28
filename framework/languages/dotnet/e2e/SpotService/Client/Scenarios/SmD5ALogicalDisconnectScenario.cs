@@ -25,7 +25,7 @@ internal static class SmD5ALogicalDisconnectScenario
         });
         await client.Connect.Async();
         var bound = await client
-            .Request(new MultiBindReq(selectedActorId, otherActorId, "play-a"))
+            .Request(new MultiBindReq(selectedActorId, otherActorId))
             .PacketName("MultiBindReq")
             .Async<MultiBindRes>();
         ZlinkStreamAssert.Ensure(bound.BoundCount == 2, "SM-D5A expected two bound actors.");

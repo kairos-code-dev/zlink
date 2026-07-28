@@ -320,7 +320,9 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
                 if ((await http.Get("/health").AsyncRaw()).Status == 200) return;
             }
             catch (ZLinkFrameworkException error) when (
-                error.Kind == ZLinkFrameworkErrorKind.RequestFailed && error.IsRetriable)
+                error.Kind is ZLinkFrameworkErrorKind.Unavailable
+                    or ZLinkFrameworkErrorKind.DeadlineExceeded
+                && error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry)
             {
             }
 

@@ -234,7 +234,8 @@ internal sealed class ZLinkStandaloneActorRelocationPrecommitCoordinator(
                     targetOwner,
                     projection.TargetAttemptGeneration,
                     projection.RelocationReference),
-                cancellationToken)
+                cancellationToken,
+                retryAuxiliaryConflicts: true)
             .ConfigureAwait(false);
     }
 
@@ -365,16 +366,38 @@ internal sealed class ZLinkStandaloneActorRelocationPrecommitCoordinator(
         ZLinkAuthoritySnapshot expected,
         ZLinkAuthorityMutation.Put mutation,
         Func<ZLinkAuthoritySnapshot, bool> reconcile,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retryAuxiliaryConflicts = false)
     {
-        try
+        for (var attempt = 0; attempt < MaxConflictRetries; attempt++)
         {
-            var result = await store.CompareExchangeAuthorityAsync(
-                    key,
-                    expected.StoreVersion,
-                    mutation,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            ZLinkAuthorityCompareExchangeResult result;
+            try
+            {
+                result = await store.CompareExchangeAuthorityAsync(
+                        key,
+                        expected.StoreVersion,
+                        mutation,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                var readBack = await store.ReadAuthorityAsync(
+                        key,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (readBack is ZLinkAuthorityReadResult.Found found
+                    && reconcile(found.Snapshot))
+                    return found.Snapshot;
+                throw;
+            }
+
             if (result is ZLinkAuthorityCompareExchangeResult.Stored stored)
                 return stored.Snapshot;
             if (result is ZLinkAuthorityCompareExchangeResult.Conflict
@@ -383,22 +406,18 @@ internal sealed class ZLinkStandaloneActorRelocationPrecommitCoordinator(
                 }
                 && reconcile(current.Snapshot))
                 return current.Snapshot;
-            throw Moving("precommit authority compare-exchange conflicted");
+            if (retryAuxiliaryConflicts
+                && result is ZLinkAuthorityCompareExchangeResult.Conflict
+                {
+                    Current: ZLinkAuthorityReadResult.Found unchanged
+                }
+                && StringComparer.Ordinal.Equals(
+                    unchanged.Snapshot.StoreVersion,
+                    expected.StoreVersion))
+                continue;
+            break;
         }
-        catch (OperationCanceledException)
-            when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            var current = await store.ReadAuthorityAsync(key, CancellationToken.None)
-                .ConfigureAwait(false);
-            if (current is ZLinkAuthorityReadResult.Found found
-                && reconcile(found.Snapshot))
-                return found.Snapshot;
-            throw;
-        }
+        throw Moving("precommit authority compare-exchange conflicted");
     }
 
     private static ZLinkCanonicalRelocationAuthorityProjection RequirePhase(
@@ -504,7 +523,7 @@ internal sealed class ZLinkStandaloneActorRelocationPrecommitCoordinator(
         new(message);
 
     private static ZLinkFrameworkException Moving(string message) => new(
-        ZLinkFrameworkErrorKind.ActorMoving,
+        ZLinkFrameworkErrorKind.Unavailable,
         $"Standalone Actor relocation {message}.",
-        isRetriable: true);
+        retryAdvice: ZLinkRetryAdvice.RetryAfterBackoff);
 }

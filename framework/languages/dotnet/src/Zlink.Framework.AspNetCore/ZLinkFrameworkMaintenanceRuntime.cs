@@ -25,6 +25,8 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
 
     private Task<ZLinkFrameworkRelocationResult>? _relocationOperation;
     private Task<ZLinkFrameworkTerminationResult>? _shutdownOperation;
+    private CancellationTokenSource? _relocationCancellation;
+    private ZLinkFrameworkRuntimeState? _relocationOriginState;
     private ZLinkFrameworkRuntimeState _state = ZLinkFrameworkRuntimeState.Preparing;
     private ZLinkFrameworkRelocationResult? _relocationResult;
     private ZLinkFrameworkTerminationResult? _terminationResult;
@@ -127,15 +129,21 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         lock (_gate)
         {
             ThrowIfDisposed();
-            if (_relocationResult is { } completed)
-                return ValueTask.FromResult(completed);
             if (_shutdownOperation is not null
                 || _state is ZLinkFrameworkRuntimeState.Draining
                     or ZLinkFrameworkRuntimeState.Stopped)
+            {
+                if (_relocationResult is { } shutdownCompleted
+                    && Matches(
+                        shutdownCompleted,
+                        options.Mode,
+                        effectiveTargetVersion))
+                    return ValueTask.FromResult(shutdownCompleted);
                 return ValueTask.FromResult(Blocked(
                     options.Mode,
                     effectiveTargetVersion,
                     ZLinkFrameworkRelocationReason.ShutdownRequested));
+            }
             if (_relocationOperation is not null)
             {
                 if (_activeMode != options.Mode
@@ -148,18 +156,25 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
             }
             else
             {
+                if (_state == ZLinkFrameworkRuntimeState.Relocated
+                    && _relocationResult is { } completed)
+                    return ValueTask.FromResult(completed);
                 if (_state != ZLinkFrameworkRuntimeState.Serving)
                     return ValueTask.FromResult(Blocked(
                         options.Mode,
                         effectiveTargetVersion,
                         ZLinkFrameworkRelocationReason.RuntimeNotReady));
+                _relocationOriginState = _state;
+                _relocationResult = null;
                 _activeMode = options.Mode;
                 _activeTargetVersion = effectiveTargetVersion;
                 _deadline = DateTimeOffset.UtcNow + timeout;
+                _relocationCancellation = new CancellationTokenSource();
                 _relocationOperation = ExecuteRelocationAsync(
                     options.Mode,
                     effectiveTargetVersion,
-                    _deadline.Value);
+                    _deadline.Value,
+                    _relocationCancellation);
                 operation = _relocationOperation;
             }
         }
@@ -179,14 +194,26 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
                 "Shutdown deadline must be greater than zero.");
 
         Task<ZLinkFrameworkTerminationResult> operation;
+        CancellationTokenSource? relocationCancellation = null;
         lock (_gate)
         {
             ThrowIfDisposed();
             if (_terminationResult is { } completed)
                 return ValueTask.FromResult(completed);
-            _shutdownOperation ??= ExecuteShutdownAsync(timeout);
+            if (_shutdownOperation is null)
+            {
+                var absoluteDeadline = DateTimeOffset.UtcNow + timeout;
+                _deadline = absoluteDeadline;
+                TransitionUnderLock(ZLinkFrameworkRuntimeState.Draining);
+                _lifecycle.RequestShutdown(timeout);
+                relocationCancellation = _relocationCancellation;
+                _shutdownOperation = ExecuteShutdownAsync(
+                    absoluteDeadline,
+                    timeout);
+            }
             operation = _shutdownOperation;
         }
+        relocationCancellation?.Cancel();
         return new ValueTask<ZLinkFrameworkTerminationResult>(
             operation.WaitAsync(cancellationToken));
     }
@@ -194,21 +221,35 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     private async Task<ZLinkFrameworkRelocationResult> ExecuteRelocationAsync(
         ZLinkFrameworkRelocationMode mode,
         long targetApplicationVersion,
-        DateTimeOffset absoluteDeadline)
+        DateTimeOffset absoluteDeadline,
+        CancellationTokenSource shutdownCancellation)
     {
         await Task.Yield();
+        using var shutdownSignal = shutdownCancellation;
         var metricStarted = ZLinkRuntimeMetrics.StartTermination();
         using var deadline = CreateDeadline(absoluteDeadline);
+        using var operationCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                deadline.Token,
+                shutdownCancellation.Token);
         ZLinkFrameworkRelocationReason? blocker;
         try
         {
             blocker = await _relocationPreflight(
                     mode,
                     targetApplicationVersion,
-                    deadline.Token)
+                    operationCancellation.Token)
                 .ConfigureAwait(false);
+            if (shutdownCancellation.IsCancellationRequested)
+                blocker = ZLinkFrameworkRelocationReason.ShutdownRequested;
         }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (shutdownCancellation.IsCancellationRequested)
+        {
+            blocker = ZLinkFrameworkRelocationReason.ShutdownRequested;
+        }
+        catch (OperationCanceledException)
+            when (deadline.IsCancellationRequested)
         {
             blocker = ZLinkFrameworkRelocationReason.DeadlineExceeded;
         }
@@ -226,7 +267,17 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         bool published;
         try
         {
-            published = await _publishRelocating(deadline.Token).ConfigureAwait(false);
+            published = await _publishRelocating(operationCancellation.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (shutdownCancellation.IsCancellationRequested)
+        {
+            return CompleteBlocked(
+                mode,
+                targetApplicationVersion,
+                ZLinkFrameworkRelocationReason.ShutdownRequested,
+                metricStarted);
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
@@ -300,6 +351,8 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
             _relocationResult = completed;
             _deadline = null;
             _relocationOperation = null;
+            _relocationCancellation = null;
+            _relocationOriginState = null;
             if (_state != ZLinkFrameworkRuntimeState.Relocated)
                 TransitionUnderLock(ZLinkFrameworkRuntimeState.Relocated);
             else
@@ -310,30 +363,37 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     }
 
     private async Task<ZLinkFrameworkTerminationResult> ExecuteShutdownAsync(
-        TimeSpan timeout)
+        DateTimeOffset absoluteDeadline,
+        TimeSpan teardownBound)
     {
         await Task.Yield();
         var metricStarted = ZLinkRuntimeMetrics.StartTermination();
+        using var deadline = CreateDeadline(absoluteDeadline);
 
         Task<ZLinkFrameworkRelocationResult>? relocation;
         lock (_gate)
             relocation = _relocationOperation;
-        if (relocation is not null)
-            await relocation.ConfigureAwait(false);
-
-        lock (_gate)
-        {
-            _deadline = DateTimeOffset.UtcNow + timeout;
-            TransitionUnderLock(ZLinkFrameworkRuntimeState.Draining);
-        }
-
         ZLinkDrainResult drained;
         try
         {
+            if (relocation is not null)
+                await relocation.WaitAsync(deadline.Token)
+                    .ConfigureAwait(false);
+            var remaining = absoluteDeadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+                throw new OperationCanceledException(deadline.Token);
             drained = await _lifecycle.DrainAsync(
                     ZLinkFrameworkLifecycleIntent.Shutdown,
-                    timeout,
+                    remaining,
                     cancellationToken: CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (deadline.IsCancellationRequested)
+        {
+            drained = await _lifecycle.ForceStopAsync(
+                    ZLinkDrainForceReason.DeadlineExceeded,
+                    teardownBound)
                 .ConfigureAwait(false);
         }
         catch
@@ -394,12 +454,18 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         lock (_gate)
         {
             var result = Blocked(mode, targetApplicationVersion, reason);
+            var originState = _relocationOriginState
+                              ?? ZLinkFrameworkRuntimeState.Serving;
+            if (reason == ZLinkFrameworkRelocationReason.ShutdownRequested)
+                _relocationResult = result;
             _deadline = null;
             _activeMode = null;
             _activeTargetVersion = null;
             _relocationOperation = null;
+            _relocationCancellation = null;
+            _relocationOriginState = null;
             if (restoreServing && _state == ZLinkFrameworkRuntimeState.Relocating)
-                TransitionUnderLock(ZLinkFrameworkRuntimeState.Serving);
+                TransitionUnderLock(originState);
             else
                 PublishUnderLock();
             RecordRelocationCompletion(metricStarted, result);
@@ -446,6 +512,13 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
             targetApplicationVersion,
             ZLinkFrameworkRelocationOutcome.Blocked,
             reason);
+
+    private static bool Matches(
+        ZLinkFrameworkRelocationResult result,
+        ZLinkFrameworkRelocationMode mode,
+        long targetApplicationVersion) =>
+        result.Mode == mode
+        && result.TargetApplicationVersion == targetApplicationVersion;
 
     private static CancellationTokenSource CreateDeadline(
         DateTimeOffset absoluteDeadline)

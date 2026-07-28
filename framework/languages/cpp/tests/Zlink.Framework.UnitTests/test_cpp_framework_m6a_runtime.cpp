@@ -76,6 +76,101 @@ void verify_topology_snapshot_and_connection_fence ()
     assert (!topology.select ("alpha"));
 }
 
+void verify_object_client_connection_requirement ()
+{
+    auto local = descriptor ("client-a");
+    local.object_role = mesh::service_object_role_t::client;
+    local.channels.clear ();
+    auto remote = descriptor (
+      "client-b", "tcp://127.0.0.1:7002");
+    remote.object_role = mesh::service_object_role_t::client;
+    remote.channels.clear ();
+    remote.state = mesh::service_node_state_t::serving;
+
+    assert (mesh::route_mesh_connection_not_required (
+      local, remote));
+    mesh::service_topology_registry_t topology (local);
+    assert (topology.admit (
+              remote, bytes ("client-only-connection"))
+            == mesh::peer_admission_result_t::not_required);
+    assert (topology.peers ().empty ());
+    assert (topology.not_required_peers ().size () == 1);
+
+    auto zero_weight_server = remote;
+    zero_weight_server.descriptor_revision = 2;
+    zero_weight_server.channels = {{"audit", 0}};
+    assert (!mesh::route_mesh_connection_not_required (
+      local, zero_weight_server));
+    assert (topology.admit (
+              zero_weight_server, bytes ("required-connection"))
+            == mesh::peer_admission_result_t::admitted);
+    assert (topology.peers ().size () == 1);
+    assert (topology.not_required_peers ().empty ());
+
+    assert (topology.admit (
+              remote, bytes ("stale-client-only-connection"))
+            == mesh::peer_admission_result_t::stale_descriptor);
+    assert (topology.peers ().size () == 1);
+    assert (topology.not_required_peers ().empty ());
+
+    auto local_server_membership = local;
+    local_server_membership.descriptor_revision = 2;
+    local_server_membership.channels = {{"commands", 0}};
+    assert (!mesh::route_mesh_connection_not_required (
+      local_server_membership, remote));
+}
+
+void verify_manual_object_client_pair_ends_not_required ()
+{
+    auto first_descriptor = descriptor (
+      "manual-client-a", "tcp://127.0.0.1:0");
+    first_descriptor.object_role =
+      mesh::service_object_role_t::client;
+    first_descriptor.channels.clear ();
+    auto second_descriptor = descriptor (
+      "manual-client-b", "tcp://127.0.0.1:0");
+    second_descriptor.object_role =
+      mesh::service_object_role_t::client;
+    second_descriptor.channels.clear ();
+
+    mesh::raw_mesh_node_owner_t first (
+      {first_descriptor, 16, 1024, 16, 1024});
+    mesh::raw_mesh_node_owner_t second (
+      {second_descriptor, 16, 1024, 16, 1024});
+    first.start ();
+    second.start ();
+    assert (first.connect_peer (second.endpoint ()));
+
+    const auto deadline =
+      mesh::service_liveness_registry_t::clock_t::now () + 2s;
+    while ((first.topology ().not_required_peers ().empty ()
+            || second.topology ().not_required_peers ().empty ())
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        const auto now =
+          mesh::service_liveness_registry_t::clock_t::now ();
+        (void) first.drain_monitor_events (now);
+        (void) second.drain_monitor_events (now);
+        (void) first.pump_one (now);
+        (void) second.pump_one (now);
+        std::this_thread::sleep_for (1ms);
+    }
+
+    assert (first.topology ().peers ().empty ());
+    assert (second.topology ().peers ().empty ());
+    assert (first.topology ().not_required_peers ().size () == 1);
+    assert (second.topology ().not_required_peers ().size () == 1);
+    assert (first.tick_liveness (
+              mesh::service_liveness_registry_t::clock_t::now ()
+              + 5s).probes.empty ());
+    assert (second.tick_liveness (
+              mesh::service_liveness_registry_t::clock_t::now ()
+              + 5s).probes.empty ());
+
+    first.close ();
+    second.close ();
+}
+
 void verify_signed_weight_contract ()
 {
     auto local = descriptor ("weight-local");
@@ -744,6 +839,8 @@ void verify_raw_owner_node_send_and_liveness ()
 int main ()
 {
     verify_topology_snapshot_and_connection_fence ();
+    verify_object_client_connection_requirement ();
+    verify_manual_object_client_pair_ends_not_required ();
     verify_signed_weight_contract ();
     verify_independent_mailbox_domains_and_claim_fence ();
     verify_liveness_reuses_probe_and_fences_reconnect ();

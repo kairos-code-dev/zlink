@@ -10,6 +10,7 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace RegistrationCodec.Server.Main;
 
@@ -43,12 +44,13 @@ public static class RegistrationCodecServerHostFactory
         builder.Services.AddScoped<ScopedProbe>();
         builder.Services.AddSingleton<FirstFilter>();
         builder.Services.AddSingleton<SecondFilter>();
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"{options.Rid}-flow.log"),
+            options.Rid));
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-                .TraceLabel(options.Rid);
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             if (options.CodecMode != "json-only")
             {
                 framework.Codecs.Use(ZLinkProtobufCodec.Default);
@@ -62,7 +64,7 @@ public static class RegistrationCodecServerHostFactory
             var mesh = framework.AddRouteMesh(RegistrationCodecNames.Channel)
                 .Listen(Require(options.ChannelEndpoint, "ChannelEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid));
-            var channel = mesh.ChannelName(RegistrationCodecNames.Channel);
+            var channel = mesh.Channel(RegistrationCodecNames.Channel).Server();
             channel.AddRequestHandler<EchoAutoRequestHandler, EchoAutoReq, EchoRes>();
             channel.AddSendHandler<EchoAutoCommandHandler, EchoAutoMsg>();
             channel.AddRequestHandler<AttributeHandlers, EchoAttrReq, EchoRes>("EchoAttr");

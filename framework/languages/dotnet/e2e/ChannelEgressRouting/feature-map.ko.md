@@ -1,0 +1,56 @@
+# .NET ChannelEgressRouting E2E feature map
+
+기준 문서:
+`framework/doc/framework/common/e2e/config-12-channel-egress-routing.ko.md`
+
+`.NET` lane은 공통 role server, scenario client와 실제 process runner를 제공한다.
+아래에서 `구현·실행 대기`는 source와 selector는 있지만 actual-process 증거를 아직 만들지 않았다는 뜻이다.
+다른 config의 test는 Config 12 actual-process 완료 증거로 계산하지 않는다.
+
+| 시나리오 | 상태 | 필요한 actual-process 증거 |
+|---|---|---|
+| CH-E2E-01 | actual 통과 | 실제 port 0 endpoint를 Location Store에 게시한 뒤 RouteMesh peer가 Ready로 수렴한다. 양방향 Channel request와 물리 연결 identity 중복 부재를 검증한다. 증거: `logs/20260729-000549-3638572` |
+| CH-E2E-02 | 구현·실행 대기 | RouteMesh handler가 `audit.record`와 `workflow.command`를 순서대로 호출하고 원래 reply에 결과 포함 |
+| CH-E2E-03 | actual 통과 | Play Entry Spot Actor handler와 timer가 ClientServer `Async` 뒤 같은 turn에서 state 변경과 resume을 완료한다. 증거: `logs/20260729-003016-3958766` |
+| CH-E2E-04 | 부분 구현·실행 대기 | `100:300` weighted selection 구현. drain·shutdown·새 RID 재시작은 미구현 |
+| CH-E2E-05 | 부분 구현·실행 대기 | public server builder outbound surface 부재 검증. protocol unsolicited 주입은 미구현 |
+| CH-E2E-06 | 구현·실행 대기 | RouteMesh·ClientServer 충돌과 Client 역할 중복을 별도 process startup failure로 검증 |
+| CH-E2E-07 | 부분 구현·실행 대기 | process-local 미등록 `NotFound` 즉시 완료와 Ready Api 정상 호출 구현. known-but-not-ready `Unavailable`은 미구현 |
+| CH-E2E-08 | actual 통과 | WorkflowServer는 `game` Object Client로만 참여한다. ClientServer handler가 global SpotId와 ActorId로 Spot 다음 Actor를 요청하고 원래 reply에 순서를 보존한다. 증거: `logs/20260729-003016-3958766` |
+| CH-E2E-09 | 부분 구현·실행 대기 | RouteMesh·ClientServer·fanout의 port 0 actual endpoint와 AdvertiseHost 분리 구현. STREAM은 미구현 |
+| CH-E2E-10 | 구현·실행 대기 | result-free ClientServer send와 두 Server 전체 handler exactly-once |
+| CH-E2E-11 | 구현·실행 대기 | Session에서 remote Api로 ChannelName만 사용한 request·send |
+| CH-E2E-12 | 부분 구현·실행 대기 | 같은 process Client+Server와 remote Server weighted 후보 검증. drain variant는 미구현 |
+| CH-REG-01 | 구현·실행 대기 | RouteMesh Channel 양방향 send/request 비회귀 |
+| CH-REG-02 | actual 통과 | Session·Play Object Server의 Redis Location·Relocation Store, stable Snapshot actor/spot factory, Node·Spot·Actor direct, Session Entry→Play User Spot deferred join과 bound-session push를 검증한다. 증거: `logs/20260729-003347-3978117` |
+| CH-REG-03 | actual 통과 | Logical Multicast의 remote subscribed Spot delivery와 classic Pub/Sub remote delivery를 각각 exactly-once로 검증한다. 증거: `logs/20260729-004432-4150890` |
+| CH-REG-04 | 부분 구현·실행 대기 | 32개 병렬 request correlation·terminal uniqueness 구현. timeout·cancellation·disconnect·Spot shutdown은 미구현 |
+| CH-REG-05 | 부분 actual | 같은 ClientServer endpoint에서 WorkflowServer를 종료·재시작하고 새 RID 선택, 이전 RID 제거와 request 완료를 검증했다. lifecycle generation public evidence와 이전 generation late reply 경쟁은 아직 미구현이다. 증거: `logs/20260729-004432-4150890` |
+| CH-REG-06 | 구현·실행 대기 | retry 없이 정상 request가 1초 안에 완료되는지 검증 |
+| CH-REG-07 | 구현·실행 대기 | 공통 fixture의 일곱 sample·RouteMesh·ChannelName과 .NET sample source 일치 |
+| CH-REG-08 | 부분 구현·실행 대기 | peer RID 중복 부재 검증. listener topology별 개수 검증은 미구현 |
+| CH-REG-09 | 구현·실행 대기 | sample source에 `PreferredNodeRid`·`PreferredRoutingId`가 없는지 검증 |
+| CH-REG-10 | 부분 구현·실행 대기 | 같은 ChannelName Client+Server와 weighted local·remote 선택 구현. drain variant는 미구현 |
+
+2026-07-29 actual 과정에서 `ZLinkManagedMeshNode`가 port 0 bind 요청값을 그대로 게시해 모든
+descriptor endpoint가 `tcp://127.0.0.1:0`이 되는 production gap을 발견했다. Runtime은 bind 직후
+socket의 실제 endpoint를 저장하도록 수정했다. `CH-E2E-01`은 session peer 2개와 play peer 2개가
+Ready인 상태에서 통과했다. Location evidence의 세 endpoint는 서로 다르며 port는 모두 0이 아니다.
+
+같은 실행 과정에서 Node direct handler context가 registry lookup용 빈 channel key를 MeshName으로
+노출하던 문제를 수정했다. Node direct context는 실제 등록 MeshName인 `game`을 받으며
+`CH-REG-02` actual에서 확인했다.
+
+Logical Multicast는 service wire schema의 command `23`을 사용해야 하지만 .NET managed runtime이
+remote publish를 Channel send command `18`로 보내고 있었다. Schema가 정의한 ChannelName, topic과
+source SpotId를 command `23`으로 encode·decode하고 remote node의 일치하는 Spot mailbox로 전달하도록
+수정했다. `CH-REG-03` actual에서 remote Logical Multicast와 classic fanout이 각각 정확히 한 번
+전달됐다.
+
+ClientServer discovery descriptor를 제거하기 전에 Location owner lease를 해제하던 종료 순서도
+수정했다. 정상 종료는 owner write를 막은 뒤 auto-connect discovery descriptor를 현재 owner
+fence로 제거하고, 그 다음 owner lease를 해제한다. `CH-REG-05` actual의 교체 전 process는
+`ForceStopping` 없이 종료됐다.
+
+`all` selector는 누락된 네 selector를 출력하고 실패한다. aggregate runner에는 등록하지 않았다.
+모든 필수 selector가 실제 process에서 통과한 뒤에만 `all`과 aggregate inventory를 활성화한다.

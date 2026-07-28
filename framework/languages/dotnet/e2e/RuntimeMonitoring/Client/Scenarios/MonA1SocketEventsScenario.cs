@@ -1,4 +1,4 @@
-// Verifies Config 7 MON-A1 with two immutable public MeshNode snapshots.
+// Verifies Config 7 MON-A1 with two immutable public RouteMesh statuses.
 using System.Diagnostics;
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
@@ -15,39 +15,27 @@ internal static class MonA1SocketEventsScenario
             .Build();
 
         var baseline = await SnapshotAsync(observer);
-        AssertCompleteBaseline(baseline);
-        var frozenBaseline = baseline;
-        var evidenceBaseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
+        AssertBaseline(baseline);
+        var evidenceBaseline =
+            (await observer.Get("/evidence").Async<string[]>()).Body.Length;
 
         await using var serviceB = await EphemeralService.StartAsync(options, "svc-b");
-        var ready = await WaitForPeerAsync(observer, "svc-b", ready: true);
-        var peer = ready.Peers.Single(candidate => candidate.Rid == "svc-b" && candidate.Ready);
+        var ready = await WaitForPeerAsync(observer, "svc-b");
+        var peer = ready.Peers.Single(candidate =>
+            candidate.Rid.StartsWith("svc-b-", StringComparison.Ordinal)
+            && candidate.State == "Ready");
 
         ZlinkStreamAssert.Ensure(
-            ready.Sequence > baseline.Sequence,
-            "MON-A1 second snapshot sequence did not increase.");
-        ZlinkStreamAssert.Ensure(
-            frozenBaseline.Peers.Length == 0
-            && frozenBaseline.Sequence == baseline.Sequence
-            && frozenBaseline.Endpoint == baseline.Endpoint,
-            "MON-A1 first snapshot changed after the second snapshot call.");
-        ZlinkStreamAssert.Ensure(
-            peer.LifecycleGeneration > 0
-            && peer.DescriptorRevision > 0
-            && peer.Endpoint == serviceB.ChannelEndpoint
-            && peer.AdmissionState == "ready"
-            && peer.ChannelNames.Contains(
-                RuntimeMonitoringNames.Channel,
-                StringComparer.Ordinal),
-            "MON-A1 ready peer fields were incomplete.");
+            ready.Sequence > baseline.Sequence
+            && baseline.Peers.Length == 0
+            && peer.UnavailableReason is null,
+            "MON-A1 immutable status or ready peer state was incomplete.");
 
         var channel = ready.Channels.Single(candidate =>
             candidate.ChannelName == RuntimeMonitoringNames.Channel);
         ZlinkStreamAssert.Ensure(
-            channel.LocalWeight == 100
-            && channel.ReadyMemberCount == 2
-            && channel.Selectable,
-            "MON-A1 channel snapshot did not include both selectable members.");
+            channel.IsReady && channel.ReadyTargetCount == 2,
+            "MON-A1 channel status did not include both ready targets.");
 
         var evidence = (await observer.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(
@@ -71,35 +59,22 @@ internal static class MonA1SocketEventsScenario
         Console.WriteLine("scenario MON-A1 passed");
     }
 
-    private static void AssertCompleteBaseline(MeshRuntimeSnapshotRes snapshot)
+    private static void AssertBaseline(MeshRuntimeSnapshotRes status)
     {
-        ZlinkStreamAssert.Ensure(
-            snapshot.MeshName == RuntimeMonitoringNames.Channel
-            && snapshot.Rid == "svc-a"
-            && snapshot.LifecycleGeneration > 0
-            && snapshot.DescriptorRevision > 0
-            && snapshot.Endpoint.StartsWith("tcp://", StringComparison.Ordinal)
-            && snapshot.State == "Serving"
-            && snapshot.Sequence > 0
-            && snapshot.ObservedAt != default
-            && snapshot.DescriptorSources.Contains("redis", StringComparer.Ordinal)
-            && snapshot.Peers.Length == 0,
-            "MON-A1 baseline MeshNode identity or lifecycle fields were incomplete.");
-
-        var channel = snapshot.Channels.Single(candidate =>
+        var channel = status.Channels.Single(candidate =>
             candidate.ChannelName == RuntimeMonitoringNames.Channel);
         ZlinkStreamAssert.Ensure(
-            channel.LocalWeight == 100
-            && channel.ReadyMemberCount == 1
-            && channel.Selectable,
-            "MON-A1 baseline channel fields were incomplete.");
-        ZlinkStreamAssert.Ensure(
-            snapshot.Claims.ApplicationActive
-            && snapshot.Claims.InfrastructureActive
-            && snapshot.Location.State == "ready"
-            && snapshot.Drain.State == "Serving"
-            && !snapshot.Drain.WorkSealed,
-            "MON-A1 claim, location or drain fields were incomplete.");
+            status.MeshName == RuntimeMonitoringNames.Channel
+            && status.State == "Ready"
+            && status.IsReady
+            && status.ReadyPeerCount == 0
+            && status.Sequence > 0
+            && status.ObservedAt != default
+            && status.Peers.Length == 0
+            && channel.IsReady
+            && channel.ReadyTargetCount == 1
+            && !status.Placement.IsAvailable,
+            "MON-A1 baseline RouteMesh status was incomplete.");
     }
 
     private static async Task<MeshRuntimeSnapshotRes> SnapshotAsync(
@@ -110,18 +85,19 @@ internal static class MonA1SocketEventsScenario
 
     private static async Task<MeshRuntimeSnapshotRes> WaitForPeerAsync(
         ZLinkHttpClient service,
-        string rid,
-        bool ready)
+        string rid)
     {
         var elapsed = Stopwatch.StartNew();
         while (true)
         {
-            var snapshot = await SnapshotAsync(service);
-            if (snapshot.Peers.Any(peer => peer.Rid == rid && peer.Ready == ready))
-                return snapshot;
+            var status = await SnapshotAsync(service);
+            if (status.Peers.Any(peer =>
+                    peer.Rid.StartsWith($"{rid}-", StringComparison.Ordinal)
+                    && peer.State == "Ready"))
+                return status;
             if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
                 throw new InvalidOperationException(
-                    $"MON-A1 peer '{rid}' did not reach ready={ready}.");
+                    $"MON-A1 peer '{rid}' did not become ready.");
             await Task.Delay(TimeSpan.FromMilliseconds(50));
         }
     }

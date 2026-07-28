@@ -9,8 +9,9 @@ namespace Zlink.HttpClient.Runtime;
 ///     gzip and deflate are decoded, the decoded size is bounded by the configured body limit, and
 ///     the caller removes the <c>Content-Encoding</c> header afterwards. Native auto-decompression is
 ///     disabled so streaming downloads are never transparently decoded and the body limit is enforced
-///     against the decoded size. A malformed body raises <see cref="ZLinkFrameworkErrorKind.PayloadDecodeFailed" />;
-///     exceeding the limit raises <see cref="ZLinkFrameworkErrorKind.RequestFailed" />.
+///     against the decoded size. A malformed body raises <see cref="ZLinkFrameworkErrorKind.ProtocolError" />;
+///     exceeding the configured limit raises <see cref="ZLinkFrameworkErrorKind.CapacityExceeded" />
+///     with <see cref="ZLinkRetryAdvice.DoNotRetry" />.
 /// </summary>
 internal static class ResponseCompression
 {
@@ -47,8 +48,9 @@ internal static class ResponseCompression
             {
                 if (output.Length + read > maxBytes)
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.RequestFailed,
-                        "HTTP response compressed body exceeds max_response_body_size");
+                        ZLinkFrameworkErrorKind.CapacityExceeded,
+                        "HTTP response compressed body exceeds max_response_body_size",
+                        ZLinkRetryAdvice.DoNotRetry);
 
                 output.Write(buffer, 0, read);
             }
@@ -58,7 +60,7 @@ internal static class ResponseCompression
         catch (InvalidDataException ex)
         {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "HTTP response compressed body is malformed", innerException: ex);
         }
     }

@@ -74,6 +74,7 @@ public final class ZLinkServiceRelocationWireCodec {
         writeCoordinator(body, value.coordinator());
         body.u64(value.operation().high());
         body.u64(value.operation().low());
+        body.u64(value.replyRouteId());
         writeRequestSource(body, value.requestSource());
         body.u8(value.status());
         return prefixed(
@@ -87,11 +88,12 @@ public final class ZLinkServiceRelocationWireCodec {
             body.u64(), body.u64());
         CoordinatorFence coordinator = readCoordinator(body);
         Operation operation = new Operation(body.u64(), body.u64());
+        long replyRouteId = body.u64();
         RequestSourceFence source = readRequestSource(body);
         int status = body.u8();
         body.end();
         ReplyRelayAck result = new ReplyRelayAck(
-            relocation, coordinator, operation, source, status);
+            relocation, coordinator, operation, replyRouteId, source, status);
         result.validate();
         return result;
     }
@@ -269,6 +271,7 @@ public final class ZLinkServiceRelocationWireCodec {
         RelocationId relocation,
         CoordinatorFence coordinator,
         Operation operation,
+        long replyRouteId,
         RequestSourceFence requestSource,
         int status) {
         private void validate() {
@@ -276,8 +279,8 @@ public final class ZLinkServiceRelocationWireCodec {
             Objects.requireNonNull(coordinator, "coordinator").validate();
             Objects.requireNonNull(operation, "operation").validate();
             Objects.requireNonNull(requestSource, "requestSource").validate();
-            if (status != 1 && status != 2) {
-                throw invalid("closed ACK status");
+            if (replyRouteId == 0 || status != 1 && status != 2) {
+                throw invalid("command 46 field");
             }
         }
     }

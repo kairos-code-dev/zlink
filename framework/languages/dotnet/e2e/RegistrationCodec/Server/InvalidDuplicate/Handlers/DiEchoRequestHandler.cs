@@ -10,7 +10,7 @@ internal sealed class DiEchoRequestHandler(
     ScopedProbe scoped)
     : IZLinkRequestHandler<EchoDiReq, EchoRes>
 {
-    public ValueTask<EchoRes> HandleAsync(EchoDiReq request, ZLinkRequestContext context,
+    public ValueTask<EchoRes> HandleAsync(EchoDiReq request, IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

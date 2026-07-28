@@ -80,13 +80,19 @@ test('successor resumes committed recovery only after the durable lease expires'
 test('framework host routes Core TransferControl records to the configured authority store', async () => {
   class Player {}
   class PlayerTransferAdapter {}
-  const store = new framework.ZLinkInMemoryLocationStore();
-  await store.updateActor(actorLocation('carol'), framework.ZLinkLocationWriteIntent.NewClaim);
   const registration = framework.createFrameworkRegistration({
     actorTransferAdapters: new Map([[Player, PlayerTransferAdapter]]),
-    locations: { storeInstance: store }
+    locations: { useInMemoryStores: true }
   });
   const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
+  const store = host.locationOwner.locationStore();
+  assert.ok(store);
+  const sourceOwner = await store.claimOwnerLease('source-runtime', 30_000);
+  assert.equal(sourceOwner.kind, 'claimed');
+  await store.updateActor(
+    actorLocation('carol', sourceOwner.token.leaseGeneration),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
   host.locationRuntimeQuery;
   const control = transferControl('carol', 3n);
 
@@ -103,19 +109,25 @@ test('framework host routes Core TransferControl records to the configured autho
   assert.equal((await store.resolveActorTransfer('game', 'carol')).state, 'prepared');
 });
 
-function actorLocation(actorId) {
+function actorLocation(actorId, leaseGeneration = 1n) {
   return {
     meshName: 'game',
     actorId,
     actorType: 'player',
-    actorRef: { nodeRid: rid('source'), actorId, generation: 7n },
+    actorRef: {
+      nodeRid: rid('source'),
+      actorId,
+      objectGeneration: 7n,
+      meshName: 'game'
+    },
     ownerNodeRid: rid('source'),
     ownerNodeGeneration: 3n,
     spotKind: framework.ZLinkSpotKind.User,
-    spotId: rid('room-a'),
+    spotId: 'room-a',
     spotGeneration: 5n,
     membershipEpoch: 11n,
     ownerId: 'source-runtime',
+    leaseGeneration,
     updatedAt: new Date(0)
   };
 }

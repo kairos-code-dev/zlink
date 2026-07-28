@@ -22,7 +22,7 @@ internal static class SmG4ConcurrentBoundSessionPushScenario
                 });
                 clients.Add(client);
                 await client.Connect.Async();
-                await client.Request(new AuthReq($"actor-sm-g4-{index}", $"bound-load-{index}", "play-a"))
+                await client.Request(new AuthReq($"actor-sm-g4-{index}", $"bound-load-{index}"))
                     .PacketName("AuthReq")
                     .Async<AuthRes>();
             }

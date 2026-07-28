@@ -21,7 +21,7 @@ internal static class TaB2StaleActorReferenceScenario
             "TA-B2 stale generation unexpectedly reached an actor handler.");
         var freshRef = await context.CaptureAsync(actorId);
         ZlinkStreamAssert.Ensure(
-            freshRef.NodeRid == staleRef.NodeRid && freshRef.Generation > staleRef.Generation,
+            freshRef.NodeRid == staleRef.NodeRid && freshRef.ObjectGeneration > staleRef.ObjectGeneration,
             $"TA-B2 expected a newer generation on the same owner. stale={staleRef}, fresh={freshRef}");
         await context.AssertCallAsync(
             "TA-B2-fresh-request", actorId, "b2-fresh", "reply:b2-fresh", send: false);
@@ -32,7 +32,7 @@ internal static class TaB2StaleActorReferenceScenario
             Kind: "request",
             NodeRid: "actor-a",
             PacketName: nameof(ActorAsk)
-        } && item.ActorId == actorId && item.Generation == freshRef.Generation),
+        } && item.ActorId == actorId && item.Generation == freshRef.ObjectGeneration),
             "TA-B2 fresh request generation/owner evidence missing.");
     }
 }

@@ -424,6 +424,7 @@ test('canonical command 33 and 46 match the shared reply-relay byte fixture', ()
     relocation: { high: 4n, low: 5n },
     coordinator,
     operation: { high: 1n, low: 2n },
+    replyRouteId: 3n,
     requestSource: {
       ownerId: 'source',
       leaseGeneration: 13n,
@@ -434,6 +435,10 @@ test('canonical command 33 and 46 match the shared reply-relay byte fixture', ()
   };
   assert.deepEqual(encodeMaintenanceReplyRelayAck(ack), command46);
   assert.deepEqual(decodeMaintenanceReplyRelayAck(command46), ack);
+  assert.throws(() => encodeMaintenanceReplyRelayAck({
+    ...ack,
+    replyRouteId: 0n
+  }), /non-zero u64/);
   assert.throws(() => decodeMaintenanceReplyRelay(command33.subarray(0, -1)));
   assert.throws(() => decodeMaintenanceReplyRelayAck(Buffer.concat([command46, Buffer.of(0)])));
 });

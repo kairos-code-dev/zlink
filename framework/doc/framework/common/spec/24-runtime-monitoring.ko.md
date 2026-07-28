@@ -115,7 +115,7 @@ topology만 `degraded`일 수 있다. 반대로 host가 `relocating`, `relocated
 |---|---|
 | Topology state | `starting`, `ready`, `degraded`, `stopping`, `stopped`, `failed` |
 | Topology reason | `runtime_not_ready`, `no_ready_peer`, `no_ready_target`, `location_unavailable`, `capacity_exceeded`, `draining`, `internal_failure` |
-| Peer state | `connecting`, `ready`, `draining`, `unavailable` |
+| Peer state | `connecting`, `ready`, `draining`, `not_connected`, `not_required` |
 | ClientServer local role | `client`, `server`, `client_and_server` |
 
 | Topology state | 의미 |
@@ -130,6 +130,17 @@ topology만 `degraded`일 수 있다. 반대로 host가 `relocating`, `relocated
 RouteMesh peer는 node의 transport identity인
 [Routing ID](01-glossary.ko.md#routing-id)를 Node RID 값으로 제공한다. Endpoint,
 descriptor revision과 connection generation은 제공하지 않는다.
+
+Peer state는 연결이 없는 두 경우를 구분한다.
+
+| Peer state | 의미 | Ready·장애 집계 |
+|---|---|---|
+| `not_connected` | Topology상 연결이 필요하지만 현재 ready connection이 없다. | Ready peer 수에서 제외한다. Topology degraded 여부와 liveness·health failure 집계에 반영한다. |
+| `not_required` | 두 MeshNode가 모두 Object Client이고 양쪽 모두 RouteMesh Channel Server membership이 없어 연결할 필요가 없다. Automatic은 descriptor 확인 단계에서 제외하고 Manual은 handshake에서 확인한다. | Ready peer 수에서 제외한다. Liveness probe·reconnect·health failure 집계 대상도 아니다. |
+
+`not_required` peer도 status의 peer 목록에는 남긴다. 운영자는 이 값으로 정상적인 연결
+생략과 연결 장애를 구분할 수 있다. 이 상태 하나만으로 RouteMesh를 `degraded`로
+바꾸지 않는다.
 
 RouteMesh placement 상태는 새 object 수락 여부와 현재 active Actor·Spot 수를 제공한다.
 Status는 Spot과 그 안에서 application message를 처리하는 Actor의 개수를 각각
@@ -214,7 +225,7 @@ lifecycle과 event DTO를 제공하지 않는다.
 | `zlink.runtime.mesh_node.routing_id_conflict` | Automatic Node RID owner claim이 active conflict로 실패했다. |
 | `zlink.runtime.host.relocation_changed` | Relocation mode, effective target version, host state 또는 terminal result가 바뀌었다. |
 | `zlink.runtime.host.termination_changed` | Shutdown state 또는 terminal result가 바뀌었다. |
-| `zlink.runtime.relocation.changed` | Actor 또는 Spot relocation phase나 recovery 상태가 바뀌었다. |
+| `zlink.runtime.relocation.changed` | Actor 또는 Spot relocation phase·recovery 상태가 바뀌거나 한 unit의 admission 중단 시간이 1초를 넘었다. |
 | `zlink.runtime.client_server.state_changed` | ClientServer local role, lifecycle 또는 ready 상태가 바뀌었다. |
 | `zlink.runtime.client_server.server_changed` | ClientServer target의 weight, ready 또는 service 상태가 바뀌었다. |
 | `zlink.runtime.fanout.publisher_changed` | Automatic publisher의 연결 대상 또는 ready 상태가 바뀌었다. |
@@ -233,11 +244,12 @@ Publisher 상태는 `excluded_draining`, `excluded_stale`, `reconnecting`, `disc
 기록한다. Log는 기록 시점의 판단이며 현재 위치나 상태의 기준이 아니다. 현재 상태는
 fanout status에서 읽는다.
 
-Entry Spot과 `PerActor` User Spot의 Actor relocation이 queue seal부터 target
-admission까지 1초를 넘기면 `zlink.runtime.relocation.changed`에
-`interruption_target_exceeded=true`와 실제 duration을 기록한다. 이는 운영 경고이며
-relocation outcome이나 recovery 판단을 바꾸지 않는다. Actor ID와 Spot ID는
-structured log에 넣지 않고 제한된 trace에서만 확인한다.
+Relocation unit의 source admission seal부터 target admission-open ACK까지 1초를
+넘기면 `zlink.runtime.relocation.changed`에 `unit_kind`, 필요한 경우
+`execution_mode`, `interruption_target_exceeded=true`와 실제 duration을 기록한다.
+`unit_kind`는 `actor`, `instance_spot`, `user_spot` 중 하나다. 이는 운영
+경고이며 relocation outcome이나 recovery 판단을 바꾸지 않는다. Actor ID와 Spot
+ID는 structured log에 넣지 않고 제한된 trace에서만 확인한다.
 
 ## 6. Startup과 실패
 

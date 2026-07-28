@@ -11,7 +11,8 @@ public sealed partial class ZLinkRedisLocationStore :
     IZLinkLocationStore,
     IAsyncDisposable
 {
-    private readonly ZLinkRedisLocationOptions _options;
+    private readonly ConfigurationOptions _configuration;
+    private readonly TimeSpan _operationTimeout;
     private readonly ZLinkRedisLocationKeys _keys;
     private readonly Func<ConfigurationOptions, ValueTask<IZLinkRedisConnection>> _connect;
     private readonly SemaphoreSlim _connectGate = new(1, 1);
@@ -23,20 +24,32 @@ public sealed partial class ZLinkRedisLocationStore :
     private int _disposed;
 
     public ZLinkRedisLocationStore(ZLinkRedisLocationOptions options)
-        : this(options, ConnectAsync)
+        : this(options, connect: null, useSharedConnection: true)
     {
     }
 
     internal ZLinkRedisLocationStore(
         ZLinkRedisLocationOptions options,
         Func<ConfigurationOptions, ValueTask<IZLinkRedisConnection>> connect)
+        : this(options, connect, useSharedConnection: false)
+    {
+    }
+
+    private ZLinkRedisLocationStore(
+        ZLinkRedisLocationOptions options,
+        Func<ConfigurationOptions, ValueTask<IZLinkRedisConnection>>? connect,
+        bool useSharedConnection)
     {
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(connect);
         options.Validate();
-        _options = options;
+        _configuration = options.BuildConfiguration();
+        _operationTimeout = options.OperationTimeout;
         _keys = new ZLinkRedisLocationKeys(options.KeyPrefix);
-        _connect = connect;
+        _connect = connect
+                   ?? ZLinkRedisConnectionPool.CreateFactory(
+                       _configuration,
+                       useSharedConnection
+                       && options.ConfigurationOptions is null);
     }
 
     /// <summary>
@@ -109,9 +122,20 @@ public sealed partial class ZLinkRedisLocationStore :
         Func<IDatabase, ValueTask<TResult>> operation,
         CancellationToken cancellationToken)
     {
-        using var lease = EnterOperation();
         cancellationToken.ThrowIfCancellationRequested();
-        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
+        return await ExecuteCoreAsync(operation, cancellationToken)
+            .AsTask()
+            .WaitAsync(_operationTimeout, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<TResult> ExecuteCoreAsync<TResult>(
+        Func<IDatabase, ValueTask<TResult>> operation,
+        CancellationToken cancellationToken)
+    {
+        using var lease = EnterOperation();
+        var database = await GetDatabaseAsync(cancellationToken)
+            .ConfigureAwait(false);
         return await operation(database).ConfigureAwait(false);
     }
 
@@ -126,7 +150,7 @@ public sealed partial class ZLinkRedisLocationStore :
         try
         {
             var connection = _connection ??=
-                await _connect(_options.BuildConfiguration()).ConfigureAwait(false);
+                await _connect(_configuration.Clone()).ConfigureAwait(false);
             return connection.GetDatabase();
         }
         finally
@@ -172,11 +196,6 @@ public sealed partial class ZLinkRedisLocationStore :
             Interlocked.Exchange(ref _owner, null)?.ExitOperation();
     }
 
-    private static async ValueTask<IZLinkRedisConnection> ConnectAsync(
-        ConfigurationOptions options) =>
-        new ZLinkStackExchangeRedisConnection(
-            await ConnectionMultiplexer.ConnectAsync(options)
-                .ConfigureAwait(false));
 }
 
 internal interface IZLinkRedisConnection : IAsyncDisposable

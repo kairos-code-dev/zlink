@@ -13,15 +13,15 @@ internal static class SmA7SpotTypeMismatchScenario
         var mismatch = (await playA.Post("/spot/type-mismatch")
             .Body(new SpotTypeMismatchReq(spotRid))
             .Async<SpotTypeMismatchRes>()).Body;
-        ZlinkStreamAssert.Ensure(mismatch.Failed, "SM-A7 expected SpotTypeMismatch.");
-        ZlinkStreamAssert.Ensure(mismatch.ErrorKind == "SpotTypeMismatch", "SM-A7 error kind mismatch.");
-        var expectedEvidence = new[] { $"spot-type-mismatch|rid=play-a|spot={mismatch.SpotRid}|kind=SpotTypeMismatch" };
+        ZlinkStreamAssert.Ensure(mismatch.Failed, "SM-A7 expected a Spot type mismatch.");
+        ZlinkStreamAssert.Ensure(mismatch.ErrorKind == "TypeMismatch", "SM-A7 error kind mismatch.");
+        var expectedEvidence = new[] { $"spot-type-mismatch|rid=play-a|spot={mismatch.SpotRid}|kind=TypeMismatch" };
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(expectedEvidence))
             .Async<string[]>()).Body;
         ZlinkStreamAssert.Ensure(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
-            "SM-A7 evidence did not include SpotTypeMismatch.");
+            "SM-A7 evidence did not include TypeMismatch.");
         Console.WriteLine("operation SpotService.sm-a7 passed");
     }
 }

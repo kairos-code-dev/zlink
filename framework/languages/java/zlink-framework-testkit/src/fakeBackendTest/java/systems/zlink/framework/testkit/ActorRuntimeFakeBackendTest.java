@@ -35,7 +35,6 @@ import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
-import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
@@ -841,7 +840,7 @@ final class ActorRuntimeFakeBackendTest {
 
     private static ZLinkMessageSerializer serializerWith(
         systems.zlink.framework.configuration.ZLinkCodecExtension extension) {
-        ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
+        PublicCodecTestRegistry registration = new PublicCodecTestRegistry();
         registration.use(extension);
         return registration.serializerWithFallback(new ZLinkJsonMessageSerializer());
     }

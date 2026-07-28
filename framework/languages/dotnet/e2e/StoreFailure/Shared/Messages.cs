@@ -66,6 +66,6 @@ public sealed record RuntimeStatusRes(
     DateTimeOffset? OwnerLeaseRenewedAt,
     DateTimeOffset? LastRefreshAt);
 
-public sealed record PeerRowRes(string? Rid, string Endpoint, string OwnerId, bool Draining);
+public sealed record PeerRowRes(string? Rid, string Endpoint, bool Draining);
 
 public sealed record DrainResultRes(string Result, string? Reason);

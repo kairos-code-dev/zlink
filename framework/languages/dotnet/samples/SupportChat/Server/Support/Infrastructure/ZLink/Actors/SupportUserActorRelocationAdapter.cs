@@ -16,7 +16,8 @@ internal sealed class SupportUserActorRelocationAdapter
             actor.DisplayName,
             actor.Role,
             actor.ParticipantId,
-            actor.ConversationId)));
+            actor.ConversationId,
+            actor.CaptureCompletedJoinOperations())));
     }
 
     public ValueTask RestoreAsync(
@@ -30,6 +31,7 @@ internal sealed class SupportUserActorRelocationAdapter
         actor.SetIdentity(transferred.DisplayName, transferred.Role, transferred.ParticipantId);
         if (!string.IsNullOrEmpty(transferred.ConversationId))
             actor.JoinConversation(transferred.ConversationId);
+        actor.RestoreCompletedJoinOperations(transferred.CompletedJoinOperations);
         return ValueTask.CompletedTask;
     }
 
@@ -37,5 +39,6 @@ internal sealed class SupportUserActorRelocationAdapter
         string DisplayName,
         string Role,
         string ParticipantId,
-        string ConversationId);
+        string ConversationId,
+        string[] CompletedJoinOperations);
 }

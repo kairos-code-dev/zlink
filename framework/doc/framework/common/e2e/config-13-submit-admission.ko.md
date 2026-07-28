@@ -300,7 +300,7 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
 - **Topology·사전 조건:** 첫 호출은 descriptor·location이 없는 ID를 사용한다. 두 번째 호출은 target identity와
   location을 유지하되 receiver gate가 아니라 연결 gate에서 route ready만 차단한다.
 - **절차:** 두 상태에서 같은 family call을 한 번씩 시작한다. Settle 반복이나 fallback target을 허용하지 않는다.
-- **기대 결과:** 대상 부재는 `TargetNotFound`, 알려진 target의 미연결은 `RouteNotConnected` Framework
+- **기대 결과:** 대상 부재는 `NotFound`, 알려진 target의 미연결은 `Unavailable` Framework
   예외다. 둘 다 terminal
   한 번이고 handler 실행은 0이다.
 - **공통 evidence:** Resolve snapshot, known target ID, route-ready state, public exception kind와 handler count를 남긴다.
@@ -369,10 +369,13 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
 
 - **목적:** Node direct가 local target과 remote target에서 같은 정상 완료·실패 계약을 사용하는지 확인한다.
 - **Topology·사전 조건:** 같은 packet handler를 local `MeshTarget`과 remote `MeshTarget`에 등록한다. 두 route의
-  receiver gate와 HWM을 같은 값으로 구성한다.
+  receiver gate와 HWM을 같은 값으로 구성한다. 별도 Object Client RID에는 application Node direct
+  handler를 등록하지 않는다.
 - **절차:** Local·remote에서 즉시 수락, gate pending 뒤 수락, deadline 만료를 같은 순서로 실행한다.
+  마지막에는 Object Client RID로 한 번 제출한다.
 - **기대 결과:** Route 위치와 관계없이 즉시 admission과 delayed admission은 반환 데이터 없이 정상 완료하고,
   deadline 만료는 timeout 예외다. 원격 경로에만 application retry나 더 긴 timeout을 적용하지 않는다.
+  Object Client target은 physical connection을 새로 만들지 않고 `NotFound`로 한 번 완료한다.
 - **공통 evidence:** Route kind를 제외한 deadline·terminal·transport attempt·commit 필드를 나란히 비교하고
   sequence delivery를 target별로 남긴다.
 
@@ -558,12 +561,12 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
     준비한다. 첫 attempt 시점에는 A만 eligible하고 A의 receiver gate를 닫아 `EAGAIN`을 만든다. Commit 전에
     B를 ready·eligible로 바꾸고 A를 eligible set에서 제외할 수 있어야 한다.
 - **절차:** `SA-E2E-18.a`는 pending marker 뒤 original route를 종료하고 peer lifecycle signal이 waiter를 깨운
-  뒤 같은 logical identity로 재시도해 `RouteNotConnected`를 확인한다. 그 뒤 같은 identity의 route를
+  뒤 같은 logical identity로 재시도해 `Unavailable`을 확인한다. 그 뒤 같은 identity의 route를
   새 physical connection으로 복구하고 application이 다른 operation
   ID로 한 번 submit한다. `SA-E2E-18.b`와 `SA-E2E-18.c`는 각각 A에서 최초 attempt가 실패한 뒤 B를 eligible로
   전환한다. Runtime이 관측한 route·capacity signal로 같은 operation을 한 번 재시도하게 하고, successful
   admission 뒤 B의 connection을 종료·복구해도 같은 operation을 다시 제출하지 않는지 확인한다.
-- **기대 결과:** Direct logical target의 기존 operation은 `RouteNotConnected` Framework 예외로 한 번 완료되고 commit과 handler delivery는
+- **기대 결과:** Direct logical target의 기존 operation은 `Unavailable` Framework 예외로 한 번 완료되고 commit과 handler delivery는
   0이다. Connection 복구가 기존 operation을 자동 제출하지 않는다. 새 operation만 복구된 route에서 반환
   데이터 없이 정상
   완료된다. RouteMesh와 ClientServer의 각 select-one

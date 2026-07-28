@@ -493,6 +493,7 @@ int main ()
       {4, 5},
       reply_relay.coordinator,
       {1, 2},
+      3,
       {"source", 13, {'n', 'o', 'd', 'e', '-', 's'}, 17},
       protocol::reply_relay_ack_status_t::already_terminal};
     const auto encoded_reply_relay_ack =
@@ -500,7 +501,7 @@ int main ()
     assert (encoded_reply_relay_ack == from_hex (
       "5a4d012e00000000000000000400000000000000050b636f6f7264696e61746f"
       "720000000000000007066e6f64652d61000000000000000b000773746f72652d"
-      "330000000000000001000000000000000206736f75726365000000000000000d"
+      "3300000000000000010000000000000002000000000000000306736f75726365000000000000000d"
       "066e6f64652d73000000000000001102"));
     assert (protocol::decode_reply_relay_ack (encoded_reply_relay_ack)
             == reply_relay_ack);
@@ -538,6 +539,18 @@ int main ()
         bool rejected = false;
         try {
             static_cast<void> (protocol::decode_reply_relay_ack (invalid));
+        }
+        catch (const protocol::service_wire_error_t &) {
+            rejected = true;
+        }
+        assert (rejected);
+    }
+    {
+        auto invalid = reply_relay_ack;
+        invalid.reply_route_id = 0;
+        bool rejected = false;
+        try {
+            static_cast<void> (protocol::encode_reply_relay_ack (invalid));
         }
         catch (const protocol::service_wire_error_t &) {
             rejected = true;

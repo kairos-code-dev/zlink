@@ -5,6 +5,7 @@ using ToActorMessaging.Actor;
 using ToActorMessaging.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Locations.Redis;
@@ -20,17 +21,18 @@ builder.Services.AddSingleton(options);
 builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile));
 builder.Services.AddZLinkFramework(framework =>
 {
-    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-        .SetConnectionString(options.RedisEndpoint)
-        .SetKeyPrefix(options.RedisKeyPrefix)));
+    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; }));
     framework.AddHandlersFromAssemblyOf(typeof(Program));
     var mesh25 = framework.AddRouteMesh("to-actor")
         .Listen(options.RouterEndpoint)
-        .SetRoutingId(RoutingId.From(options.Rid))
-        .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
+        .SetRoutingId(RoutingId.From(options.Rid));
+    mesh25.Objects().Server()
         .AddEntrySpot<TestEntrySpot>()
-        .AddActorFactory<TestActorFactory>("test-actor");
-    mesh25.ChannelName("to-actor");
+        .AddActorFactory<TestActor, TestActorFactory>(
+            "test-actor",
+            null,
+            ZLinkRelocationPolicy<TestActor>.Disabled);
+    mesh25.Channel("to-actor").Client();
 });
 
 var app = builder.Build();
@@ -53,8 +55,7 @@ app.MapPost("/actors/{actorId}/destroy", async (
     var actor = await actorManager.FindAsync(actorId, ct)
                 ?? throw new InvalidOperationException($"Actor '{actorId}' was not found.");
     var reply = await actorClient.RequestToActor(
-            "to-actor",
-            actor,
+            actor.ActorId,
             new DestroyActorRequest(actorId, scenario ?? "destroy"))
         .Timeout(TimeSpan.FromSeconds(5))
         .Async<DestroyActorReply>(ct);
@@ -73,7 +74,7 @@ app.MapPost("/actors/{actorId}/push", async (
                 ?? throw new InvalidOperationException($"Actor '{actorId}' was not found.");
     try
     {
-        var reply = await actorClient.RequestToActor("to-actor", actor, request)
+        var reply = await actorClient.RequestToActor(actor.ActorId, request)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<BoundPushReply>(ct);
         return Results.Ok(reply);
@@ -101,13 +102,13 @@ namespace ToActorMessaging.Actor
         public IZLinkActorContext Context { get; } = context;
     }
 
-    internal sealed class TestActorFactory : IZLinkActorFactory
+    internal sealed class TestActorFactory : IZLinkActorFactory<TestActor>
     {
-        public ValueTask<IZLinkActor> CreateAsync(
+        public ValueTask<TestActor> CreateAsync(
             IZLinkActorContext context,
             CancellationToken cancellationToken = default)
         {
-            return ValueTask.FromResult<IZLinkActor>(new TestActor(context.ActorId, context));
+            return ValueTask.FromResult(new TestActor(context.ActorId, context));
         }
     }
 
@@ -125,13 +126,13 @@ namespace ToActorMessaging.Actor
             Context.Handlers.AddHandler<BoundPushHandler>();
         }
 
-        public ValueTask OnCreateActorAsync(
+        public ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
             TestActor actor,
             ZLinkMessage createRequest,
             CancellationToken cancellationToken)
         {
             evidence.Append(new ActorEvidence("create", actor.ActorId, "create", "created"));
-            return ValueTask.CompletedTask;
+            return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
         }
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
@@ -159,7 +160,7 @@ namespace ToActorMessaging.Actor
         public async ValueTask HandleAsync(
             TestEntrySpot spot,
             TestActor actor,
-            ZLinkSpotActorSendContext context,
+            IZLinkMessageContext context,
             ActorNotify message,
             CancellationToken cancellationToken)
         {
@@ -170,7 +171,7 @@ namespace ToActorMessaging.Actor
                 "send",
                 message.Value,
                 options.Rid,
-                actorRef?.Generation,
+                actorRef?.ObjectGeneration,
                 nameof(ActorNotify),
                 message.Scenario));
         }
@@ -185,7 +186,7 @@ namespace ToActorMessaging.Actor
         public async ValueTask<ActorReply> HandleAsync(
             TestEntrySpot spot,
             TestActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             ActorAsk request,
             CancellationToken cancellationToken)
         {
@@ -196,7 +197,7 @@ namespace ToActorMessaging.Actor
                 "request",
                 request.Value,
                 options.Rid,
-                actorRef?.Generation,
+                actorRef?.ObjectGeneration,
                 nameof(ActorAsk),
                 request.Scenario));
             return new ActorReply(request.Scenario, actor.ActorId, $"reply:{request.Value}");
@@ -209,7 +210,7 @@ namespace ToActorMessaging.Actor
         public async ValueTask<DestroyActorReply> HandleAsync(
             TestEntrySpot spot,
             TestActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             DestroyActorRequest request,
             CancellationToken cancellationToken)
         {
@@ -229,7 +230,7 @@ namespace ToActorMessaging.Actor
         public async ValueTask<BoundPushReply> HandleAsync(
             TestEntrySpot spot,
             TestActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             BoundPushRequest request,
             CancellationToken cancellationToken)
         {
@@ -237,7 +238,7 @@ namespace ToActorMessaging.Actor
             _ = context;
             await actor.Context.BoundSession.Send(
                     new BoundPushNotify(request.Scenario, actor.ActorId, request.Value))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
             evidence.Append(new ActorEvidence(request.Scenario, actor.ActorId, "bound-push", request.Value));
             return new BoundPushReply(actor.ActorId, request.Value, true);
         }

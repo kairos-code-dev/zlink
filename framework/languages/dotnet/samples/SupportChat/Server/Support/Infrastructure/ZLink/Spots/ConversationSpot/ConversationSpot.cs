@@ -33,7 +33,7 @@ internal sealed class ConversationSpot(
         CancellationToken cancellationToken)
     {
         var create = request.Decode<ConversationCreateReq>();
-        var conversationId = Context.SpotRid.ToString();
+        var conversationId = Context.SpotId.ToString();
         _conversation = new Conversation(
             conversationId,
             create.Subject,
@@ -48,7 +48,9 @@ internal sealed class ConversationSpot(
             "support conversation: created. conversation={ConversationId}, customer={CustomerActorId}",
             conversationId,
             create.CustomerActorId);
-        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
+        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept(
+            new ConversationCreateRes(
+                ConversationContracts.ToState(_conversation.Snapshot()))));
     }
 
     public async ValueTask OnClosingAsync(

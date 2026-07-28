@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 
@@ -51,36 +52,80 @@ internal sealed partial class ZLinkProviderLocationRepository(
                 return new ZLinkOwnerLeaseClaimResult.GenerationExhausted();
 
             var token = new ZLinkLocationOwnerToken(ownerId, generation);
-            var result = await provider.WriteAsync(
-                    new ZLinkStoreWriteRequest(
-                    [
-                        new ZLinkStoreCondition.Missing(ownerKey),
-                        counter switch
+            ZLinkStoreWriteResult result;
+            try
+            {
+                result = await provider.WriteAsync(
+                        new ZLinkStoreWriteRequest(
+                        [
+                            new ZLinkStoreCondition.Missing(ownerKey),
+                            counter switch
+                            {
+                                ZLinkStoreReadResult.Missing =>
+                                    new ZLinkStoreCondition.Missing(OwnerCounterKey),
+                                ZLinkStoreReadResult.Found found =>
+                                    new ZLinkStoreCondition.Version(
+                                        OwnerCounterKey,
+                                        found.Value.Version),
+                                _ => throw new InvalidOperationException()
+                            }
+                        ],
+                        [
+                            new ZLinkStoreMutation.Put(
+                                ownerKey,
+                                JsonSerializer.SerializeToUtf8Bytes(
+                                    new OwnerRecord(
+                                        ownerId,
+                                        token.LeaseGeneration)),
+                                leaseTtl),
+                            new ZLinkStoreMutation.Put(
+                                OwnerCounterKey,
+                                Encoding.UTF8.GetBytes(
+                                    checked(generation + 1).ToString(
+                                        CultureInfo.InvariantCulture)),
+                                null)
+                        ]),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception failure) when (
+                failure is not OutOfMemoryException
+                and not StackOverflowException
+                and not AccessViolationException)
+            {
+                try
+                {
+                    using var deadline = new CancellationTokenSource(
+                        AmbiguousReconciliationTimeout);
+                    var read = await provider.ReadAsync(ownerKey, deadline.Token)
+                        .AsTask()
+                        .WaitAsync(deadline.Token)
+                        .ConfigureAwait(false);
+                    if (read is ZLinkStoreReadResult.Found found)
+                    {
+                        var record = Decode<OwnerRecord>(found.Value.Bytes);
+                        if (string.Equals(
+                                record.OwnerId,
+                                ownerId,
+                                StringComparison.Ordinal)
+                            && record.LeaseGeneration == token.LeaseGeneration
+                            && found.Value.ExpiresAt is { } expiresAt)
                         {
-                            ZLinkStoreReadResult.Missing =>
-                                new ZLinkStoreCondition.Missing(OwnerCounterKey),
-                            ZLinkStoreReadResult.Found found =>
-                                new ZLinkStoreCondition.Version(
-                                    OwnerCounterKey,
-                                    found.Value.Version),
-                            _ => throw new InvalidOperationException()
+                            return new ZLinkOwnerLeaseClaimResult.Claimed(
+                                token,
+                                expiresAt,
+                                found.Value.StoreNow);
                         }
-                    ],
-                    [
-                        new ZLinkStoreMutation.Put(
-                            ownerKey,
-                            JsonSerializer.SerializeToUtf8Bytes(
-                                new OwnerRecord(ownerId, token.LeaseGeneration)),
-                            leaseTtl),
-                        new ZLinkStoreMutation.Put(
-                            OwnerCounterKey,
-                            Encoding.UTF8.GetBytes(
-                                checked(generation + 1).ToString(
-                                    CultureInfo.InvariantCulture)),
-                            null)
-                    ]),
-                    cancellationToken)
-                .ConfigureAwait(false);
+                    }
+                }
+                catch
+                {
+                    ExceptionDispatchInfo.Capture(failure).Throw();
+                }
+
+                ExceptionDispatchInfo.Capture(failure).Throw();
+                throw;
+            }
             if (result is ZLinkStoreWriteResult.Conflict) continue;
             var applied = (ZLinkStoreWriteResult.Applied)result;
             return new ZLinkOwnerLeaseClaimResult.Claimed(
@@ -237,7 +282,13 @@ internal sealed partial class ZLinkProviderLocationRepository(
             rowCondition = new ZLinkStoreCondition.Missing(rowKey);
         }
 
-        var result = await provider.WriteAsync(
+        var encodedDescriptor = JsonSerializer.SerializeToUtf8Bytes(
+            new MeshRecord(
+                generation,
+                descriptor),
+            ZLinkJsonSerializerOptions.Default);
+        return await WriteDescriptorWithReconciliationAsync(
+                rowKey,
                 new ZLinkStoreWriteRequest(
                 [
                     new ZLinkStoreCondition.Version(
@@ -248,20 +299,13 @@ internal sealed partial class ZLinkProviderLocationRepository(
                 [
                     new ZLinkStoreMutation.Put(
                         rowKey,
-                        JsonSerializer.SerializeToUtf8Bytes(
-                            new MeshRecord(
-                                generation,
-                                descriptor),
-                            ZLinkJsonSerializerOptions.Default),
+                        encodedDescriptor,
                         null)
                 ]),
+                encodedDescriptor,
+                generation,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (result is ZLinkStoreWriteResult.Conflict)
-            return ZLinkLocationWriteResult.IgnoredStale;
-        return ZLinkLocationWriteResult.Stored(
-            generation,
-            ((ZLinkStoreWriteResult.Applied)result).StoreNow);
     }
 
     public async ValueTask<ZLinkLocationWriteStatus> RemoveMeshNodeAsync(
@@ -302,24 +346,13 @@ internal sealed partial class ZLinkProviderLocationRepository(
             CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
-        var result = await provider.ScanAsync(
-                new ZLinkStoreScanRequest(
-                    MeshPrefix(meshName),
-                    page.ContinuationToken is null
-                        ? null
-                        : new ZLinkStoreScanCursor(page.ContinuationToken),
-                    page.PageSize <= 0 ? 100 : page.PageSize),
+        return await ListCompleteSnapshotPageAsync(
+                MeshPrefix(meshName),
+                page,
+                defaultPageSize: 100,
+                static bytes => Decode<MeshRecord>(bytes).Descriptor,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (result is ZLinkStoreScanResult.Expired)
-            return new ZLinkLocationPage<ZLinkMeshNodeDescriptor>([], null);
-        var value = ((ZLinkStoreScanResult.Page)result).Value;
-        return new ZLinkLocationPage<ZLinkMeshNodeDescriptor>(
-            value.Items
-                .Select(static item =>
-                    Decode<MeshRecord>(item.Value.Bytes).Descriptor)
-                .ToArray(),
-            value.NextCursor?.Value);
     }
 
     public ValueTask<ZLinkLocationWriteResult> UpdateClientServerAsync(
@@ -587,7 +620,17 @@ internal sealed partial class ZLinkProviderLocationRepository(
             rowCondition = new ZLinkStoreCondition.Missing(rowKey);
         }
 
-        var result = await provider.WriteAsync(
+        var encodedDescriptor = JsonSerializer.SerializeToUtf8Bytes(
+            new DescriptorRecord<T>(
+                generation,
+                ownerId,
+                leaseGeneration,
+                lifecycleGeneration,
+                descriptorRevision,
+                descriptor),
+            ZLinkJsonSerializerOptions.Default);
+        return await WriteDescriptorWithReconciliationAsync(
+                rowKey,
                 new ZLinkStoreWriteRequest(
                 [
                     new ZLinkStoreCondition.Version(
@@ -598,19 +641,60 @@ internal sealed partial class ZLinkProviderLocationRepository(
                 [
                     new ZLinkStoreMutation.Put(
                         rowKey,
-                        JsonSerializer.SerializeToUtf8Bytes(
-                            new DescriptorRecord<T>(
-                                generation,
-                                ownerId,
-                                leaseGeneration,
-                                lifecycleGeneration,
-                                descriptorRevision,
-                                descriptor),
-                            ZLinkJsonSerializerOptions.Default),
+                        encodedDescriptor,
                         null)
                 ]),
+                encodedDescriptor,
+                generation,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private async ValueTask<ZLinkLocationWriteResult>
+        WriteDescriptorWithReconciliationAsync(
+            ZLinkStoreKey rowKey,
+            ZLinkStoreWriteRequest request,
+            ReadOnlyMemory<byte> encodedDescriptor,
+            ulong generation,
+            CancellationToken cancellationToken)
+    {
+        ZLinkStoreWriteResult result;
+        try
+        {
+            result = await provider.WriteAsync(request, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception failure) when (
+            failure is not OutOfMemoryException
+            and not StackOverflowException
+            and not AccessViolationException)
+        {
+            try
+            {
+                using var deadline = new CancellationTokenSource(
+                    AmbiguousReconciliationTimeout);
+                var read = await provider.ReadAsync(rowKey, deadline.Token)
+                    .AsTask()
+                    .WaitAsync(deadline.Token)
+                    .ConfigureAwait(false);
+                if (read is ZLinkStoreReadResult.Found found
+                    && found.Value.Bytes.Span.SequenceEqual(
+                        encodedDescriptor.Span))
+                {
+                    return ZLinkLocationWriteResult.Stored(
+                        generation,
+                        found.Value.StoreNow);
+                }
+            }
+            catch
+            {
+                ExceptionDispatchInfo.Capture(failure).Throw();
+            }
+
+            ExceptionDispatchInfo.Capture(failure).Throw();
+            throw;
+        }
+
         return result is ZLinkStoreWriteResult.Applied applied
             ? ZLinkLocationWriteResult.Stored(generation, applied.StoreNow)
             : ZLinkLocationWriteResult.IgnoredStale;
@@ -651,26 +735,13 @@ internal sealed partial class ZLinkProviderLocationRepository(
         ZLinkPageRequest page,
         CancellationToken cancellationToken)
     {
-        var pageSize = page.PageSize <= 0 ? 256 : page.PageSize;
-        if (pageSize > 1000)
-            throw new ArgumentOutOfRangeException(nameof(page));
-        var result = await provider.ScanAsync(
-                new ZLinkStoreScanRequest(
-                    prefix,
-                    page.ContinuationToken is null
-                        ? null
-                        : new ZLinkStoreScanCursor(page.ContinuationToken),
-                    pageSize),
+        return await ListCompleteSnapshotPageAsync(
+                prefix,
+                page,
+                defaultPageSize: 256,
+                static bytes => Decode<DescriptorRecord<T>>(bytes).Descriptor,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (result is ZLinkStoreScanResult.Expired)
-            return new ZLinkLocationPage<T>([], null);
-        var value = ((ZLinkStoreScanResult.Page)result).Value;
-        return new ZLinkLocationPage<T>(
-            value.Items.Select(static item =>
-                    Decode<DescriptorRecord<T>>(item.Value.Bytes).Descriptor)
-                .ToArray(),
-            value.NextCursor?.Value);
     }
 
     private static ZLinkStoreKey OwnerKey(string ownerId) =>

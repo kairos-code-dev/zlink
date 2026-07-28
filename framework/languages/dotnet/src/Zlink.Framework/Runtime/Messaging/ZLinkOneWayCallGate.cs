@@ -9,7 +9,7 @@ internal sealed class ZLinkOneWayCallGate(string operationName)
         if (Interlocked.Exchange(ref _submitted, 1) == 0) return;
 
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.AlreadySubmitted,
+            ZLinkFrameworkErrorKind.InvalidOperation,
             $"{operationName} was already submitted.");
     }
 }

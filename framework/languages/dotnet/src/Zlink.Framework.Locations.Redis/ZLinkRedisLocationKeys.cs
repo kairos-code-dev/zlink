@@ -38,6 +38,18 @@ internal sealed class ZLinkRedisLocationKeys
     public RedisKey OpaqueMapKey() =>
         $"{Base}:opaque:map";
 
+    public RedisKey OpaqueCleanupKey() =>
+        $"{Base}:opaque:cleanup";
+
+    public RedisKey OpaqueSequenceKey() =>
+        $"{Base}:opaque:sequence";
+
+    public RedisKey OpaqueSnapshotExpiryKey() =>
+        $"{Base}:opaque:snapshot-expiry";
+
+    public RedisKey OpaqueSnapshotBoundaryKey() =>
+        $"{Base}:opaque:snapshot-boundary";
+
     public RedisKey OpaqueScanKey(string scanId) =>
         $"{Base}:opaque:scan:{NormalizeId(scanId)}";
 

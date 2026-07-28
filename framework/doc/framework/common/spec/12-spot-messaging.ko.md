@@ -76,7 +76,7 @@ public interface IZLinkSpotSendCall
 
     // Missing Instance Spot을 처음 생성할 Mesh를 지정한다.
     // Object Client 또는 Server role의 Mesh가 하나면 생략할 수 있다.
-    // 후보 Mesh가 둘 이상인데 생략하면 MeshSelectionRequired로 끝난다.
+    // 후보 Mesh가 둘 이상인데 생략하면 InvalidOperation으로 끝난다.
     IZLinkSpotSendCall InMesh(string meshName);
 
     // 송신 경로가 message를 수락할 때까지 기다리며 target handler 실행은 기다리지 않는다.
@@ -93,7 +93,7 @@ public interface IZLinkSpotRequestCall
 
     // Missing Instance Spot을 처음 생성할 Mesh를 지정한다.
     // Object Client 또는 Server role의 Mesh가 하나면 생략할 수 있다.
-    // 후보 Mesh가 둘 이상인데 생략하면 MeshSelectionRequired로 끝난다.
+    // 후보 Mesh가 둘 이상인데 생략하면 InvalidOperation으로 끝난다.
     IZLinkSpotRequestCall InMesh(string meshName);
 
     // Spot을 찾는 단계부터 reply까지 하나의 deadline을 적용한다.
@@ -461,7 +461,7 @@ queue가 message를 받을 수 있을 때까지 기다린다.
 Ready Spot에 보내는 일반 direct send는 source의 송신 경로가 message를 수락하면
 결과값 없이 완료된다. 이 완료는 target Spot의 handler가 실행되었다는 뜻이 아니다.
 Send timeout까지 수락하지 못하면 `DeadlineExceeded`, Spot이나 route가 없으면
-operation-specific not-found 오류, runtime이 종료 중이면 `RuntimeShutdown`으로 실패한다.
+`NotFound`, runtime이 종료 중이면 `ShuttingDown`으로 실패한다.
 Cancellation과 caller process에서 발생한 오류의 자세한 경계는
 [04 비동기 실행 정책 §1.3](05-async-execution-policy.ko.md#13-one-way-submit)을 따른다.
 
@@ -533,7 +533,7 @@ Spot handler와 timer는 Channel send와 request를 시작할 수 있다. Framew
 - ClientServer client의 해당 ChannelName 송신 경로
 
 현재 process에 대상 송신 경로가 없으면 다른 process나 MeshNode를 중계 경로로 사용하지
-않는다. 이 경우 `RequestTargetNotFound`로 끝난다.
+않는다. 이 경우 `NotFound`로 끝난다.
 
 ### 3.6 Channel request의 실행 재개
 
@@ -555,7 +555,7 @@ Instance Spot에서만 사용할 수 있으며 Spot turn을 다음과 같이 처
 
 Entry Spot, `PerActor` User Spot, Entry Spot Actor, Node·Channel handler와 owner turn
 밖의 client에서 `Yield`를 호출하면 operation을 제출하거나 turn을 반환하지 않고
-`InvalidConfiguration`으로 완료한다.
+`InvalidOperation`으로 완료한다.
 
 `Yield`는 Channel·Spot·Actor request와 CPU·I/O worker call에만 제공한다. Actor join, Actor·Spot
 create/get-or-create, send, publish, timer 등록, close와 destroy에는 제공하지 않는다.
@@ -595,7 +595,7 @@ sequenceDiagram
             Queue-->>Spot: 새 turn에서 실행 재개
         end
     else 현재 process에 송신 경로 없음
-        Index-->>Spot: RequestTargetNotFound 반환
+        Index-->>Spot: NotFound 반환
     end
 ```
 
@@ -684,7 +684,7 @@ Framework는 동시에 처리할 수 있는 publish 작업 수를 제한한다. 
 사용 중이면 유한한 send timeout까지 worker와 source-local outbound capacity를 기다린다.
 그 안에 확보하지 못하면 어떤 target에도 message를 보내지 않고 `DeadlineExceeded`로 실패한다.
 Publish를 시작하기 전에 cancellation이나 runtime shutdown이 확정되면 각각 기존 typed cancellation
-또는 `RuntimeShutdown` 오류로 완료한다.
+또는 `ShuttingDown` 오류로 완료한다.
 
 Worker가 작업을 받으면 다음 처리를 시작한다.
 

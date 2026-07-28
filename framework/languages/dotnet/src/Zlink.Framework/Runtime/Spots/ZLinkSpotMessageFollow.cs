@@ -35,6 +35,9 @@ internal sealed class ZLinkSpotMessageFollow(
     internal ZLinkLocationOwnerToken TargetOwner { get; } = targetOwner;
     internal DateTimeOffset ExpiresAt { get; } = expiresAt;
 
+    internal bool ShouldRemoveAfterRejectedFrame(DateTimeOffset now) =>
+        ExpiresAt <= now;
+
     internal bool MatchesSourceRoute(
         ZLinkBackendRouteReceived received,
         ulong currentObjectGeneration,

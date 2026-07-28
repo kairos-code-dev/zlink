@@ -63,6 +63,7 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
         var wrongLease = new systems.zlink.framework.runtime.internal.service
             .ZLinkServiceRelocationWireCodec.ReplyRelayAck(
                 relay.relocation(), relay.coordinator(), relay.operation(),
+                relay.replyRouteId(),
                 new systems.zlink.framework.runtime.internal.service
                     .ZLinkServiceRelocationWireCodec.RequestSourceFence(
                         "source-owner", 13, RoutingId.from("source-node"), 12),

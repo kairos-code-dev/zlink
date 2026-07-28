@@ -180,6 +180,7 @@ public sealed class StandaloneActorRelocationPrecommitTests
         Assert.Equal(sourceOwner.OwnerId, prepared.OwnerId);
 
         var targetAuthority = Authority(actorId, target, targetOwner);
+        lossyStore.ReturnAuxiliaryConflictNext();
         lossyStore.LoseNextResponse();
         var committed = await coordinator.CommitTargetAsync(
             prepared,
@@ -351,9 +352,13 @@ public sealed class StandaloneActorRelocationPrecommitTests
         IZLinkLocationRepository inner) : ZLinkLocationStoreTestDouble
     {
         private int _loseNext;
+        private int _conflictNext;
 
         internal void LoseNextResponse() =>
             Interlocked.Exchange(ref _loseNext, 1);
+
+        internal void ReturnAuxiliaryConflictNext() =>
+            Interlocked.Exchange(ref _conflictNext, 1);
 
         public override ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
             ZLinkAuthorityKey key,
@@ -367,6 +372,10 @@ public sealed class StandaloneActorRelocationPrecommitTests
                 ZLinkAuthorityMutation mutation,
                 CancellationToken cancellationToken = default)
         {
+            if (Interlocked.Exchange(ref _conflictNext, 0) == 1)
+                return new ZLinkAuthorityCompareExchangeResult.Conflict(
+                    await inner.ReadAuthorityAsync(key, cancellationToken)
+                        .ConfigureAwait(false));
             var result = await inner.CompareExchangeAuthorityAsync(
                     key,
                     expectedStoreVersion,

@@ -8,7 +8,7 @@ public sealed record BotRoute(string PlayerId, int X, int Y, int DirX, int DirY,
 /// <summary>
 /// The bots (§2.7). Their paths are fixed rather than random: five language servers have
 /// to produce the same world, and a random walk would make the self-check unstable.
-/// Four of them patrol across the X boundary, so a cross-node actor transfer keeps
+/// Four of them patrol across the X boundary, so a cross-node actor relocation keeps
 /// happening even with no client connected.
 /// </summary>
 public static class BotPatrolPolicy

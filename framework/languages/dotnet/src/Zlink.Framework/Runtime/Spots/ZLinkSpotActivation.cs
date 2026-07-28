@@ -3,6 +3,12 @@ using Zlink.Framework.Runtime.Handlers;
 
 namespace Zlink.Framework.Runtime.Spots;
 
+internal sealed record ZLinkPerActorShellRelocationPlan(
+    RoutingId TargetNodeRid,
+    ulong TargetNodeLifecycleGeneration,
+    ZLinkLocationOwnerToken TargetOwner,
+    ulong TargetAuthorityOwnerGeneration);
+
 internal sealed partial class ZLinkSpotActivation :
     IZLinkSpotContext,
     IZLinkInstanceSpotContext,
@@ -13,6 +19,8 @@ internal sealed partial class ZLinkSpotActivation :
     private readonly ZLinkSpotActorDispatchSubmitter _actorDispatchSubmitter;
     private readonly ZLinkSpotActorJoinRegistry _actorJoins = new();
     private readonly ZLinkSpotActorMembership _actors = new();
+    private readonly TaskCompletionSource _perActorMembersDrained =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly ZLinkSpotActivationDispatcher _dispatcher;
     private readonly ZLinkSpotOutboundTransport _outbound;
     private readonly ZLinkSpotOutboundEndpoint _outboundEndpoint;
@@ -28,11 +36,13 @@ internal sealed partial class ZLinkSpotActivation :
     private readonly object _lifecycleGate = new();
     private ZLinkSpotActorHandlerRegistry? _actorHandlers;
     private bool _configurationOpen = true;
+    private int _nativeDispatchAttached;
     private int _disposed;
     private int _closingInvoked;
     private ZLinkSpotHandlerInvoker? _handlerInvoker;
     private Task? _finalization;
     private object? _spot;
+    private ZLinkPerActorShellRelocationPlan? _perActorShellRelocation;
 
     public ZLinkSpotActivation(
         ZLinkFrameworkRuntime runtime,
@@ -44,10 +54,15 @@ internal sealed partial class ZLinkSpotActivation :
         string channelName,
         TimeSpan defaultRequestTimeout,
         TimeSpan? sendTimeout,
-        ZLinkUserSpotExecutionMode executionMode = ZLinkUserSpotExecutionMode.SpotWide)
+        ZLinkUserSpotExecutionMode executionMode = ZLinkUserSpotExecutionMode.SpotWide,
+        ZLinkSpotRelocationReadinessMode relocationReadiness =
+            ZLinkSpotRelocationReadinessMode.AnyTurnBoundary,
+        bool restoreLogicalTimers = false)
     {
         _runtime = runtime;
-        _timers = new ZLinkSpotTimerRegistry(() => runtime.Flow.CaptureEnabled);
+        _timers = new ZLinkSpotTimerRegistry(
+            () => runtime.Flow.CaptureEnabled,
+            restoreLogicalTimers);
         _scope = scope;
         _handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
         NativeSpot = nativeSpot;
@@ -57,6 +72,7 @@ internal sealed partial class ZLinkSpotActivation :
         ChannelName = channelName;
         DefaultRequestTimeout = defaultRequestTimeout;
         ExecutionMode = executionMode;
+        RelocationReadiness = relocationReadiness;
         _outbound = new ZLinkSpotOutboundTransport(
             nativeSpot,
             sendTimeout,
@@ -78,6 +94,7 @@ internal sealed partial class ZLinkSpotActivation :
             runtime,
             nativeSpot,
             channelName,
+            _spotId,
             _packets,
             _actorJoins,
             _actors,
@@ -119,6 +136,41 @@ internal sealed partial class ZLinkSpotActivation :
 
     public ZLinkUserSpotExecutionMode ExecutionMode { get; }
 
+    internal ZLinkSpotRelocationReadinessMode RelocationReadiness { get; }
+
+    internal ZLinkPerActorShellRelocationPlan?
+        PerActorShellRelocationPlan =>
+        Volatile.Read(ref _perActorShellRelocation);
+
+    internal void PublishPerActorShellRelocationPlan(
+        ZLinkPerActorShellRelocationPlan plan)
+    {
+        if (ExecutionMode != ZLinkUserSpotExecutionMode.PerActor)
+            throw new InvalidOperationException(
+                "Only a PerActor User Spot can publish a shell relocation plan.");
+        if (Interlocked.CompareExchange(
+                ref _perActorShellRelocation,
+                plan,
+                null) is { } existing
+            && existing != plan)
+            throw new ZLinkRelocationDataLostException(
+                $"SPOT '{SpotId}' shell relocation target changed.");
+        if (JoinedActorCount == 0)
+            _perActorMembersDrained.TrySetResult();
+    }
+
+    internal Task WaitForPerActorMembersDrainedAsync(
+        CancellationToken cancellationToken)
+    {
+        if (ExecutionMode != ZLinkUserSpotExecutionMode.PerActor
+            || PerActorShellRelocationPlan is null)
+            throw new InvalidOperationException(
+                "Only a relocated PerActor User Spot can wait for member relocation.");
+        if (JoinedActorCount == 0)
+            _perActorMembersDrained.TrySetResult();
+        return _perActorMembersDrained.Task.WaitAsync(cancellationToken);
+    }
+
     public ZLinkCodecRegistryBuilder Codecs => _runtime.Registration.Codecs;
 
     ZLinkMessageFlowTracer IZLinkCurrentSpotActivation.Flow => _runtime.Flow;
@@ -128,6 +180,12 @@ internal sealed partial class ZLinkSpotActivation :
     private IZLinkInstanceSpotHandlerRegistry InstanceHandlers { get; }
 
     IZLinkInstanceSpotHandlerRegistry IZLinkInstanceSpotContext.Handlers => InstanceHandlers;
+
+    public IZLinkSpotRelocationReadyCall RelocationReady()
+    {
+        EnsureContextOperationAllowed();
+        return new ZLinkSpotRelocationReadyCall(this);
+    }
 
     public IZLinkSpotOutbound Outbound
     {
@@ -153,8 +211,9 @@ internal sealed partial class ZLinkSpotActivation :
     {
         if (IsDisposed)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotMoving,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Spot context for '{SpotId}' cannot start an operation after owner cutover.");
+        ZLinkSpotRelocationReadyHandlerScope.EnsureOperationCanStart(this);
     }
 
     private void EnsureConfigurationOpen()

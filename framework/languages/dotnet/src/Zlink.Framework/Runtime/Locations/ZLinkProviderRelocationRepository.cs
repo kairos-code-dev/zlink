@@ -1,21 +1,100 @@
+using System.Runtime.ExceptionServices;
+
 namespace Zlink.Framework.Runtime.Locations;
 
 internal sealed class ZLinkProviderRelocationRepository(
     IZLinkRelocationStore provider) : IZLinkRelocationRepository
 {
+    private static readonly TimeSpan AmbiguousReconciliationTimeout =
+        TimeSpan.FromSeconds(5);
+
     public async ValueTask<ZLinkRelocationStored> PutRelocationAsync(
         ReadOnlyMemory<byte> payload,
         TimeSpan retention,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        // The Framework issues the reference once before provider I/O. If the
+        // response is lost, it reads that same reference instead of creating
+        // another blob.
         var reference = new ZLinkBlobReference(
             Guid.NewGuid().ToString("N"));
-        var result = await provider.PutAsync(
+        return await PutAtCoreAsync(
                 reference,
                 payload,
                 retention,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    public ValueTask<ZLinkRelocationStored> PutRelocationAtAsync(
+        string reference,
+        ReadOnlyMemory<byte> payload,
+        TimeSpan retention,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reference);
+        return PutAtCoreAsync(
+            new ZLinkBlobReference(reference),
+            payload,
+            retention,
+            cancellationToken);
+    }
+
+    private async ValueTask<ZLinkRelocationStored> PutAtCoreAsync(
+        ZLinkBlobReference reference,
+        ReadOnlyMemory<byte> payload,
+        TimeSpan retention,
+        CancellationToken cancellationToken)
+    {
+        ZLinkBlobPutResult result;
+        try
+        {
+            result = await provider.PutAsync(
+                    reference,
+                    payload,
+                    retention,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception failure) when (
+            failure is not OutOfMemoryException
+            and not StackOverflowException
+            and not AccessViolationException)
+        {
+            ZLinkBlobReadResult read;
+            try
+            {
+                using var reconciliationDeadline =
+                    new CancellationTokenSource(
+                        AmbiguousReconciliationTimeout);
+                read = await provider.ReadAsync(
+                        reference,
+                        reconciliationDeadline.Token)
+                    .AsTask()
+                    .WaitAsync(reconciliationDeadline.Token)
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                ExceptionDispatchInfo.Capture(failure).Throw();
+                throw;
+            }
+
+            if (read is ZLinkBlobReadResult.Found found
+                && found.Bytes.Span.SequenceEqual(payload.Span))
+            {
+                return Stored(
+                    reference,
+                    payload.Span,
+                    found.ExpiresAt,
+                    found.StoreNow);
+            }
+
+            ExceptionDispatchInfo.Capture(failure).Throw();
+            throw;
+        }
+
         var (expiresAt, storeNow) = result switch
         {
             ZLinkBlobPutResult.Stored stored =>
@@ -27,11 +106,7 @@ internal sealed class ZLinkProviderRelocationRepository(
                     "A Framework-issued relocation reference collided."),
             _ => throw new InvalidOperationException()
         };
-        return new ZLinkRelocationStored(
-            reference.Value,
-            ComputeCrc32C(payload.Span),
-            expiresAt,
-            storeNow);
+        return Stored(reference, payload.Span, expiresAt, storeNow);
     }
 
     public async ValueTask<ZLinkRelocationReadResult> GetRelocationAsync(
@@ -99,4 +174,15 @@ internal sealed class ZLinkProviderRelocationRepository(
         }
         return ~crc;
     }
+
+    private static ZLinkRelocationStored Stored(
+        ZLinkBlobReference reference,
+        ReadOnlySpan<byte> payload,
+        DateTimeOffset expiresAt,
+        DateTimeOffset storeNow) =>
+        new(
+            reference.Value,
+            ComputeCrc32C(payload),
+            expiresAt,
+            storeNow);
 }

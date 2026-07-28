@@ -42,7 +42,7 @@ internal sealed class PlaySession(
         logger.LogWarning(
             "play stream: error. code={Code}, message={Message}, sessionId={SessionId}",
             error.Error,
-            error.Diagnostic?.Message,
+            error.Message,
             Context.SessionId);
         return ValueTask.CompletedTask;
     }

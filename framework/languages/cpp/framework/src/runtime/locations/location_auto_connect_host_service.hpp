@@ -8,6 +8,7 @@
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
 #include "runtime/mesh/mesh_node_runtime.hpp"
+#include "runtime/mesh/route_mesh_connection_policy.hpp"
 
 #include <zlink/framework/contracts/configuration/module.hpp>
 
@@ -282,6 +283,15 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                      const std::vector<mesh_node_descriptor_t> &descriptors)
     {
         std::map<std::string, target_t> desired;
+        const auto local = loop.local_rid
+          ? std::find_if (
+              descriptors.begin (), descriptors.end (),
+              [&loop] (const mesh_node_descriptor_t &descriptor) {
+                  return descriptor.mesh_name == loop.mesh_name
+                         && descriptor.rid.to_hex ()
+                              == loop.local_rid->to_hex ();
+              })
+          : descriptors.end ();
         for (const auto &descriptor : descriptors) {
             if (descriptor.mesh_name != loop.mesh_name || descriptor.endpoint.empty ()
                 || (loop.local_rid
@@ -291,6 +301,10 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                 || descriptor.state == framework_runtime_state_t::draining
                 || descriptor.state == framework_runtime_state_t::stopped
                 || descriptor.state == framework_runtime_state_t::error)
+                continue;
+            if (local != descriptors.end ()
+                && mesh::route_mesh_connection_not_required (
+                  *local, descriptor))
                 continue;
             /* Automatic RouteMesh has one deterministic initiator. Admission
              * still resolves races and stale discovery candidates. */

@@ -3,16 +3,18 @@ namespace Zlink.Framework.Runtime.Locations;
 /// <summary>
 /// A local capability that participates in auto connect: what this node
 /// advertises for one mesh and what it dials from. The auto-connect type
-/// and role classify the local side only; remote MeshNode descriptors carry
-/// no role — publishing a descriptor in a mesh namespace is what makes a
-/// node a dial target of that mesh (40-location-runtime §5).
+/// and role classify the local side. Remote MeshNode descriptors carry the
+/// object role and server channel memberships needed to decide whether the
+/// pair requires a connection.
 /// </summary>
 internal sealed record ZLinkAutoConnectLocal(
     ZLinkLocationAutoConnectType AutoConnectType,
     string MeshName,
     ZLinkLocationRole Role,
     RoutingId? NodeRid,
-    string Endpoint);
+    string Endpoint,
+    ZLinkMeshNodeObjectRole ObjectRole = ZLinkMeshNodeObjectRole.None,
+    bool HasServerChannel = false);
 
 /// <summary>
 /// One connect target chosen by the planner, keyed by the descriptor RID so
@@ -98,7 +100,13 @@ internal static class ZLinkAutoConnectPlanner
         local.AutoConnectType switch
         {
             ZLinkLocationAutoConnectType.RouteMesh =>
-                local.Role == ZLinkLocationRole.Router && LocalIsInitiator(local, descriptor),
+                local.Role == ZLinkLocationRole.Router
+                && !ZLinkRouteMeshConnectionPolicy.IsNotRequired(
+                    local.ObjectRole,
+                    local.HasServerChannel,
+                    descriptor.ObjectRole,
+                    descriptor.ChannelWeights.Count != 0)
+                && LocalIsInitiator(local, descriptor),
             ZLinkLocationAutoConnectType.ClientServer => local.Role == ZLinkLocationRole.Dealer,
             ZLinkLocationAutoConnectType.DealerMesh =>
                 local.Role == ZLinkLocationRole.Dealer && LocalIsInitiator(local, descriptor),

@@ -12,6 +12,8 @@ public static class SpotActorTransferNames
     public const string UserSpotType = "transfer-user-spot";
     public const string RelocationPayloadUserSpotType =
         "relocation-payload-user-spot";
+    public const string RelocationPayloadPerActorUserSpotType =
+        "relocation-payload-per-actor-user-spot";
     public const string RelocationPayloadInstanceSpotType =
         "relocation-payload-instance-spot";
 
@@ -146,7 +148,7 @@ public sealed record EvidenceWaitReq(
     string[] ContainsAll,
     int TimeoutMilliseconds = 10000);
 
-public sealed record ActorRefSnapshotRes(
+public sealed record ActorRefRes(
     string ActorId,
     string NodeRid,
     long Generation);
@@ -168,7 +170,11 @@ public sealed record RelocationBlobMeasurement(
     string Operation,
     int EncodedBytes,
     string PayloadSha256,
-    string OpaqueReferenceSha256);
+    string OpaqueReferenceSha256,
+    long StartedUnixTimeMilliseconds,
+    long CompletedUnixTimeMilliseconds,
+    double DurationMilliseconds,
+    int ActiveOperationCount);
 
 public sealed record RelocationPayloadSpotReq(
     string Scenario,
@@ -238,6 +244,7 @@ public sealed record RelocationLocationSnapshot(
     string NodeRid);
 
 public sealed record RelocationMessageFlowEvidence(
+    string NodeRid,
     long ObservedUnixTimeMilliseconds,
     string? Phase,
     string Surface,
@@ -247,6 +254,18 @@ public sealed record RelocationMessageFlowEvidence(
     string? ActorId,
     string? CorrelationId,
     string? FlowId);
+
+public sealed record RelocationInterruptionEvidence(
+    long ObservedUnixTimeMilliseconds,
+    double DurationSeconds,
+    string UnitKind,
+    string? ExecutionMode);
+
+public sealed record RelocationInterruptionWaitReq(
+    string UnitKind,
+    string? ExecutionMode = null,
+    int MinimumCount = 1,
+    int TimeoutMilliseconds = 10000);
 
 public static class RelocationWorkloadMetadata
 {
@@ -273,7 +292,9 @@ public sealed record RelocationBulkSpotCreateReq(
     int ApplicationStateBytes,
     bool InstanceSpot,
     int MaxConcurrency = 64,
-    int ActorsPerSpot = 0);
+    int ActorsPerSpot = 0,
+    bool PerActor = false,
+    int ActorApplicationStateBytes = 0);
 
 public sealed record RelocationBulkSpotCreateRes(
     string[] SpotIds,
@@ -290,5 +311,14 @@ public sealed record TransportDeliveryGateRes(
     string Kind,
     int CapturedCount,
     int ReleasedCount,
+    bool Armed,
+    bool Released);
+
+public sealed record ReplyAdmissionGateRes(
+    string ActorId,
+    int CapturedCount,
+    int BackpressuredCount,
+    int ReleasedAdmissionCount,
+    int DistinctRequestCount,
     bool Armed,
     bool Released);

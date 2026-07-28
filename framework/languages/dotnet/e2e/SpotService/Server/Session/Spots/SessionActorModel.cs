@@ -28,8 +28,6 @@ internal sealed class ScenarioActor(string actorId, IZLinkActorContext context) 
     public IZLinkActorContext Context { get; } = context;
 }
 
-internal sealed record ScenarioActorCreateReq(string DisplayName);
-
 internal sealed class ScenarioEntrySpot(
     IZLinkEntrySpotContext context,
     EvidenceStore evidence) : IZLinkEntrySpot<ScenarioActor>

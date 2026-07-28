@@ -7,10 +7,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.Contracts.Internal;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Dispatch;
 using Zlink.Framework.Runtime.Handlers;
+using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -64,12 +66,10 @@ public sealed partial class UnhandledDispatchPolicyTests
     {
         var observer = new CapturingMessageFlowObserver();
         var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
-        options.SetRuntimeMessageFlowObserver(observer);
+        options.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Detailed);
         var services = new ServiceCollection().BuildServiceProvider();
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
-        await using var observerPump = new ZLinkMessageFlowObserverPump(options, services, runner);
-        var reporter = new ZLinkDispatchErrorReporter(options, observerPump: observerPump);
+        var reporter = new ZLinkDispatchErrorReporter(options);
         var logger = new CapturingLogger<ZLinkSpotSubscriptionRegistry>();
         var registryA = new ZLinkSpotSubscriptionRegistry();
         var registryB = new ZLinkSpotSubscriptionRegistry();
@@ -190,7 +190,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         listener.ActivityStopped = activities.Add;
         ActivitySource.AddActivityListener(listener);
         var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
+        options.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Off);
         using var runtimeServices = CreateDispatchRuntime(out var runtime);
         var nativeSpot = new CapturingSpot();
         var logger = new CapturingLogger<ZLinkSpotActorJoinDispatcher>();
@@ -237,7 +237,7 @@ public sealed partial class UnhandledDispatchPolicyTests
 
         Assert.Equal(1, nativeSpot.LastJoinResultCode);
         Assert.Empty(logger.Messages);
-        Assert.Contains(activities, activity => activity.OperationName == "zlink.actor.dispatch");
+        Assert.Empty(activities);
     }
 
     [Fact]
@@ -293,6 +293,7 @@ public sealed partial class UnhandledDispatchPolicyTests
     [Fact]
     public async Task HandlerMissing_EmitsTrace()
     {
+        ZLinkTelemetry.SetDiagnosticsLevel(ZLinkDiagnosticsLevel.Errors);
         using var listener = new ActivityListener
         {
             ShouldListenTo = source => source.Name == ZLinkTelemetry.ActivitySourceName,
@@ -346,7 +347,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         Assert.Contains(activities, activity =>
             activity.OperationName == "zlink.actor.dispatch"
             && activity.Tags.Any(tag =>
-                tag.Key == "zlink.reason" && tag.Value == "no-join-handler"));
+                tag.Key == "zlink.reason" && tag.Value == "no_handler"));
     }
 
     [Fact]
@@ -377,10 +378,8 @@ public sealed partial class UnhandledDispatchPolicyTests
             .BuildServiceProvider();
         var registration = new ZLinkFrameworkRegistration();
         var observer = new CapturingMessageFlowObserver();
-        registration.DispatchOptions.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
-        registration.DispatchOptions.SetRuntimeMessageFlowObserver(observer);
+        registration.DispatchOptions.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Detailed);
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
-        await using var observerPump = new ZLinkMessageFlowObserverPump(registration.DispatchOptions, services, runner);
         var registry = new ZLinkHandlerRegistry([
             new ZLinkHandlerEndpointDescriptor(
                 ZLinkMessageKind.Publish,
@@ -415,7 +414,7 @@ public sealed partial class UnhandledDispatchPolicyTests
                 registration),
             static _ => new HashSet<string>(StringComparer.Ordinal),
             LogLevel.Warning,
-            new ZLinkDispatchErrorReporter(registration.DispatchOptions, observerPump: observerPump),
+            new ZLinkDispatchErrorReporter(registration.DispatchOptions),
             registration.Codecs,
             new CapturingLogger<ZLinkChannelPublishDispatchPipeline>());
         var header = new ZLinkEnvelopeHeader(
@@ -480,14 +479,11 @@ public sealed partial class UnhandledDispatchPolicyTests
     {
         var observer = new CapturingMessageFlowObserver();
         var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
-        options.SetRuntimeMessageFlowObserver(observer);
+        options.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Detailed);
         var services = new ServiceCollection().BuildServiceProvider();
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
-        await using var observerPump = new ZLinkMessageFlowObserverPump(options, services, runner);
         var reporter = new ZLinkDispatchErrorReporter(
-            options,
-            observerPump: observerPump);
+            options);
         var error = new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.Channel,
             ZLinkDispatchMessageKind.Request,
@@ -516,11 +512,10 @@ public sealed partial class UnhandledDispatchPolicyTests
     {
         var observer = new CapturingMessageFlowObserver();
         var options = new ZLinkDispatchOptionsModel();
-        options.SetRuntimeMessageFlowObserver(observer);
+        options.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Detailed);
         var services = new ServiceCollection().BuildServiceProvider();
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
-        await using var observerPump = new ZLinkMessageFlowObserverPump(options, services, runner);
-        var reporter = new ZLinkDispatchErrorReporter(options, observerPump: observerPump);
+        var reporter = new ZLinkDispatchErrorReporter(options);
         var scope = new ZLinkDispatchFlowScope(
             ZLinkDispatchErrorSurface.SpotActor,
             "SpotActor",
@@ -548,18 +543,16 @@ public sealed partial class UnhandledDispatchPolicyTests
     {
         var observer = new CapturingMessageFlowObserver();
         var options = new ZLinkDispatchOptionsModel();
-        options.SetRuntimeMessageFlowObserver(observer);
+        options.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Detailed);
         var services = new ServiceCollection().BuildServiceProvider();
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
-        await using var observerPump = new ZLinkMessageFlowObserverPump(options, services, runner);
         var logger = new CapturingLogger<ZLinkSpotActorPacketDispatcher>();
         var dispatcher = new ZLinkSpotActorPacketDispatcher(
             static () => new ZLinkSpotActorHandlerRegistry(ZLinkSpotActorHandlerSurface.UserSpot),
             static () => throw new InvalidOperationException("Handler invoker should not be used."),
             new ZLinkDispatchErrorReporter(
                 options,
-                logger,
-                observerPump: observerPump),
+                logger),
             logger);
         var actor = new TestActor("actor-1");
         var runtimeState = new ZLinkActorRuntimeState(actor.ActorId);
@@ -580,7 +573,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         Assert.Equal("actor", observed.Surface);
         Assert.Equal("send", observed.MessageKind);
         Assert.Equal("no_handler", observed.Reason);
-        Assert.Null(observed.Action);
+        Assert.Equal("drop", observed.Action);
         Assert.Equal("missing-actor-send", observed.PacketName);
         Assert.Equal("actor-1", observed.ActorId);
         Assert.Contains(logger.Messages, message => message.Contains("phase=dropped", StringComparison.Ordinal)
@@ -593,13 +586,12 @@ public sealed partial class UnhandledDispatchPolicyTests
     {
         var observer = new CapturingMessageFlowObserver();
         var options = new ZLinkDispatchOptionsModel();
-        options.SetRuntimeMessageFlowObserver(observer);
+        options.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Detailed);
         var probe = new TestActorSendProbe();
         using var services = new ServiceCollection()
             .AddSingleton(probe)
             .BuildServiceProvider();
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
-        await using var observerPump = new ZLinkMessageFlowObserverPump(options, services, runner);
         var logger = new CapturingLogger<ZLinkSpotActorPacketDispatcher>();
         var registry = new ZLinkSpotActorHandlerRegistry(
             ZLinkSpotActorHandlerSurface.UserSpot,
@@ -620,8 +612,7 @@ public sealed partial class UnhandledDispatchPolicyTests
             () => invoker,
             new ZLinkDispatchErrorReporter(
                 options,
-                logger,
-                observerPump: observerPump),
+                logger),
             logger);
         var actor = new TestActor("actor-1");
         var runtimeState = new ZLinkActorRuntimeState(actor.ActorId);
@@ -642,7 +633,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         Assert.Equal("actor", observed.Surface);
         Assert.Equal("send", observed.MessageKind);
         Assert.Equal("decode_error", observed.Reason);
-        Assert.Null(observed.Action);
+        Assert.Equal("drop", observed.Action);
         Assert.Equal("malformed-actor-send", observed.PacketName);
         Assert.Equal("actor-1", observed.ActorId);
         Assert.Equal(0, probe.InvocationCount);
@@ -672,12 +663,10 @@ public sealed partial class UnhandledDispatchPolicyTests
     {
         var observer = new CapturingMessageFlowObserver();
         var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
-        options.SetRuntimeMessageFlowObserver(observer);
+        options.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Detailed);
         var services = new ServiceCollection().BuildServiceProvider();
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
-        await using var observerPump = new ZLinkMessageFlowObserverPump(options, services, runner);
-        var reporter = new ZLinkDispatchErrorReporter(options, observerPump: observerPump);
+        var reporter = new ZLinkDispatchErrorReporter(options);
         var logger = new CapturingLogger<ZLinkSpotSubscriptionRegistry>();
         var registry = new ZLinkSpotSubscriptionRegistry();
         var nativeSpot = new CapturingSpot();
@@ -859,8 +848,8 @@ public sealed partial class UnhandledDispatchPolicyTests
     }
 
     private sealed record SpotSubscriptionObservation(
-        ZLinkRuntimeMessageFlowEvent? Received,
-        ZLinkRuntimeMessageFlowEvent? Terminal,
+        ObservedMessageFlow? Received,
+        ObservedMessageFlow? Terminal,
         int DispatchCount,
         long FanoutReceived,
         long DynamicTopicFanoutReceived,
@@ -909,31 +898,89 @@ public sealed partial class UnhandledDispatchPolicyTests
         }
     }
 
-    private sealed class CapturingMessageFlowObserver : IZLinkRuntimeMessageFlowObserver
+    private sealed class CapturingMessageFlowObserver : IDisposable
     {
-        private readonly ConcurrentQueue<ZLinkRuntimeMessageFlowEvent> _events = new();
-        private readonly TaskCompletionSource<ZLinkRuntimeMessageFlowEvent> _observed =
+        private readonly ActivityListener _listener;
+        private readonly ConcurrentQueue<ObservedMessageFlow> _events = new();
+        private readonly TaskCompletionSource<ObservedMessageFlow> _observed =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public IReadOnlyCollection<ZLinkRuntimeMessageFlowEvent> Events => _events.ToArray();
+        public CapturingMessageFlowObserver()
+        {
+            _listener = new ActivityListener
+            {
+                ShouldListenTo = source => source.Name == ZLinkTelemetry.ActivitySourceName,
+                Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
+                    ActivitySamplingResult.AllDataAndRecorded,
+                ActivityStopped = Capture
+            };
+            ActivitySource.AddActivityListener(_listener);
+        }
+
+        public IReadOnlyCollection<ObservedMessageFlow> Events => _events.ToArray();
 
         public bool HasTerminal => _observed.Task.IsCompleted;
 
-        public ValueTask OnMessageFlowAsync(
-            ZLinkRuntimeMessageFlowEvent flow,
-            CancellationToken cancellationToken)
-        {
-            _events.Enqueue(flow);
-            if (flow.Outcome == "failed" || flow.Phase == "dropped")
-                _observed.TrySetResult(flow);
-            return ValueTask.CompletedTask;
-        }
-
-        public async Task<ZLinkRuntimeMessageFlowEvent> WaitAsync(TimeSpan timeout)
+        public async Task<ObservedMessageFlow> WaitAsync(TimeSpan timeout)
         {
             return await _observed.Task.WaitAsync(timeout);
         }
+
+        public void Dispose() => _listener.Dispose();
+
+        private void Capture(Activity activity)
+        {
+            string? Tag(string name) =>
+                activity.TagObjects.FirstOrDefault(tag => tag.Key == name).Value?.ToString();
+            var phase = Tag("phase") ?? activity.Events.FirstOrDefault().Name;
+            var messageKind = Normalize(Tag("message_kind") ?? Tag("zlink.kind"));
+            if (messageKind == "publish")
+                return;
+            var flow = new ObservedMessageFlow(
+                phase,
+                Tag("event_id") == "zlink.dispatch_error" ? "failed" : phase,
+                Normalize(Tag("surface") ?? Tag("zlink.surface")),
+                messageKind,
+                Tag("packet_name") ?? Tag("zlink.packet.name"),
+                Tag("channel_name") ?? Tag("zlink.channel.name"),
+                Tag("correlation_id"),
+                Tag("actor_id") ?? Tag("zlink.actor.id"),
+                Normalize(Tag("reason") ?? Tag("zlink.reason")),
+                Normalize(Tag("action") ?? Tag("zlink.action")));
+            _events.Enqueue(flow);
+            if (flow.Phase == "dropped"
+                || flow.Outcome == "failed" && flow.Action != "drop")
+                _observed.TrySetResult(flow);
+        }
+
+        private static string? Normalize(string? value) =>
+            value switch
+            {
+                "SpotActor" => "actor",
+                "SpotSubscription" => "subscription",
+                "Channel" => "channel",
+                "HandlerMissing" => "no_handler",
+                "PayloadDecodeFailed" => "decode_error",
+                "ReplyPathMissing" => "reply_path_missing",
+                "ReplyError" => "reply_error",
+                "FailCaller" => "fail_caller",
+                "ActorSend" => "send",
+                "ActorRequest" => "request",
+                _ => value?.ToLowerInvariant()
+            };
     }
+
+    private sealed record ObservedMessageFlow(
+        string? Phase,
+        string? Outcome,
+        string? Surface,
+        string? MessageKind,
+        string? PacketName,
+        string? ChannelName,
+        string? CorrelationId,
+        string? ActorId,
+        string? Reason,
+        string? Action);
 
     private sealed class CapturingLogger<T> : ILogger<T>
     {

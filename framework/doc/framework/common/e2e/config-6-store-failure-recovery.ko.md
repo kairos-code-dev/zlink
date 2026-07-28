@@ -54,7 +54,7 @@ descriptor·owner lease record를 직접 읽거나 의미를 해석하지 않는
 시간 관련 option(owner lease renew interval, owner lease TTL, polling interval, store failure grace)은
 시나리오가 유한 시간 안에 기다릴 수 있도록 짧게 설정한다(예: lease renew 1초, lease TTL 3초,
 polling 0.5초). 값 자체는 언어별 option 표면을 따르되, 의미는
-[40 §4](../spec/21-location-runtime.ko.md#4-owner-lease와-local-admission-deadline)의
+[Location runtime §4](../spec/21-location-runtime.ko.md#4-owner-lease와-local-admission-deadline)의
 option 정의와 같아야 한다. 이 값들은 `run_e2e.sh` 상단의 명시적 config 상수로 두고 시나리오 대기 시간의 근거로
 사용한다.
 
@@ -89,19 +89,20 @@ lease-renew/lease/grace 상수에서 계산한 별도 이름의 시나리오 대
   Descriptor revision, endpoint, owner lease와 Store 성공 시각은 public status에 포함하지 않는다.
 - 세부 동작: store 기반 자동 연결 + runtime status 기준값.
 
-#### SF-A2 polling fallback (watch 없는 store)
+#### SF-A2 opaque Store polling
 
 우선순위: `P1`
 
-**검증 질문:** watch를 제공하지 않는 store 구성에서도, polling만으로 peer 변경이 polling interval 안에 같은 결과로 반영되는가.
+**검증 질문:** provider 전용 변경 알림에 의존하지 않고, generic Store scan polling만으로 peer 변경을
+polling interval 안에 반영하는가.
 
-- 절차: watch를 구현하지 않은 Location Store 구현체를 `AddLocationStore(instance)`로 등록한 배포에서,
-  provider 하나를 추가로 시작했다가 정상 종료한다. Relocation Store는 별도 `AddRelocationStore(instance)`로
-  등록하며 polling discovery 검증에는 장애를 주입하지 않는다([40 §3](../spec/21-location-runtime.ko.md)).
-- 검증: Watch event 없이 polling만으로 추가·제거가 peer intent와 public RouteMesh status에 반영된다.
+- 절차: opaque `LocationStore`를 등록한 별도 consumer에서 provider 하나를 추가로 시작했다가 정상 종료한다.
+  Relocation Store는 별도로 등록하며 polling discovery 검증에는 장애를 주입하지 않는다
+  ([Location runtime §3](../spec/21-location-runtime.ko.md)).
+- 검증: Generic snapshot scan polling만으로 추가·제거가 peer intent와 public RouteMesh status에 반영된다.
   추가 후 polling interval 몇 tick 안에 새 provider가 ready member가 되고, 제거 후 그 provider를
-  선택하지 않는다. watch를 지원하는 Redis extension 배포와 결과 의미가 같다.
-- 세부 동작: polling이 correctness 경로임을 고정(watch는 선택 최적화).
+  선택하지 않는다.
+- 세부 동작: polling이 correctness 경로다. Provider-specific change stamp나 watch는 public SPI가 아니다.
 
 ### Track B — store 장애 중 (fail-static)
 
@@ -221,14 +222,13 @@ lease generation으로 구분되는가.
 script 실행 없이 bounded page로 reconcile하는가.
 
 - 절차: 한 scope에 1,001개 descriptor를 게시하고 page size 1, 100과 1,000으로 각각 조회한다. Page 사이에
-  descriptor create·update·delete를 경쟁시키고 scope change stamp를 관찰한다. Routing allocation fixture는
+  descriptor create·update·delete를 경쟁시키고 snapshot cursor의 일관성을 관찰한다. Routing allocation fixture는
   slot 경계 `1`·`65535`, 255 members와 각 상한을 넘는 입력을 실행한다.
 - 검증: 각 page는 요청 item 1..1,000 또는 encoded 4 MiB 가운데 먼저 도달한 상한에서 끝나고 continuation
-  token은 provider가 해석하는 opaque 값이다. Framework는 첫 page 전과 마지막 page 뒤 scope change stamp가
-  같을 때만 전체 desired snapshot을 적용하며 달라지면 partial
-  diff를 적용하지 않고 다시 읽는다. Routing group은 slot 1..65,535와 member 1..255만 허용하고 상한 초과를
-  startup 또는 provider argument 오류로 거부한다.
-- 세부 동작: bounded descriptor page, stable-scope reconcile과 coherent routing group 상한.
+  token은 provider가 해석하는 opaque 값이다. 모든 page는 첫 요청에서 고정한 snapshot을 읽는다.
+  Cursor가 만료되면 Framework는 partial diff를 적용하지 않고 첫 page부터 다시 읽는다. Routing group은
+  slot 1..65,535와 member 1..255만 허용하고 상한 초과를 startup 또는 provider argument 오류로 거부한다.
+- 세부 동작: bounded descriptor page, snapshot cursor와 coherent routing group 상한.
 
 ### Track D — store 복구
 
@@ -338,8 +338,8 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
   relocation renew가 발생하지 않게 한 뒤 Store를 복구한다. Location Store에는 current authority가
   이미 publish한 relocation reference를 그대로 유지한다.
 - 검증: Published reference가 가리키는 payload가 retention 이후 영구적으로 없으면 Runtime은 새 state를
-  추측하거나 이전 owner로 rollback하지 않고 non-retriable `RelocationDataLost`로 끝낸다. 진행 중인 `Relocate`는
-  `ForceStopped/RelocationFailed`로 terminal 완료하고 detail에 `RelocationDataLost`를 보존한다. Metric·event에는
+  추측하거나 이전 owner로 rollback하지 않고 non-retriable `DataLost`로 끝낸다. 진행 중인 `Relocate`는
+  `ForceStopped/RelocationFailed`로 terminal 완료하고 detail에 `DataLost`를 보존한다. Metric·event에는
   object kind, phase와 relocation reference hash를 기록한다. Authority에 publish되지 않은 orphan expiry는 이
   data-loss 결과로 분류하지 않는다.
 
@@ -447,6 +447,8 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
   수와 다르면 recovery error로 처리하고 `Completed`를 금지한다. Delivery state는 pending에서
   `terminalReceived`, `alreadyTerminal`, `sourceLeaseExpired` 중 하나로만 단조 전이한다. Root reference CAS
   winner 하나만 current가 되고 loser root/chunk는 orphan cleanup 대상이며 loser는 current root를 다시 읽는다.
+  여기서 pending relay는 accepted request의 terminal reply delivery를 뜻한다. 이전 owner route로 들어온
+  Actor·Spot message를 current owner에 전달하는 Message Follow의 route 수가 아니다.
   Recovery scan은
   1,000 item 또는 encoded 4 MiB 가운데 먼저 도달한 상한에서 page를 끝내고 continuation으로 모든 row를
   정확히 한 번 반환한다.
@@ -478,7 +480,7 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
   stable type bucket 가운데 하나라도 부족하면 vector 전체가 바뀌지 않고 factory가 실행되지 않는다.
   성공 수는 각 limit을 넘지 않으며 failure·timeout·abort는 exact reservation ID와 lifecycle fence가 확보한
   slot만 해제한다. 다른 node가 eligible하면 그 node를 시도하고 모두 소진되면
-  `PlacementCapacityExhausted`로 끝난다.
+  `CapacityExceeded`로 끝난다.
 
 #### SF-G2 unlimited·Entry Spot·activation concurrency 분리
 

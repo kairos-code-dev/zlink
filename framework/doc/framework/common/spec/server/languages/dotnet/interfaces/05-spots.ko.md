@@ -395,7 +395,7 @@ Framework는 이동하지 않았거나 commit 전에 abort했으면 source에서
 Callback 완료 전에는 보류한 message와 timer를 실행하지 않는다.
 
 기본 `AnyTurnBoundary`, `PerActor`, Entry·Instance Spot, Spot turn 밖과 같은 turn의
-중복 `Defer()`는 queue mutation 전에 `ZLinkFrameworkErrorKind.InvalidConfiguration`
+중복 `Defer()`는 queue mutation 전에 `ZLinkFrameworkErrorKind.InvalidOperation`
 오류로 끝난다. `Defer()` 뒤 같은 turn에서 다른 Framework operation을 시작해도
 같은 오류다. Callback은 process recovery에서 다시 실행될 수 있으므로 override는
 retry-safe해야 한다.
@@ -575,24 +575,24 @@ Entry·User·Instance SpotId는 UTF-8 encoded 크기 1..255 bytes의 global stri
 조회 시점의 route snapshot이며 identity key에 포함하지 않는다.
 
 `IZLinkSpotOutbound`과 `IZLinkSpotClient`는 global SpotId를 받고 Spot 전용 call을 반환한다. 일반
-call은 current Ready location만 resolve한다. RID가 Missing이면 send는 `TargetNotFound`, request는
-`RequestTargetNotFound`로 완료한다. `InstanceSpot()`
+call은 current Ready location만 resolve한다. SpotId가 없으면 send와 request 모두 `NotFound`로
+완료한다. `InstanceSpot()`
 또는 `InstanceSpot(instanceSpotType)`을 명시한 call만 Missing Instance Spot을 새로 만들고 초기화하여
 사용할 수 있게 준비할 수 있다. 이 과정을 cold activation이라 한다. [Ready](../../../../01-glossary.ko.md#ready) Instance authority가 있는 call은
 authority에 저장된 [stable type](../../../../01-glossary.ko.md#stable-type)을 사용하므로 caller가
 type을 다시 제공할 필요가 없다. Instance marker를 사용했는데 existing authority가 User Spot이거나
-명시한 stable type과 authority의 type이 다르면 `SpotTypeMismatch`다.
+명시한 stable type과 authority의 type이 다르면 `TypeMismatch`다.
 
 [Cold activation](../../../../01-glossary.ko.md#cold-activation)에서 `InstanceSpot()`은 선택된 Mesh에 등록된
 Instance Spot type이 하나일 때만 그
 type을 사용한다. 등록 type이 여러 개면 `InstanceSpot(instanceSpotType)`으로 type을 명시해야
 한다. 선택한 Mesh에 type이 없으면 target-not-found, 여러 개인데 type을 생략하면
-`InvalidConfiguration`으로 완료한다.
+`InvalidOperation`으로 완료한다.
 `InMesh`는 Missing Instance Spot을 처음 생성할 Mesh를 지정한다. Object Client 또는 Server role의
-Mesh가 하나면 생략할 수 있다. 후보가 둘 이상인데 생략하면 `MeshSelectionRequired`, 후보가 없으면
-`ObjectClientNotConfigured`, 지정한 Mesh가 없으면 `MeshNotFound`로 완료한다. 이 option은 Instance
+Mesh가 하나면 생략할 수 있다. 후보가 둘 이상인데 생략하면 `InvalidOperation`, 후보가 없으면
+`NotConfigured`, 지정한 Mesh가 없으면 `NotFound`로 완료한다. 이 option은 Instance
 marker가 있는 call에서만 유효하며 marker 없이 사용하면
-`InvalidConfiguration`이다. Existing authority를 다른 Mesh나 owner로
+`InvalidOperation`이다. Existing authority를 다른 Mesh나 owner로
 이동시키지 않는다. Option을 사용해도 target node나 endpoint를 지정할 수는 없다. Request
 `Timeout`은 resolve, cold activation, handler와 reply 전체의 deadline을 고정한다. One-way call은 선택한
 MeshNode의 send deadline에 resolve, cold activation과 outbound admission을 포함한다. Metadata와 terminal
@@ -600,7 +600,7 @@ MeshNode의 send deadline에 resolve, cold activation과 outbound admission을 �
 `Yield<TReply>`로 한 번만 제출한다. Instance marker와 각 option은 한 번만 설정할 수 있다.
 `Yield<TReply>`는 `SpotWide` User Spot 또는 Instance Spot callback에서만 유효하다. Entry Spot,
 `PerActor` User Spot, Entry Spot Actor, Node·Channel handler와 owner turn 밖의 client에서 호출하면
-operation을 제출하거나 turn을 반납하지 않고 `InvalidConfiguration`으로 완료한다.
+operation을 제출하거나 turn을 반납하지 않고 `InvalidOperation`으로 완료한다.
 
 `IZLinkInstanceSpot`은 `IZLinkSpot`을 상속하지 않는 actor-free lifecycle interface다. Direct packet과 timer
 handler만 등록할 수 있다. Actor handler나 Logical Multicast subscription을 등록하면 Framework는 `Ready`
@@ -612,6 +612,10 @@ Store-backed User Spot은 manager의 create operation으로 생성한다. Instan
 초기화가 완료된 뒤 최초 message를 해당 Spot의 첫 job으로 정확히 한 번 처리한다. Caller가 target node,
 activation driver나 내부 reservation을 직접 지정하거나 제어하는 API는 제공하지 않는다.
 
+Source는 owner claim이나 수용 공간을 미리 확보하지 않는다. Target에 같은 Spot의 local
+instance가 없을 때만 자신을 owner로 하는 `Creating` record와 수용 공간을 함께
+확보한다. 이 작업에 성공한 target 하나만 factory와 initialization을 실행한다.
+
 `CloseAsync(spotRef)`는 exact incarnation만 닫는다. 해당 incarnation이 없으면 `false`, generation이 다르면
 `SpotGenerationStale`, pre-commit seal 중이면 `SpotMoving`이다. User Spot에 Actor membership이 남아 있으면
 `false`이며 Actor를 자동 leave·destroy하지 않는다. Framework는 current ref를 다시 찾아 다른 incarnation을
@@ -622,12 +626,12 @@ Spot kind를 선택하는 인자나 Instance Spot create·get-or-create overload
 생성 경로는 Spot 전용 message call의 명시적 `InstanceSpot(...)` opt-in 하나다. Instance Spot
 구현이 자신의 lifecycle을 종료하는 `IZLinkInstanceSpotContext.CloseAsync()`는 남긴다.
 
-User Spot Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal
-`Async(...)`를 두 번 호출하면 `AlreadySubmitted`다. `InMesh(...)` 선택과 오류 및 전체
+User Spot Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `InvalidOperation`, terminal
+`Async(...)`를 두 번 호출하면 `InvalidOperation`이다. `InMesh(...)` 선택과 오류 및 전체
 deadline 규칙은 Actor create와 같다. `Create`는 Framework가 새 global Spot ID를 발급한다. `GetOrCreate`는 같은
 User Spot stable type의 Ready Spot을 `Existing`으로 반환한다. Creating이면 authority
 변경을 기다리고, Ready가 되면 `Existing`, cleanup으로 Missing이 되면 새 reservation을
-경쟁한다. CAS loser는 별도 factory를 실행하지 않는다. Kind나 type이 다르면 `SpotTypeMismatch`, deadline 안에 terminal state가 되지 않으면
+경쟁한다. CAS loser는 별도 factory를 실행하지 않는다. Kind나 type이 다르면 `TypeMismatch`, deadline 안에 terminal state가 되지 않으면
 `DeadlineExceeded`다. Creation request는 최대 1 MiB이며 reservation 전에 immutable
 reference와 hash로 보관한다.
 

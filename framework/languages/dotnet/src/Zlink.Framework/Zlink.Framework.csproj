@@ -33,7 +33,8 @@
             <_ProjectReferencesWithVersions
                 Update="@(_ProjectReferencesWithVersions)"
                 Condition="'%(_ProjectReferencesWithVersions.Filename)' == 'Systems.Zlink.Stream.Connector'
-                           or '%(_ProjectReferencesWithVersions.Filename)' == 'Zlink.Framework.Contracts'">
+                           or '%(_ProjectReferencesWithVersions.Filename)' == 'Zlink.Framework.Contracts'
+                           or '%(_ProjectReferencesWithVersions.Filename)' == 'Zlink.Framework.Provider.Abstractions'">
                 <ProjectVersion>[%(_ProjectReferencesWithVersions.ProjectVersion)]</ProjectVersion>
             </_ProjectReferencesWithVersions>
         </ItemGroup>

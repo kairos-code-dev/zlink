@@ -59,6 +59,7 @@
         <Compile Include="Eventing/EventingContracts.cs"/>
         <Compile Include="Errors/ErrorContracts.cs"/>
         <Compile Include="Spots/InstanceSpotContracts.cs"/>
+        <Compile Include="Spots/RelocationReadinessContracts.cs"/>
         <Compile Include="Spots/SpotContracts.cs"/>
         <Compile Include="Streams/StreamContracts.cs"/>
         <Compile Include="Support/ContractExampleAttribute.cs"/>

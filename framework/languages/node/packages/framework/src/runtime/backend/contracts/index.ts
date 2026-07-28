@@ -109,6 +109,13 @@ export interface ZLinkBackendMeshNode {
   connectPeer(options: { readonly endpoint: string; readonly expectedRid?: unknown }): bigint;
   removePeerConnection(intentId: bigint): void;
   disconnectPeer(peerRid: unknown, lifecycleGeneration: bigint): void;
+  replaceDiscoveredNotRequiredPeers?(peers: readonly {
+    readonly nodeRoutingId: string;
+    readonly lifecycleGeneration: bigint;
+    readonly descriptorRevision: bigint;
+    readonly endpoint: string;
+  }[]): void;
+  isObjectClientNodeDirectTarget?(targetRid: unknown): boolean;
   sendToNode(
     targetRid: unknown,
     parts: MessageLike | readonly MessageLike[],

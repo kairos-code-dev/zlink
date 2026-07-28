@@ -282,6 +282,7 @@ internal sealed record ZLinkRemoteActorFrameRelay(
     uint ReplyFlags,
     string? ReplyCapability,
     ulong DeadlineUnixMs,
+    byte[] ApplicationMetadata,
     byte[] Header,
     byte[] Body);
 
@@ -321,6 +322,7 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
                     ? RoutingId.FromHex(sessionHex)
                     : default,
                 requestSource,
+                message.ApplicationMetadata,
                 new MeshOperationId(
                     message.OperationIdHigh,
                     message.OperationIdLow),
@@ -348,7 +350,7 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
         if (!hasOwner || message.RequestSourceLeaseGeneration == 0
             || !hasNode || message.RequestSourceNodeGeneration == 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{message.ActorId}' relay request-source fence is incomplete.");
         return new ZLinkServiceWireCodec.RequestSourceFence(
             message.RequestSourceOwnerId!,
@@ -386,6 +388,7 @@ internal sealed class ZLinkRemoteSessionPushRelayHandler(ZLinkFrameworkRuntime r
         await runtime.DeliverRemoteSessionPushAsync(
                 message,
                 message.Frame,
+                context.SourceNodeRid,
                 cancellationToken)
             .ConfigureAwait(false);
     }

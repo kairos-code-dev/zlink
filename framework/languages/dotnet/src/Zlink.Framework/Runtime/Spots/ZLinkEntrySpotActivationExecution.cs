@@ -143,16 +143,17 @@ internal sealed partial class ZLinkEntrySpotActivation
         bool stopped,
         CancellationToken cancellationToken)
     {
-        return _runtime.PublishRuntimeEventAsync(
-            ZLinkSpotTimerFailureEventFactory.Create(
-                SpotNodeName,
-                SpotId,
-                true,
-                descriptor,
-                tick,
-                exception,
-                stopped),
-            cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        _runtime.ReportTimerFailure(
+            SpotNodeName,
+            SpotId,
+            true,
+            descriptor.Name,
+            descriptor.HandlerType,
+            tick,
+            exception,
+            stopped);
+        return ValueTask.CompletedTask;
     }
 
     public async ValueTask DispatchRouteDrainAsync(CancellationToken cancellationToken)

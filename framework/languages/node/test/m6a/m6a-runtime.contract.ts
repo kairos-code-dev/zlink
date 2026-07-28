@@ -89,6 +89,45 @@ test('topology snapshots fence reconnect and exclude retiring placement targets'
   assert.equal(topology.selectPlacement(), undefined);
 });
 
+test('Object Client pairs are NotRequired only when neither side has a RouteMesh server channel', () => {
+  const client = {
+    ...descriptor('local-client'),
+    objectRole: 'client' as const,
+    channels: [],
+    state: 'serving' as const
+  };
+  const remoteClient = {
+    ...client,
+    nodeRoutingId: 'remote-client',
+    advertisedEndpoint: 'inproc://remote-client'
+  };
+  const topology = new ServiceTopologyRegistry(client);
+
+  assert.equal(topology.admit(remoteClient, 'client-pair'), 'notRequired');
+  assert.equal(topology.peers().length, 0);
+  assert.equal(topology.notRequiredPeers()[0]?.nodeRoutingId, 'remote-client');
+
+  const weightZeroServerMembership = {
+    ...remoteClient,
+    descriptorRevision: 2n,
+    channels: [{ name: 'control', weight: 0 }]
+  };
+  assert.equal(
+    topology.admit(weightZeroServerMembership, 'weight-zero-server'),
+    'admitted'
+  );
+  assert.equal(topology.notRequiredPeers().length, 0);
+  assert.equal(topology.peer('remote-client')?.connectionId, 'weight-zero-server');
+
+  const remoteServer = {
+    ...remoteClient,
+    nodeRoutingId: 'remote-server',
+    advertisedEndpoint: 'inproc://remote-server',
+    objectRole: 'server' as const
+  };
+  assert.equal(topology.admit(remoteServer, 'object-server'), 'admitted');
+});
+
 test('public weights preserve boundaries, descriptor revisions, ratios, and capacity-first selection', () => {
   const topology = new ServiceTopologyRegistry({
     ...descriptor('local'),
@@ -303,6 +342,91 @@ test('ClientServer selection and classic fanout discovery use dedicated descript
     discovery.fanoutEndpoints('events').map(value => value.publisherRoutingId),
     ['publisher-a']
   );
+});
+
+test('raw admission keeps Object Client-only pairs out of liveness and records NotRequired', async () => {
+  const nonce = `${process.pid}-${Date.now()}`;
+  const leftDescriptor = {
+    ...descriptor(
+      'client-left',
+      `ipc:///tmp/zlink-m6a-client-left-${nonce}.sock`
+    ),
+    channels: [],
+    objectRole: 'client' as const
+  };
+  const rightDescriptor = {
+    ...descriptor(
+      'client-right',
+      `ipc:///tmp/zlink-m6a-client-right-${nonce}.sock`
+    ),
+    channels: [],
+    objectRole: 'client' as const
+  };
+  const left = new RawServiceMeshRuntime({ descriptor: leftDescriptor });
+  const right = new RawServiceMeshRuntime({ descriptor: rightDescriptor });
+  left.start();
+  right.start();
+  try {
+    left.connectPeer(rightDescriptor.advertisedEndpoint, rightDescriptor);
+    await pollUntil(() => {
+      left.announceExpectedPeers();
+      right.pumpOne();
+      left.pumpOne();
+      return left.topology.notRequiredPeers().length === 1
+        && right.topology.notRequiredPeers().length === 1;
+    });
+
+    assert.equal(left.topology.peers().length, 0);
+    assert.equal(right.topology.peers().length, 0);
+    assert.equal(left.liveness.size, 0);
+    assert.equal(right.liveness.size, 0);
+    assert.equal(
+      left.isObjectClientNodeDirectTarget('client-right'),
+      true
+    );
+  } finally {
+    left.close();
+    right.close();
+  }
+
+  const backend = new ZLinkNodeRawMeshBackend(
+    'm6a-mesh',
+    'client-monitor'
+  );
+  backend.configureObjectPlacement({
+    role: 'client',
+    placementWeight: 100,
+    activeCapacityLimit: 10_000,
+    pendingCapacityLimit: 128,
+    objectCapabilities: []
+  });
+  backend.setBind(
+    `ipc:///tmp/zlink-m6a-client-monitor-${process.pid}-${Date.now()}.sock`
+  );
+  backend.start();
+  try {
+    backend.replaceDiscoveredNotRequiredPeers([{
+      nodeRoutingId: 'client-peer',
+      lifecycleGeneration: 7n,
+      descriptorRevision: 9n,
+      endpoint: 'tcp://client-peer'
+    }]);
+    assert.equal(backend.status().admittedPeerCount, 0);
+    assert.deepEqual(
+      backend.peers().map(peer => ({
+        rid: String(peer.routingId),
+        state: peer.state,
+        lifecycleGeneration: peer.lifecycleGeneration
+      })),
+      [{
+        rid: 'client-peer',
+        state: 6,
+        lifecycleGeneration: 7n
+      }]
+    );
+  } finally {
+    backend.close();
+  }
 });
 
 test('raw runtime admits peers and completes node/channel requests once', async () => {

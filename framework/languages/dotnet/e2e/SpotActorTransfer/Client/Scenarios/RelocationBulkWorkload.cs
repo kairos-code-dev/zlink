@@ -11,7 +11,9 @@ internal sealed class RelocationBulkWorkload(
     string scenario,
     string targetKind,
     IReadOnlyList<string> targetIds,
-    int operationsPerSecond)
+    int operationsPerSecond,
+    ZLinkHttpClient? submittingNode = null,
+    bool preservePerKindSubmissionOrder = false)
 {
     private readonly ConcurrentQueue<double> _requestLatencyMs = new();
     private readonly ConcurrentDictionary<string, ConcurrentQueue<long>>
@@ -36,24 +38,32 @@ internal sealed class RelocationBulkWorkload(
 
     internal async Task WaitForInitialEvidenceAsync(
         TimeSpan timeout,
+        bool requireAllTargets = false,
         CancellationToken cancellationToken = default)
         => await WaitForEvidenceAsync(
             requestWatermark:
                 new HashSet<string>(StringComparer.Ordinal),
             oneWayWatermark:
                 new HashSet<string>(StringComparer.Ordinal),
+            requestSequenceExclusive: 0,
+            oneWaySequenceExclusive: 0,
+            observedAfterUnixTimeMilliseconds: 0,
             expectedOwners: null,
+            requireAllTargets,
             timeout,
             cancellationToken);
 
     internal async Task WaitForAdditionalEvidenceAsync(
         TimeSpan timeout,
+        bool requireAllTargets = false,
         CancellationToken cancellationToken = default)
     {
-        var requestWatermark = _requestOperationIds.Values.ToHashSet(
-            StringComparer.Ordinal);
-        var oneWayWatermark = _oneWayOperationIds.Values.ToHashSet(
-            StringComparer.Ordinal);
+        var observedAfterUnixTimeMilliseconds =
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var requestSequenceExclusive = Interlocked.Read(
+            ref _requestOffered);
+        var oneWaySequenceExclusive = Interlocked.Read(
+            ref _oneWayOffered);
         var locations = await context.GetRelocationLocationsAsync(
             context.NodeB,
             targetKind == "actor" ? targetIds : [],
@@ -67,9 +77,13 @@ internal sealed class RelocationBulkWorkload(
             $"{scenario} final owner snapshot was incomplete.");
 
         await WaitForEvidenceAsync(
-            requestWatermark,
-            oneWayWatermark,
+            new HashSet<string>(StringComparer.Ordinal),
+            new HashSet<string>(StringComparer.Ordinal),
+            requestSequenceExclusive,
+            oneWaySequenceExclusive,
+            observedAfterUnixTimeMilliseconds,
             expectedOwners,
+            requireAllTargets,
             timeout,
             cancellationToken);
     }
@@ -77,11 +91,17 @@ internal sealed class RelocationBulkWorkload(
     private async Task WaitForEvidenceAsync(
         IReadOnlySet<string> requestWatermark,
         IReadOnlySet<string> oneWayWatermark,
+        long requestSequenceExclusive,
+        long oneWaySequenceExclusive,
+        long observedAfterUnixTimeMilliseconds,
         IReadOnlyDictionary<string, string>? expectedOwners,
+        bool requireAllTargets,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var sampleTargets = RepresentativeTargets();
+        var sampleTargets = requireAllTargets
+            ? targetIds.ToHashSet(StringComparer.Ordinal)
+            : RepresentativeTargets();
         var coverageSeconds =
             (double)targetIds.Count / Math.Max(1, operationsPerSecond);
         var boundedTimeout = TimeSpan.FromSeconds(Math.Max(
@@ -93,13 +113,19 @@ internal sealed class RelocationBulkWorkload(
         while (true)
         {
             deadline.Token.ThrowIfCancellationRequested();
-            var requestOperations = _requestOperationIds.Values
-                .Where(operationId =>
-                    !requestWatermark.Contains(operationId))
+            var requestOperations = _requestOperationIds
+                .Where(pair =>
+                    ParseOperationSequence(pair.Key)
+                    > requestSequenceExclusive
+                    && !requestWatermark.Contains(pair.Value))
+                .Select(static pair => pair.Value)
                 .ToHashSet(StringComparer.Ordinal);
-            var oneWayOperations = _oneWayOperationIds.Values
-                .Where(operationId =>
-                    !oneWayWatermark.Contains(operationId))
+            var oneWayOperations = _oneWayOperationIds
+                .Where(pair =>
+                    ParseOperationSequence(pair.Key)
+                    > oneWaySequenceExclusive
+                    && !oneWayWatermark.Contains(pair.Value))
+                .Select(static pair => pair.Value)
                 .ToHashSet(StringComparer.Ordinal);
             if (requestOperations.Count > 0
                 && oneWayOperations.Count > 0)
@@ -116,12 +142,16 @@ internal sealed class RelocationBulkWorkload(
                         evidence,
                         "workload_request",
                         requestOperations,
-                        expectedOwners);
+                        expectedOwners,
+                        requestSequenceExclusive,
+                        observedAfterUnixTimeMilliseconds);
                     EnsureNoWrongOwnerEvidence(
                         evidence,
                         "workload_one_way",
                         oneWayOperations,
-                        expectedOwners);
+                        expectedOwners,
+                        oneWaySequenceExclusive,
+                        observedAfterUnixTimeMilliseconds);
                 }
                 if (HasRepresentativeEvidence(
                         evidence,
@@ -145,11 +175,15 @@ internal sealed class RelocationBulkWorkload(
         IEnumerable<ActorEvidence> evidence,
         string kind,
         IReadOnlySet<string> operationIds,
-        IReadOnlyDictionary<string, string> expectedOwners)
+        IReadOnlyDictionary<string, string> expectedOwners,
+        long sequenceExclusive,
+        long observedAfterUnixTimeMilliseconds)
     {
         var wrongOwner = evidence.FirstOrDefault(item =>
             item.Scenario == scenario
             && item.Kind == kind
+            && item.ObservedUnixTimeMilliseconds
+               >= observedAfterUnixTimeMilliseconds
             && operationIds.Contains(ParseHandlerOperationId(item.Value))
             && expectedOwners.TryGetValue(item.ActorId, out var expectedOwner)
             && ParseHandlerOwner(item.Value) != expectedOwner);
@@ -157,7 +191,12 @@ internal sealed class RelocationBulkWorkload(
             wrongOwner is null,
             $"{scenario} post-terminal {kind} reached stale owner "
             + $"'{ParseHandlerOwner(wrongOwner?.Value ?? string.Empty)}' "
-            + $"for '{wrongOwner?.ActorId}'.");
+            + $"for '{wrongOwner?.ActorId}'; "
+            + $"sequence={ParseHandlerField(wrongOwner?.Value ?? string.Empty, "sequence")}; "
+            + $"operation={ParseHandlerOperationId(wrongOwner?.Value ?? string.Empty)}; "
+            + $"terminalSequence={sequenceExclusive}; "
+            + $"observedAt={wrongOwner?.ObservedUnixTimeMilliseconds}; "
+            + $"terminalObservedAt={observedAfterUnixTimeMilliseconds}.");
     }
 
     private IReadOnlySet<string> RepresentativeTargets()
@@ -247,10 +286,50 @@ internal sealed class RelocationBulkWorkload(
         await Task.WhenAll(operations.ToArray());
 
         started.Stop();
+        return CreateResult(started.Elapsed);
+    }
+
+    internal async Task<RelocationBulkWorkloadResult> PrimeAllTargetsAsync(
+        int maxConcurrency = 64,
+        CancellationToken cancellationToken = default)
+    {
+        if (targetIds.Count == 0)
+            throw new ArgumentException(
+                "At least one workload target is required.",
+                nameof(targetIds));
+        var started = Stopwatch.StartNew();
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, targetIds.Count),
+            new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = Math.Clamp(
+                    maxConcurrency,
+                    1,
+                    256)
+            },
+            async (index, token) =>
+            {
+                var sequence = checked((long)index + 1);
+                var targetId = targetIds[index];
+                Interlocked.Increment(ref _requestOffered);
+                Interlocked.Increment(ref _requestSubmitted);
+                await ExecuteRequestAsync(sequence, targetId);
+                Interlocked.Increment(ref _oneWayOffered);
+                Interlocked.Increment(ref _oneWaySubmitted);
+                await ExecuteOneWayAsync(sequence, targetId);
+                token.ThrowIfCancellationRequested();
+            });
+        started.Stop();
+        return CreateResult(started.Elapsed);
+    }
+
+    private RelocationBulkWorkloadResult CreateResult(TimeSpan elapsed)
+    {
         return new RelocationBulkWorkloadResult(
             scenario,
             targetKind,
-            started.Elapsed,
+            elapsed,
             Interlocked.Read(ref _requestOffered),
             Interlocked.Read(ref _requestSubmitted),
             Interlocked.Read(ref _requestSucceeded),
@@ -285,21 +364,30 @@ internal sealed class RelocationBulkWorkload(
                 StringComparer.Ordinal));
     }
 
+    internal RelocationBulkWorkloadResult Snapshot() =>
+        CreateResult(TimeSpan.Zero);
+
     private async Task RunRequestPacerAsync(
         CancellationToken cancellationToken,
         ConcurrentBag<Task> operations)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(
             1d / Math.Max(1, operationsPerSecond)));
-        var sequence = 0L;
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                var current = Interlocked.Increment(ref sequence);
-                Interlocked.Increment(ref _requestOffered);
+                // The offered watermark and the operation sequence are one
+                // atomic value. A relocation terminal cannot observe an
+                // operation between two separate counters and misclassify it
+                // as post-terminal traffic.
+                var current = Interlocked.Increment(ref _requestOffered);
                 Interlocked.Increment(ref _requestSubmitted);
-                operations.Add(ExecuteRequestAsync(current));
+                var operation = ExecuteRequestAsync(current);
+                if (preservePerKindSubmissionOrder)
+                    await operation;
+                else
+                    operations.Add(operation);
             }
         }
         catch (OperationCanceledException)
@@ -314,15 +402,17 @@ internal sealed class RelocationBulkWorkload(
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(
             1d / Math.Max(1, operationsPerSecond)));
-        var sequence = 0L;
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                var current = Interlocked.Increment(ref sequence);
-                Interlocked.Increment(ref _oneWayOffered);
+                var current = Interlocked.Increment(ref _oneWayOffered);
                 Interlocked.Increment(ref _oneWaySubmitted);
-                operations.Add(ExecuteOneWayAsync(current));
+                var operation = ExecuteOneWayAsync(current);
+                if (preservePerKindSubmissionOrder)
+                    await operation;
+                else
+                    operations.Add(operation);
             }
         }
         catch (OperationCanceledException)
@@ -331,9 +421,13 @@ internal sealed class RelocationBulkWorkload(
         }
     }
 
-    private async Task ExecuteRequestAsync(long sequence)
+    private async Task ExecuteRequestAsync(
+        long sequence,
+        string? selectedTargetId = null)
     {
-        var (targetId, submittingNode, request) = CreateCall(sequence);
+        var (targetId, submittingNode, request) = CreateCall(
+            sequence,
+            selectedTargetId);
         var requestWatch = Stopwatch.StartNew();
         try
         {
@@ -389,15 +483,26 @@ internal sealed class RelocationBulkWorkload(
                 request.OperationId);
             Interlocked.Increment(ref _requestSucceeded);
         }
-        catch
+        catch (Exception error)
         {
+            Console.Error.WriteLine(
+                $"relocation_workload_request_failed scenario={scenario}"
+                + $" target={targetId}"
+                + $" sequence={sequence}"
+                + $" operation_id={request.OperationId}"
+                + $" error_type={error.GetType().FullName}"
+                + $" error={error.Message}");
             Interlocked.Increment(ref _requestFailed);
         }
     }
 
-    private async Task ExecuteOneWayAsync(long sequence)
+    private async Task ExecuteOneWayAsync(
+        long sequence,
+        string? selectedTargetId = null)
     {
-        var (targetId, submittingNode, request) = CreateCall(sequence);
+        var (targetId, submittingNode, request) = CreateCall(
+            sequence,
+            selectedTargetId);
         try
         {
             if (targetKind == "actor")
@@ -418,26 +523,28 @@ internal sealed class RelocationBulkWorkload(
                 request.OperationId);
             Interlocked.Increment(ref _oneWaySucceeded);
         }
-        catch
+        catch (Exception)
         {
             Interlocked.Increment(ref _oneWayFailed);
         }
     }
 
     private (string TargetId, ZLinkHttpClient SubmittingNode,
-        RelocationWorkloadCallReq Request) CreateCall(long sequence)
+        RelocationWorkloadCallReq Request) CreateCall(
+            long sequence,
+            string? selectedTargetId = null)
     {
-        var targetId = targetIds[
+        var targetId = selectedTargetId ?? targetIds[
             checked((int)((sequence - 1) % targetIds.Count))];
         // A single submitting connection gives the sequence an observable
         // transport arrival order. Alternating connections would only define
         // two independent orders and make a total-order assertion invalid.
-        var submittingNode = context.NodeB;
+        var selectedSubmittingNode = submittingNode ?? context.NodeB;
         var sent =
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         return (
             targetId,
-            submittingNode,
+            selectedSubmittingNode,
             new RelocationWorkloadCallReq(
                 targetId,
                 scenario,
@@ -451,6 +558,17 @@ internal sealed class RelocationBulkWorkload(
         string targetId,
         long sequence) =>
         targetId + "\n" + sequence;
+
+    private static long ParseOperationSequence(string operationKey)
+    {
+        var separator = operationKey.LastIndexOf('\n');
+        return separator >= 0
+            && long.TryParse(
+                operationKey.AsSpan(separator + 1),
+                out var sequence)
+            ? sequence
+            : 0;
+    }
 
     private static double Percentile(
         IEnumerable<double> source,
@@ -500,7 +618,14 @@ internal sealed record RelocationTerminalSummary(
     int CompletedUnits,
     int VerifiedParticipants,
     int SafeAborted,
-    int Blocked);
+    int Blocked,
+    double MaxServiceInterruptionMilliseconds,
+    int ServiceUnitSloMissed);
+
+internal readonly record struct SpotFlowWatermark(
+    int NodeACount,
+    int NodeBCount,
+    int NodeCCount);
 
 internal static class RelocationBulkWorkloadVerification
 {
@@ -610,7 +735,11 @@ internal static class RelocationBulkWorkloadVerification
             && handled.Select(static item => item.Sequence)
                    .Distinct().Count() == handled.Length
             && handled.Select(static item => item.Sequence)
+                .Order()
                 .SequenceEqual(accepted.Order())
+            && (result.TargetKind != "actor"
+                || handled.Select(static item => item.Sequence)
+                    .SequenceEqual(accepted.Order()))
             && handled.All(item =>
                 item.WithinDeadline
                 && operationIds.TryGetValue(
@@ -711,7 +840,7 @@ internal static class RelocationBulkWorkloadVerification
         IReadOnlyCollection<string> spotIds,
         IReadOnlyCollection<RelocationBulkWorkloadResult> traffic,
         bool requireSpotWideAggregatePublication,
-        IReadOnlySet<string>? spotFlowWatermark = null)
+        SpotFlowWatermark? spotFlowWatermark = null)
     {
         var final = await context.GetRelocationLocationsAsync(
             context.NodeB,
@@ -768,7 +897,7 @@ internal static class RelocationBulkWorkloadVerification
             context,
             traffic,
             spotFlowWatermark
-                ?? new HashSet<string>(StringComparer.Ordinal),
+                ?? default,
             TimeSpan.FromSeconds(5));
         VerifySpotRequestCorrelation(messageFlows, traffic);
 
@@ -779,7 +908,18 @@ internal static class RelocationBulkWorkloadVerification
             requireSpotWideAggregatePublication ? 1 : 0;
         if (aggregatePublicationBlocked != 0)
             Console.WriteLine(
-                "diagnostic_blocker=spotwide_pre_post_visibility_missing");
+                "required_gap=spotwide_pre_post_visibility"
+                + " status=not_proven"
+                + " reason=no_public_atomic_publication_observer");
+
+        var interruptions = MeasureServiceUnitInterruptions(
+            initialByKey,
+            finalByKey,
+            handlerEvidence,
+            traffic,
+            requireSpotWideAggregatePublication
+                ? spotIds
+                : actorIds.Concat(spotIds).ToArray());
 
         return new RelocationTerminalSummary(
             CompletedUnits: requireSpotWideAggregatePublication
@@ -787,26 +927,111 @@ internal static class RelocationBulkWorkloadVerification
                 : actorIds.Count + spotIds.Count,
             VerifiedParticipants: final.Count,
             SafeAborted: 0,
-            Blocked: aggregatePublicationBlocked);
+            Blocked: aggregatePublicationBlocked,
+            MaxServiceInterruptionMilliseconds:
+                interruptions.MaxMilliseconds,
+            ServiceUnitSloMissed: interruptions.SloMissed);
+    }
+
+    private static (double MaxMilliseconds, int SloMissed)
+        MeasureServiceUnitInterruptions(
+            IReadOnlyDictionary<string, RelocationLocationSnapshot> initial,
+            IReadOnlyDictionary<string, RelocationLocationSnapshot> final,
+            IReadOnlyCollection<ActorEvidence> evidence,
+            IReadOnlyCollection<RelocationBulkWorkloadResult> traffic,
+            IReadOnlyCollection<string> serviceUnitIds)
+    {
+        var scenariosByTarget = traffic
+            .SelectMany(result => result.AcceptedRequests.Keys
+                .Concat(result.AcceptedOneWay.Keys)
+                .Distinct(StringComparer.Ordinal)
+                .Select(targetId => (targetId, result.Scenario)))
+            .GroupBy(static item => item.targetId, StringComparer.Ordinal)
+            .ToDictionary(
+                static group => group.Key,
+                static group => group
+                    .Select(static item => item.Scenario)
+                    .ToHashSet(StringComparer.Ordinal),
+                StringComparer.Ordinal);
+        var maximum = 0d;
+        var missed = 0;
+        foreach (var targetId in serviceUnitIds)
+        {
+            var actorKey = "actor\n" + targetId;
+            var spotKey = "spot\n" + targetId;
+            var key = initial.ContainsKey(actorKey)
+                ? actorKey
+                : spotKey;
+            if (!initial.TryGetValue(key, out var before)
+                || !final.TryGetValue(key, out var after)
+                || !scenariosByTarget.TryGetValue(
+                    targetId,
+                    out var scenarios))
+            {
+                ZlinkStreamAssert.Ensure(
+                    false,
+                    $"Service interruption evidence could not resolve "
+                    + $"'{targetId}'.");
+                continue;
+            }
+            var observations = evidence
+                .Where(item =>
+                    item.ActorId == targetId
+                    && scenarios.Contains(item.Scenario)
+                    && item.Kind is "workload_request"
+                        or "workload_one_way")
+                .ToArray();
+            var sourceLast = observations
+                .Where(item =>
+                    RelocationBulkWorkload.ParseHandlerOwner(item.Value)
+                    == before.NodeRid)
+                .Select(static item =>
+                    item.ObservedUnixTimeMilliseconds)
+                .DefaultIfEmpty(long.MinValue)
+                .Max();
+            var targetFirst = observations
+                .Where(item =>
+                    RelocationBulkWorkload.ParseHandlerOwner(item.Value)
+                    == after.NodeRid)
+                .Select(static item =>
+                    item.ObservedUnixTimeMilliseconds)
+                .DefaultIfEmpty(long.MaxValue)
+                .Min();
+            ZlinkStreamAssert.Ensure(
+                sourceLast != long.MinValue
+                && targetFirst != long.MaxValue,
+                $"Service interruption evidence is incomplete for "
+                + $"'{targetId}': sourceLast={sourceLast};"
+                + $"targetFirst={targetFirst}.");
+            var milliseconds = Math.Max(
+                0,
+                checked((double)(targetFirst - sourceLast)));
+            maximum = Math.Max(maximum, milliseconds);
+            if (milliseconds > 1_000)
+                missed++;
+        }
+
+        return (maximum, missed);
     }
 
     private static void VerifySpotRequestCorrelation(
         IReadOnlyCollection<RelocationMessageFlowEvidence> messageFlows,
         IReadOnlyCollection<RelocationBulkWorkloadResult> traffic)
     {
-        foreach (var result in traffic.Where(static item =>
-                     item.TargetKind == "spot"
-                     && item.RequestSucceeded > 0))
+        foreach (var expected in ExpectedSpotRequestCounts(traffic))
         {
-            var completedFlows = CountCompletedSpotRequestFlows(
+            var completedRequests = CountCompletedSpotRequestCorrelations(
                 messageFlows,
-                result.AcceptedRequests.Keys);
+                [expected.Key]);
             ZlinkStreamAssert.Ensure(
-                completedFlows >= result.RequestSucceeded,
+                completedRequests == expected.Value,
                 $"Spot request public message-flow correlation evidence "
-                + $"is incomplete for '{result.Scenario}': "
-                + $"succeeded={result.RequestSucceeded}, "
-                + $"completed_flows={completedFlows}.");
+                + $"is incomplete for '{expected.Key}': "
+                + $"succeeded={expected.Value}, "
+                + $"completed_requests={completedRequests}; "
+                + DescribeSpotRequestCorrelation(
+                    messageFlows,
+                    [expected.Key]));
         }
     }
 
@@ -814,29 +1039,26 @@ internal static class RelocationBulkWorkloadVerification
         WaitForMessageFlowsAsync(
             SpotActorTransferScenarioContext context,
             IReadOnlyCollection<RelocationBulkWorkloadResult> traffic,
-            IReadOnlySet<string> flowWatermark,
+            SpotFlowWatermark flowWatermark,
             TimeSpan timeout)
     {
         using var deadline = new CancellationTokenSource(timeout);
         RelocationMessageFlowEvidence[] snapshot = [];
         do
         {
-            snapshot = (await Task.WhenAll(
-                    context.GetRelocationMessageFlowsAsync(context.NodeA),
-                    context.GetRelocationMessageFlowsAsync(context.NodeB),
-                    context.GetRelocationMessageFlowsAsync(context.NodeC)))
-                .SelectMany(static items => items)
-                .Where(item =>
-                    item.FlowId is null
-                    || !flowWatermark.Contains(item.FlowId))
+            var nodeSnapshots = await Task.WhenAll(
+                context.GetRelocationMessageFlowsAsync(context.NodeA),
+                context.GetRelocationMessageFlowsAsync(context.NodeB),
+                context.GetRelocationMessageFlowsAsync(context.NodeC));
+            snapshot = nodeSnapshots[0].Skip(flowWatermark.NodeACount)
+                .Concat(nodeSnapshots[1].Skip(flowWatermark.NodeBCount))
+                .Concat(nodeSnapshots[2].Skip(flowWatermark.NodeCCount))
                 .ToArray();
-            if (traffic.Where(static result =>
-                    result.TargetKind == "spot"
-                    && result.RequestSucceeded > 0)
-                .All(result => CountCompletedSpotRequestFlows(
+            if (ExpectedSpotRequestCounts(traffic)
+                .All(expected => CountCompletedSpotRequestCorrelations(
                         snapshot,
-                        result.AcceptedRequests.Keys)
-                    >= result.RequestSucceeded))
+                        [expected.Key])
+                    >= expected.Value))
                 return snapshot;
             try
             {
@@ -851,52 +1073,106 @@ internal static class RelocationBulkWorkloadVerification
         return snapshot;
     }
 
-    internal static async Task<IReadOnlySet<string>>
+    private static IReadOnlyDictionary<string, int>
+        ExpectedSpotRequestCounts(
+            IEnumerable<RelocationBulkWorkloadResult> traffic) =>
+        traffic
+            .Where(static result =>
+                result.TargetKind == "spot"
+                && result.RequestSucceeded > 0)
+            .SelectMany(static result => result.AcceptedRequests)
+            .GroupBy(static pair => pair.Key, StringComparer.Ordinal)
+            .ToDictionary(
+                static group => group.Key,
+                static group => group.Sum(pair => pair.Value.Count),
+                StringComparer.Ordinal);
+
+    internal static async Task<SpotFlowWatermark>
         CaptureSpotFlowWatermarkAsync(
             SpotActorTransferScenarioContext context)
     {
-        var flows = (await Task.WhenAll(
-                context.GetRelocationMessageFlowsAsync(context.NodeA),
-                context.GetRelocationMessageFlowsAsync(context.NodeB),
-                context.GetRelocationMessageFlowsAsync(context.NodeC)))
-            .SelectMany(static items => items)
-            .Select(static item => item.FlowId)
-            .Where(static flowId => !string.IsNullOrWhiteSpace(flowId))
-            .Select(static flowId => flowId!)
-            .ToHashSet(StringComparer.Ordinal);
-        return flows;
+        var snapshots = await Task.WhenAll(
+            context.GetRelocationMessageFlowsAsync(context.NodeA),
+            context.GetRelocationMessageFlowsAsync(context.NodeB),
+            context.GetRelocationMessageFlowsAsync(context.NodeC));
+        return new SpotFlowWatermark(
+            snapshots[0].Count,
+            snapshots[1].Count,
+            snapshots[2].Count);
     }
 
-    private static int CountCompletedSpotRequestFlows(
+    private static int CountCompletedSpotRequestCorrelations(
         IReadOnlyCollection<RelocationMessageFlowEvidence> messageFlows,
         IEnumerable<string> targetIds) =>
-        messageFlows
+        SelectSpotRequestFlows(messageFlows, targetIds)
+            .GroupBy(
+                static item => (item.FlowId!, item.CorrelationId!))
+            .Count(group =>
+            {
+                // Message Follow may produce more than one Framework receive
+                // boundary while preserving the original request identity.
+                // The application terminal remains exactly one reply.
+                var received = group.Count(static item =>
+                    item.Phase == "received");
+                var replied = group.Count(static item =>
+                    item.Phase == "replied");
+                return received >= 1 && replied == 1;
+            });
+
+    private static IEnumerable<RelocationMessageFlowEvidence>
+        SelectSpotRequestFlows(
+            IEnumerable<RelocationMessageFlowEvidence> messageFlows,
+            IEnumerable<string> targetIds)
+    {
+        var targets = targetIds.ToHashSet(StringComparer.Ordinal);
+        return messageFlows
             .Where(item =>
                 item.Surface == "spot"
                 && item.MessageKind == "request"
                 && item.PacketName == nameof(RelocationWorkloadRequest)
                 && item.SpotId is not null
-                && targetIds.Contains(item.SpotId)
+                && targets.Contains(item.SpotId)
                 && item.CorrelationId is { Length: > 0 }
-                && item.FlowId is { Length: > 0 })
-            .GroupBy(static item => item.FlowId!, StringComparer.Ordinal)
-            .Count(group =>
+                && item.FlowId is { Length: > 0 });
+    }
+
+    private static string DescribeSpotRequestCorrelation(
+        IReadOnlyCollection<RelocationMessageFlowEvidence> messageFlows,
+        IEnumerable<string> targetIds)
+    {
+        var filtered = SelectSpotRequestFlows(messageFlows, targetIds)
+            .ToArray();
+        var groups = filtered
+            .GroupBy(
+                static item => (item.FlowId!, item.CorrelationId!))
+            .Select(group => new
             {
-                var received = group
-                    .Where(static item => item.Phase == "received")
-                    .Select(static item => item.CorrelationId)
-                    .ToArray();
-                var replied = group
-                    .Where(static item => item.Phase == "replied")
-                    .Select(static item => item.CorrelationId)
-                    .ToArray();
-                return received.Length > 0
-                       && replied.Length > 0
-                       && received.All(correlation =>
-                           replied.Contains(
-                               correlation,
-                               StringComparer.Ordinal));
-            });
+                Received = group.Count(static item =>
+                    item.Phase == "received"),
+                Replied = group.Count(static item =>
+                    item.Phase == "replied")
+            })
+            .ToArray();
+        var patterns = groups
+            .GroupBy(static item => (item.Received, item.Replied))
+            .OrderByDescending(static group => group.Count())
+            .Take(6)
+            .Select(group =>
+                $"{group.Key.Received}:{group.Key.Replied}"
+                + $"x{group.Count()}");
+        var nodes = filtered
+            .GroupBy(static item => item.NodeRid, StringComparer.Ordinal)
+            .OrderBy(static group => group.Key, StringComparer.Ordinal)
+            .Select(group => $"{group.Key}:{group.Count()}");
+        return $"events={filtered.Length}, "
+               + $"received={filtered.Count(static item => item.Phase == "received")}, "
+               + $"replied={filtered.Count(static item => item.Phase == "replied")}, "
+               + $"flows={filtered.Select(static item => item.FlowId).Distinct(StringComparer.Ordinal).Count()}, "
+               + $"correlations={filtered.Select(static item => item.CorrelationId).Distinct(StringComparer.Ordinal).Count()}, "
+               + $"pairs={groups.Length}, "
+               + $"patterns=[{string.Join(",", patterns)}], "
+               + $"nodes=[{string.Join(",", nodes)}].";
+    }
 
     private static string LocationKey(
         RelocationLocationSnapshot item) =>
@@ -907,16 +1183,8 @@ internal static class RelocationWorkloadEnvironment
 {
     internal static bool Enabled(string name, bool fallback)
     {
-        var raw = Environment.GetEnvironmentVariable(name);
-        if (string.IsNullOrWhiteSpace(raw))
-            return fallback;
-        return raw switch
-        {
-            "1" or "true" or "TRUE" => true,
-            "0" or "false" or "FALSE" => false,
-            _ => throw new InvalidOperationException(
-                $"{name} must be a boolean.")
-        };
+        _ = name;
+        return fallback;
     }
 
     internal static int Count(string name, int canonical) =>
@@ -935,12 +1203,7 @@ internal static class RelocationWorkloadEnvironment
         string name,
         int fallback)
     {
-        var raw = Environment.GetEnvironmentVariable(name);
-        if (string.IsNullOrWhiteSpace(raw))
-            return fallback;
-        if (!int.TryParse(raw, out var value) || value <= 0)
-            throw new InvalidOperationException(
-                $"{name} must be a positive integer.");
-        return value;
+        _ = name;
+        return fallback;
     }
 }

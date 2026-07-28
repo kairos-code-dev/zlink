@@ -32,3 +32,7 @@ Java E2E는 각 host의 public `ZLinkRouteMeshRuntime` snapshot과 typed event�
 target별 publish 집계를 검증했으므로 현재 계약의 완료 증거로 사용하지 않는다. 표에서 `부분 구현`,
 `10.0.0 전환 대상` 또는 `11.0.0 전환 대상`으로 남긴
 항목은 공통 Config7의 세부 gate를 아직 모두 단언하지 않으므로 완료 증거로 사용하지 않는다.
+
+## 공통 scenario parity gap — 2026-07-29
+
+- `MON-A6`: 공통 scenario는 추가됐지만 Java actual fixture와 runner selector가 없다.

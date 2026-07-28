@@ -19,6 +19,16 @@ internal static class ZLinkActorBoundSessionRelay
 
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
+    internal static bool MatchesRelaySource(
+        ZLinkActorBoundSession session,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid)
+    {
+        return session.SessionNodeRid is { } sessionNodeRid
+               && sessionNodeRid == sourceNodeRid
+               && session.SessionRid == sourceSessionRid;
+    }
+
     public static byte[] EncodeSessionDisconnected(
         string bindingToken,
         ulong bindingGeneration,
@@ -151,7 +161,7 @@ internal static class ZLinkActorBoundSessionRelay
                 replyCapability,
                 requestHeader,
                 ZLinkActorReply.FromError(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                    ZLinkFrameworkErrorKind.NotFound,
                     $"Actor '{actorRef.ActorId}' is not available.")),
                 directReply,
                 cancellationToken)
@@ -274,14 +284,15 @@ internal static class ZLinkActorBoundSessionRelay
         else
         {
             using var replyMessage = Message.From(frame);
-            runtime.ReplyActorNoBind(
-                actorRef,
-                sourceNodeRid,
-                sourceSessionRid,
-                requestId,
-                flags,
-                replyCapability,
-                [replyMessage]);
+            await runtime.ReplyActorNoBindAsync(
+                    actorRef,
+                    sourceNodeRid,
+                    sourceSessionRid,
+                    requestId,
+                    flags,
+                    replyCapability,
+                    [replyMessage])
+                .ConfigureAwait(false);
         }
         runtime.LogActorHandoff(
             $"request_reply_direct actor={actorRef.ActorId} request_id={requestId} caller_node={sourceNodeRid}");

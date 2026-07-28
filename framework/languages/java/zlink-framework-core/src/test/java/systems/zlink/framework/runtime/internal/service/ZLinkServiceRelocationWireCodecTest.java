@@ -17,7 +17,7 @@ final class ZLinkServiceRelocationWireCodecTest {
     private static final String ACK_GOLDEN =
         "5a4d012e00000000000000000400000000000000050b636f6f7264696e61746f"
         + "720000000000000007066e6f64652d61000000000000000b000773746f72652d"
-        + "330000000000000001000000000000000206736f75726365000000000000000d"
+        + "3300000000000000010000000000000002000000000000000306736f75726365000000000000000d"
         + "066e6f64652d73000000000000001102";
 
     @Test
@@ -61,6 +61,7 @@ final class ZLinkServiceRelocationWireCodecTest {
             new ZLinkServiceRelocationWireCodec.RelocationId(4, 5),
             coordinator,
             new ZLinkServiceRelocationWireCodec.Operation(1, 2),
+            3,
             new ZLinkServiceRelocationWireCodec.RequestSourceFence(
                 "source", 13, RoutingId.from("node-s"), 17),
             2);
@@ -73,6 +74,13 @@ final class ZLinkServiceRelocationWireCodecTest {
             () -> codec.encodeReplyRelayAck(
                 new ZLinkServiceRelocationWireCodec.ReplyRelayAck(
                     expected.relocation(), expected.coordinator(),
-                    expected.operation(), expected.requestSource(), 0)));
+                    expected.operation(), expected.replyRouteId(),
+                    expected.requestSource(), 0)));
+        assertThrows(IllegalArgumentException.class,
+            () -> codec.encodeReplyRelayAck(
+                new ZLinkServiceRelocationWireCodec.ReplyRelayAck(
+                    expected.relocation(), expected.coordinator(),
+                    expected.operation(), 0,
+                    expected.requestSource(), expected.status())));
     }
 }

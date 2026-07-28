@@ -195,7 +195,8 @@ public enum ZLinkPeerState
     Connecting = 0,
     Ready = 1,
     Draining = 2,
-    Unavailable = 3
+    NotConnected = 3,
+    NotRequired = 4
 }
 
 public sealed record ZLinkChannelStatus(
@@ -249,6 +250,14 @@ public interface IZLinkRouteMeshRuntime
 `IsReady`는 host가 `Serving`이고 해당 RouteMesh가 application traffic을 처리할 수 있을 때 true다.
 `ReadyPeerCount`는 ready 상태인 remote MeshNode 수다. Local channel도 정상적으로 사용할 수 있으므로
 peer가 0개라는 이유만으로 모든 RouteMesh를 unavailable로 판정하지 않는다.
+
+두 Object Client 사이에서 양쪽 모두 RouteMesh Channel Server membership이 없을 때만 peer connection을
+만들지 않는다. Channel Client membership만 있는 경우도 같다. 서로의 RID는 `Peers`에
+`NotRequired`로 나타내되 `ReadyPeerCount`에는 포함하지 않는다. 이 상태는 liveness probe·reconnect·health
+failure 집계에서 제외하며 topology를 `Degraded`로 바꾸지 않는다. 어느 한쪽에라도 weight `0`을 포함한
+Channel Server membership이 있으면 연결이 필요하며, 연결되지 않은 상태는 `NotConnected`다.
+연결이 필요한데 ready connection이 없는 peer는 `NotConnected`로 나타내고 장애 집계에
+반영한다. Object role이 `None`인 Channel-only topology의 peer 관측은 기존 규칙을 유지한다.
 
 `Placement.IsAvailable`은 이 node가 Object Server role이고 새로운 Actor·Spot을 받을 수 있을 때 true다.
 Population reservation, activation barrier와 stable type별 내부 count는 public status에 포함하지 않는다.
@@ -383,11 +392,21 @@ public interface IZLinkDispatchOptions
     IZLinkUnhandledDispatchOptions Unhandled { get; }
     IZLinkDiagnosticsOptions Diagnostics { get; }
 }
+
+public interface IZLinkDiagnosticsRuntime
+{
+    ZLinkDiagnosticsLevel Level { get; set; }
+}
 ```
 
 `SetSampleRate(...)`는 `0.0` 이상 `1.0` 이하만 허용한다. 범위를 벗어나면
 `ArgumentOutOfRangeException`이 발생한다. Message size를 기록하면 payload 크기 분포가 telemetry에
 추가되며 payload 내용은 기록하지 않는다.
+
+`IZLinkDiagnosticsRuntime`은 DI에서 얻는 process singleton이다. `Level`을 읽으면 현재 process에
+적용하는 level을 반환한다. 값을 바꾸면 이후에 시작하는 message 처리부터 새 level을 적용한다.
+변경은 message 처리를 기다리지 않는 원자적 상태 변경이다. 이미 telemetry queue에 들어간 기록은
+전달하거나 버릴 수 있으며, 다시 켜도 이전 처리의 기록을 소급해서 만들지 않는다.
 
 .NET runtime은 trace를 `ActivitySource`, metric을 `System.Diagnostics.Metrics.Meter`, log를
 `Microsoft.Extensions.Logging.ILogger`로 제공한다. Export 대상과 log 저장 위치는 application의

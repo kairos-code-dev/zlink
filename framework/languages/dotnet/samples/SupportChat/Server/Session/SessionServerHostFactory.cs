@@ -33,20 +33,19 @@ public static class SessionServerHostFactory
             // authenticate can arrive before the api-channel dealer connects,
             // so the submit window covers the discovery hand-off.
             options.DefaultSocketSendTimeout = TimeSpan.FromSeconds(10);
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(logDirectory, "session"))
-                .TraceLabel("session");
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(session.MeshEndpoint)
                 .SetRoutingIdPrefix("support-session");
-            mesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.SupportChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
+            mesh.Objects().Client();
+            options.AddClientServerChannel(SampleNames.ApiChannel).Client();
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
                 .EnableActorDispatch()

@@ -310,20 +310,18 @@ client 연결·서비스 메시징·actor 상태가 서로 다른 세 계층에�
 | 폴리글랏 | ❌ 단일 언어(.NET 또는 JVM) | ✅ |
 | 서비스 간 typed 메시징 + 토폴로지 선언 | ❌ 별도 조립(gRPC 등) | ✅ channel + location store |
 | actor 상태 persistence | ✅ 성숙한 provider 생태계(다수 storage backend를 미리 만들어 둠) | 프레임워크는 `OnCreateAsync`/`OnClosingAsync` 같은 lifecycle 훅을 이미 제공한다. **어느 DB에 어떻게 저장할지는 앱 로직이 결정한다**는 뜻이다 — [ShoppingMall](../../common/sample/event/shoppingmall.ko.md)이 그 예다. 즉 훅은 있지만 미리 구현된 커넥터 모음이 없다는 뜻이다 |
-| 유지 중인 spot의 timer 재개(주기 tick·하트비트) | ✅ | ✅ — `OnInitializeAsync`가 생성 때마다 다시 실행돼 `AddTimer`도 다시 등록된다. 재구성 트리거는 `GetOrCreateAsync`(§4). 특별한 장치가 필요 없다 |
-| dormant actor를 예정 시각에 깨움(reminder) | ✅ 클러스터 세이프 등록이 API 한 콜(Orleans Reminder) | wake 원시 기능은 이미 있다 — `GetOrCreateAsync`가 "없으면 만들고 있으면 그대로 쓴다"는 그 동작이다. **예정 시각 스케줄링과 클러스터 중복 방지는 actor 모델과 무관한 일반 분산 job 문제**라, Quartz.NET Clustered·Hangfire·DB `SKIP LOCKED` 같은 기존 도구를 앱이 추가로 사용한다. 매치메이킹 규칙과 같은 카테고리 — 프레임워크가 막고 있는 게 아니라 미리 구현된 도구가 아직 없을 뿐이다 |
+| relocation 뒤 Spot timer 복원 | ✅ | ✅ — Framework가 logical timer 등록과 pending tick을 relocation payload에 포함해 target에서 자동 복원한다 |
+| 없는 Actor를 만들거나 기존 Actor를 사용 | ✅ | ✅ — `IZLinkActorManager.GetOrCreate(actorId, actorType).Async(...)`가 같은 global ActorId에 대한 concurrent 생성을 조정한다 |
+| dormant actor를 예정 시각에 깨움(reminder) | ✅ 클러스터 세이프 등록이 API 한 콜(Orleans Reminder) | 전용 reminder API는 없다. Quartz.NET Clustered·Hangfire 같은 분산 scheduler가 정해진 시각에 Actor GetOrCreate 또는 message를 실행하도록 application이 구성한다 |
 | 분산 트랜잭션 | Orleans 실험적 지원 | ❌ 없음(saga는 앱이 구성) — 이는 실제 프로토콜 난이도의 문제라 기존 primitive로 우회할 수 없다 |
 | 라이선스 | Orleans MIT / Akka BSL(연매출 기준 유료 트리거) | MPL-2.0 |
 | 실전 검증 기간 | 10년 이상(Halo, Microsoft 365, Skype) | 짧음 — 이 프로젝트 자체가 진행 중 |
 
 **결론.** "실시간 상태 서버 하나를 조립 없이 만든다"는 이 가이드의 워크로드에는
-ZLink가 대체 후보다. persistence·timer·reminder는 프레임워크가 막고 있는 게
-아니라 **미리 구현된 커넥터·도구 모음이 아직 없을 뿐**이고, 필요한
-원시 기능(lifecycle 훅, `GetOrCreateAsync`)은 이미 있다 — 기존 표준 도구를
-추가로 사용하면 된다. 실제로 좁은 의미의 격차는 **분산 트랜잭션**과, 이미 Orleans/Akka
-위에 큰 시스템을 올린 조직의 전환 비용 정도다. 신생 프로젝트가 10년 된
-생태계가 미리 구현해 둔 도구 모음을 아직 못 따라가는 것은 당연한 현재 상태이지,
-두 접근의 우열 판단이 아니다.
+ZLink가 대체 후보다. Actor·Spot lifecycle과 relocation timer 복원은 Framework가 제공한다.
+영속 상태 provider와 예정 시각 reminder는 application이 별도 저장소와 scheduler로 구성해야 한다.
+분산 transaction도 제공하지 않는다. 기존 Orleans/Akka 시스템의 전환 여부는 이 차이와 운영 경험을
+함께 비교해 결정한다.
 
 ## 8. 더 보기
 

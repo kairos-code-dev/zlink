@@ -90,7 +90,9 @@ public final class ZLinkStoreLocationResolvers
                     .toList(),
                 node.ownerId(),
                 node.leaseGeneration(),
-                node.updatedAt())).toList());
+                node.updatedAt(),
+                node.objectRole(),
+                !node.channelWeights().isEmpty())).toList());
     }
 
     private CompletionStage<List<ZLinkMeshNodeDescriptor>> listMeshNodes(

@@ -13,7 +13,7 @@ public sealed class ActorClientTests
         var error = Assert.Throws<ZLinkFrameworkException>(
             () => ZLinkActorReplyDecoder.Decode<object>([]));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, error.Kind);
     }
 
     [Fact]
@@ -24,7 +24,7 @@ public sealed class ActorClientTests
         var error = Assert.Throws<ZLinkFrameworkException>(
             () => ZLinkActorReplyDecoder.Decode<object>([malformed]));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, error.Kind);
         Assert.NotNull(error.InnerException);
     }
 
@@ -37,7 +37,7 @@ public sealed class ActorClientTests
             var error = Assert.Throws<ZLinkFrameworkException>(
                 () => ZLinkActorReplyDecoder.Decode<object>(parts));
 
-            Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, error.Kind);
+            Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, error.Kind);
         }
         finally
         {
@@ -58,7 +58,7 @@ public sealed class ActorClientTests
             var error = Assert.Throws<ZLinkFrameworkException>(
                 () => ZLinkActorReplyDecoder.Decode<object>(parts));
 
-            Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, error.Kind);
+            Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, error.Kind);
             Assert.Contains(errorCode, error.Message, StringComparison.Ordinal);
         }
         finally
@@ -79,7 +79,7 @@ public sealed class ActorClientTests
             var error = Assert.Throws<ZLinkFrameworkException>(
                 () => ZLinkActorReplyDecoder.Decode<DecodedActorReply>(parts));
 
-            Assert.Equal(ZLinkFrameworkErrorKind.PayloadDecodeFailed, error.Kind);
+            Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, error.Kind);
         }
         finally
         {
@@ -99,7 +99,7 @@ public sealed class ActorClientTests
             var error = Assert.Throws<ZLinkFrameworkException>(
                 () => ZLinkActorReplyDecoder.Decode<DecodedActorReply>(parts));
 
-            Assert.Equal(ZLinkFrameworkErrorKind.PayloadDecodeFailed, error.Kind);
+            Assert.Equal(ZLinkFrameworkErrorKind.ProtocolError, error.Kind);
         }
         finally
         {
@@ -194,7 +194,7 @@ public sealed class ActorClientTests
 
         var error = Assert.Throws<ZLinkFrameworkException>(gate.Claim);
 
-        Assert.Equal(ZLinkFrameworkErrorKind.AlreadySubmitted, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.InvalidOperation, error.Kind);
     }
 
     private static bool HasSubmissionGate(Type type)

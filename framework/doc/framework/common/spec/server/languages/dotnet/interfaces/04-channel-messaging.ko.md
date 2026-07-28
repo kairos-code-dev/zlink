@@ -105,13 +105,19 @@ public interface IZLinkRouteClient
 }
 ```
 
-Node direct는 target RID 하나로 submit한다. Channel operation은 process-local route index에서 ChannelName으로
+Node direct는 Object Client가 아닌 target RID 하나로 submit한다. Channel operation은 process-local route index에서 ChannelName으로
 유일한 [RouteMesh](../../../../01-glossary.ko.md#routemesh) 또는 ClientServer 송신 경로를 선택한다. Ready positive-weight member 하나를
 round-robin으로 선택하고 같은 operation에서 submit하며 client는 선택된 RID를 반환하지 않는다.
 ClientServer의 같은 ChannelName에 local Server가 있으면 remote Server와 같은 readiness·weight·drain
 조건으로 candidate에 포함하고 local 우선순위나 remote 제외를 적용하지 않는다. Local Server를 선택해도
 remote Server와 같은 codec, timeout, cancellation, correlation과 terminal completion 계약을 적용한다.
 Local handler를 직접 호출하는 별도 public 경로는 제공하지 않는다.
+
+Object Client에는 application Node direct handler를 등록할 수 없으며 해당 RID는 Node direct target이
+아니다. Caller가 Object Client RID를 지정하면 다른 target으로 바꾸지 않고
+`ZLinkFrameworkErrorKind.NotFound`로 끝낸다. Node direct 호출 자체는 두 Object Client 사이의
+connection intent를 만들지 않는다. 다만 어느 한쪽에 RouteMesh Channel Server membership이 있으면
+Channel traffic을 위해 peer connection을 유지한다.
 
 `IZLinkMessageContext`는 nullable MeshName과 ChannelName을 제공한다. RouteMesh·Spot·Actor handler의
 MeshName은 non-null이고 ClientServer·STREAM handler에서는 null이다. Channel handler의 ChannelName은

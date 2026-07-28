@@ -15,8 +15,10 @@ On Windows PowerShell:
 ```
 
 The runner starts `play-a`, `play-b`, `api-a`, and `api-b`, waits for their
-stream, MeshNode, HTTP, and Redis endpoints, runs this
-client, and stops the servers. To run the client against already running roles:
+stream, MeshNode, HTTP, and Redis endpoints, runs this client, and stops the
+servers. The API creates the game Spot through `IZLinkSpotManager`; the
+framework selects its Play owner. To run the client against already running
+roles:
 
 ```bash
 dotnet run --project framework/languages/dotnet/samples/TicTacToe/Client
@@ -36,9 +38,10 @@ dotnet run --project framework/languages/dotnet/samples/TicTacToe/Client -- \
 Each actor id is sent as the sample authentication token. The API server
 returns that value as `actorId`, and the play server uses it as the actor
 `ActorId`. The sample client opens three STREAM connections: host, guest, and
-observer. The host connects to the room owner Play endpoint returned by
-`POST /games`; the guest and observer connect to the other returned Play
-endpoint. The observer sends `ObserveMilestoneReq` before the game starts.
+observer. The host connects to the first Play endpoint returned by
+`POST /games`; the guest and observer connect to the second endpoint. Actor and
+Spot routing does not depend on which stream endpoint accepted the session.
+The observer sends `ObserveMilestoneReq` before the game starts.
 
 The client joins the host and guest actors to one game, receives
 `PlayerJoinedNotify` and `GameStateNotify` push packets, then plays a fixed

@@ -31,30 +31,29 @@ reconnect 계약은 각 기능 spec이 소유하며 여기서 반복하지 않�
 다른 component의 종료를 시작하지 않는다. Descriptor와 새 host snapshot은 `ZLinkFrameworkRuntimeState`를
 투영한다.
 
-## 3. Retire와 Shutdown
+## 3. Relocate와 Shutdown
 
-`RetireAsync(...)` preflight와 `ShutdownAsync(...)` seal은 같은 host maintenance barrier에서 순서를 정한다.
-Retire는 Actor·Spot policy, target version·capability·capacity·wave와 Store를 모두 확인한 뒤에만
-`Draining`을 commit한다. `Disabled` policy인 Actor·Spot이 남아 있거나 필요한 target·Store가 없으면 state와
+`RelocateAsync(...)` preflight와 `ShutdownAsync(...)` seal은 같은 host maintenance barrier에서 순서를 정한다.
+Relocate는 Actor·Spot policy, target version·capability·capacity·wave와 Store를 모두 확인한 뒤에만
+`Relocating`을 commit한다. `Disabled` policy인 Actor·Spot이 남아 있거나 필요한 target·Store가 없으면 state와
 admission을 바꾸지 않고 해당 `Blocked` reason으로 끝낸다.
 
-`Draining`부터 first intent와 deadline을 shared operation에 고정한다. Cross-intent caller는 같은 operation과
-`EffectiveIntent` result를 기다린다. Caller token은 waiter completion만 취소하고 shared operation이나 transfer를
-취소하지 않는다. `Blocked`는 preflight waiter에게만 전달하고 terminal cache에 넣지 않는다.
+`Relocating`부터 mode와 deadline을 shared operation에 고정한다. 같은 작업을 호출한 caller는 동일한 결과를
+기다린다. Caller token은 해당 caller의 대기만 취소하고 shared operation이나 relocation을 취소하지 않는다.
+`Blocked` 결과는 preflight를 다시 실행할 수 있게 terminal cache에 넣지 않는다.
 
-Retire는 admission seal 뒤 현재 turn만 완료하고, 다음 queued job·accepted journal·timer를 freeze한다.
+Relocate는 admission seal 뒤 현재 turn만 완료하고, 다음 queued job·accepted journal·timer를 freeze한다.
 Framework는 byte permit을 확보한 aggregate부터 Actor·Spot relocation을 시작하며 User Spot과 소속 Actor는
-하나의 aggregate로 이동한다. 이어서 session barrier, authority cleanup, listener와 raw socket cleanup을
-진행한다. Shutdown은 admission을 seal하되 새 relocation과 reservation을 시작하지 않는다.
+하나의 aggregate로 이동한다. 모든 authority commit과 source cleanup이 끝나면 host는 `Relocated`에서
+infrastructure를 유지한다. Shutdown은 admission을 seal하되 새 relocation과 reservation을 시작하지 않고,
+listener와 raw socket을 포함한 infrastructure를 정리한다.
 ASP.NET Core `StopAsync`는 `ShutdownAsync()`를 사용하고 terminal result를 확인한 뒤 hosted service를 끝낸다.
 두 operation의 기본 deadline은 30초다.
 
-기존 `IZLinkDrainControl.DrainAsync(...)`는 같은 host coordinator의 `ShutdownAsync(...)`에 연결한다.
 `IZLinkRouteMeshRuntime.DrainAsync(meshName, ...)`는 지정한 MeshNode만 정리하는 v10 non-continuity operation으로
-유지하며 host `Retire` preflight와 transfer를 시작하지 않는다. 두 compatibility surface의 public 이름과
-signature는 Core service 구현 이관 때문에 바꾸지 않는다.
+유지하며 host relocation preflight를 시작하지 않는다.
 
-Application은 global Spot RID를 대상으로 direct Spot send/request를 구성하고 fluent builder에서 Instance marker를
+Application은 global SpotId를 대상으로 direct Spot send/request를 구성하고 fluent builder에서 Instance marker를
 지정한다. Missing Instance는 marker가 정확히 한 factory type을 선택할 때만 cold placement를 시작한다.
 Maintenance target materialization은 이 application call을 재사용하지 않는 Framework internal operation이다.
 
@@ -93,10 +92,10 @@ Store liveness이며 위 service liveness와 별도다.
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `E2E:RL-C1` | 여러 framework host를 생성하고 종료한 뒤 follow-up request가 성공해 host lifecycle 정리를 검증한다. |
-| `FrameworkRuntimeTests.Retire_Blocks_When_UserSpot_Remains` | User Spot 잔존 preflight가 admission을 바꾸지 않고 `TransferDisabled`로 끝난다. |
-| `FrameworkRuntimeTests.CrossIntent_Waits_For_FirstEffectiveIntent` | Draining 이후 cross-intent waiter가 first operation result를 관찰한다. |
-| `FrameworkRuntimeTests.WaiterCancellation_DoesNotCancelTermination` | caller cancellation이 shared termination을 중단하지 않는다. |
-| `TransportLivenessTests.Profile_Is_Five_And_Fifteen_Seconds` | RouteMesh·ClientServer는 probe·ACK을 사용하고, fanout은 publisher별 전용 SUB socket에서 two-frame beacon을 받으며, 모두 5초 idle과 15초 inbound deadline을 public option 없이 적용한다. |
+| `FrameworkRuntimeContracts.Relocation_and_shutdown_are_separate_host_operations` | `RelocateAsync(...)`가 workload만 이전하고 `ShutdownAsync(...)`가 host 종료만 수행하는 public 경계를 고정한다. |
+| `DrainCoordinatorTests.Relocate_Detaches_Workload_Without_Shutting_Down_Infrastructure` | relocation 완료 뒤 infrastructure가 유지되고 별도 shutdown을 기다린다. |
+| `DrainCoordinatorTests.Waiter_Cancellation_Does_Not_Cancel_Shared_Drain` | caller cancellation이 shared maintenance operation을 중단하지 않는다. |
+| `ServiceRuntimeFoundationTests.Liveness_RetransmitsOutstandingProbeAndExtendsOnlyOnExactAck` | outstanding probe를 재전송하고 exact ACK에서만 inbound deadline을 연장한다. |
 | `ZLinkAsyncSubmitterTests.DisposeAsync_FailsPendingItems` | runtime dispose가 pending submit을 남겨 두지 않는다. |
 
 ---

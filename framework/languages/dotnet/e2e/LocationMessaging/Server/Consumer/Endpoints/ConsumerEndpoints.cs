@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using LocationMessaging.Shared;
+using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Errors;
@@ -13,32 +14,79 @@ namespace LocationMessaging.Server.Consumer.Endpoints;
 
 internal static class ConsumerEndpoints
 {
-    public static void MapConsumerEndpoints(this WebApplication app)
+    public static void MapConsumerEndpoints(
+        this WebApplication app,
+        ConsumerOptions options)
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ready" }));
         app.MapGet("/topology/ready", (
             int count,
             IZLinkRouteMeshRuntime runtime) =>
         {
-            var snapshot = runtime.Snapshot("profile");
+            var snapshot = runtime.GetStatus(options.MeshName);
             var readyCount = snapshot.Peers.Count(
-                static peer => peer.Ready);
+                static peer => peer.State == ZLinkPeerState.Ready);
             return Results.Ok(new
             {
                 ready = readyCount >= count
                         && snapshot.Channels.Any(static channel =>
                             channel.ChannelName == "profile"
-                            && channel.Selectable),
+                            && channel.IsReady),
                 readyCount,
-                rid = snapshot.Rid.ToString(),
+                rid = string.Empty,
                 peers = snapshot.Peers.Select(static peer => new
                 {
-                    rid = peer.Rid.ToString(),
-                    peer.Endpoint,
-                    peer.Ready,
-                    peer.AdmissionState,
-                    peer.LastFailure
+                    rid = peer.NodeRid.ToString(),
+                    Endpoint = string.Empty,
+                    Ready = peer.State == ZLinkPeerState.Ready,
+                    AdmissionState = peer.State.ToString(),
+                    LastFailure = peer.UnavailableReason?.ToString()
                 })
+            });
+        });
+        app.MapGet("/topology/status", (IZLinkRouteMeshRuntime runtime) =>
+        {
+            var snapshot = runtime.GetStatus(options.MeshName);
+            return Results.Ok(new
+            {
+                state = snapshot.State.ToString(),
+                snapshot.IsReady,
+                snapshot.ReadyPeerCount,
+                peers = snapshot.Peers.Select(static peer => new
+                {
+                    rid = peer.NodeRid.ToString(),
+                    state = peer.State.ToString()
+                })
+            });
+        });
+        app.MapPost("/node-direct/{targetRid}", async (
+            string targetRid,
+            IZLinkRouteClient routes,
+            IZLinkRouteMeshRuntime runtime,
+            CancellationToken cancellationToken) =>
+        {
+            var before = runtime.GetStatus(options.MeshName);
+            var send = await CaptureAsync(async () =>
+                await routes.SendToNode(
+                        options.MeshName,
+                        RoutingId.From(targetRid),
+                        new ProfileMsg($"rm-a3-{Guid.NewGuid():N}"))
+                    .Async(cancellationToken));
+            var request = await CaptureAsync(async () =>
+                await routes.RequestToNode(
+                        options.MeshName,
+                        RoutingId.From(targetRid),
+                        new ProfileReq("rm-a3"))
+                    .Async<ProfileRes>(cancellationToken));
+            var after = runtime.GetStatus(options.MeshName);
+            return Results.Ok(new
+            {
+                send,
+                request,
+                peerCountBefore = before.Peers.Count,
+                peerCountAfter = after.Peers.Count,
+                readyPeerCountBefore = before.ReadyPeerCount,
+                readyPeerCountAfter = after.ReadyPeerCount
             });
         });
         app.MapPost("/connections/wait", async (
@@ -73,24 +121,23 @@ internal static class ConsumerEndpoints
             PeerLocationRow[] rows;
             do
             {
-                rows = (await query.ListMeshNodeDescriptorsAsync(
-                        request.MeshName,
+                rows = (await query.ListTopologyAsync(
+                        new ZLinkLocationTopologyFilter(request.MeshName),
                         cancellationToken: cancellationToken))
                     .Items
                     .Select(peer => new PeerLocationRow(
                         peer.MeshName,
-                        peer.Rid.ToString(),
+                        peer.NodeRid.ToString(),
                         "Router",
                         peer.Endpoint,
-                        (uint)(peer.ChannelWeights.TryGetValue(peer.MeshName, out var weight) ? weight : 0),
-                        peer.OwnerId,
-                        peer.LifecycleGeneration))
+                        peer.Draining,
+                        peer.State.ToString()))
                     .ToArray();
                 var matches = rows.Where(row =>
                     row.Role == request.Role
-                    && (row.NodeRid == request.NodeRid
-                        || row.NodeRid.StartsWith($"{request.NodeRid}-", StringComparison.Ordinal))
-                    && (request.Weight is null || row.Weight == request.Weight));
+                    && row.NodeRid is { } nodeRid
+                    && (nodeRid == request.NodeRid
+                        || nodeRid.StartsWith($"{request.NodeRid}-", StringComparison.Ordinal)));
                 if (request.Present ? matches.Any() : !matches.Any()) return Results.Ok(rows);
 
                 await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
@@ -202,6 +249,19 @@ internal static class ConsumerEndpoints
             .Async<ProfileRes>()
             .AsTask();
 
+    static async Task<string> CaptureAsync(Func<Task> operation)
+    {
+        try
+        {
+            await operation();
+            return "Submitted";
+        }
+        catch (ZLinkFrameworkException error)
+        {
+            return error.Kind.ToString();
+        }
+    }
+
     static Task<PayloadRes> RequestPayloadAsync(
         IZLinkRouteClient channel,
         PayloadReq request)
@@ -258,7 +318,7 @@ internal static class ConsumerEndpoints
                 "A request without a registered handler completed without the expected public error.");
         }
         catch (ZLinkFrameworkException error) when (
-            error.Kind == ZLinkFrameworkErrorKind.HandlerNotFound)
+            error.Kind == ZLinkFrameworkErrorKind.NotFound)
         {
             return new ExpectedFailureRes(error.Kind.ToString());
         }

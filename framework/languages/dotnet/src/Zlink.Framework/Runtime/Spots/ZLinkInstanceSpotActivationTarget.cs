@@ -59,6 +59,26 @@ internal static class ZLinkInstanceSpotAuthorityPayloadCodec
         out ZLinkInstanceSpotAuthorityPayload payload)
     {
         payload = null!;
+        if (ZLinkUserSpotAuthorityPayloadCodec.TryDecode(
+                encoded,
+                out var canonical))
+        {
+            payload = new ZLinkInstanceSpotAuthorityPayload(
+                canonical.State == ZLinkUserSpotAuthorityState.Ready
+                    ? ZLinkInstanceSpotAuthorityState.Ready
+                    : ZLinkInstanceSpotAuthorityState.Creating,
+                canonical.SpotId,
+                canonical.StableType,
+                canonical.MeshName,
+                canonical.NodeRid,
+                canonical.NodeGeneration,
+                canonical.OwnerId,
+                canonical.OwnerLeaseGeneration,
+                RecoveryReference: null,
+                RecoveryChecksum: 0,
+                ReplayCursor: 0);
+            return true;
+        }
         try
         {
             using var stream = new MemoryStream(encoded.ToArray(), writable: false);
@@ -405,7 +425,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
         ValidateTarget(operation);
         if (!registration.InstanceSpotFactories.ContainsKey(operation.Target.StableType))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotTypeMismatch,
+                ZLinkFrameworkErrorKind.TypeMismatch,
                 $"Instance Spot type '{operation.Target.StableType}' is not registered.");
 
         var key = ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(
@@ -500,9 +520,9 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
             if (commit is not (ZLinkObjectCommitResult.Committed
                 or ZLinkObjectCommitResult.AlreadyCommitted))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Instance Spot '{operation.Target.TargetSpotId}' Ready commit conflicted.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             var readySnapshot = commit switch
             {
                 ZLinkObjectCommitResult.Committed value => value.Snapshot,
@@ -593,7 +613,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
             || Zlink.Framework.Runtime.Locations.ZLinkCrc32C.Compute(
                 found.Payload.Span) != authority.RecoveryChecksum)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RelocationDataLost,
+                ZLinkFrameworkErrorKind.DataLost,
                 $"Instance Spot '{authority.SpotId}' activation recovery payload is unavailable.");
 
         if (authority.ReplayCursor == 1)
@@ -608,7 +628,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                 found.Payload.Span,
                 out var record))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 $"Instance Spot '{authority.SpotId}' activation recovery payload is invalid.");
 
         if (!catalog.TryGetInstanceActivation(
@@ -628,7 +648,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
             {
                 var pending = snapshot.ReservedCreation
                               ?? throw new ZLinkFrameworkException(
-                                  ZLinkFrameworkErrorKind.RequestProtocolError,
+                                  ZLinkFrameworkErrorKind.ProtocolError,
                                   $"Instance Spot '{authority.SpotId}' reservation is incomplete.");
                 var readyAuthority = authority with
                 {
@@ -655,9 +675,9 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                     ZLinkObjectCommitResult.Committed value => value.Snapshot,
                     ZLinkObjectCommitResult.AlreadyCommitted value => value.Snapshot,
                     _ => throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.SpotMoving,
+                        ZLinkFrameworkErrorKind.Unavailable,
                         $"Instance Spot '{authority.SpotId}' recovery lost its reservation.",
-                        true)
+                        ZLinkRetryAdvice.RetryAfterBackoff)
                 };
                 authority = readyAuthority;
             }
@@ -665,7 +685,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
             {
                 await catalog.DiscardReservedAsync(prepared).ConfigureAwait(false);
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestProtocolError,
+                    ZLinkFrameworkErrorKind.ProtocolError,
                     $"Instance Spot '{authority.SpotId}' authority state is invalid.");
             }
             catalog.PublishInstanceReserved(prepared);
@@ -731,7 +751,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                     operation.Target.StableType,
                     StringComparison.Ordinal))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotTypeMismatch,
+                    ZLinkFrameworkErrorKind.TypeMismatch,
                     $"Instance Spot '{operation.Target.TargetSpotId}' has another stable type.");
             if (!ZLinkInstanceSpotAuthorityPayloadCodec.TryDecode(
                     current.Payload.Span,
@@ -739,9 +759,9 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                 || authority.NodeRid != node.RoutingId
                 || authority.NodeGeneration != node.MeshStatus().LifecycleGeneration)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Instance Spot '{operation.Target.TargetSpotId}' activation moved to another owner.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             var anotherOperationIsAccepted =
                 authority.ReplayCursor == 0
                 && authority.RecoveryReference is { } acceptedReference
@@ -787,9 +807,9 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                         continue;
                     }
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.SpotMoving,
+                        ZLinkFrameworkErrorKind.Unavailable,
                         $"Instance Spot '{operation.Target.TargetSpotId}' operation claim conflicted.",
-                        true);
+                        ZLinkRetryAdvice.RetryAfterBackoff);
                 }
                 if (authority.RecoveryReference is { } previousReference
                     && !string.Equals(
@@ -835,9 +855,9 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                 .ConfigureAwait(false);
             if (read is not ZLinkAuthorityReadResult.Found found)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Instance Spot '{operation.Target.TargetSpotId}' activation authority disappeared.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             current = found.Snapshot;
         }
     }
@@ -882,7 +902,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
             && value.LifecycleGeneration == sourceNodeGeneration);
         if (descriptor is null || descriptor.LeaseGeneration <= 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestRejected,
+                ZLinkFrameworkErrorKind.Rejected,
                 "The Instance Spot activation request-source fence is unavailable.");
         return new ZLinkServiceWireCodec.RequestSourceFence(
             descriptor.OwnerId,
@@ -998,7 +1018,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                 registration.SpotNodeName,
                 StringComparison.Ordinal))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotGenerationStale,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "The Instance Spot activation target descriptor is stale.");
     }
 
@@ -1008,17 +1028,17 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
         result switch
         {
             ZLinkObjectReserveResult.TypeMismatch => new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotTypeMismatch,
+                ZLinkFrameworkErrorKind.TypeMismatch,
                 $"Instance Spot '{operation.Target.TargetSpotId}' has another stable type."),
             ZLinkObjectReserveResult.PlacementCapacityExhausted =>
                 new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
+                    ZLinkFrameworkErrorKind.CapacityExceeded,
                     "The Instance Spot target has no remaining capacity.",
-                    true),
+                    ZLinkRetryAdvice.RetryAfterBackoff),
             _ => new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotMoving,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Instance Spot '{operation.Target.TargetSpotId}' activation conflicted.",
-                true)
+                ZLinkRetryAdvice.RetryAfterBackoff)
         };
 
 }

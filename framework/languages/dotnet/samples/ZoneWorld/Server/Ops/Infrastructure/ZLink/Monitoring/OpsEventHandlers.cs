@@ -1,7 +1,5 @@
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Eventing;
-using Zlink.Framework.Contracts.Locations;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.Ops.Application.Ops;
 using ZoneWorld.Server.Ops.Infrastructure.ZLink.Sessions;
@@ -14,61 +12,49 @@ namespace ZoneWorld.Server.Ops.Infrastructure.ZLink.Monitoring;
 /// can ask: a node that has shut down is not there to answer, so the console learns about
 /// it from the location runtime rather than by polling.
 /// </summary>
-internal sealed class LocationEventHandler(
-    NodeRegistry nodes,
-    ILogger<LocationEventHandler> logger)
-    : IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>
-{
-    public async ValueTask HandleAsync(ZLinkLocationRuntimeEvent @event, CancellationToken cancellationToken)
-    {
-        if (@event is not ZLinkLocationRuntimeEvent.TopologyChanged topology)
-            return;
-
-        var live = topology.Topology
-            .Where(entry => entry.MeshName == ZoneWorldNames.MeshName
-                            && entry.State == ZLinkLocationTopologyState.Ready)
-            .Select(entry => entry.NodeRid.ToString())
-            .ToHashSet(StringComparer.Ordinal);
-
-        await nodes.ApplyLiveRoutingIdsAsync(live, cancellationToken);
-
-        logger.LogDebug(
-            "location topology observed. entries={Count}, live={Live}",
-            topology.Topology.Count,
-            string.Join(',', live));
-    }
-}
-
 /// <summary>
 /// Whether a node's connection is up (§8.1). The node reports over the channel using its own
 /// routing id, so a socket event on that channel names the node it came from.
 /// </summary>
 internal sealed class SocketEventHandler(
     NodeRegistry nodes,
+    IZLinkRouteMeshRuntime runtime,
     ILogger<SocketEventHandler> logger)
-    : IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>
+    : BackgroundService
 {
-    public async ValueTask HandleAsync(ZLinkMeshRuntimeEvent @event, CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (@event.PeerRid is not { } peer) return;
-
-        var nodeId = nodes.NodeIdOf(peer.ToString());
-        if (nodeId is null) return;
-
-        var connected = @event.Reason switch
+        var previous = new HashSet<string>(StringComparer.Ordinal);
+        await foreach (var status in runtime
+                           .ObserveAsync(ZoneWorldNames.MeshName, stoppingToken)
+                           .ConfigureAwait(false))
         {
-            "ready" => true,
-            "disconnected" => false,
-            _ => (bool?)null
-        };
-        if (connected is null) return;
+            var current = status.Peers
+                .Where(static peer => peer.State == ZLinkPeerState.Ready)
+                .Select(static peer => peer.NodeRid.ToString())
+                .ToHashSet(StringComparer.Ordinal);
+            await nodes.ApplyLiveRoutingIdsAsync(current, stoppingToken);
+            foreach (var rid in current.Except(previous))
+                await ApplyAsync(rid, true, stoppingToken);
+            foreach (var rid in previous.Except(current))
+                await ApplyAsync(rid, false, stoppingToken);
+            previous = current;
+        }
+    }
 
-        await nodes.ApplyConnectionAsync(nodeId, connected.Value, cancellationToken);
+    private async Task ApplyAsync(
+        string rid,
+        bool connected,
+        CancellationToken cancellationToken)
+    {
+        var nodeId = nodes.NodeIdOf(rid);
+        if (nodeId is null)
+            return;
+        await nodes.ApplyConnectionAsync(nodeId, connected, cancellationToken);
         logger.LogInformation(
-            "node connection observed. node={NodeId}, connected={Connected}, kind={Kind}",
+            "node connection observed. node={NodeId}, connected={Connected}",
             nodeId,
-            connected.Value,
-            @event.Reason);
+            connected);
     }
 }
 

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/mesh/service_topology_registry.hpp"
+#include "runtime/mesh/route_mesh_connection_policy.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -9,6 +10,22 @@
 
 namespace zlink::framework::runtime::mesh
 {
+
+bool route_mesh_connection_not_required (
+  const service_node_descriptor_t &local,
+  const service_node_descriptor_t &remote) noexcept
+{
+    const auto public_role = [] (service_object_role_t role) {
+        return role == service_object_role_t::client
+          ? object_role_t::client
+          : role == service_object_role_t::server
+              ? object_role_t::server
+              : object_role_t::none;
+    };
+    return route_mesh_connection_not_required (
+      public_role (local.object_role), !local.channels.empty (),
+      public_role (remote.object_role), !remote.channels.empty ());
+}
 
 std::uint64_t
 sum_service_weights (std::span<const int> weights)
@@ -135,6 +152,13 @@ void service_topology_registry_t::publish_local (
           "published service descriptor revision is not increasing");
     }
     _local = std::move (descriptor);
+    for (auto it = _not_required_peers.begin ();
+         it != _not_required_peers.end ();) {
+        if (!route_mesh_connection_not_required (_local, it->second))
+            it = _not_required_peers.erase (it);
+        else
+            ++it;
+    }
 }
 
 service_node_descriptor_t
@@ -158,22 +182,37 @@ peer_admission_result_t service_topology_registry_t::admit (
     if (descriptor.node_routing_id == _local.node_routing_id) {
         return peer_admission_result_t::invalid_descriptor;
     }
-    const auto found = _peers.find (descriptor.node_routing_id);
-    if (found != _peers.end ()
-        && found->second.descriptor.lifecycle_generation
-             == descriptor.lifecycle_generation
-        && found->second.descriptor.descriptor_revision
-             > descriptor.descriptor_revision) {
+    const auto admitted = _peers.find (descriptor.node_routing_id);
+    const auto not_required =
+      _not_required_peers.find (descriptor.node_routing_id);
+    const auto *current =
+      admitted != _peers.end ()
+        ? &admitted->second.descriptor
+        : not_required != _not_required_peers.end ()
+            ? &not_required->second
+            : nullptr;
+    if (current != nullptr
+        && (descriptor.lifecycle_generation
+              < current->lifecycle_generation
+            || (descriptor.lifecycle_generation
+                  == current->lifecycle_generation
+                && descriptor.descriptor_revision
+                     < current->descriptor_revision)
+            || (descriptor.lifecycle_generation
+                  == current->lifecycle_generation
+                && descriptor.descriptor_revision
+                     == current->descriptor_revision
+                && *current != descriptor))) {
         return peer_admission_result_t::stale_descriptor;
     }
-    if (found != _peers.end ()
-        && found->second.descriptor.lifecycle_generation
-             == descriptor.lifecycle_generation
-        && found->second.descriptor.descriptor_revision
-             == descriptor.descriptor_revision
-        && found->second.descriptor != descriptor) {
-        return peer_admission_result_t::stale_descriptor;
+    if (route_mesh_connection_not_required (_local, descriptor)) {
+        auto key = descriptor.node_routing_id;
+        _peers.erase (key);
+        _not_required_peers.insert_or_assign (
+          std::move (key), std::move (descriptor));
+        return peer_admission_result_t::not_required;
     }
+    _not_required_peers.erase (descriptor.node_routing_id);
     auto key = descriptor.node_routing_id;
     _peers.insert_or_assign (
       std::move (key),
@@ -202,6 +241,17 @@ std::vector<admitted_peer_t> service_topology_registry_t::peers () const
     for (const auto &[_, peer] : _peers) {
         result.push_back (peer);
     }
+    return result;
+}
+
+std::vector<service_node_descriptor_t>
+service_topology_registry_t::not_required_peers () const
+{
+    std::lock_guard lock (_mutex);
+    std::vector<service_node_descriptor_t> result;
+    result.reserve (_not_required_peers.size ());
+    for (const auto &[_, descriptor] : _not_required_peers)
+        result.push_back (descriptor);
     return result;
 }
 

@@ -6,8 +6,14 @@ const {
   DefaultZLinkActorContext
 } = require('../../packages/framework/dist/runtime/actors/actor-context');
 const {
+  deferActorJoin,
   runActorHandlerWithDeferredJoins
 } = require('../../packages/framework/dist/runtime/actors/actor-join-deferred-scope');
+const {
+  ZLinkSpotActorPacketDispatch
+} = require('../../packages/framework/dist/runtime/spots/spot-actor-packet-dispatch');
+const framework = require('../../packages/framework/dist/internal');
+const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
 const {
   ZLinkActorRuntimeState
 } = require('../../packages/framework/dist/runtime/actors/actor-runtime-state');
@@ -75,6 +81,74 @@ test('deferred Actor Join starts after the handler continuation and preserves it
   assert.ok(timeoutMs > 0 && timeoutMs <= 25);
   assert.equal(events[3], 'completion:accepted:7');
   assert.equal(context.objectGeneration, 1n);
+});
+
+test('Core-routed Actor request submits its reply exactly once before deferred Join completion', async () => {
+  const events = [];
+  class PlayerActor {
+    constructor() {
+      this.actorId = 'alice';
+    }
+  }
+  class JoinHandler {
+    async handle() {
+      events.push('handler');
+      deferActorJoin({
+        requestBytes: 0,
+        discard() {},
+        async execute() {
+          events.push('completion:0123456789abcdef:fedcba9876543210');
+        }
+      });
+      return { accepted: true };
+    }
+  }
+  const actor = new PlayerActor();
+  const registry = new framework.ZLinkSpotActorHandlerRegistryRuntime().addPacket({
+    kind: framework.ZLinkActorPacketKind.Request,
+    packetName: 'JoinRoom',
+    actorType: PlayerActor,
+    handlerType: JoinHandler
+  });
+  const dispatch = new ZLinkSpotActorPacketDispatch({
+    spot: { context: { meshName: 'game' } },
+    spotId: () => 'entry-a',
+    registry,
+    resolveActor: () => actor,
+    onDisconnectActor: async () => {}
+  });
+  const parts = [
+    Message.from(Buffer.from(streamProtocol.encodeStreamHeader({
+      kind: streamProtocol.ZLinkStreamMessageKind.Request,
+      codec: streamProtocol.ZLinkStreamCodec.Json,
+      flags: streamProtocol.ZLinkStreamHeaderFlags.None,
+      requestSeq: 1n,
+      name: 'JoinRoom',
+      metadata: new Map()
+    }))),
+    Message.from(Buffer.from('{}'))
+  ];
+  let replies = 0;
+
+  const result = await dispatch.dispatch(
+    'alice',
+    parts,
+    true,
+    undefined,
+    undefined,
+    (reply) => {
+      replies += 1;
+      events.push(`reply:${reply.accepted}`);
+    }
+  );
+
+  assert.equal(result, undefined);
+  assert.equal(replies, 1);
+  assert.deepEqual(events, [
+    'handler',
+    'reply:true',
+    'completion:0123456789abcdef:fedcba9876543210'
+  ]);
 });
 
 test('deferred Actor Join is discarded when the handler fails', async () => {

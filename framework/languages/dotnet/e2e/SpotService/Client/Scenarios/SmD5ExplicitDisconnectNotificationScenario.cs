@@ -27,7 +27,7 @@ internal static class SmD5ExplicitDisconnectNotificationScenario
         }))
         {
             await client.Connect.Async();
-            await client.Request(new UserSpotAuthReq(spotRid, actorId, "disconnect", "play-a"))
+        await client.Request(new UserSpotAuthReq(spotRid, actorId, "disconnect"))
                 .PacketName("UserSpotAuthReq").Async<AuthRes>();
             await playA.Post("/spot/create").Body(new CreateSpotReq(spotRid)).Async<CreateSpotRes>();
             await client.Request(new JoinUserSpotActorReq(spotRid, actorId))

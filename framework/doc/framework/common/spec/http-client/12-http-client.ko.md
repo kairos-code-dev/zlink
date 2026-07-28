@@ -54,7 +54,7 @@ client.post("/games")               // operation
 
 - verb 7종: `get` / `post` / `put` / `delete` / `patch` / `head` / `options`.
 - 설정 축: `header`, `query`, `timeout`, body 소스(typed / raw / streaming / form / multipart).
-- **body 소스는 상호 배타다.** 섞으면 `RequestProtocolError`.
+- **body 소스는 상호 배타다.** 섞으면 `ProtocolError`.
 
 builder의 세부 계약(path 형식, percent-encoding, body 소스별 retry 가능 여부 등)은
 [03 Request builder](03-request-builder.ko.md)가 소유한다.
@@ -149,10 +149,11 @@ typed body의 encode/decode는 그 registry가 담당한다. raw body API는 reg
 
 | 상황 | kind |
 |------|------|
-| 구성·사용 오류(builder 검증 실패, path 형식, body 소스 중복) | `RequestProtocolError` |
-| 전송 실패, typed 제출의 status ≥ 400, redirect 한도 초과, body 크기 초과 | `RequestFailed` |
-| typed body decode 실패, 압축 해제 실패 | `PayloadDecodeFailed` |
-| 시도당 timeout 초과 | 전용 timeout kind는 두지 않는다. `.NET`·Java·Kotlin·Node는 `RequestFailed`와 timeout 원인 또는 retriable 표식을 함께 전달하고, C++은 `timed_out` 상태를 반환한다 |
+| 구성·사용 오류, typed decode, 압축 해제 또는 redirect 형식 오류 | `ProtocolError` |
+| Network, DNS, proxy와 target 연결 실패 | `Unavailable` |
+| 설정한 response body byte 제한 초과 | `CapacityExceeded` |
+| 시도당 timeout 초과 | `DeadlineExceeded` |
+| HTTP status가 400 이상이거나 분류할 수 없는 실행 실패 | `InternalFailure` |
 
 세부 매핑은 [09 오류 모델](09-error-model.ko.md)이 소유한다.
 
@@ -166,4 +167,4 @@ typed body의 encode/decode는 그 registry가 담당한다. raw body API는 reg
 | 표면 제한 | DI와 단독 사용 모두 HTTP request builder에 `Yield`를 노출하지 않는다 |
 | 등록 | 서버 표면이 DI 주입으로만 얻어지고, handler 안에서 정적 팩토리로 client를 만들지 않는다 |
 | 오류 kind | HTTP client 전용 kind가 없고 framework 공용 kind만 쓴다 |
-| builder | body 소스를 섞으면 `RequestProtocolError`로 실패한다 |
+| builder | body 소스를 섞으면 `ProtocolError`로 실패한다 |

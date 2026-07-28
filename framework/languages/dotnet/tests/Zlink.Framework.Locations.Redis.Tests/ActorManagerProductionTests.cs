@@ -83,6 +83,96 @@ public sealed class ActorManagerProductionTests
     }
 
     [Fact]
+    public async Task ReservationConflictRefreshesDescriptorWithinCreationDeadline()
+    {
+        TestActorFactory.Reset();
+        var inner = new ZLinkInMemoryLocationStore();
+        var (store, reservationRace) =
+            ReservationConflictLocationStore.Create(inner, conflictsBeforeSuccess: 1);
+        var suffix = Guid.NewGuid().ToString("N");
+        var endpoint = $"tcp://127.0.0.1:{FindFreeTcpPort()}";
+        await using var provider = BuildServer(store, endpoint);
+        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+        var host = FrameworkHost(provider);
+        await host.StartAsync(CancellationToken.None);
+        try
+        {
+            var rid = runtime.GetSpotNodeRuntime("objects").Node.RoutingId;
+            await PublishServerDescriptorAsync(inner, runtime, rid, endpoint);
+            var actors = provider.GetRequiredService<IZLinkActorManager>();
+            var actorId = $"reservation-race-{suffix}";
+
+            var created = Assert.IsType<ZLinkActorCreateResult.Created>(
+                await actors.GetOrCreate(actorId, "player")
+                    .Timeout(TimeSpan.FromSeconds(5))
+                    .Async());
+            var existing = Assert.IsType<ZLinkActorCreateResult.Existing>(
+                await actors.GetOrCreate(actorId, "player")
+                    .Timeout(TimeSpan.FromSeconds(5))
+                    .Async());
+
+            Assert.Equal(created.Actor, existing.Actor);
+            Assert.Equal(3, reservationRace.ActorReserveAttempts);
+            Assert.Equal(1, TestActorFactory.CreateCount);
+            Assert.Equal(1, TestEntrySpot.CreateCount);
+            var descriptor = Assert.Single(
+                (await inner.ListMeshNodesAsync("objects", default)).Items);
+            Assert.Equal(1, descriptor.Capacity.Actors.Active);
+            Assert.Equal(0, descriptor.Capacity.Actors.Reserved);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PersistentReservationConflictHonorsCancellationAndDeadline(
+        bool callerCancels)
+    {
+        TestActorFactory.Reset();
+        var inner = new ZLinkInMemoryLocationStore();
+        var (store, _) = ReservationConflictLocationStore.Create(
+            inner,
+            conflictsBeforeSuccess: int.MaxValue);
+        var endpoint = $"tcp://127.0.0.1:{FindFreeTcpPort()}";
+        await using var provider = BuildServer(store, endpoint);
+        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+        var host = FrameworkHost(provider);
+        await host.StartAsync(CancellationToken.None);
+        try
+        {
+            var rid = runtime.GetSpotNodeRuntime("objects").Node.RoutingId;
+            await PublishServerDescriptorAsync(inner, runtime, rid, endpoint);
+            using var cancellation = callerCancels
+                ? new CancellationTokenSource(TimeSpan.FromMilliseconds(50))
+                : new CancellationTokenSource();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                await provider.GetRequiredService<IZLinkActorManager>()
+                    .GetOrCreate("reservation-cancelled", "player")
+                    .Timeout(
+                        callerCancels
+                            ? TimeSpan.FromSeconds(5)
+                            : TimeSpan.FromMilliseconds(50))
+                    .Async(cancellation.Token));
+
+            Assert.Equal(0, TestActorFactory.CreateCount);
+            Assert.Equal(0, TestEntrySpot.CreateCount);
+            var descriptor = Assert.Single(
+                (await inner.ListMeshNodesAsync("objects", default)).Items);
+            Assert.Equal(0, descriptor.Capacity.Actors.Active);
+            Assert.Equal(0, descriptor.Capacity.Actors.Reserved);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task SameProcessServerExecutesLocalProductionActorTarget()
     {
         TestActorFactory.Reset();
@@ -306,6 +396,60 @@ public sealed class ActorManagerProductionTests
                 && Interlocked.Increment(ref _actorReserveAttempts) == 1)
                 return ValueTask.FromResult<ZLinkObjectReserveResult>(
                     new ZLinkObjectReserveResult.PlacementCapacityExhausted());
+
+            try
+            {
+                return targetMethod.Invoke(_inner, args);
+            }
+            catch (TargetInvocationException exception)
+                when (exception.InnerException is not null)
+            {
+                throw exception.InnerException;
+            }
+        }
+    }
+
+    private class ReservationConflictLocationStore : DispatchProxy
+    {
+        private IZLinkLocationRepository _inner = null!;
+        private int _actorReserveAttempts;
+        private int _conflictsBeforeSuccess;
+
+        public int ActorReserveAttempts => Volatile.Read(
+            ref _actorReserveAttempts);
+
+        public static (
+            IZLinkLocationRepository Store,
+            ReservationConflictLocationStore Control) Create(
+            IZLinkLocationRepository inner,
+            int conflictsBeforeSuccess)
+        {
+            var contract = DispatchProxy.Create<
+                IZLinkLocationRepository,
+                ReservationConflictLocationStore>();
+            var proxy = (ReservationConflictLocationStore)(object)contract;
+            proxy._inner = inner;
+            proxy._conflictsBeforeSuccess = conflictsBeforeSuccess;
+            return (contract, proxy);
+        }
+
+        protected override object? Invoke(
+            MethodInfo? targetMethod,
+            object?[]? args)
+        {
+            ArgumentNullException.ThrowIfNull(targetMethod);
+            if (targetMethod.Name == nameof(IZLinkLocationRepository.ReserveAsync)
+                && args is { Length: > 0 }
+                && args[0] is ZLinkObjectReservationRequest
+                {
+                    ObjectKind: ZLinkPlacementObjectKind.Actor
+                }
+                && Interlocked.Increment(ref _actorReserveAttempts)
+                <= _conflictsBeforeSuccess)
+                return ValueTask.FromResult<ZLinkObjectReserveResult>(
+                    new ZLinkObjectReserveResult.Conflict(
+                        new ZLinkAuthorityReadResult.Missing(
+                            DateTimeOffset.UtcNow)));
 
             try
             {

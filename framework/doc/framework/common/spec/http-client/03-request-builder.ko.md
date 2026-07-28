@@ -11,7 +11,7 @@ client builder(one-shot) 양쪽에서 동일 이름으로 제공한다.
 
 ## 3.2 path와 query
 
-- path는 `/`로 시작해야 한다. 아니면 `requestProtocolError`.
+- path는 `/`로 시작해야 한다. 아니면 `ProtocolError`.
 - `query(name, value)`는 percent-encoding을 적용해 URL에 누적한다.
 - baseUrl + path 결합과 query 직렬화 결과는 5개 언어에서 동일해야 한다
   (계약 테스트 축).
@@ -38,7 +38,7 @@ client builder(one-shot) 양쪽에서 동일 이름으로 제공한다.
 | form | `form(name, value)` 누적 | `application/x-www-form-urlencoded` | 가능 |
 | multipart | `multipart(name, value)` / `multipartFile(name, filename, content, contentType)` 누적 | `multipart/form-data` + boundary | 가능 |
 
-- **상호 배타**: 서로 다른 소스를 한 요청에 섞으면 `requestProtocolError`
+- **상호 배타**: 서로 다른 소스를 한 요청에 섞으면 `ProtocolError`
   ("single body source").
 - typed JSON 직렬화는 언어 codec 계층에 위임한다: cpp `to_json`(nlohmann ADL),
   dotnet codec registry(기본 `System.Text.Json` Web), java/kotlin Jackson,

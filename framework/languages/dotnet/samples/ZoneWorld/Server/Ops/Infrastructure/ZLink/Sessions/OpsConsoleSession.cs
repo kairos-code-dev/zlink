@@ -36,7 +36,7 @@ public sealed class OpsConsoleSession(
             "ops stream error. session={SessionId}, code={Code}, diagnostic={Diagnostic}",
             Context.SessionId,
             error.Error,
-            error.Diagnostic?.Message);
+            error.Message);
         return ValueTask.CompletedTask;
     }
 

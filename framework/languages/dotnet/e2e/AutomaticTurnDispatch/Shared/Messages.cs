@@ -36,6 +36,11 @@ public sealed record AwaitEvidenceWaitReq(
 
 public sealed record DelayReq(string RequestId, int DelayMs, string Marker);
 
+public sealed record JoinDelayReq(
+    string RequestId,
+    int DelayMs,
+    string CompletionMarker);
+
 public sealed record DelayRes(string RequestId, string Marker, string NodeRid);
 
 public sealed record ExternalDelayRes(string RequestId, string Marker);

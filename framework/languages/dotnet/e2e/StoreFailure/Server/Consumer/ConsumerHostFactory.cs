@@ -12,10 +12,12 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.LocationProvider;
 
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace StoreFailure.Server.Consumer;
 
@@ -40,17 +42,18 @@ internal static class ConsumerHostFactory
             console.TimestampFormat = "HH:mm:ss.fff ";
         });
         builder.WebHost.UseUrls(options.HttpUrl);
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"{options.TraceLabel}-flow.log"),
+            options.TraceLabel));
         builder.Services.AddZLinkFramework(framework =>
         {
-            var redisStore = new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint)
-                .SetKeyPrefix(options.RedisKeyPrefix));
-            // store-mode polling hides the change-stamp surface, forcing
-            // the pure polling path (SF-A2: polling is the correctness
-            // path; the stamp is only a latency optimization).
+            var redisStore = new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; });
             IZLinkLocationStore store = options.StoreMode switch
             {
-                "polling" => new PollingOnlyLocationStore(redisStore),
+                // The opaque provider SPI has no optional notification
+                // surface. All providers therefore use the same polling
+                // correctness path.
+                "polling" => redisStore,
                 "delay" => new DelayableLocationStore(redisStore, delayState),
                 _ => redisStore
             };
@@ -66,10 +69,8 @@ internal static class ConsumerHostFactory
                 Math.Max(100, options.LocationHeartbeatMs / 2));
             locations.PollingInterval = TimeSpan.FromMilliseconds(options.LocationPollingMs);
             locations.StoreFailureGrace = TimeSpan.FromMilliseconds(options.LocationGraceMs);
-            framework.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"{options.TraceLabel}-flow.log"))
-                .TraceLabel(options.TraceLabel);
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             // SF-A2 starts a second consumer against the same RouteMesh. Its
             // trace label is also its stable harness identity, so stopping
             // that observer cannot hand over and then remove the primary
@@ -103,14 +104,13 @@ internal static class ConsumerHostFactory
         {
             try
             {
-                var peers = await query.ListMeshNodeDescriptorsAsync(
-                    StoreFailureNames.Channel,
-                    cancellationToken);
-                return Results.Ok(peers
+                var peers = await query.ListTopologyAsync(
+                    new ZLinkLocationTopologyFilter(StoreFailureNames.Channel),
+                    cancellationToken: cancellationToken);
+                return Results.Ok(peers.Items
                     .Select(peer => new PeerRowRes(
-                        peer.Rid.ToString(),
+                        peer.NodeRid.ToString(),
                         peer.Endpoint,
-                        peer.OwnerId,
                         peer.Draining))
                     .ToArray());
             }
@@ -132,10 +132,13 @@ internal static class ConsumerHostFactory
             {
                 try
                 {
-                    var rows = (await query.ListMeshNodeDescriptorsAsync(
-                            StoreFailureNames.Channel, cancellationToken))
-                        .Select(peer => new PeerRowRes(
-                            peer.Rid.ToString(), peer.Endpoint, peer.OwnerId, peer.Draining))
+                    var rows = (await query.ListTopologyAsync(
+                            new ZLinkLocationTopologyFilter(StoreFailureNames.Channel),
+                            cancellationToken: cancellationToken))
+                        .Items.Select(peer => new PeerRowRes(
+                            peer.NodeRid.ToString(),
+                            peer.Endpoint,
+                            peer.Draining))
                         .ToArray();
                     var reached = request.PresentRids.All(rid => rows.Any(row => row.Rid == rid))
                                   && request.AbsentRids.All(rid => rows.All(row => row.Rid != rid))
@@ -165,29 +168,29 @@ internal static class ConsumerHostFactory
             var elapsed = Stopwatch.StartNew();
             while (elapsed.Elapsed < timeout)
             {
-                var current = runtime.Snapshot(StoreFailureNames.Channel);
+                var current = runtime.GetStatus(StoreFailureNames.Channel);
                 var readyMembers = current.Channels
                     .Where(channel => channel.ChannelName == StoreFailureNames.Channel)
-                    .Select(channel => channel.ReadyMemberCount)
+                    .Select(channel => channel.ReadyTargetCount)
                     .DefaultIfEmpty()
                     .Max();
                 var reached = readyMembers >= request.MinimumReadyMembers
                               && request.ReadyRids.All(rid => current.Peers.Any(peer =>
-                                  peer.Rid.ToString() == rid && peer.Ready))
+                                  peer.NodeRid.ToString() == rid && peer.State == ZLinkPeerState.Ready))
                               && request.NotReadyRids.All(rid => current.Peers.All(peer =>
-                                  peer.Rid.ToString() != rid || !peer.Ready));
+                                  peer.NodeRid.ToString() != rid || peer.State != ZLinkPeerState.Ready));
                 if (reached)
                     return Results.Ok(new RouteReadyRes(readyMembers));
 
                 await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
             }
 
-            var snapshot = runtime.Snapshot(StoreFailureNames.Channel);
+            var snapshot = runtime.GetStatus(StoreFailureNames.Channel);
             logger.LogWarning(
                 "Route readiness wait expired mesh={MeshName} localRid={LocalRid} state={State} " +
                 "peers={Peers} channels={Channels}",
                 snapshot.MeshName,
-                snapshot.Rid,
+                string.Empty,
                 snapshot.State,
                 DescribePeers(snapshot),
                 DescribeChannels(snapshot));
@@ -229,7 +232,7 @@ internal static class ConsumerHostFactory
             try
             {
                 var reply = await channel.RequestToChannel(
-                    StoreFailureNames.Channel, StoreFailureNames.Channel, request)
+                    StoreFailureNames.Channel, request)
                     .Timeout(TimeSpan.FromMilliseconds(milliseconds))
                     .Async<ProfileRes>();
                 return Results.Ok(reply);
@@ -240,7 +243,7 @@ internal static class ConsumerHostFactory
             }
             catch (Exception error)
             {
-                var snapshot = runtime.Snapshot(StoreFailureNames.Channel);
+                var snapshot = runtime.GetStatus(StoreFailureNames.Channel);
                 loggerFactory.CreateLogger("StoreFailure.RequestProbe").LogError(
                     error,
                     "Profile request failed marker={Marker} peers={Peers} channels={Channels}",
@@ -257,7 +260,7 @@ internal static class ConsumerHostFactory
             try
             {
                 var reply = await channel.RequestToChannel(
-                    StoreFailureNames.Channel, StoreFailureNames.Channel, request)
+                    StoreFailureNames.Channel, request)
                     .Timeout(TimeSpan.FromSeconds(3))
                     .Async<ProfileRes>();
                 return Results.Ok(reply);
@@ -273,8 +276,8 @@ internal static class ConsumerHostFactory
             CancellationToken cancellationToken) =>
         {
             await channel.SendToChannel(
-                    StoreFailureNames.Channel, StoreFailureNames.Channel, command)
-                .SubmitAsync(cancellationToken);
+                    StoreFailureNames.Channel, command)
+                .Async(cancellationToken);
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/request/new-client", async (ProfileReq request) =>
@@ -306,15 +309,14 @@ internal static class ConsumerHostFactory
             .ConfigureAppConfiguration((_, configuration) => configuration.Sources.Clear())
             .ConfigureServices(services =>
             {
+                services.AddSingleton(new E2eMessageFlowListener(
+                    Path.Combine(options.LogDir, $"{traceLabel}-flow.log"),
+                    traceLabel));
                 services.AddZLinkFramework(framework =>
                 {
-                    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                        .SetConnectionString(options.RedisEndpoint)
-                        .SetKeyPrefix(options.RedisKeyPrefix)));
-                    framework.ConfigureDispatch()
-                        .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                        .TraceLogFile(Path.Combine(options.LogDir, $"{traceLabel}-flow.log"))
-                        .TraceLabel(traceLabel);
+                    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; }));
+                    framework.ConfigureDispatch().Diagnostics
+                        .SetLevel(ZLinkDiagnosticsLevel.Normal);
                     JoinConsumerMesh(framework, $"consumer-{traceLabel}");
                 });
             })
@@ -331,7 +333,7 @@ internal static class ConsumerHostFactory
         var mesh = framework.AddRouteMesh(StoreFailureNames.Channel)
             .Listen("tcp://127.0.0.1:0")
             .SetRoutingId(RoutingId.From(rid));
-        mesh.ChannelName(StoreFailureNames.ConsumerChannel);
+        mesh.Channel(StoreFailureNames.ConsumerChannel).Client();
     }
 
     static async Task StopClientHostAsync(IHost host)
@@ -351,18 +353,17 @@ internal static class ConsumerHostFactory
         IZLinkRouteClient channel,
         ProfileReq request)
         => await channel.RequestToChannel(
-                    StoreFailureNames.Channel, StoreFailureNames.Channel, request)
+                    StoreFailureNames.Channel, request)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<ProfileRes>();
 
-    static string DescribePeers(ZLinkMeshNodeSnapshot snapshot) =>
+    static string DescribePeers(ZLinkRouteMeshStatus snapshot) =>
         string.Join(";", snapshot.Peers.Select(peer =>
-            $"{peer.Rid}|ready={peer.Ready}|admission={peer.AdmissionState}|" +
-            $"channels={string.Join(',', peer.ChannelNames)}|failure={peer.LastFailure}"));
+            $"{peer.NodeRid}|state={peer.State}|reason={peer.UnavailableReason}"));
 
-    static string DescribeChannels(ZLinkMeshNodeSnapshot snapshot) =>
+    static string DescribeChannels(ZLinkRouteMeshStatus snapshot) =>
         string.Join(";", snapshot.Channels.Select(channel =>
-            $"{channel.ChannelName}|ready={channel.ReadyMemberCount}|selectable={channel.Selectable}"));
+            $"{channel.ChannelName}|ready={channel.ReadyTargetCount}|selectable={channel.IsReady}"));
 }
 
 internal sealed record ConsumerOptions(

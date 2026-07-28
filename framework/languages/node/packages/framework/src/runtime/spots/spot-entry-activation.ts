@@ -29,7 +29,6 @@ import { throwIfAborted } from '../abort';
 import { routingIdsEqual } from '../routing-id';
 import type { ZLinkRemoteBoundSessionTarget } from '../actors';
 import {
-  createActorMembership,
   ZLinkActorDispatchMailboxSet,
   ZLinkSpotActorHandlerRegistryRuntime
 } from '../actors';
@@ -297,13 +296,13 @@ export class ZLinkEntrySpotActivation {
   ): Promise<ZLinkActorCreateResponse> {
     throwIfAborted(signal);
     return this.serial.execute(async () =>
-      await this.entrySpot.onCreateActor?.(createActorMembership(actor), createRequest)
+      await this.entrySpot.onCreateActor?.(actor, createRequest)
         ?? { accepted: true });
   }
 
   notifyJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onJoinedActor(createActorMembership(actor)));
+    return this.serial.execute(() => this.entrySpot.onJoinedActor(actor));
   }
 
   /**
@@ -362,7 +361,7 @@ export class ZLinkEntrySpotActivation {
 
   private async commitEntryActorTransaction(actor: ZLinkActor): Promise<void> {
     const notifyJoined = () => this.serial.execute(() =>
-      this.entrySpot.onJoinedActor(createActorMembership(actor)));
+      this.entrySpot.onJoinedActor(actor));
     const runtime = this.options.entryActorRuntime;
     if (runtime === undefined) {
       await notifyJoined();
@@ -374,17 +373,17 @@ export class ZLinkEntrySpotActivation {
   notifyLeaveActor(
     actor: ZLinkActor,
     signal?: AbortSignal,
-    actorRef?: ActorRef,
-    membershipEpoch?: bigint
+    _actorRef?: ActorRef,
+    _membershipEpoch?: bigint
   ): Promise<void> {
     throwIfAborted(signal);
     return this.serial.execute(() =>
-      this.entrySpot.onLeaveActor(createActorMembership(actor, actorRef, membershipEpoch)));
+      this.entrySpot.onLeaveActor(actor));
   }
 
   notifyDisconnectActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onDisconnectActor(createActorMembership(actor)));
+    return this.serial.execute(() => this.entrySpot.onDisconnectActor?.(actor));
   }
 
   async dispatchActorPacket(
@@ -392,7 +391,8 @@ export class ZLinkEntrySpotActivation {
     parts: readonly Message[],
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
+    fallbackActorRef?: ActorRef,
+    requestTerminal?: (response: unknown) => Promise<void> | void
   ): Promise<unknown> {
     const handoff = this.options.actorHandoffRuntime?.capture(
       actorId,
@@ -408,7 +408,8 @@ export class ZLinkEntrySpotActivation {
         parts,
         returnResponse,
         remoteBoundSessionTarget,
-        fallbackActorRef
+        fallbackActorRef,
+        requestTerminal
       ));
   }
 
@@ -442,7 +443,8 @@ export class ZLinkEntrySpotActivation {
     parts: readonly Message[],
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
+    fallbackActorRef?: ActorRef,
+    requestTerminal?: (response: unknown) => Promise<void> | void
   ): Promise<unknown> {
     return new ZLinkSpotActorPacketDispatch({
       spot: this.entrySpot as unknown as ZLinkSpot,
@@ -471,7 +473,14 @@ export class ZLinkEntrySpotActivation {
       providerResolver: this.options.providerResolver,
       messageSerializers: this.options.messageSerializers,
       dispatchErrors: this.options.dispatchErrors
-    }).dispatch(actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef);
+    }).dispatch(
+      actorId,
+      parts,
+      returnResponse,
+      remoteBoundSessionTarget,
+      fallbackActorRef,
+      requestTerminal
+    );
   }
 
   private replyActorNoBind(

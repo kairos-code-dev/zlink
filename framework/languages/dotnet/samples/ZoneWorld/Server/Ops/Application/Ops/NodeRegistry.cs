@@ -55,11 +55,6 @@ public sealed class NodeRegistry
     public string? NodeIdOf(string routingId) =>
         _nodeByRoutingId.TryGetValue(routingId, out var nodeId) ? nodeId : null;
 
-    public RoutingId? RoutingIdOf(string nodeId) =>
-        _routingIdByNode.TryGetValue(nodeId, out var routingId)
-            ? RoutingId.From(routingId)
-            : null;
-
     public async ValueTask ApplyLiveRoutingIdsAsync(
         IReadOnlySet<string> liveRoutingIds,
         CancellationToken cancellationToken)

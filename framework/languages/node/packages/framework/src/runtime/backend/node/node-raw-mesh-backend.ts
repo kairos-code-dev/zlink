@@ -283,6 +283,28 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     this.removePeerConnection(found[0]);
   }
 
+  replaceDiscoveredNotRequiredPeers(peers: readonly {
+    readonly nodeRoutingId: string;
+    readonly lifecycleGeneration: bigint;
+    readonly descriptorRevision: bigint;
+    readonly endpoint: string;
+  }[]): void {
+    const local = this.requireRuntime().topology.localDescriptor();
+    this.requireRuntime().replaceDiscoveredNotRequired(peers.map(peer => ({
+      ...local,
+      nodeRoutingId: peer.nodeRoutingId,
+      lifecycleGeneration: peer.lifecycleGeneration,
+      descriptorRevision: peer.descriptorRevision,
+      advertisedEndpoint: peer.endpoint,
+      channels: [],
+      objectRole: 'client'
+    })));
+  }
+
+  isObjectClientNodeDirectTarget(targetRid: unknown): boolean {
+    return this.requireRuntime().isObjectClientNodeDirectTarget(String(targetRid));
+  }
+
   sendToNode(
     targetRid: unknown,
     parts: MessageLike | readonly MessageLike[]
@@ -363,10 +385,10 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     const intents = new Map(
       [...this.peerIntents.entries()].map(([id, intent]) => [intent.nodeRoutingId, id])
     );
-    return (this.runtime?.topology.peers() ?? []).map(peer => ({
+    const admitted = (this.runtime?.topology.peers() ?? []).map(peer => ({
       connectionIntentId: intents.get(peer.descriptor.nodeRoutingId) ?? 0n,
       source: 1,
-      state: stateCode(peer.descriptor.state),
+      state: peerStateCode(peer.descriptor.state),
       routingId: peer.descriptor.nodeRoutingId as RoutingId,
       lifecycleGeneration: peer.descriptor.lifecycleGeneration,
       descriptorRevision: peer.descriptor.descriptorRevision,
@@ -375,16 +397,30 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       lastError: 0,
       lastChangedMs: BigInt(Math.trunc(performance.now()))
     }));
+    const notRequired = (this.runtime?.topology.notRequiredPeers() ?? []).map(descriptor => ({
+      connectionIntentId: intents.get(descriptor.nodeRoutingId) ?? 0n,
+      source: 1,
+      state: 6,
+      routingId: descriptor.nodeRoutingId as RoutingId,
+      lifecycleGeneration: descriptor.lifecycleGeneration,
+      descriptorRevision: descriptor.descriptorRevision,
+      endpoint: descriptor.advertisedEndpoint,
+      channelCount: 0,
+      lastError: 0,
+      lastChangedMs: BigInt(Math.trunc(performance.now()))
+    }));
+    return [...admitted, ...notRequired]
+      .sort((left, right) => String(left.routingId).localeCompare(String(right.routingId)));
   }
 
   peerChannels(peerRid: unknown, lifecycleGeneration: bigint) {
-    const peer = this.runtime?.topology.peer(String(peerRid));
-    if (peer === undefined || peer.descriptor.lifecycleGeneration !== lifecycleGeneration) {
+    const descriptor = this.runtime?.topology.knownDescriptor(String(peerRid));
+    if (descriptor === undefined || descriptor.lifecycleGeneration !== lifecycleGeneration) {
       return { names: [], weights: [] };
     }
     return {
-      names: peer.descriptor.channels.map(channel => channel.name),
-      weights: peer.descriptor.channels.map(channel => channel.weight)
+      names: descriptor.channels.map(channel => channel.name),
+      weights: descriptor.channels.map(channel => channel.weight)
     };
   }
 
@@ -1719,6 +1755,17 @@ function requireRawReadyBatch(batch: ReadyBatch): RawReadyBatch {
 
 function stateCode(state: ServiceNodeDescriptor['state']): number {
   return ['preparing', 'serving', 'retiring', 'draining', 'stopped', 'error'].indexOf(state) + 1;
+}
+
+function peerStateCode(state: ServiceNodeDescriptor['state']): number {
+  switch (state) {
+    case 'preparing': return 2;
+    case 'serving':
+    case 'retiring': return 3;
+    case 'draining': return 4;
+    case 'stopped':
+    case 'error': return 5;
+  }
 }
 
 function requirePositivePlacementValue(value: number, name: string): number {

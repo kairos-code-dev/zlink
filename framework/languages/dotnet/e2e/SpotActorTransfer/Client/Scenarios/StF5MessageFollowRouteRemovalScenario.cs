@@ -103,7 +103,7 @@ internal static class StF5MessageFollowRouteRemovalScenario
         await context.ReleaseTransportDeliveryAsync(
             source, expiredOperation);
         var stale = await expired;
-        ZlinkStreamAssert.Ensure(!stale.Succeeded && stale.ErrorKind == "ActorLocationStale",
+        ZlinkStreamAssert.Ensure(!stale.Succeeded && stale.ErrorKind == "InvalidOperation",
             $"ST-F5 expected removed Message Follow route to fail stale, got '{stale.ErrorKind}'.");
         foreach (var node in new[] { source, firstTarget, finalTarget })
         {

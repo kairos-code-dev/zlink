@@ -17,7 +17,7 @@ builder.Services.AddZLinkFramework(framework =>
     var mesh = framework.AddRouteMesh("bench")
         .Listen(endpoint)
         .SetRoutingId(RoutingId.From("bench-server"));
-    mesh.ChannelName("bench")
+    mesh.Channel("bench").Server()
         .AddRequestHandler<EchoHandler, BenchPayload, BenchPayload>("BenchPayload")
         .AddSendHandler<CommandHandler, BenchPayload>("BenchPayload");
 });
@@ -53,7 +53,7 @@ internal sealed class EchoHandler : IZLinkRequestHandler<BenchPayload, BenchPayl
 {
     public ValueTask<BenchPayload> HandleAsync(
         BenchPayload request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         return ValueTask.FromResult(request);
@@ -64,7 +64,7 @@ internal sealed class CommandHandler(BenchServerMetrics metrics) : IZLinkSendHan
 {
     public ValueTask HandleAsync(
         BenchPayload message,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         metrics.Record(message);

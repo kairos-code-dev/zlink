@@ -1,8 +1,8 @@
 import {
+  Message,
   RequestError,
   SubmitError,
   SubmitResult,
-  type Message,
   type MessageLike
 } from '@zlink-systems/zlink';
 import type {
@@ -380,6 +380,9 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     if (node === undefined) {
       return this.requireManager().tryRouteSubmit(meshName, targetNodeRid, packetName, message, metadata);
     }
+    if (node.isObjectClientNodeDirectTarget?.(toBindingRoutingId(targetNodeRid)) === true) {
+      return { status: ZLinkSubmitStatus.TargetNotFound };
+    }
     const parts = this.encodeMessage(
       ZLinkChannelMessageKind.Command,
       meshName,
@@ -418,6 +421,9 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
       );
     }
     throwIfAborted(signal);
+    if (node.isObjectClientNodeDirectTarget?.(toBindingRoutingId(targetNodeRid)) === true) {
+      return { status: ZLinkSubmitStatus.TargetNotFound };
+    }
     const parts = this.encodeMessage(
       ZLinkChannelMessageKind.Command,
       meshName,
@@ -471,6 +477,12 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
       );
     }
     throwIfAborted(signal);
+    if (node.isObjectClientNodeDirectTarget?.(toBindingRoutingId(targetNodeRid)) === true) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RequestTargetNotFound,
+        `MeshNode '${meshName}' target '${targetNodeRid}' is an Object Client.`
+      );
+    }
     const parts = this.encodeMessage(
       ZLinkChannelMessageKind.Request,
       meshName,
@@ -725,6 +737,51 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     request: Message,
     options: { readonly timeoutMs?: number; readonly signal?: AbortSignal }
   ): Promise<readonly Message[]> {
+    const meshName = spotRouteTarget.routerChannelId;
+    const node = this.meshNode(meshName);
+    if (node !== undefined) {
+      throwIfAborted(options.signal);
+      const payload = JSON.parse(request.getString('utf8')) as Record<string, unknown>;
+      const packetName = typeof payload.packetName === 'string'
+        ? payload.packetName
+        : undefined;
+      const parts = this.encodeMessage(
+        ZLinkChannelMessageKind.Request,
+        meshName,
+        packetName,
+        payload,
+        options.timeoutMs
+      );
+      let operationId;
+      try {
+        operationId = node.entrySpot().requestToSpot(
+          toBindingRoutingId(spotRouteTarget.targetNodeRid),
+          toBindingRoutingId(spotRouteTarget.spotId),
+          spotRouteTarget.targetSpotGeneration ?? 0n,
+          parts,
+          { flags: 1, timeoutMs: options.timeoutMs }
+        );
+      } catch (error) {
+        throw mapMeshSubmissionError(
+          error,
+          `MeshNode '${meshName}' raw request to Spot '${spotRouteTarget.spotId}'`
+        );
+      }
+      const completion = await this.completionTable(meshName).wait(operationId, options.signal);
+      if (completion.terminalResult !== 0 || completion.failureErrno !== 0) {
+        try {
+          throw meshRequestFailure(meshName, completion.terminalResult, completion.failureErrno);
+        } finally {
+          closeMeshCompletion(completion);
+        }
+      }
+      try {
+        const reply = decodeChannelReply<unknown>(completion.parts, this.codecs);
+        return [Message.from(Buffer.from(JSON.stringify(reply)))];
+      } finally {
+        closeMeshCompletion(completion);
+      }
+    }
     return this.requireManager().routeRequestRawToSpot(
       spotRouteTarget,
       request,

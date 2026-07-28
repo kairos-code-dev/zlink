@@ -51,6 +51,16 @@ rollback하지 않는다.
 `Get/Missing`은 authority를 다시 읽어 stale reference와 relocation data loss를 구분하고 `Delete/Missing`은
 idempotent cleanup으로 끝낸다.
 
+Spot과 Actor의 `Capture` callback은 같은 Spot queue에서 정해진 순서로 실행한다. Runtime은 그
+결과를 하나의 logical stream으로 만든다. 64 MiB 이하는 하나의 blob으로 저장하고, 그보다 큰
+stream은 64 MiB data chunk로 나눈다. Chunk의 저장·read-back 확인·읽기·renew는 최대 4개,
+encoded component bytes 합계 256 MiB 단위로 병렬 실행한다. 모든 chunk 확인이 끝나야 manifest를
+저장하므로 일부 I/O 실패가 Location Store에 공개될 root를 만들지 않는다.
+
+Target은 chunk I/O가 끝난 순서가 아니라 manifest 순서로 logical stream을 다시 만든다. 그 뒤
+Spot을 먼저 복원하고 Actor를 고정된 순서로 복원한다. 따라서 storage I/O 병렬화가 application
+callback의 직렬 실행 계약을 바꾸지 않는다.
+
 Target lease가 commit 전에 만료되면 reservation과 target을 CAS로 교체한다. Commit 뒤 activation 전에
 만료되면 recovery coordinator가 authority revision, old target generation과 transaction generation을 모두
 비교해 successor를 고른다. Application callback은 CAS, relocation reference, journal cursor와 phase를 받지

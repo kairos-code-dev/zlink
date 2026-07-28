@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Logging;
 using SpotActorTransfer.Shared;
+using Systems.Zlink;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Runtime.Actors;
 
@@ -24,6 +27,7 @@ internal sealed record ServerOptions(
 
 internal sealed class EvidenceStore(string nodeRid, string path)
 {
+    private readonly object _fileGate = new();
     private readonly ConcurrentQueue<ActorEvidence> _items = new();
 
     public string NodeRid { get; } = nodeRid;
@@ -38,8 +42,13 @@ internal sealed class EvidenceStore(string nodeRid, string path)
             NodeRid,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         _items.Enqueue(item);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.AppendAllLines(path, [$"{item.Scenario}|{item.ActorId}|{item.Kind}|{item.Value}|{item.NodeRid}"]);
+        lock (_fileGate)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.AppendAllLines(
+                path,
+                [$"{item.Scenario}|{item.ActorId}|{item.Kind}|{item.Value}|{item.NodeRid}"]);
+        }
     }
 
     public ActorEvidence[] Snapshot() => _items.ToArray();
@@ -86,39 +95,151 @@ internal sealed class RuntimeEvidenceStore
     }
 }
 
-internal sealed class RelocationMessageFlowEvidenceStore
-    : IZLinkRuntimeMessageFlowObserver
+internal sealed class RelocationInterruptionEvidenceStore : IDisposable
 {
-    private readonly ConcurrentQueue<RelocationMessageFlowEvidence>
-        _items = new();
+    private readonly ConcurrentQueue<RelocationInterruptionEvidence> _items =
+        new();
+    private readonly MeterListener _listener = new();
 
-    public ValueTask OnMessageFlowAsync(
-        ZLinkRuntimeMessageFlowEvent flow,
+    internal RelocationInterruptionEvidenceStore()
+    {
+        _listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Meter.Name == "zlink.framework"
+                && instrument.Name
+                == "zlink.relocation.interruption")
+                listener.EnableMeasurementEvents(instrument);
+        };
+        _listener.SetMeasurementEventCallback<double>(
+            (_, value, tags, _) =>
+            {
+                var unitKind = "";
+                string? executionMode = null;
+                foreach (var tag in tags)
+                    if (tag.Key == "unit_kind")
+                        unitKind = tag.Value?.ToString() ?? "";
+                    else if (tag.Key == "execution_mode")
+                        executionMode = tag.Value?.ToString();
+                _items.Enqueue(new RelocationInterruptionEvidence(
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    value,
+                    unitKind,
+                    executionMode));
+            });
+        _listener.Start();
+    }
+
+    internal async ValueTask<RelocationInterruptionEvidence[]> WaitUntilAsync(
+        string unitKind,
+        string? executionMode,
+        int minimumCount,
+        TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (flow.Surface == "spot"
-            && flow.MessageKind == "request"
-            && flow.PacketName == nameof(RelocationWorkloadRequest)
-            && flow.Phase is "received" or "replied")
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
         {
-            _items.Enqueue(new RelocationMessageFlowEvidence(
-                flow.Timestamp.ToUnixTimeMilliseconds(),
-                flow.Phase,
-                flow.Surface,
-                flow.MessageKind,
-                flow.PacketName,
-                flow.SpotId,
-                flow.ActorId,
-                flow.CorrelationId,
-                flow.FlowId));
+            var snapshot = Snapshot(unitKind, executionMode);
+            if (snapshot.Length >= minimumCount) return snapshot;
+            await Task.Delay(50, cancellationToken).ConfigureAwait(false);
         }
 
-        return ValueTask.CompletedTask;
+        return Snapshot(unitKind, executionMode);
+    }
+
+    private RelocationInterruptionEvidence[] Snapshot(
+        string unitKind,
+        string? executionMode) =>
+        _items.Where(item => StringComparer.Ordinal.Equals(
+                item.UnitKind,
+                unitKind)
+            && (executionMode is null
+                || StringComparer.Ordinal.Equals(
+                    item.ExecutionMode,
+                    executionMode)))
+            .ToArray();
+
+    public void Dispose() => _listener.Dispose();
+}
+
+internal sealed class RelocationMessageFlowEvidenceStore : IDisposable
+{
+    private const string FrameworkActivitySourceName = "Zlink.Framework";
+    private readonly string _nodeRid;
+    private readonly ConcurrentQueue<RelocationMessageFlowEvidence>
+        _items = new();
+    private readonly ActivityListener _listener;
+
+    internal RelocationMessageFlowEvidenceStore(string nodeRid)
+    {
+        _nodeRid = nodeRid;
+        _listener = new ActivityListener
+        {
+            ShouldListenTo = static source =>
+                source.Name == FrameworkActivitySourceName,
+            Sample = static (
+                    ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllData,
+            ActivityStopped = Capture
+        };
+        ActivitySource.AddActivityListener(_listener);
     }
 
     public RelocationMessageFlowEvidence[] Snapshot() =>
         _items.ToArray();
+
+    public void Dispose() => _listener.Dispose();
+
+    private void Capture(Activity activity)
+    {
+        if (!StringComparer.Ordinal.Equals(
+                activity.OperationName,
+                "zlink.message_flow"))
+            return;
+
+        var phase = Tag(activity, "phase");
+        var surface = NormalizeSurface(Tag(activity, "surface"));
+        var messageKind = NormalizeMessageKind(
+            Tag(activity, "message_kind"));
+        var packetName = Tag(activity, "packet_name");
+        if (surface != "spot"
+            || messageKind != "request"
+            || packetName != nameof(RelocationWorkloadRequest)
+            || phase is not ("received" or "replied"))
+            return;
+
+        _items.Enqueue(new RelocationMessageFlowEvidence(
+            _nodeRid,
+            new DateTimeOffset(activity.StartTimeUtc)
+                .ToUnixTimeMilliseconds(),
+            phase,
+            surface,
+            messageKind,
+            packetName,
+            Tag(activity, "spot_id"),
+            Tag(activity, "actor_id"),
+            Tag(activity, "correlation_id"),
+            Tag(activity, "flow_id")));
+    }
+
+    private static string? Tag(Activity activity, string name) =>
+        activity.GetTagItem(name)?.ToString();
+
+    private static string NormalizeSurface(string? surface) =>
+        surface switch
+        {
+            "SpotRoute" or "SpotSubscription" => "spot",
+            "SpotActor" => "actor",
+            _ => surface?.ToLowerInvariant() ?? ""
+        };
+
+    private static string NormalizeMessageKind(string? messageKind) =>
+        messageKind switch
+        {
+            "Request" or "ActorRequest" => "request",
+            "Send" or "ActorSend" => "send",
+            _ => messageKind?.ToLowerInvariant() ?? ""
+        };
 }
 
 internal sealed class TransportDeliveryGate
@@ -126,6 +247,8 @@ internal sealed class TransportDeliveryGate
 {
     private readonly ConcurrentDictionary<string, Entry> _entries =
         new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, ReplyAdmissionEntry>
+        _replyAdmissions = new(StringComparer.Ordinal);
 
     public TransportDeliveryGateRes Arm(
         string operationId,
@@ -177,6 +300,63 @@ internal sealed class TransportDeliveryGate
         return Snapshot(operationId, entry);
     }
 
+    public ReplyAdmissionGateRes ArmReplyAdmission(string actorId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
+        var entry = new ReplyAdmissionEntry();
+        if (!_replyAdmissions.TryAdd(actorId, entry))
+            throw new InvalidOperationException(
+                $"Reply admission for Actor '{actorId}' is already armed.");
+        return SnapshotReplyAdmission(actorId, entry);
+    }
+
+    public async ValueTask<ReplyAdmissionGateRes>
+        WaitReplyAdmissionCapturedAsync(
+        string actorId,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var entry = GetReplyAdmission(actorId);
+        await entry.Captured.Task
+            .WaitAsync(timeout, cancellationToken)
+            .ConfigureAwait(false);
+        return SnapshotReplyAdmission(actorId, entry);
+    }
+
+    public ReplyAdmissionGateRes ReleaseReplyAdmission(string actorId)
+    {
+        var entry = GetReplyAdmission(actorId);
+        Volatile.Write(ref entry.Released, 1);
+        return SnapshotReplyAdmission(actorId, entry);
+    }
+
+    public ReplyAdmissionGateRes GetReplyAdmissionSnapshot(string actorId) =>
+        SnapshotReplyAdmission(actorId, GetReplyAdmission(actorId));
+
+    // The runtime calls this transport-fixture hook immediately before it
+    // submits a preserved Message Follow reply to the source caller. A null
+    // result means "use the real transport"; Backpressured asks the runtime
+    // to retry without changing the pending request or reply capability.
+    public SubmitResult? OverrideReplyAdmission(
+        string actorId,
+        ulong requestId,
+        ulong deadlineUnixMs)
+    {
+        _ = deadlineUnixMs;
+        if (!_replyAdmissions.TryGetValue(actorId, out var entry))
+            return null;
+        Interlocked.Increment(ref entry.CapturedCount);
+        entry.RequestIds.TryAdd(requestId, 0);
+        entry.Captured.TrySetResult();
+        if (Volatile.Read(ref entry.Released) == 0)
+        {
+            Interlocked.Increment(ref entry.BackpressuredCount);
+            return SubmitResult.Backpressured;
+        }
+        Interlocked.Increment(ref entry.ReleasedAdmissionCount);
+        return null;
+    }
+
     public async ValueTask WaitAsync(
         ZLinkActorTransportDelivery delivery,
         CancellationToken cancellationToken)
@@ -207,6 +387,12 @@ internal sealed class TransportDeliveryGate
             : throw new KeyNotFoundException(
                 $"Transport delivery operation '{operationId}' is not armed.");
 
+    private ReplyAdmissionEntry GetReplyAdmission(string actorId) =>
+        _replyAdmissions.TryGetValue(actorId, out var entry)
+            ? entry
+            : throw new KeyNotFoundException(
+                $"Reply admission for Actor '{actorId}' is not armed.");
+
     private static TransportDeliveryGateRes Snapshot(
         string operationId,
         Entry entry) =>
@@ -216,6 +402,18 @@ internal sealed class TransportDeliveryGate
             entry.Kind.ToString(),
             Volatile.Read(ref entry.CapturedCount),
             Volatile.Read(ref entry.ReleasedCount),
+            true,
+            Volatile.Read(ref entry.Released) != 0);
+
+    private static ReplyAdmissionGateRes SnapshotReplyAdmission(
+        string actorId,
+        ReplyAdmissionEntry entry) =>
+        new(
+            actorId,
+            Volatile.Read(ref entry.CapturedCount),
+            Volatile.Read(ref entry.BackpressuredCount),
+            Volatile.Read(ref entry.ReleasedAdmissionCount),
+            entry.RequestIds.Count,
             true,
             Volatile.Read(ref entry.Released) != 0);
 
@@ -233,20 +431,42 @@ internal sealed class TransportDeliveryGate
         internal int ReleasedCount;
         internal int Released;
     }
+
+    private sealed class ReplyAdmissionEntry
+    {
+        internal TaskCompletionSource Captured { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal ConcurrentDictionary<ulong, byte> RequestIds { get; } = new();
+        internal int CapturedCount;
+        internal int BackpressuredCount;
+        internal int ReleasedAdmissionCount;
+        internal int Released;
+    }
 }
 
-internal sealed class ActorHandoffEvidenceLoggerProvider(RuntimeEvidenceStore evidence) : ILoggerProvider
+internal sealed class ActorHandoffEvidenceLoggerProvider(
+    RuntimeEvidenceStore runtimeEvidence,
+    EvidenceStore scenarioEvidence) : ILoggerProvider
 {
     public ILogger CreateLogger(string categoryName) =>
-        string.Equals(categoryName, "Zlink.Framework.ActorHandoff", StringComparison.Ordinal)
-            ? new ActorHandoffEvidenceLogger(evidence)
+        string.Equals(
+            categoryName,
+            "Zlink.Framework.ActorHandoff",
+            StringComparison.Ordinal)
+        || string.Equals(
+            categoryName,
+            "Zlink.Framework.Relocation",
+            StringComparison.Ordinal)
+            ? new ActorHandoffEvidenceLogger(runtimeEvidence, scenarioEvidence)
             : Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
 
     public void Dispose()
     {
     }
 
-    private sealed class ActorHandoffEvidenceLogger(RuntimeEvidenceStore evidence) : ILogger
+    private sealed class ActorHandoffEvidenceLogger(
+        RuntimeEvidenceStore runtimeEvidence,
+        EvidenceStore scenarioEvidence) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -255,7 +475,26 @@ internal sealed class ActorHandoffEvidenceLoggerProvider(RuntimeEvidenceStore ev
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state,
             Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            if (IsEnabled(logLevel)) evidence.Add(formatter(state, exception));
+            if (!IsEnabled(logLevel))
+                return;
+
+            var marker = formatter(state, exception);
+            runtimeEvidence.Add(marker);
+            const string prefix = "location_committed actor=";
+            if (!marker.StartsWith(prefix, StringComparison.Ordinal))
+                return;
+
+            var spotSeparator = marker.IndexOf(" spot=", StringComparison.Ordinal);
+            if (spotSeparator <= prefix.Length)
+                return;
+
+            var actorId = marker[prefix.Length..spotSeparator];
+            var spotId = marker[(spotSeparator + " spot=".Length)..];
+            scenarioEvidence.Add(
+                "runtime",
+                actorId,
+                "authority_committed",
+                spotId);
         }
     }
 }

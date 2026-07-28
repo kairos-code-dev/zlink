@@ -1,3 +1,4 @@
+using Zlink.Framework.Contracts.Handlers;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Shared.Contracts;
 using Zlink.Framework.Contracts.Spots;
@@ -10,7 +11,7 @@ internal sealed class SendChatMessageHandler
     public async ValueTask<SendChatMessageRes> HandleAsync(
         ConversationSpot spot,
         SupportUserActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         SendChatMessageReq message,
         CancellationToken cancellationToken)
     {

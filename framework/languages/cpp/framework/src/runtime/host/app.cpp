@@ -1272,6 +1272,12 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               const auto submitted =
                 mesh->request_to_node (target, parts.items (), operation, timeout);
               if (submitted != zlink::submit_result_t::ok) {
+                  if (submitted == zlink::submit_result_t::not_found
+                      || submitted == zlink::submit_result_t::not_admitted) {
+                      return result_t<runtime::messaging::message_parts_t>::failure (
+                        framework_error_kind_t::request_target_not_found,
+                        "MeshNode request target was not found");
+                  }
                   return result_t<runtime::messaging::message_parts_t>::failure (
                     framework_error_kind_t::route_not_connected,
                     "MeshNode request was not submitted");

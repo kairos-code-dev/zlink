@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using Zlink.Framework.LocationProvider;
 using SpotActorTransfer.Shared;
@@ -12,7 +13,11 @@ internal sealed class RelocationBlobObserver
     public void Record(
         string operation,
         ZLinkBlobReference reference,
-        ReadOnlyMemory<byte> payload)
+        ReadOnlyMemory<byte> payload,
+        long startedUnixTimeMilliseconds,
+        long completedUnixTimeMilliseconds,
+        long startedTimestamp,
+        int activeOperationCount)
     {
         _measurements.Enqueue(new RelocationBlobMeasurement(
             operation,
@@ -22,7 +27,15 @@ internal sealed class RelocationBlobObserver
             Convert.ToHexString(
                     SHA256.HashData(
                         System.Text.Encoding.UTF8.GetBytes(reference.Value)))
-                .ToLowerInvariant()));
+                .ToLowerInvariant(),
+            startedUnixTimeMilliseconds,
+            completedUnixTimeMilliseconds,
+            Stopwatch.GetElapsedTime(startedTimestamp)
+                .TotalMilliseconds,
+            activeOperationCount));
+        Console.WriteLine(
+            $"relocation_blob operation={operation} bytes={payload.Length}"
+            + $" active={activeOperationCount}");
     }
 
     public RelocationBlobMeasurement[] Snapshot() => _measurements.ToArray();
@@ -45,30 +58,69 @@ internal sealed class ObservedRelocationStore(
     IZLinkRelocationStore,
     IAsyncDisposable
 {
+    private int _activeOperations;
+
     public async ValueTask<ZLinkBlobPutResult> PutAsync(
         ZLinkBlobReference reference,
         ReadOnlyMemory<byte> payload,
         TimeSpan retention,
         CancellationToken cancellationToken = default)
     {
-        observer.Record("put", reference, payload);
-        return await inner.PutAsync(
+        var startedAt =
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var startedTimestamp = Stopwatch.GetTimestamp();
+        var active = Interlocked.Increment(ref _activeOperations);
+        try
+        {
+            return await inner.PutAsync(
+                    reference,
+                    payload,
+                    retention,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            observer.Record(
+                "put",
                 reference,
                 payload,
-                retention,
-                cancellationToken)
-            .ConfigureAwait(false);
+                startedAt,
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                startedTimestamp,
+                active);
+            Interlocked.Decrement(ref _activeOperations);
+        }
     }
 
     public async ValueTask<ZLinkBlobReadResult> ReadAsync(
         ZLinkBlobReference reference,
         CancellationToken cancellationToken = default)
     {
-        var result = await inner.ReadAsync(reference, cancellationToken)
-            .ConfigureAwait(false);
-        if (result is ZLinkBlobReadResult.Found found)
-            observer.Record("read", reference, found.Bytes);
-        return result;
+        var startedAt =
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var startedTimestamp = Stopwatch.GetTimestamp();
+        var active = Interlocked.Increment(ref _activeOperations);
+        ZLinkBlobReadResult? result = null;
+        try
+        {
+            result = await inner.ReadAsync(reference, cancellationToken)
+                .ConfigureAwait(false);
+            return result;
+        }
+        finally
+        {
+            if (result is ZLinkBlobReadResult.Found found)
+                observer.Record(
+                    "read",
+                    reference,
+                    found.Bytes,
+                    startedAt,
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    startedTimestamp,
+                    active);
+            Interlocked.Decrement(ref _activeOperations);
+        }
     }
 
     public ValueTask<ZLinkBlobRenewResult> RenewAsync(

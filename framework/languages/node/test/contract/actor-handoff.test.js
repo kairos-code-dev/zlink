@@ -5,6 +5,12 @@ const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist/internal');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
 const actorHandoff = require('../../packages/framework/dist/runtime/actors/actor-handoff');
+const actorRelayWire = require(
+  '../../packages/framework/dist/runtime/actors/actor-packet-relay-wire'
+);
+const messageFollow = require(
+  '../../packages/framework/dist/runtime/actors/actor-message-follow-context'
+);
 
 function frame(value) {
   return [zlink.Message.from(`header:${value}`), zlink.Message.from(value)];
@@ -29,7 +35,7 @@ function target(name = 'target') {
   };
 }
 
-function targetActorRef(name = 'target', generation = 2n) {
+function targetActorRef(name = 'target', generation = 1n) {
   return {
     nodeRid: zlink.RoutingId.from(`${name}-node`),
     actorId: 'actor-1',
@@ -38,11 +44,66 @@ function targetActorRef(name = 'target', generation = 2n) {
   };
 }
 
+function ownerFence(name, authorityOwnerGeneration) {
+  return messageFollow.ownerFence({
+    ownerId: `${name}-owner`,
+    ownerLeaseGeneration: 1n,
+    nodeRid: `${name}-node`,
+    nodeGeneration: 1n,
+    authorityOwnerGeneration
+  });
+}
+
+function sourceOwnerFence(authorityOwnerGeneration = 1n) {
+  return messageFollow.ownerFence({
+    ownerId: 'source-owner',
+    ownerLeaseGeneration: 1n,
+    nodeRid: 'source-node',
+    nodeGeneration: 1n,
+    authorityOwnerGeneration
+  });
+}
+
+function contextRef(parts, options = {}) {
+  const source = options.sourceOwner ?? sourceOwnerFence();
+  const context = {
+    operationId: options.operationId ?? '11111111111111111111111111111111',
+    objectGeneration: String(options.objectGeneration ?? 1n),
+    sourceOwner: source,
+    targetOwner: options.targetOwner ?? source,
+    deadlineUnixMs: options.deadlineUnixMs,
+    correlationId: options.request
+      ? options.correlationId ?? '22222222222222222222222222222222'
+      : undefined,
+    replyRouteId: options.request
+      ? options.replyRouteId ?? '33333333333333333333333333333333'
+      : undefined,
+    request: options.request ?? false,
+    hopCount: options.hopCount ?? 0,
+    visitedOwners: options.visitedOwners
+      ?? [messageFollow.messageFollowOwnerFenceKey(options.targetOwner ?? source)],
+    payloadChecksumSha256: messageFollow.actorMessageFollowPayloadChecksum(parts)
+  };
+  const decoded = messageFollow.decodeActorMessageFollowContext(context);
+  return messageFollow.attachActorMessageFollowContext(
+    options.actorRef ?? actorRef(BigInt(context.objectGeneration)),
+    decoded
+  );
+}
+
 function harness(messageFollowDurationMs = 30) {
   const followed = [];
   const messageFollowPayloads = [];
   const markers = [];
   let currentGeneration = 2n;
+  let currentNodeRid = 'target-node';
+  let currentOwner = ownerFence('target', 2n);
+  let requestSource = {
+    ownerId: 'source-owner',
+    ownerLeaseGeneration: 1n,
+    nodeRid: 'source-node',
+    nodeGeneration: 1n
+  };
   const transport = {
     async sendToSpot(_target, payload) {
       messageFollowPayloads.push(payload);
@@ -56,13 +117,12 @@ function harness(messageFollowDurationMs = 30) {
     routedTransport: transport,
     messageFollowDurationMs,
     isStaleActorRef: (_actorId, ref) => ref.objectGeneration !== currentGeneration,
+    isCurrentActorRef: (_actorId, ref) =>
+      ref.objectGeneration === currentGeneration
+      && String(ref.nodeRid) === currentNodeRid,
     isCurrentHandoffTarget: (_actorId, spotId) => spotId === 'target-spot',
-    requestSource: () => ({
-      ownerId: 'source-owner',
-      ownerLeaseGeneration: 1n,
-      nodeRid: 'source-node',
-      nodeGeneration: 1n
-    }),
+    currentOwnerFence: () => currentOwner,
+    requestSource: () => requestSource,
     onMarker: (marker, actorId, index) => markers.push({ marker, actorId, index })
   });
   return {
@@ -70,7 +130,11 @@ function harness(messageFollowDurationMs = 30) {
     followed,
     messageFollowPayloads,
     markers,
-    setCurrentGeneration(value) { currentGeneration = value; }
+    setCurrentGeneration(value) { currentGeneration = value; },
+    setCurrentNodeRid(value) { currentNodeRid = value; }
+    ,
+    setCurrentOwner(value) { currentOwner = value; },
+    setRequestSource(value) { requestSource = value; }
   };
 }
 
@@ -93,31 +157,88 @@ test('in-flight handoff preserves moving packet arrival order in the commit back
   ]);
 });
 
-test('Message Follow preserves operation identity and increments a bounded hop count', async () => {
-  const { coordinator, messageFollowPayloads } = harness();
+test('Message Follow preserves operation identity and rejects an exhausted hop with its marker', async () => {
+  const { coordinator, messageFollowPayloads, markers } = harness();
   coordinator.begin('actor-1', 1n);
   coordinator.snapshot('actor-1');
-  coordinator.complete('actor-1', target(), targetActorRef());
-  const ref = Object.assign(actorRef(1n), {
-    handoffOperationId: 'source-op-7',
-    handoffMessageFollowHopCount: 7
-  });
+  coordinator.complete(
+    'actor-1',
+    target(),
+    targetActorRef(),
+    [],
+    ownerFence('target', 2n)
+  );
   const parts = frame('last-hop');
+  const visited = Array.from(
+    { length: 7 },
+    (_, index) => messageFollow.messageFollowOwnerFenceKey(
+      ownerFence(`visited-${index}`, BigInt(index + 10))
+    )
+  );
+  visited.push(messageFollow.messageFollowOwnerFenceKey(sourceOwnerFence()));
+  const ref = contextRef(parts, {
+    operationId: '77777777777777777777777777777777',
+    hopCount: 7,
+    visitedOwners: visited
+  });
   await coordinator.capture('actor-1', parts, false, undefined, ref);
   parts.forEach((part) => part.close());
-  assert.equal(messageFollowPayloads[0].operationId, 'source-op-7');
-  assert.equal(messageFollowPayloads[0].messageFollowHopCount, 8);
+  assert.equal(
+    messageFollowPayloads[0].messageFollowContext.operationId,
+    '77777777777777777777777777777777'
+  );
+  assert.equal(messageFollowPayloads[0].messageFollowContext.hopCount, 8);
 
   const loop = frame('loop');
-  const exhausted = Object.assign(actorRef(1n), {
-    handoffOperationId: 'source-op-8',
-    handoffMessageFollowHopCount: 8
+  const exhaustedVisited = Array.from(
+    { length: 8 },
+    (_, index) => messageFollow.messageFollowOwnerFenceKey(
+      ownerFence(`exhausted-${index}`, BigInt(index + 30))
+    )
+  );
+  exhaustedVisited.push(messageFollow.messageFollowOwnerFenceKey(sourceOwnerFence()));
+  const exhausted = contextRef(loop, {
+    operationId: '88888888888888888888888888888888',
+    hopCount: 8,
+    visitedOwners: exhaustedVisited
   });
   await assert.rejects(
     coordinator.capture('actor-1', loop, false, undefined, exhausted),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
   );
   loop.forEach((part) => part.close());
+  assert.equal(
+    markers.some((entry) => entry.marker === 'message_follow_rejected'),
+    true
+  );
+});
+
+test('Message Follow rejects repeated stale packets that do not carry the original immutable context', async () => {
+  const { coordinator, followed, markers } = harness();
+  coordinator.begin('actor-1', 1n);
+  coordinator.snapshot('actor-1');
+  coordinator.complete(
+    'actor-1',
+    target(),
+    targetActorRef(),
+    [],
+    ownerFence('target', 2n)
+  );
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const parts = frame('missing-context');
+    await assert.rejects(
+      coordinator.capture('actor-1', parts, false, undefined, actorRef(1n)),
+      (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+    );
+    parts.forEach((part) => part.close());
+  }
+
+  assert.deepEqual(followed, []);
+  assert.equal(
+    markers.filter((entry) => entry.marker === 'message_follow_rejected').length,
+    2
+  );
 });
 
 test('Message Follow request preserves its absolute deadline and drops a late relay reply', async () => {
@@ -132,13 +253,20 @@ test('Message Follow request preserves its absolute deadline and drops a late re
       }
     },
     messageFollowDurationMs: 1_000,
-    requestTimeoutMs: 30_000
+    requestTimeoutMs: 30_000,
+    requestSource: () => ({
+      ownerId: 'source-owner',
+      ownerLeaseGeneration: 1n,
+      nodeRid: 'source-node',
+      nodeGeneration: 1n
+    })
   });
   coordinator.begin('actor-1', 1n);
   coordinator.snapshot('actor-1');
   coordinator.complete('actor-1', target(), targetActorRef());
 
   const deadlineUnixMs = Date.now() + 80;
+  const correlationId = 'dddddddddddddddddddddddddddddddd';
   const requestHeader = streamProtocol.encodeStreamHeader({
     kind: streamProtocol.ZLinkStreamMessageKind.Request,
     codec: streamProtocol.ZLinkStreamCodec.Json,
@@ -148,7 +276,7 @@ test('Message Follow request preserves its absolute deadline and drops a late re
     requestSeq: 19n,
     name: 'DeadlineRequest',
     metadata: streamProtocol.actorRequestDeadlineMetadata(deadlineUnixMs),
-    correlationId: 'deadline-correlation'
+    correlationId
   });
   const parts = [
     zlink.Message.from(Buffer.from(requestHeader)),
@@ -159,7 +287,11 @@ test('Message Follow request preserves its absolute deadline and drops a late re
     parts,
     true,
     undefined,
-    actorRef(1n)
+    contextRef(parts, {
+      request: true,
+      deadlineUnixMs,
+      correlationId
+    })
   );
   parts.forEach((part) => part.close());
 
@@ -168,11 +300,14 @@ test('Message Follow request preserves its absolute deadline and drops a late re
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.DeadlineExceeded
   );
   assert.equal(requests.length, 1);
-  assert.equal(requests[0].payload.deadlineUnixMs, deadlineUnixMs);
+  assert.equal(
+    requests[0].payload.messageFollowContext.deadlineUnixMs,
+    deadlineUnixMs
+  );
   const relayedHeader = streamProtocol.decodeStreamHeader(
     Buffer.from(requests[0].payload.header, 'base64')
   );
-  assert.equal(relayedHeader.correlationId, 'deadline-correlation');
+  assert.equal(relayedHeader.correlationId, correlationId);
   assert.ok(requests[0].options.timeoutMs > 0);
   assert.ok(requests[0].options.timeoutMs <= 80);
 
@@ -190,15 +325,29 @@ test('Message Follow rejects an expired request before target transport admissio
         return { ok: true };
       }
     },
-    messageFollowDurationMs: 1_000
+    messageFollowDurationMs: 1_000,
+    requestSource: () => ({
+      ownerId: 'source-owner',
+      ownerLeaseGeneration: 1n,
+      nodeRid: 'source-node',
+      nodeGeneration: 1n
+    })
   });
   coordinator.begin('actor-1', 1n);
   coordinator.snapshot('actor-1');
   coordinator.complete('actor-1', target(), targetActorRef());
 
   const parts = frame('expired');
+  const deadlineUnixMs = Date.now() - 1;
   await assert.rejects(
-    coordinator.capture('actor-1', parts, true, undefined, actorRef(1n), Date.now() - 1),
+    coordinator.capture(
+      'actor-1',
+      parts,
+      true,
+      undefined,
+      contextRef(parts, { request: true, deadlineUnixMs }),
+      deadlineUnixMs
+    ),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.DeadlineExceeded
   );
   parts.forEach((part) => part.close());
@@ -218,41 +367,60 @@ test('accepted handoff rejects an expired request before replay queue admission'
     Date.now() - 1
   );
   parts.forEach((part) => part.close());
-  const backlog = coordinator.snapshot('actor-1');
-  let admitted = 0;
-  let dispatched = 0;
-  const results = await actorHandoff.replayActorHandoffBacklog(
-    backlog,
-    async () => { dispatched += 1; },
-    () => { admitted += 1; }
+  await assert.rejects(
+    pending,
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.DeadlineExceeded
   );
-
-  assert.equal(admitted, 0);
-  assert.equal(dispatched, 0);
-  assert.equal(results[0].errorKind, framework.ZLinkFrameworkErrorKind.DeadlineExceeded);
+  const backlog = coordinator.snapshot('actor-1');
+  assert.equal(backlog.length, 0);
   coordinator.cancel('actor-1');
-  await assert.rejects(pending);
 });
 
-test('Message Follow route rejects a queue above 1024 messages without a Store lookup or retry', async () => {
+test('Message Follow route rejects a queue above 1024 messages and emits its rejection marker', async () => {
+  const markers = [];
   const coordinator = new framework.ZLinkActorHandoffCoordinator({
     routedTransport: { sendToSpot: async () => new Promise(() => {}) },
-    messageFollowDurationMs: 1000
+    messageFollowDurationMs: 60_000,
+    requestSource: () => ({
+      ownerId: 'source-owner',
+      ownerLeaseGeneration: 1n,
+      nodeRid: 'source-node',
+      nodeGeneration: 1n
+    }),
+    onMarker: (marker, actorId, index) => markers.push({ marker, actorId, index })
   });
   coordinator.begin('actor-1', 1n);
   coordinator.snapshot('actor-1');
   coordinator.complete('actor-1', target(), targetActorRef());
   for (let index = 0; index < 1024; index++) {
     const parts = frame(`queued-${index}`);
-    void coordinator.capture('actor-1', parts, false, undefined, actorRef(1n));
+    void coordinator.capture(
+      'actor-1',
+      parts,
+      false,
+      undefined,
+      contextRef(parts, {
+        operationId: (index + 1).toString(16).padStart(32, '0')
+      })
+    );
     parts.forEach((part) => part.close());
   }
   const overflow = frame('overflow');
   assert.throws(
-    () => coordinator.capture('actor-1', overflow, false, undefined, actorRef(1n)),
+    () => coordinator.capture(
+      'actor-1',
+      overflow,
+      false,
+      undefined,
+      contextRef(overflow, { operationId: 'ffffffffffffffffffffffffffffffff' })
+    ),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
   );
   overflow.forEach((part) => part.close());
+  assert.equal(
+    markers.some((entry) => entry.marker === 'message_follow_rejected'),
+    true
+  );
 });
 
 test('packets captured after the commit snapshot use Message Follow after backlog completion', async () => {
@@ -302,7 +470,13 @@ test('bound-session packets keep one sequence across snapshot and Message Follow
     backlog.map((packet) => ({ index: packet.index, ok: true }))
   );
   const s4 = frame('S4');
-  await coordinator.capture('actor-1', s4, false, sessionTarget, actorRef());
+  await coordinator.capture(
+    'actor-1',
+    s4,
+    false,
+    sessionTarget,
+    contextRef(s4)
+  );
   s4.forEach((part) => part.close());
   await new Promise((resolve) => setImmediate(resolve));
 
@@ -320,14 +494,14 @@ test('Message Follow relays before duration expiry and rejects after route remov
   coordinator.complete('actor-1', target(), targetActorRef());
 
   const inside = frame('G1');
-  await coordinator.capture('actor-1', inside, false, undefined, actorRef(1n));
+  await coordinator.capture('actor-1', inside, false, undefined, contextRef(inside));
   inside.forEach((part) => part.close());
   assert.deepEqual(followed, ['G1']);
 
   await new Promise((resolve) => setTimeout(resolve, 20));
   const outside = frame('G2');
   await assert.rejects(
-    coordinator.capture('actor-1', outside, false, undefined, actorRef(1n)),
+    coordinator.capture('actor-1', outside, false, undefined, contextRef(outside)),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
   );
   outside.forEach((part) => part.close());
@@ -352,17 +526,50 @@ test('a Core-routed packet owned by the current actor bypasses an older Message 
   assert.equal(markers.some((entry) => entry.marker === 'message_follow_relay'), false);
 });
 
-test('a Core-routed packet marked with the current target bypasses stale owner generation', async () => {
-  const { coordinator, followed, markers } = harness();
+test('a current ActorRef bypasses an older same-generation route after returning to the node', async () => {
+  const { coordinator, followed, markers, setCurrentGeneration, setCurrentNodeRid } = harness();
   coordinator.begin('actor-1', 1n);
   coordinator.snapshot('actor-1');
-  coordinator.complete('actor-1', target(), targetActorRef());
+  coordinator.complete('actor-1', target(), targetActorRef('target', 1n));
+  setCurrentGeneration(1n);
+  setCurrentNodeRid(String(actorRef(1n).nodeRid));
 
-  const owner = Object.assign(actorRef(1n), {
-    handoffMessageFollowed: true,
-    handoffTargetSpotId: 'target-spot'
-  });
+  const current = frame('returned-owner');
+  assert.equal(
+    coordinator.capture('actor-1', current, false, undefined, actorRef(1n)),
+    undefined
+  );
+  current.forEach((part) => part.close());
+
+  assert.deepEqual(followed, []);
+  assert.equal(markers.some((entry) => entry.marker === 'message_follow_relay'), false);
+});
+
+test('an exact current-owner context bypasses an older Message Follow route', async () => {
+  const {
+    coordinator,
+    followed,
+    markers,
+    setCurrentGeneration
+  } = harness();
+  coordinator.begin('actor-1', 1n);
+  coordinator.snapshot('actor-1');
+  const currentFence = ownerFence('target', 2n);
+  setCurrentGeneration(1n);
+  coordinator.complete(
+    'actor-1',
+    target(),
+    targetActorRef(),
+    [],
+    currentFence
+  );
+
   const current = frame('current-target');
+  const owner = contextRef(current, {
+    sourceOwner: currentFence,
+    targetOwner: currentFence,
+    actorRef: targetActorRef()
+  });
   assert.equal(
     coordinator.capture('actor-1', current, false, undefined, owner),
     undefined
@@ -373,24 +580,235 @@ test('a Core-routed packet marked with the current target bypasses stale owner g
   assert.equal(markers.some((entry) => entry.marker === 'message_follow_relay'), false);
 });
 
-test('chained relocation replaces the local Message Follow route and removes it after cutoff', async () => {
-  const { coordinator, followed } = harness(10);
+test('chained relocation keeps exact source-owner routes with one ObjectGeneration', async () => {
+  const { coordinator, followed, messageFollowPayloads, setRequestSource } = harness(10);
   coordinator.begin('actor-1', 1n);
   coordinator.snapshot('actor-1');
-  coordinator.complete('actor-1', target('first'), targetActorRef('first'));
+  const firstFence = ownerFence('first', 2n);
+  coordinator.complete(
+    'actor-1',
+    target('first'),
+    targetActorRef('first', 1n),
+    [],
+    firstFence
+  );
   assert.equal(coordinator.messageFollowCount('actor-1'), 1);
 
-  coordinator.begin('actor-1', 2n);
+  setRequestSource({
+    ownerId: firstFence.ownerId,
+    ownerLeaseGeneration: BigInt(firstFence.ownerLeaseGeneration),
+    nodeRid: firstFence.nodeRid,
+    nodeGeneration: BigInt(firstFence.nodeGeneration)
+  });
+  coordinator.begin('actor-1', 1n, 'first-node', 2n, 1n);
   coordinator.snapshot('actor-1');
-  coordinator.complete('actor-1', target('second'), targetActorRef('second', 3n));
-  assert.equal(coordinator.messageFollowCount('actor-1'), 1);
+  coordinator.complete(
+    'actor-1',
+    target('second'),
+    targetActorRef('second', 1n),
+    [],
+    ownerFence('second', 3n)
+  );
+  assert.equal(coordinator.messageFollowCount('actor-1'), 2);
   const packet = frame('chain');
-  await coordinator.capture('actor-1', packet, false, undefined, actorRef(2n));
+  const sourceContext = contextRef(packet, {
+    operationId: '44444444444444444444444444444444'
+  });
+  await coordinator.capture('actor-1', packet, false, undefined, sourceContext);
+  const firstRelayContext = messageFollow.decodeActorMessageFollowContext(
+    messageFollowPayloads[0].messageFollowContext
+  );
+  const firstTargetRef = messageFollow.attachActorMessageFollowContext(
+    targetActorRef('first', 1n),
+    firstRelayContext
+  );
+  await coordinator.capture(
+    'actor-1',
+    packet,
+    false,
+    undefined,
+    firstTargetRef
+  );
   packet.forEach((part) => part.close());
-  assert.deepEqual(followed, ['chain']);
+  assert.deepEqual(followed, ['chain', 'chain']);
+  assert.equal(
+    messageFollowPayloads[1].messageFollowContext.operationId,
+    '44444444444444444444444444444444'
+  );
+  assert.equal(messageFollowPayloads[1].messageFollowContext.hopCount, 2);
 
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(coordinator.messageFollowCount('actor-1'), 0);
+});
+
+test('duplicate Message Follow operation reaches the target exactly once', async () => {
+  const { coordinator, followed } = harness(1_000);
+  coordinator.begin('actor-1', 1n);
+  coordinator.snapshot('actor-1');
+  coordinator.complete(
+    'actor-1',
+    target(),
+    targetActorRef(),
+    [],
+    ownerFence('target', 2n)
+  );
+  const first = frame('deduplicated');
+  const second = frame('deduplicated');
+  const firstRef = contextRef(first, {
+    operationId: '55555555555555555555555555555555'
+  });
+  const secondRef = contextRef(second, {
+    operationId: '55555555555555555555555555555555'
+  });
+
+  await Promise.all([
+    coordinator.capture('actor-1', first, false, undefined, firstRef),
+    coordinator.capture('actor-1', second, false, undefined, secondRef)
+  ]);
+  first.forEach((part) => part.close());
+  second.forEach((part) => part.close());
+  assert.deepEqual(followed, ['deduplicated']);
+});
+
+test('Message Follow rejects a visited target owner before transport admission', async () => {
+  const { coordinator, followed, markers } = harness(1_000);
+  coordinator.begin('actor-1', 1n);
+  coordinator.snapshot('actor-1');
+  const nextOwner = ownerFence('target', 2n);
+  coordinator.complete('actor-1', target(), targetActorRef(), [], nextOwner);
+  const parts = frame('loop');
+  const source = sourceOwnerFence();
+  const ref = contextRef(parts, {
+    operationId: '66666666666666666666666666666666',
+    sourceOwner: ownerFence('visited-origin', 9n),
+    targetOwner: source,
+    hopCount: 1,
+    visitedOwners: [
+      messageFollow.messageFollowOwnerFenceKey(nextOwner),
+      messageFollow.messageFollowOwnerFenceKey(source)
+    ]
+  });
+  await assert.rejects(
+    coordinator.capture('actor-1', parts, false, undefined, ref),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+  );
+  parts.forEach((part) => part.close());
+  assert.deepEqual(followed, []);
+  assert.equal(
+    markers.some((entry) => entry.marker === 'message_follow_rejected'),
+    true
+  );
+});
+
+test('node-direct and spot-direct relay wire preserve the immutable context', () => {
+  const parts = frame('wire');
+  const ref = contextRef(parts, {
+    operationId: '99999999999999999999999999999999',
+    request: true,
+    deadlineUnixMs: Date.now() + 10_000
+  });
+  const context = messageFollow.actorMessageFollowContext(ref);
+  const nodeDirect = actorRelayWire.decodeRemoteActorPacketRelayPayload(
+    actorRelayWire.encodeRemoteActorPacketRelayPayload({
+      actorId: 'actor-1',
+      header: parts[0].data(),
+      payload: parts[1].data(),
+      bindingActorRef: actorRef(1n),
+      returnResponse: true,
+      messageFollowContext: context
+    })
+  );
+  const spotDirect = actorRelayWire.decodeRemoteActorPacketRelayPayload(
+    actorRelayWire.encodeMessageFollowRemoteActorPacketRelayPayload({
+      actorId: 'actor-1',
+      header: Buffer.from(parts[0].data()).toString('base64'),
+      payload: Buffer.from(parts[1].data()).toString('base64'),
+      actorNodeRid: 'target-node',
+      actorGeneration: '1',
+      returnResponse: true,
+      messageFollowContext: context
+    })
+  );
+  parts.forEach((part) => part.close());
+
+  for (const decoded of [nodeDirect, spotDirect]) {
+    assert.equal(decoded.returnResponse, true);
+    assert.deepEqual(decoded.messageFollowContext, context);
+    assert.equal(Object.isFrozen(decoded.messageFollowContext), true);
+    assert.equal(Object.isFrozen(decoded.messageFollowContext.visitedOwners), true);
+  }
+});
+
+test('positive Message Follow request returns one correlated reply and preserves typed errors', async () => {
+  const relays = [];
+  let response = {
+    ok: true,
+    response: { accepted: true }
+  };
+  const coordinator = new framework.ZLinkActorHandoffCoordinator({
+    routedTransport: {
+      async sendToSpot() {},
+      async requestToSpot(_target, payload) {
+        relays.push(payload);
+        return response;
+      }
+    },
+    messageFollowDurationMs: 1_000,
+    requestSource: () => ({
+      ownerId: 'source-owner',
+      ownerLeaseGeneration: 1n,
+      nodeRid: 'source-node',
+      nodeGeneration: 1n
+    })
+  });
+  coordinator.begin('actor-1', 1n, 'source-node', 1n, 1n);
+  coordinator.snapshot('actor-1');
+  coordinator.complete(
+    'actor-1',
+    target(),
+    targetActorRef(),
+    [],
+    ownerFence('target', 2n)
+  );
+  const request = frame('positive-request');
+  const requestRef = contextRef(request, {
+    operationId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    request: true,
+    correlationId: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    replyRouteId: 'cccccccccccccccccccccccccccccccc',
+    deadlineUnixMs: Date.now() + 10_000
+  });
+  assert.deepEqual(
+    await coordinator.capture('actor-1', request, true, undefined, requestRef),
+    { accepted: true }
+  );
+  request.forEach((part) => part.close());
+  assert.equal(relays[0].returnResponse, true);
+  assert.equal(
+    relays[0].messageFollowContext.correlationId,
+    'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+  );
+  assert.equal(
+    relays[0].messageFollowContext.replyRouteId,
+    'cccccccccccccccccccccccccccccccc'
+  );
+
+  response = {
+    ok: false,
+    error: 'moving',
+    errorKind: framework.ZLinkFrameworkErrorKind.ActorMoving
+  };
+  const failed = frame('typed-error');
+  const failedRef = contextRef(failed, {
+    operationId: 'dddddddddddddddddddddddddddddddd',
+    request: true,
+    deadlineUnixMs: Date.now() + 10_000
+  });
+  await assert.rejects(
+    coordinator.capture('actor-1', failed, true, undefined, failedRef),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorMoving
+  );
+  failed.forEach((part) => part.close());
 });
 
 test('in-flight request preserves framing, reply correlation, and the caller timeout', async () => {

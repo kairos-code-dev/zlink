@@ -17,7 +17,7 @@ User Spot, Instance Spot과 Actor handler가 request, actor join과 worker 완�
 
 `Yield`는 Channel·Spot·Actor request와 I/O·CPU worker call에만 제공한다. `SpotWide` User Spot과
 Instance Spot 밖에서 공통 call type의 `Yield`를 호출하면 operation을 제출하기 전에
-`InvalidConfiguration`으로 끝난다. Actor join, create, send, publish, timer 등록, close와 destroy에는
+`InvalidOperation`으로 끝난다. Actor join, create, send, publish, timer 등록, close와 destroy에는
 `Yield`가 없다. Mutable state를 가로질러 기다려야 하는 호출자는 `Async`를 사용하고, 공유 gate를 반납한
 뒤에는 대기 전에 읽은 상태를 다시 확인한다.
 
@@ -209,7 +209,7 @@ session gateway·stream framing·actor bind/relay 경로를 건너뛰므로 통�
 
 - 절차: handler가 `RunIoWorker(...)`로 `ext-api` 호출을 감싸고 `.Yield(...)`로 기다린다. 이 흐름을
   **worker pool 크기보다 훨씬 많이**(예: pool 크기 × 4) 동시에 유발한다.
-- 검증: **`WorkerQueueFull`이 나지 않고** 전부 정상 완료한다. 대기 중 probe와 timer가 진행된다.
+- 검증: **`CapacityExceeded`가 발생하지 않고** 전부 정상 완료한다. 대기 중 probe와 timer가 진행된다.
   I/O worker가 스레드를 점유하지 않았음을 뜻한다.
 - 세부 동작: I/O worker = turn 반납 경계이지 스레드 점유 장치가 아니다.
 
@@ -229,7 +229,7 @@ terminator가 정하는가.
     않는다(TD-A3와 같은 불변식).
   - (b) `.Yield(...)`는 **turn을 반납한다** — 대기 중 같은 spot의 다음 callback이 실행되고,
     continuation이 큐에 재삽입되어 순서대로 재개된다.
-  - pool 한도를 넘기면 `WorkerQueueFull`로 거부되어 bounded pool의 제한을 호출자에게 알린다.
+  - pool 한도를 넘기면 `CapacityExceeded`로 거부되어 bounded pool의 제한을 호출자에게 알린다.
 - 세부 동작: **worker 축(어느 스레드에서 실행되는가)과 turn 축(같은 spot이 진행하는가)은 별개다.**
   `RunCpuWorker`는 앞의 축만 옮긴다. 뒤의 축은 terminator가 정한다.
 
@@ -294,7 +294,7 @@ terminator가 정하는가.
 
 - 절차: Entry Spot, Entry Actor, `PerActor` User Spot, Node·Channel handler와 owner turn 밖의 client에서
   request·worker call의 `Yield`를 호출한다.
-- 검증: 모두 `InvalidConfiguration`으로 한 번 완료되고 operation ID 할당, outbound admission, worker
+- 검증: 모두 `InvalidOperation`으로 한 번 완료되고 operation ID 할당, outbound admission, worker
   scheduling, queue mutation과 gate release가 0건이다. 같은 call을 `Async`로 실행한 결과와 구분한다.
 - 세부 동작: runtime execution-context allowlist와 submit 전 validation.
 
@@ -453,5 +453,5 @@ terminator가 정하는가.
   하나라도 실패하면 terminator 의미가 무너진 것이다.
 - **TD-E2·TD-E3가 통과한다.** Actor caller turn을 유지하는 동안에도 Spot lifecycle control claim이
   진행되고 노드 전역 직렬화가 없다.
-- TD-C3가 `WorkerQueueFull` 없이 통과한다. I/O worker가 스레드를 점유하지 않는다.
+- TD-C3가 `CapacityExceeded` 없이 통과한다. I/O worker가 스레드를 점유하지 않는다.
 - blocking 언래핑 terminator가 어느 언어에도 없다.

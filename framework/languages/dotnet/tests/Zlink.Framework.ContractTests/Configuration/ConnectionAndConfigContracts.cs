@@ -145,56 +145,6 @@ public sealed class ConnectionAndConfigContracts
         public IZLinkUnhandledDispatchOptions Unhandled { get; } = new UnhandledDispatchOptions();
 
         public IZLinkDiagnosticsOptions Diagnostics { get; } = new DiagnosticsOptions();
-
-        public IZLinkDispatchOptions TraceSampleRate(double rate)
-        {
-            return this;
-        }
-
-        public IZLinkDispatchOptions IncludeMessageSizes(bool include)
-        {
-            return this;
-        }
-
-        public IZLinkDispatchOptions TraceLogFile(string path)
-        {
-            return this;
-        }
-
-        public IZLinkDispatchOptions TraceLabel(string id)
-        {
-            return this;
-        }
-
-        public IZLinkDispatchOptions SetRuntimeMessageFlowObserver<TObserver>()
-            where TObserver : class, IZLinkRuntimeMessageFlowObserver
-        {
-            return this;
-        }
-
-        public IZLinkDispatchOptions SetRuntimeMessageFlowObserver(
-            IZLinkRuntimeMessageFlowObserver observer)
-        {
-            return this;
-        }
-
-        public IZLinkDispatchOptions SetRuntimeErrorSink<TSink>()
-            where TSink : class, IZLinkRuntimeErrorSink
-        {
-            return this;
-        }
-
-        public IZLinkDispatchOptions SetRuntimeErrorSink(
-            IZLinkRuntimeErrorSink sink)
-        {
-            return this;
-        }
-
-        public IZLinkDispatchOptions MessageFlow(
-            ZLinkRuntimeMessageFlowMode mode)
-        {
-            return this;
-        }
     }
 
     private sealed class UnhandledDispatchOptions : IZLinkUnhandledDispatchOptions
@@ -208,16 +158,10 @@ public sealed class ConnectionAndConfigContracts
 
     private sealed class DiagnosticsOptions : IZLinkDiagnosticsOptions
     {
-        public ZLinkRuntimeMessageFlowMode MessageFlow { get; set; }
+        public IZLinkDiagnosticsOptions SetLevel(ZLinkDiagnosticsLevel level) => this;
 
-        public double SampleRate { get; set; }
+        public IZLinkDiagnosticsOptions SetSampleRate(double rate) => this;
 
-        public bool IncludeMessageSizes { get; set; }
-
-        public string? LogFile { get; set; }
-
-        public string? Label { get; set; }
-
-        public ZLinkRuntimeMessageFlowMode EffectiveMessageFlow => MessageFlow;
+        public IZLinkDiagnosticsOptions IncludeMessageSizes(bool include) => this;
     }
 }

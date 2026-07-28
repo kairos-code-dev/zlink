@@ -15,6 +15,14 @@ public enum ZLinkTopologyState {
     FAILED
 }
 
+public enum ZLinkPeerState {
+    CONNECTING,
+    READY,
+    DRAINING,
+    NOT_CONNECTED,
+    NOT_REQUIRED
+}
+
 public interface ZLinkRouteMeshRuntime {
     ZLinkMeshNodeSnapshot snapshot(String meshName);
     Flow.Publisher<ZLinkMeshRuntimeEvent> observe(
@@ -33,6 +41,11 @@ public interface ZLinkMonitoringOptionsCustomizer {
 
 Orderly disconnect와 service liveness timeout은 다른 reason으로 관측한다. Peer 하나가 실패해도 다른 ready
 peer와 host를 `ERROR`로 바꾸지 않는다.
+`NOT_CONNECTED`는 연결이 필요하지만 ready connection이 없는 상태다. `NOT_REQUIRED`는
+두 Object Client 모두 RouteMesh Channel Server membership이 없어서 연결이 필요하지 않은 정상 상태다.
+Channel Client membership만 등록한 경우도 같다. 어느 한쪽에라도 weight `0`을 포함한 Channel Server
+membership이 있으면 연결이 필요하며 연결 부재는 `NOT_CONNECTED`다. 두 상태 모두 ready peer 수에서
+제외하지만 `NOT_REQUIRED`는 liveness·health failure에 포함하지 않는다.
 
 별도 drain control과 component termination result는 제공하지 않는다. Object relocation과 host 종료는
 `ZLinkFrameworkRuntime`의 `relocate(options)`와 `shutdown()`이 각각 조정한다. Relocation options는
@@ -265,6 +278,15 @@ public final class systems.zlink.framework.monitoring.ZLinkTopologyState extends
   public static systems.zlink.framework.monitoring.ZLinkTopologyState[] values();
   public static systems.zlink.framework.monitoring.ZLinkTopologyState valueOf(java.lang.String);
 }
+public final class systems.zlink.framework.monitoring.ZLinkPeerState extends java.lang.Enum<systems.zlink.framework.monitoring.ZLinkPeerState> {
+  public static final systems.zlink.framework.monitoring.ZLinkPeerState CONNECTING;
+  public static final systems.zlink.framework.monitoring.ZLinkPeerState READY;
+  public static final systems.zlink.framework.monitoring.ZLinkPeerState DRAINING;
+  public static final systems.zlink.framework.monitoring.ZLinkPeerState NOT_CONNECTED;
+  public static final systems.zlink.framework.monitoring.ZLinkPeerState NOT_REQUIRED;
+  public static systems.zlink.framework.monitoring.ZLinkPeerState[] values();
+  public static systems.zlink.framework.monitoring.ZLinkPeerState valueOf(java.lang.String);
+}
 public interface systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime {
   public abstract systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot snapshot(java.lang.String);
   public abstract java.util.concurrent.Flow$Publisher<systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent> observe(java.lang.String, int);
@@ -345,7 +367,7 @@ public final class systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot exte
   public java.util.Optional<java.lang.String> lastPlacementReservationFailure();
 }
 public final class systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot extends java.lang.Record {
-  public systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot(systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, java.lang.String, boolean, java.lang.String, java.util.List<java.lang.String>, java.util.Optional<java.lang.String>);
+  public systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot(systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, systems.zlink.framework.monitoring.ZLinkPeerState, boolean, java.lang.String, java.util.List<java.lang.String>, java.util.Optional<java.lang.String>);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -353,7 +375,7 @@ public final class systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot exte
   public long lifecycleGeneration();
   public long descriptorRevision();
   public java.lang.String endpoint();
-  public java.lang.String admissionState();
+  public systems.zlink.framework.monitoring.ZLinkPeerState state();
   public boolean ready();
   public java.lang.String drainState();
   public java.util.List<java.lang.String> channelNames();

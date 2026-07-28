@@ -35,7 +35,7 @@ internal static class RlA2ProviderEndpointRemapScenario
         ZlinkStreamAssert.Ensure(
             crashResult.Reply is null
             && crashResult.IsRetriable
-            && crashResult.ErrorKind is "RouteNotConnected" or nameof(TimeoutException),
+            && crashResult.ErrorKind is "Unavailable" or nameof(TimeoutException),
             $"RL-A2 old in-flight result was '{crashResult.ErrorKind}'.");
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 0))

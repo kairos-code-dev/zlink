@@ -1,3 +1,4 @@
+using Zlink.Framework.Contracts.Handlers;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Spots;
@@ -12,7 +13,7 @@ internal sealed class OfferDeliveryActorHandler(ILogger<OfferDeliveryActorHandle
     public async ValueTask HandleAsync(
         CourierEntrySpot entrySpot,
         CourierActor actor,
-        ZLinkSpotActorSendContext context,
+        IZLinkMessageContext context,
         OfferDeliveryMsg message,
         CancellationToken cancellationToken)
     {

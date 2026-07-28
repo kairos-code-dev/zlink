@@ -27,6 +27,22 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
+    public void Planner_KeepsDistinctPeersThatRequestedPortZero()
+    {
+        var local = Local(
+            ZLinkLocationAutoConnectType.RouteMesh,
+            ZLinkLocationRole.Router,
+            "aa",
+            "tcp://127.0.0.1:31001");
+        var remote = Descriptor("bb", "tcp://127.0.0.1:31002");
+
+        var target = Assert.Single(
+            ZLinkAutoConnectPlanner.ComputeDesired(local, [remote])).Value;
+
+        Assert.Equal("tcp://127.0.0.1:31002", target.Endpoint);
+    }
+
+    [Fact]
     public void Planner_Marks_Draining_Descriptors_Instead_Of_Dropping_Them()
     {
         var local = Local(
@@ -170,6 +186,146 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
+    public void RouteMesh_Object_Client_Pair_Does_Not_Create_A_Connection()
+    {
+        var smaller = Local(
+            ZLinkLocationAutoConnectType.RouteMesh,
+            ZLinkLocationRole.Router,
+            "aa",
+            "tcp://a:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Client
+        };
+        var bigger = Local(
+            ZLinkLocationAutoConnectType.RouteMesh,
+            ZLinkLocationRole.Router,
+            "bb",
+            "tcp://b:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Client
+        };
+        var rowSmaller = Descriptor("aa", "tcp://a:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Client,
+            ChannelWeights = new Dictionary<string, int>(StringComparer.Ordinal)
+        };
+        var rowBigger = Descriptor("bb", "tcp://b:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Client,
+            ChannelWeights = new Dictionary<string, int>(StringComparer.Ordinal)
+        };
+
+        Assert.Empty(ZLinkAutoConnectPlanner.ComputeDesired(smaller, [rowBigger]));
+        Assert.Empty(ZLinkAutoConnectPlanner.ComputeDesired(bigger, [rowSmaller]));
+        Assert.Equal(1, ZLinkAutoConnectPlanner.CountDiscoveredPeers(smaller, [rowBigger]));
+    }
+
+    [Fact]
+    public void RouteMesh_Object_Client_Pair_With_Zero_Weight_Server_Channel_Connects()
+    {
+        var local = Local(
+            ZLinkLocationAutoConnectType.RouteMesh,
+            ZLinkLocationRole.Router,
+            "aa",
+            "tcp://a:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Client,
+            HasServerChannel = false
+        };
+        var remote = Descriptor("bb", "tcp://b:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Client,
+            ChannelWeights = new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                ["orders"] = 0
+            }
+        };
+
+        Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(local, [remote]));
+    }
+
+    [Fact]
+    public void RouteMesh_Object_Client_With_Local_Server_Channel_Connects_To_Object_Client()
+    {
+        var local = Local(
+            ZLinkLocationAutoConnectType.RouteMesh,
+            ZLinkLocationRole.Router,
+            "aa",
+            "tcp://a:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Client,
+            HasServerChannel = true
+        };
+        var remote = Descriptor("bb", "tcp://b:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Client,
+            ChannelWeights = new Dictionary<string, int>(StringComparer.Ordinal)
+        };
+
+        Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(local, [remote]));
+    }
+
+    [Fact]
+    public void RouteMesh_Object_Client_Still_Connects_To_Object_Server()
+    {
+        var client = Local(
+            ZLinkLocationAutoConnectType.RouteMesh,
+            ZLinkLocationRole.Router,
+            "aa",
+            "tcp://a:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Client
+        };
+        var server = Descriptor("bb", "tcp://b:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Server,
+            EntrySpotId = "bb-entry"
+        };
+
+        Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(client, [server]));
+    }
+
+    [Fact]
+    public void RouteMesh_Object_Client_Still_Connects_To_Peer_With_Server_Channel()
+    {
+        var client = Local(
+            ZLinkLocationAutoConnectType.RouteMesh,
+            ZLinkLocationRole.Router,
+            "aa",
+            "tcp://a:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Client
+        };
+        var defensiveMixedPeer = Descriptor("bb", "tcp://b:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Client
+        };
+
+        Assert.Single(
+            ZLinkAutoConnectPlanner.ComputeDesired(client, [defensiveMixedPeer]));
+    }
+
+    [Fact]
+    public void RouteMesh_Object_Server_Pair_Retains_The_Existing_Connection_Rule()
+    {
+        var smaller = Local(
+            ZLinkLocationAutoConnectType.RouteMesh,
+            ZLinkLocationRole.Router,
+            "aa",
+            "tcp://a:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Server
+        };
+        var bigger = Descriptor("bb", "tcp://b:1") with
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Server,
+            EntrySpotId = "bb-entry"
+        };
+
+        Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(smaller, [bigger]));
+    }
+
+    [Fact]
     public void SpotMesh_All_Members_Dial_While_Only_The_Smaller_Member_Dials_The_Router()
     {
         var smaller = Local(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "aa", "tcp://a:1");
@@ -289,19 +445,26 @@ public sealed class AutoConnectReconcilerTests
     {
         var fixture = await FixtureAsync();
 
-        // No judgment before the first successful reconcile.
-        Assert.Null(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
+        Assert.Equal(
+            ZLinkRouteMeshTargetClassification.Unknown,
+            fixture.Reconciler.ClassifyTarget(RoutingId.From("r1")));
 
         await fixture.PublishPeerAsync("r1", "tcp://r:1");
         await fixture.Reconciler.TickAsync();
 
-        Assert.True(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
-        Assert.False(fixture.Reconciler.KnowsPeer(RoutingId.From("ghost")));
+        Assert.Equal(
+            ZLinkRouteMeshTargetClassification.RequiredNotConnected,
+            fixture.Reconciler.ClassifyTarget(RoutingId.From("r1")));
+        Assert.Equal(
+            ZLinkRouteMeshTargetClassification.Unknown,
+            fixture.Reconciler.ClassifyTarget(RoutingId.From("ghost")));
 
         // Fail-static: a store outage keeps the last snapshot.
         fixture.PeerResolver.Fail = true;
         await fixture.Reconciler.TickAsync();
-        Assert.True(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
+        Assert.Equal(
+            ZLinkRouteMeshTargetClassification.RequiredNotConnected,
+            fixture.Reconciler.ClassifyTarget(RoutingId.From("r1")));
 
         // A successful snapshot replaces fail-static history. Once the row is
         // removed, the rid is an unknown request target rather than a known but
@@ -309,7 +472,9 @@ public sealed class AutoConnectReconcilerTests
         fixture.PeerResolver.Fail = false;
         await fixture.RemovePeerAsync("r1");
         await fixture.Reconciler.TickAsync();
-        Assert.False(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
+        Assert.Equal(
+            ZLinkRouteMeshTargetClassification.Unknown,
+            fixture.Reconciler.ClassifyTarget(RoutingId.From("r1")));
     }
 
     [Fact]
@@ -321,7 +486,9 @@ public sealed class AutoConnectReconcilerTests
         await fixture.RemovePeerAsync("r1");
         await fixture.Reconciler.TickAsync();
 
-        Assert.False(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
+        Assert.Equal(
+            ZLinkRouteMeshTargetClassification.Unknown,
+            fixture.Reconciler.ClassifyTarget(RoutingId.From("r1")));
         Assert.True(fixture.Reconciler.HasRetainedPeer(RoutingId.From("r1")));
         Assert.False(fixture.Reconciler.HasRetainedPeer(RoutingId.From("ghost")));
     }
@@ -406,7 +573,7 @@ public sealed class AutoConnectReconcilerTests
         var row = Assert.Single(
             (await fixture.Store.ListMeshNodesAsync("play", default)).Items,
             row => row.Rid.Equals(RoutingId.From("local")));
-        Assert.Equal(ZLinkFrameworkErrorKind.RoutingIdConflict, error.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.AlreadyExists, error.Kind);
         Assert.Equal(oldOwner, new ZLinkLocationOwnerToken(
             row.OwnerId,
             row.LeaseGeneration));
@@ -459,6 +626,52 @@ public sealed class AutoConnectReconcilerTests
 
         await reconciler.ShutdownAsync();
         Assert.Empty((await store.ListMeshNodesAsync("play", default)).Items);
+    }
+
+    [Fact]
+    public async Task Shutdown_After_Drain_Owner_Cleanup_Does_Not_Require_Released_Lease()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
+        var runtime = new ZLinkLocationRuntime(options, store, time);
+        await runtime.StartAsync(RoutingId.From("local"));
+        var local = Descriptor("local", "tcp://l:1") with
+        {
+            OwnerId = string.Empty,
+            LeaseGeneration = 0,
+            State = ZLinkFrameworkRuntimeState.Serving
+        };
+        var claim = await runtime.WriteDescriptorAsync(
+            local,
+            ZLinkLocationWriteIntent.NewClaim);
+        Assert.Equal(ZLinkLocationWriteStatus.Stored, claim.Status);
+
+        var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
+        var resolvers = new ZLinkStoreLocationResolvers(
+            store,
+            tracker,
+            new ZLinkObservedLocationGenerations());
+        var reconciler = new ZLinkAutoConnectReconciler(
+            Local(
+                ZLinkLocationAutoConnectType.SpotMesh,
+                ZLinkLocationRole.Spot,
+                "local",
+                "tcp://l:1"),
+            local,
+            runtime,
+            resolvers,
+            new RecordingExecutor(),
+            options,
+            time,
+            initiallyPublished: true,
+            initialStoreGeneration: claim.Generation);
+
+        await runtime.CleanupOwnerForDrainAsync(CancellationToken.None);
+        await reconciler.ShutdownAsync();
+
+        Assert.Empty((await store.ListMeshNodesAsync("play", default)).Items);
+        await runtime.StopAsync();
     }
 
     [Fact]

@@ -34,7 +34,9 @@ internal static class PsA4SubscriberReconnectScenario
             await fault.WaitForUpstreamConnectionAsync();
             try
             {
-                await SubscriberObservation.WaitForConnectionAsync(reconnectSubscriber);
+                var readyRun = $"ready-{Guid.NewGuid():N}";
+                await PublishAsync(publisher, readyRun, 0, "initial-ready");
+                await SubscriberObservation.WaitForEventAsync(reconnectSubscriber, readyRun, 0);
             }
             catch (Exception error)
             {
@@ -47,21 +49,20 @@ internal static class PsA4SubscriberReconnectScenario
             await WaitForSubscribersAsync(
                 alwaysOnSubscribers.Append(reconnectSubscriber).ToArray(), runId, 1);
 
-            var reconnectOffset = await SubscriberObservation.EvidenceCountAsync(reconnectSubscriber);
             fault.Block();
-            await SubscriberObservation.WaitForSocketEvidenceAsync(
-                reconnectSubscriber,
-                PubSubNames.SubscriberSocketSource,
-                "Disconnected",
-                reconnectOffset);
+            await Task.Delay(250);
 
             await PublishAsync(publisher, runId, 2, "while-disconnected");
             await WaitForSubscribersAsync(alwaysOnSubscribers, runId, 2);
 
-            reconnectOffset = await SubscriberObservation.EvidenceCountAsync(reconnectSubscriber);
             fault.Unblock();
             await fault.WaitForUpstreamConnectionAsync();
-            await SubscriberObservation.WaitForConnectionAsync(reconnectSubscriber, reconnectOffset);
+            var reconnectRun = $"ready-{Guid.NewGuid():N}";
+            await PublishAsync(publisher, reconnectRun, 0, "reconnected");
+            await SubscriberObservation.WaitForEventAsync(
+                reconnectSubscriber,
+                reconnectRun,
+                0);
 
             await PublishAsync(publisher, runId, 3, "after-reconnect");
             await WaitForSubscribersAsync(

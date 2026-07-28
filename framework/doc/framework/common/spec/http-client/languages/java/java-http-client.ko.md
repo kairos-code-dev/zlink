@@ -79,10 +79,9 @@ base URL·인증·timeout·retry 정책은 handler 안의 정적 팩토리가 �
 ## 6. 에러 매핑
 
 [공통 spec 9장](../../09-error-model.ko.md)을 따른다. 모든 실패는
-`ZLinkFrameworkException`이며 `kind()`(`REQUEST_PROTOCOL_ERROR`/`REQUEST_FAILED`/
-`PAYLOAD_DECODE_FAILED`)와 `retriable()`을 노출한다.
+`ZLinkFrameworkException`이며 Framework 공통 `kind()`와 `retryAdvice()`를 노출한다.
 
-- timeout은 `REQUEST_FAILED`(`retriable=true`) + `HttpTimeoutException` cause.
+- timeout은 `DEADLINE_EXCEEDED`, `RETRY_AFTER_BACKOFF`와 `HttpTimeoutException` cause를 사용한다.
 - 내부 retry 판단은 `IOException`/`UncheckedIOException`/`TimeoutException` 여부.
 
 ## 7. 회귀 테스트 / 등록

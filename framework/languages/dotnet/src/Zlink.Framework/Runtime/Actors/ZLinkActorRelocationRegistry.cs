@@ -146,7 +146,7 @@ internal static class ZLinkActorRelocationRegistry
     private static ZLinkFrameworkException Disabled(
         ZLinkObjectRelocationRegistration relocation) =>
         new(
-            ZLinkFrameworkErrorKind.RequestRejected,
+            ZLinkFrameworkErrorKind.Rejected,
             $"Relocation is disabled for Actor type '{relocation.InstanceType}'.");
 
     private static ZLinkConfigurationException MissingAdapter(

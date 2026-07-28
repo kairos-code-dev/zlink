@@ -14,7 +14,7 @@ else
   SCENARIO="$*"
   SCENARIO="${SCENARIO// /,}"
 fi
-LOCAL_READINESS_TIMEOUT_SECONDS=15
+LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 HTTP_PROBE_TIMEOUT_SECONDS=3
 REDIS_READINESS_TIMEOUT_SECONDS=60
@@ -238,10 +238,273 @@ start_server() {
   python3 "$ROOT_DIR/../write_role_config.py" "$config" -- "$@"
   setsid dotnet run --no-build --project "$project" -- --config "$config" \
     >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
-  pids+=("$!")
+  LAST_STARTED_PID="$!"
+  pids+=("$LAST_STARTED_PID")
+}
+
+wait_object_client_status() {
+  local url="$1"
+  local peer_state="$2"
+  local ready_count="$3"
+  local topology_state="$4"
+  local name="$5"
+  local deadline=$((SECONDS + 40))
+  while (( SECONDS < deadline )); do
+    local status
+    status="$(curl --connect-timeout 0.2 --max-time 1 -fsS \
+      "$url/topology/status" 2>/dev/null || true)"
+    if [[ -n "$status" ]] && python3 - "$peer_state" "$ready_count" \
+      "$topology_state" "$status" <<'PY'
+import json
+import sys
+
+peer_state, ready_count, topology_state, encoded = sys.argv[1:]
+value = json.loads(encoded)
+peers = value["peers"]
+if not peers:
+    raise SystemExit(1)
+if any(peer["state"] != peer_state for peer in peers):
+    raise SystemExit(1)
+if value["readyPeerCount"] != int(ready_count):
+    raise SystemExit(1)
+if value["state"] != topology_state:
+    raise SystemExit(1)
+PY
+    then
+      printf '%s\n' "$status" >"$LOG_DIR/$name.status.json"
+      return 0
+    fi
+    sleep 0.1
+  done
+  curl -fsS "$url/topology/status" >&2 || true
+  echo >&2
+  echo "Timed out waiting for $name peer state $peer_state." >&2
+  return 1
+}
+
+start_object_probe() {
+  local name="$1"
+  local mesh_name="$2"
+  local object_role="$3"
+  local http_port="$4"
+  local mesh_port="$5"
+  local peer_endpoint="${6:-}"
+  local route_channel_role="${7:-Client}"
+  local route_channel_weight="${8:-100}"
+  local independent_topologies="${9:-false}"
+  local arguments=(
+    --http-url "http://127.0.0.1:$http_port"
+    --redis-endpoint "$REDIS_ENDPOINT"
+    --redis-key-prefix "$REDIS_KEY_PREFIX"
+    --trace-label "$name"
+    --mesh-name "$mesh_name"
+    --mesh-endpoint "tcp://127.0.0.1:$mesh_port"
+    --object-role "$object_role"
+    --route-channel-role "$route_channel_role"
+    --route-channel-weight "$route_channel_weight"
+    --register-independent-topologies "$independent_topologies"
+    --log-dir "$LOG_DIR"
+  )
+  if [[ -n "$peer_endpoint" ]]; then
+    arguments+=(--provider-endpoint "$peer_endpoint")
+  fi
+  start_server "$name" "$CONSUMER_PROJECT" "${arguments[@]}"
+}
+
+run_required_client_pair() {
+  local name="$1"
+  local topology="$2"
+  local weight="$3"
+  local a_http b_http a_mesh b_mesh
+  a_http="$(pick_port)"; b_http="$(pick_port)"
+  a_mesh="$(pick_port)"; b_mesh="$(pick_port)"
+
+  if [[ "$topology" == "automatic" ]]; then
+    start_object_probe "$name-a" "$name" Client \
+      "$a_http" "$a_mesh" "" Server "$weight"
+  else
+    start_object_probe "$name-a" "$name" Client \
+      "$a_http" "$a_mesh" "tcp://127.0.0.1:$b_mesh" Server "$weight"
+  fi
+  wait_health "http://127.0.0.1:$a_http" "$name-a"
+
+  if [[ "$topology" == "automatic" ]]; then
+    start_object_probe "$name-b" "$name" Client \
+      "$b_http" "$b_mesh"
+  else
+    start_object_probe "$name-b" "$name" Client \
+      "$b_http" "$b_mesh" "tcp://127.0.0.1:$a_mesh"
+  fi
+  wait_health "http://127.0.0.1:$b_http" "$name-b"
+
+  wait_object_client_status "http://127.0.0.1:$a_http" \
+    Ready 1 Ready "$name-a"
+  wait_object_client_status "http://127.0.0.1:$b_http" \
+    Ready 1 Ready "$name-b"
+}
+
+run_rm_a3() {
+  local auto_a_http auto_b_http auto_a_mesh auto_b_mesh
+  local manual_a_http manual_b_http manual_a_mesh manual_b_mesh
+  local sc_server_http sc_client_http sc_server_mesh sc_client_mesh
+  local ss_a_http ss_b_http ss_a_mesh ss_b_mesh
+  local nc_server_http nc_client_http nc_server_mesh nc_client_mesh
+  local independent_a_http independent_b_http independent_a_mesh independent_b_mesh
+  auto_a_http="$(pick_port)"; auto_b_http="$(pick_port)"
+  auto_a_mesh="$(pick_port)"; auto_b_mesh="$(pick_port)"
+  manual_a_http="$(pick_port)"; manual_b_http="$(pick_port)"
+  manual_a_mesh="$(pick_port)"; manual_b_mesh="$(pick_port)"
+  sc_server_http="$(pick_port)"; sc_client_http="$(pick_port)"
+  sc_server_mesh="$(pick_port)"; sc_client_mesh="$(pick_port)"
+  ss_a_http="$(pick_port)"; ss_b_http="$(pick_port)"
+  ss_a_mesh="$(pick_port)"; ss_b_mesh="$(pick_port)"
+  nc_server_http="$(pick_port)"; nc_client_http="$(pick_port)"
+  nc_server_mesh="$(pick_port)"; nc_client_mesh="$(pick_port)"
+  independent_a_http="$(pick_port)"; independent_b_http="$(pick_port)"
+  independent_a_mesh="$(pick_port)"; independent_b_mesh="$(pick_port)"
+
+  start_object_probe client-auto-a object-client-auto Client \
+    "$auto_a_http" "$auto_a_mesh"
+  wait_health "http://127.0.0.1:$auto_a_http" client-auto-a
+  start_object_probe client-auto-b object-client-auto Client \
+    "$auto_b_http" "$auto_b_mesh"
+  wait_health "http://127.0.0.1:$auto_b_http" client-auto-b
+  wait_object_client_status "http://127.0.0.1:$auto_a_http" \
+    NotRequired 0 Ready client-auto-a
+  wait_object_client_status "http://127.0.0.1:$auto_b_http" \
+    NotRequired 0 Ready client-auto-b
+
+  local auto_b_rid direct_result
+  auto_b_rid="$(python3 - "$LOG_DIR/client-auto-a.status.json" <<'PY'
+import json
+import pathlib
+import sys
+print(json.loads(pathlib.Path(sys.argv[1]).read_text())["peers"][0]["rid"])
+PY
+)"
+  direct_result="$(curl --connect-timeout 0.5 --max-time 3 -fsS -X POST \
+    "http://127.0.0.1:$auto_a_http/node-direct/$auto_b_rid")"
+  printf '%s\n' "$direct_result" >"$LOG_DIR/rm-a3-node-direct.json"
+  python3 - "$direct_result" <<'PY'
+import json
+import sys
+value = json.loads(sys.argv[1])
+if value["send"] != "NotFound":
+    raise SystemExit(f"RM-A3 send outcome mismatch: {value}")
+if value["request"] != "NotFound":
+    raise SystemExit(f"RM-A3 request outcome mismatch: {value}")
+if value["peerCountBefore"] != value["peerCountAfter"]:
+    raise SystemExit(f"RM-A3 Node direct created a peer: {value}")
+if value["readyPeerCountBefore"] != 0 or value["readyPeerCountAfter"] != 0:
+    raise SystemExit(f"RM-A3 Node direct created a Ready route: {value}")
+PY
+
+  sleep 20
+  wait_object_client_status "http://127.0.0.1:$auto_a_http" \
+    NotRequired 0 Ready client-auto-a-after-20s
+  wait_object_client_status "http://127.0.0.1:$auto_b_http" \
+    NotRequired 0 Ready client-auto-b-after-20s
+
+  start_object_probe client-manual-a object-client-manual Client \
+    "$manual_a_http" "$manual_a_mesh" "tcp://127.0.0.1:$manual_b_mesh"
+  start_object_probe client-manual-b object-client-manual Client \
+    "$manual_b_http" "$manual_b_mesh" "tcp://127.0.0.1:$manual_a_mesh"
+  wait_health "http://127.0.0.1:$manual_a_http" client-manual-a
+  wait_health "http://127.0.0.1:$manual_b_http" client-manual-b
+  wait_object_client_status "http://127.0.0.1:$manual_a_http" \
+    NotRequired 0 Ready client-manual-a
+  wait_object_client_status "http://127.0.0.1:$manual_b_http" \
+    NotRequired 0 Ready client-manual-b
+  sleep 20
+  wait_object_client_status "http://127.0.0.1:$manual_a_http" \
+    NotRequired 0 Ready client-manual-a-after-20s
+  wait_object_client_status "http://127.0.0.1:$manual_b_http" \
+    NotRequired 0 Ready client-manual-b-after-20s
+
+  # A RouteMesh Channel Server membership requires the Object Client pair
+  # connection. Weight 0 excludes new channel selection, not peer admission.
+  run_required_client_pair client-channel-server-100-auto automatic 100
+  run_required_client_pair client-channel-server-0-auto automatic 0
+  run_required_client_pair client-channel-server-100-manual manual 100
+  run_required_client_pair client-channel-server-0-manual manual 0
+
+  # ClientServer and classic fanout use independent sockets and discovery.
+  # Their presence must not change the RouteMesh Object Client predicate.
+  start_object_probe client-independent-a object-client-independent Client \
+    "$independent_a_http" "$independent_a_mesh" "" Client 100 true
+  wait_health "http://127.0.0.1:$independent_a_http" client-independent-a
+  start_object_probe client-independent-b object-client-independent Client \
+    "$independent_b_http" "$independent_b_mesh" "" Client 100 true
+  wait_health "http://127.0.0.1:$independent_b_http" client-independent-b
+  wait_object_client_status "http://127.0.0.1:$independent_a_http" \
+    NotRequired 0 Ready client-independent-a
+  wait_object_client_status "http://127.0.0.1:$independent_b_http" \
+    NotRequired 0 Ready client-independent-b
+
+  start_object_probe control-sc-server object-control-sc Server \
+    "$sc_server_http" "$sc_server_mesh"
+  local sc_server_pid="$LAST_STARTED_PID"
+  wait_health "http://127.0.0.1:$sc_server_http" control-sc-server
+  start_object_probe control-sc-client object-control-sc Client \
+    "$sc_client_http" "$sc_client_mesh"
+  local sc_client_pid="$LAST_STARTED_PID"
+  wait_health "http://127.0.0.1:$sc_client_http" control-sc-client
+  wait_object_client_status "http://127.0.0.1:$sc_server_http" \
+    Ready 1 Ready control-sc-server
+  wait_object_client_status "http://127.0.0.1:$sc_client_http" \
+    Ready 1 Ready control-sc-client
+
+  start_object_probe control-ss-a object-control-ss Server \
+    "$ss_a_http" "$ss_a_mesh"
+  wait_health "http://127.0.0.1:$ss_a_http" control-ss-a
+  start_object_probe control-ss-b object-control-ss Server \
+    "$ss_b_http" "$ss_b_mesh"
+  wait_health "http://127.0.0.1:$ss_b_http" control-ss-b
+  wait_object_client_status "http://127.0.0.1:$ss_a_http" \
+    Ready 1 Ready control-ss-a
+  wait_object_client_status "http://127.0.0.1:$ss_b_http" \
+    Ready 1 Ready control-ss-b
+
+  start_object_probe control-nc-client object-control-nc Client \
+    "$nc_client_http" "$nc_client_mesh"
+  local nc_client_pid="$LAST_STARTED_PID"
+  wait_health "http://127.0.0.1:$nc_client_http" control-nc-client
+  kill -KILL -- "-$nc_client_pid" 2>/dev/null || kill -KILL "$nc_client_pid"
+  start_object_probe control-nc-server object-control-nc Server \
+    "$nc_server_http" "$nc_server_mesh"
+  wait_health "http://127.0.0.1:$nc_server_http" control-nc-server
+  wait_object_client_status "http://127.0.0.1:$nc_server_http" \
+    NotConnected 0 Degraded control-nc-server-not-connected
+
+  {
+    echo "automatic_client_pair_not_required=pass"
+    echo "automatic_ready_peer_count=0"
+    echo "manual_client_pair_not_required=pass"
+    echo "manual_retry_window_seconds=20"
+    echo "manual_ready_peer_count=0"
+    echo "automatic_channel_server_weight_100_ready=pass"
+    echo "automatic_channel_server_weight_0_ready=pass"
+    echo "manual_channel_server_weight_100_ready=pass"
+    echo "manual_channel_server_weight_0_ready=pass"
+    echo "client_server_and_fanout_not_required=pass"
+    echo "server_client_ready=pass"
+    echo "server_server_ready=pass"
+    echo "required_peer_not_connected=pass"
+    echo "node_direct_send=NotFound"
+    echo "node_direct_request=NotFound"
+    echo "node_direct_peer_count_unchanged=pass"
+  } >"$LOG_DIR/rm-a3.evidence.log"
+  echo "RM-A3 PASS logs=$LOG_DIR"
 }
 
 echo "log_dir=$LOG_DIR"
+
+if [[ "$SCENARIO" == "RM-A3" ]]; then
+  dotnet build "$CONSUMER_PROJECT" --maxcpucount:1 >/dev/null
+  run_rm_a3
+  exit 0
+fi
+
 dotnet build "$PROVIDER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$WORKFLOW_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CONSUMER_PROJECT" --maxcpucount:1 >/dev/null

@@ -5,7 +5,6 @@ using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Eventing;
 using Zlink.Framework.Runtime.Locations;
 using Zlink.Framework.Runtime.Spots;
 
@@ -56,8 +55,8 @@ public sealed class DrainCoordinatorTests
                 "drain-spots",
                 "drain-sessions",
                 "freeze-owner-writes",
-                "cleanup-owner",
                 "stop-auto-connect",
+                "cleanup-owner",
                 "stop-runtime",
                 "stop-location"
             },
@@ -85,16 +84,84 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
+    public async Task Relocation_workload_coordinator_moves_shells_then_actors_then_aggregates()
+    {
+        var events = new List<string>();
+        var coordinator = new ZLinkRelocationWorkloadCoordinator(
+            (phase, _) =>
+            {
+                events.Add(phase == ZLinkSpotRelocationPhase.PerActorShells
+                    ? "shells"
+                    : "aggregates");
+                return ValueTask.FromResult(
+                    new ZLinkSpotDrainResult(
+                        true,
+                        phase == ZLinkSpotRelocationPhase.PerActorShells
+                            ? 1UL
+                            : 3UL));
+            },
+            _ =>
+            {
+                events.Add("actors");
+                return ValueTask.FromResult(
+                    new ZLinkActorDrainResult(true, null, 2));
+            });
+
+        var result = await coordinator.DrainAsync(
+            new ZLinkRelocationWorkloadDrainControl(
+                static () => false,
+                CancellationToken.None));
+
+        Assert.True(result.Completed);
+        Assert.Null(result.TerminalReason);
+        Assert.Equal<ulong>(6, result.CommittedUnitCount);
+        Assert.Equal(new[] { "shells", "actors", "aggregates" }, events);
+    }
+
+    [Fact]
+    public async Task Shutdown_signal_between_phases_starts_no_new_relocation_unit()
+    {
+        var events = new List<string>();
+        var stopRequested = false;
+        var coordinator = new ZLinkRelocationWorkloadCoordinator(
+            (phase, _) =>
+            {
+                events.Add(phase == ZLinkSpotRelocationPhase.PerActorShells
+                    ? "shells"
+                    : "aggregates");
+                stopRequested = true;
+                return ValueTask.FromResult(
+                    new ZLinkSpotDrainResult(true, 1));
+            },
+            _ =>
+            {
+                events.Add("actors");
+                return ValueTask.FromResult(
+                    new ZLinkActorDrainResult(true, null, 1));
+            });
+
+        var result = await coordinator.DrainAsync(
+            new ZLinkRelocationWorkloadDrainControl(
+                () => stopRequested,
+                CancellationToken.None));
+
+        Assert.False(result.Completed);
+        Assert.Equal<ulong>(1, result.CommittedUnitCount);
+        Assert.Equal(new[] { "shells" }, events);
+    }
+
+    [Fact]
     public async Task GenerationExhaustionStopsSpotDrainWithoutPollingRetry()
     {
         var probe = new DrainExecutionProbe();
         var attempts = 0;
         var operations = probe.Operations with
         {
-            DrainSpots = (_, _) =>
+            DrainRelocationWorkloads = _ =>
             {
                 Interlocked.Increment(ref attempts);
-                return ValueTask.FromException<ZLinkSpotDrainResult>(
+                return ValueTask.FromException<
+                    ZLinkRelocationWorkloadDrainResult>(
                     new ZLinkAuthorityGenerationExhaustedException(
                         "testing drain classification"));
             }
@@ -129,8 +196,8 @@ public sealed class DrainCoordinatorTests
                 probe.Events.Add("reopen-admission");
                 admission.Reset();
             },
-            DrainActors = _ => ValueTask.FromResult(
-                new ZLinkActorDrainResult(
+            DrainRelocationWorkloads = _ => ValueTask.FromResult(
+                new ZLinkRelocationWorkloadDrainResult(
                     false,
                     ZLinkFrameworkRelocationReason.RelocationFailed,
                     0))
@@ -139,8 +206,7 @@ public sealed class DrainCoordinatorTests
             admission,
             new ZLinkFrameworkDrainExecutor(
                 operations,
-                new ZLinkLocationOptions()),
-            events: null);
+                new ZLinkLocationOptions()));
 
         var result = await coordinator.DrainAsync(
             ZLinkFrameworkLifecycleIntent.Relocate,
@@ -158,19 +224,17 @@ public sealed class DrainCoordinatorTests
         var probe = new DrainExecutionProbe();
         var operations = probe.Operations with
         {
-            DrainActors = _ => ValueTask.FromResult(
-                new ZLinkActorDrainResult(true, null, 1)),
-            DrainSpots = (_, _) =>
-                ValueTask.FromException<ZLinkSpotDrainResult>(
-                    new ZLinkAuthorityGenerationExhaustedException(
-                        "post-commit failure"))
+            DrainRelocationWorkloads = _ => ValueTask.FromResult(
+                new ZLinkRelocationWorkloadDrainResult(
+                    false,
+                    ZLinkFrameworkRelocationReason.RelocationFailed,
+                    1))
         };
         using var coordinator = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
             new ZLinkFrameworkDrainExecutor(
                 operations,
-                new ZLinkLocationOptions()),
-            events: null);
+                new ZLinkLocationOptions()));
 
         var result = await coordinator.DrainAsync(
             ZLinkFrameworkLifecycleIntent.Relocate,
@@ -180,6 +244,97 @@ public sealed class DrainCoordinatorTests
         Assert.Equal(ZLinkDrainForceReason.RelocationFailed, forced.Reason);
         Assert.True(forced.HasCommitted);
         Assert.Equal<ulong>(1, forced.CommittedUnitCount);
+    }
+
+    [Fact]
+    public async Task Shutdown_request_seals_and_finishes_only_the_current_relocation_unit()
+    {
+        var probe = new DrainExecutionProbe();
+        var currentUnitEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseCurrentUnit = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var unitCount = 0;
+        var operations = probe.Operations with
+        {
+            DrainRelocationWorkloads = async control =>
+            {
+                Interlocked.Increment(ref unitCount);
+                currentUnitEntered.TrySetResult();
+                await releaseCurrentUnit.Task
+                    .WaitAsync(control.CancellationToken)
+                    .ConfigureAwait(false);
+                return new ZLinkRelocationWorkloadDrainResult(
+                    false,
+                    null,
+                    1);
+            }
+        };
+        var executor = new ZLinkFrameworkDrainExecutor(
+            operations,
+            new ZLinkLocationOptions
+            {
+                PollingInterval = TimeSpan.FromMilliseconds(1)
+            });
+
+        var relocation = executor.ExecuteAsync(
+                ZLinkFrameworkLifecycleIntent.Relocate,
+                TimeSpan.FromSeconds(30),
+                CancellationToken.None)
+            .AsTask();
+        await currentUnitEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        executor.RequestShutdown(TimeSpan.FromSeconds(2));
+        Assert.Contains("seal-admission", probe.Events);
+        releaseCurrentUnit.TrySetResult();
+
+        var blocked = await Assert.ThrowsAsync<ZLinkDrainBlockedException>(
+            () => relocation);
+        Assert.Equal(
+            ZLinkFrameworkRelocationReason.ShutdownRequested,
+            blocked.Reason);
+        Assert.Equal(1, unitCount);
+    }
+
+    [Fact]
+    public async Task Shutdown_deadline_cancels_the_current_relocation_unit()
+    {
+        var probe = new DrainExecutionProbe();
+        var currentUnitEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var operations = probe.Operations with
+        {
+            DrainRelocationWorkloads = async control =>
+            {
+                currentUnitEntered.TrySetResult();
+                await Task.Delay(
+                        Timeout.InfiniteTimeSpan,
+                        control.CancellationToken)
+                    .ConfigureAwait(false);
+                return new ZLinkRelocationWorkloadDrainResult(
+                    false,
+                    null,
+                    0);
+            }
+        };
+        var executor = new ZLinkFrameworkDrainExecutor(
+            operations,
+            new ZLinkLocationOptions());
+
+        var relocation = executor.ExecuteAsync(
+                ZLinkFrameworkLifecycleIntent.Relocate,
+                TimeSpan.FromSeconds(30),
+                CancellationToken.None)
+            .AsTask();
+        await currentUnitEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        executor.RequestShutdown(TimeSpan.FromMilliseconds(50));
+
+        var blocked = await Assert.ThrowsAsync<ZLinkDrainBlockedException>(
+            () => relocation.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(
+            ZLinkFrameworkRelocationReason.ShutdownRequested,
+            blocked.Reason);
     }
 
     [Fact]
@@ -200,7 +355,7 @@ public sealed class DrainCoordinatorTests
             CancellationToken.None);
 
         Assert.Null(reason);
-        Assert.True(probe.Events.IndexOf("drain-spots")
+        Assert.True(probe.Events.IndexOf("drain-per-actor-shells")
                     < probe.Events.IndexOf("seal-admission"));
         Assert.True(probe.Events.IndexOf("seal-admission")
                     < probe.Events.IndexOf("host-relocated"));
@@ -368,10 +523,10 @@ public sealed class DrainCoordinatorTests
         Assert.True(gate.BeginDrain());
 
         var spot = Assert.Throws<ZLinkFrameworkException>(gate.RequireSpotAdmission);
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, spot.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Rejected, spot.Kind);
 
         var actor = Assert.Throws<ZLinkFrameworkException>(gate.RequireActorAdmission);
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorCreateRejected, actor.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Rejected, actor.Kind);
 
         Assert.False(gate.TryEnterActorAdmission(out var rejectedJoin));
         rejectedJoin.Dispose();
@@ -394,66 +549,12 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
-    public async Task Drain_Is_Idempotent_And_First_Deadline_Is_Fixed()
-    {
-        var executor = new FakeDrainExecutor();
-        var admission = new ZLinkDrainAdmissionGate();
-        var events = new RecordingEventPublisher();
-        using var coordinator = new ZLinkDrainCoordinator(admission, executor, events);
-
-        var first = coordinator.DrainAsync(TimeSpan.FromSeconds(3)).AsTask();
-        var second = coordinator.DrainAsync(TimeSpan.FromSeconds(30)).AsTask();
-
-        Assert.False(coordinator.IsReady);
-        Assert.Equal(TimeSpan.FromSeconds(3), await executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)));
-        executor.Complete.TrySetResult(null);
-
-        var firstResult = await first;
-        var secondResult = await second;
-        Assert.IsType<Drained>(firstResult);
-        Assert.Same(firstResult, secondResult);
-        Assert.Equal(1, executor.ExecuteCount);
-        Assert.Equal(
-            new[] { ZLinkDrainState.Draining, ZLinkDrainState.Drained },
-            events.States);
-    }
-
-    [Fact]
-    public async Task Drain_Lifecycle_Callbacks_Share_One_Lifecycle_Origin_Flow()
-    {
-        var executor = new FakeDrainExecutor();
-        var events = new RecordingEventPublisher();
-        using var coordinator = new ZLinkDrainCoordinator(
-            new ZLinkDrainAdmissionGate(),
-            executor,
-            events,
-            flowCaptureEnabled: static () => true);
-
-        var drain = coordinator.DrainAsync(TimeSpan.FromSeconds(3)).AsTask();
-        await executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(1));
-        executor.Complete.TrySetResult(null);
-        Assert.IsType<Drained>(await drain.WaitAsync(TimeSpan.FromSeconds(1)));
-
-        Assert.Equal(2, events.Flows.Count);
-        Assert.All(events.Flows, callback =>
-        {
-            Assert.Equal(ZLinkFlowOrigin.Lifecycle, callback.Flow.Origin);
-            Assert.True(ZlinkStreamFlowId.IsValid(callback.Flow.FlowId));
-        });
-        Assert.Equal(events.Flows[0].Flow.FlowId, events.Flows[1].Flow.FlowId);
-        Assert.Equal(
-            new[] { ZLinkDrainState.Draining, ZLinkDrainState.Drained },
-            events.Flows.Select(static callback => callback.State));
-    }
-
-    [Fact]
     public async Task Drain_Does_Not_Complete_Until_The_InFlight_Executor_Completes()
     {
         var executor = new FakeDrainExecutor();
         using var coordinator = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
-            executor,
-            events: null);
+            executor);
 
         var drain = coordinator.DrainAsync(TimeSpan.FromSeconds(3)).AsTask();
         await executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -470,8 +571,7 @@ public sealed class DrainCoordinatorTests
         var executor = new FakeDrainExecutor();
         using var coordinator = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
-            executor,
-            events: null);
+            executor);
 
         var drain = coordinator.DrainAsync(TimeSpan.FromSeconds(3)).AsTask();
         await executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -484,33 +584,12 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
-    public async Task Force_Stop_Event_Failure_Does_Not_Repeat_Forced_Teardown()
-    {
-        var executor = new FakeDrainExecutor();
-        using var coordinator = new ZLinkDrainCoordinator(
-            new ZLinkDrainAdmissionGate(),
-            executor,
-            new ForceStoppingFailurePublisher());
-
-        var first = coordinator.DrainAsync(TimeSpan.FromSeconds(1)).AsTask();
-        var second = coordinator.DrainAsync(TimeSpan.FromSeconds(5)).AsTask();
-        await executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(1));
-        executor.Complete.TrySetResult(ZLinkDrainForceReason.DeadlineExceeded);
-
-        var firstResult = Assert.IsType<ForceStopped>(await first.WaitAsync(TimeSpan.FromSeconds(1)));
-        Assert.Same(firstResult, await second.WaitAsync(TimeSpan.FromSeconds(1)));
-        Assert.Equal(1, executor.ForceCount);
-        Assert.Same(firstResult, await coordinator.AwaitDrainedAsync());
-    }
-
-    [Fact]
     public async Task Default_Drain_Uses_Thirty_Seconds_Without_Event_Registration()
     {
         var executor = new FakeDrainExecutor();
         using var coordinator = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
-            executor,
-            events: null);
+            executor);
 
         var drain = coordinator.DrainAsync().AsTask();
         Assert.Equal(
@@ -549,8 +628,7 @@ public sealed class DrainCoordinatorTests
         var executor = new FakeDrainExecutor();
         using var coordinator = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
-            executor,
-            events: null);
+            executor);
         using var waiterCancellation = new CancellationTokenSource();
         var canceledWaiter = coordinator.AwaitDrainedAsync(waiterCancellation.Token).AsTask();
 
@@ -570,8 +648,7 @@ public sealed class DrainCoordinatorTests
         var executor = new FakeDrainExecutor();
         using var coordinator = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
-            executor,
-            events: null);
+            executor);
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
             await coordinator.DrainAsync(TimeSpan.Zero));
@@ -586,8 +663,7 @@ public sealed class DrainCoordinatorTests
         var executor = new FakeDrainExecutor { WaitForDeadline = true };
         using var coordinator = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
-            executor,
-            events: null);
+            executor);
 
         var result = await coordinator.DrainAsync(TimeSpan.FromMilliseconds(20));
 
@@ -605,8 +681,7 @@ public sealed class DrainCoordinatorTests
         };
         using var coordinator = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
-            executor,
-            events: null);
+            executor);
 
         var drain = coordinator.DrainAsync(TimeSpan.FromSeconds(1)).AsTask();
         await executor.Started.Task;
@@ -646,19 +721,19 @@ public sealed class DrainCoordinatorTests
     {
         Assert.True(ZLinkActorDrainCoordinator.IsTargetLocalRetriable(
             new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RelocationTargetUnavailable,
+                ZLinkFrameworkErrorKind.Unavailable,
                 "target left",
-                true)));
+                ZLinkRetryAdvice.RetryAfterBackoff)));
         Assert.False(ZLinkActorDrainCoordinator.IsTargetLocalRetriable(
             new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RelocationDataLost,
+                ZLinkFrameworkErrorKind.DataLost,
                 "durable state is invalid",
-                false)));
+                ZLinkRetryAdvice.DoNotRetry)));
         Assert.False(ZLinkActorDrainCoordinator.IsTargetLocalRetriable(
             new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RelocationFailed,
+                ZLinkFrameworkErrorKind.InternalFailure,
                 "authority terminal",
-                true)));
+                ZLinkRetryAdvice.RetryAfterBackoff)));
     }
 
     [Fact]
@@ -916,6 +991,18 @@ public sealed class DrainCoordinatorTests
                 Events.Add("drain-spots");
                 return ValueTask.FromResult(new ZLinkSpotDrainResult(true, 0));
             },
+            DrainRelocationWorkloads: _ =>
+            {
+                LastSpotDrainWasRelocation = true;
+                Events.Add("drain-per-actor-shells");
+                Events.Add("drain-actors");
+                Events.Add("drain-aggregate-spots");
+                return ValueTask.FromResult(
+                    new ZLinkRelocationWorkloadDrainResult(
+                        true,
+                        null,
+                        0));
+            },
             DrainStreamSessions: _ =>
             {
                 Events.Add("drain-sessions");
@@ -952,38 +1039,6 @@ public sealed class DrainCoordinatorTests
                 Events.Add("stop-location");
                 return ValueTask.CompletedTask;
             });
-    }
-
-    private sealed class RecordingEventPublisher : IZLinkRuntimeEventPublisher
-    {
-        public List<ZLinkDrainState> States { get; } = [];
-
-        public List<(ZLinkDrainState State, ZLinkFlowValue Flow)> Flows { get; } = [];
-
-        public ValueTask PublishAsync<TEvent>(TEvent @event, CancellationToken cancellationToken)
-            where TEvent : IZLinkRuntimeEvent
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (@event is ZLinkDrainEvent drain)
-            {
-                States.Add(drain.State);
-                if (ZLinkFlowContext.Current is { } flow)
-                    Flows.Add((drain.State, flow));
-            }
-            return ValueTask.CompletedTask;
-        }
-    }
-
-    private sealed class ForceStoppingFailurePublisher : IZLinkRuntimeEventPublisher
-    {
-        public ValueTask PublishAsync<TEvent>(TEvent @event, CancellationToken cancellationToken)
-            where TEvent : IZLinkRuntimeEvent
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (@event is ZLinkDrainEvent { State: ZLinkDrainState.ForceStopping })
-                throw new InvalidOperationException("force-stopping event sink failed");
-            return ValueTask.CompletedTask;
-        }
     }
 
     private sealed class MutableFrameworkRuntime : IZLinkFrameworkRuntime

@@ -24,10 +24,10 @@
 default 헤더 + 요청별 override · Basic/Bearer 주입.
 
 **body**: typed JSON 왕복 · raw · form · multipart · 바디 소스 배타 위반 →
-`requestProtocolError` · streaming 업로드가 실제 chunked인지(raw socket 검증).
+`ProtocolError` · streaming 업로드가 실제 chunked인지(raw socket 검증).
 
 **응답**: HEAD 빈 body · 204/빈 성공의 typed null body · typed status ≥ 400 →
-`requestFailed` · malformed JSON → `payloadDecodeFailed` ·
+`InternalFailure` · malformed JSON → `ProtocolError` ·
 `maxResponseBodySize` 강제.
 
 **redirect**: 303 POST→GET rewrite · same-origin `Authorization` 보존 ·
@@ -39,7 +39,7 @@ retriable · streaming 재시도 제외.
 **cookie**: 저장/전송 왕복 · Path scope 매칭 · Secure의 http 미전송 ·
 `Max-Age<=0` 삭제 · host당 128개 축출(현재 cpp 미검증 — 갭).
 
-**압축**: gzip/deflate 투명 해제 · 손상 body → `payloadDecodeFailed` ·
+**압축**: gzip/deflate 투명 해제 · 손상 body → `ProtocolError` ·
 해제 후 크기 한도.
 
 **TLS/proxy**: trust 인증서로 성공 · untrusted 거부 · hostname mismatch 거부 ·

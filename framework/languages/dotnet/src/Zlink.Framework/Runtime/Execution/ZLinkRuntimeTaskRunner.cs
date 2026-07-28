@@ -16,6 +16,10 @@ internal sealed class ZLinkRuntimeTaskRunner
         => AmbientExecution.Value is { IsActive: true } lease
            && ReferenceEquals(lease.Owner, _executionOwner);
 
+    private bool IsCurrentRunnerExecution
+        => AmbientExecution.Value is { IsActive: true } lease
+           && ReferenceEquals(lease.Runner, this);
+
     internal object ExecutionOwner => _executionOwner;
 
     internal static bool IsCurrentExecutionFor(object executionOwner)
@@ -60,7 +64,7 @@ internal sealed class ZLinkRuntimeTaskRunner
 
     public async ValueTask StopAsync()
     {
-        if (IsCurrentExecution)
+        if (IsCurrentRunnerExecution)
             throw new InvalidOperationException(
                 "A runtime task cannot synchronously stop the runner that owns it.");
 

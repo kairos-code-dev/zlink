@@ -8,32 +8,12 @@ $RedisContainer = $null
 $RunSucceeded = $false
 $LogDir = Join-Path $RunDir "logs"
 $WorkDir = Join-Path $RunDir "work"
-$SampleLogDir = Join-Path $RunDir "flow-logs"
+$SampleLogDir = Join-Path $RunDir "sample-logs"
 $ConfigDir = Join-Path $RunDir "config"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
-
-function Wait-SampleLogContains {
-    param(
-        [Parameter(Mandatory = $true)][string]$Pattern,
-        [Parameter(Mandatory = $true)][string]$Description,
-        [int]$Attempts = 80
-    )
-
-    for ($i = 0; $i -lt $Attempts; $i++) {
-        $match = Get-ChildItem -Path $SampleLogDir -Filter "*.log" |
-            Select-String -Pattern $Pattern -List |
-            Select-Object -First 1
-        if ($null -ne $match) {
-            return
-        }
-        Start-Sleep -Milliseconds 200
-    }
-
-    throw "$Description was not found."
-}
 
 try {
     $basePort = if ($DELIVERYDISPATCH_BASE_PORT) { [int]$DELIVERYDISPATCH_BASE_PORT } else { 0 }
@@ -132,7 +112,6 @@ try {
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch customer-entry: pushed status"
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch courier-session: bound courier=courier-a"
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch courier-session: bound courier=courier-b"
-    Wait-SampleLogContains "message flow" "DeliveryDispatch message-flow evidence"
     Write-Host "deliverydispatch-runner-evidence=completed"
     $RunSucceeded = $true
 }

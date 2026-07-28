@@ -123,7 +123,7 @@ public sealed partial class StreamConnectorTests
         });
         await connector.Connect.Async();
 
-        connector.Send(new NamedPacket("name")).Async();
+        await connector.Send(new NamedPacket("name")).Async();
         await server;
     }
 
@@ -188,9 +188,9 @@ public sealed partial class StreamConnectorTests
         });
         await connector.Connect.Async();
 
-        connector.Send(new Ping("plain"))
+        await connector.Send(new Ping("plain"))
             .PacketName("plain").Async();
-        connector.Send(new Ping("compressed"))
+        await connector.Send(new Ping("compressed"))
             .PacketName("compressed")
             .Compress().Async();
         await server;

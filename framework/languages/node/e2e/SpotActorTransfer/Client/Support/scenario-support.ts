@@ -32,6 +32,7 @@ export { SpotActorTransferNames };
 export interface ClientOptions {
   nodeAUrl: string;
   nodeBUrl: string;
+  nodeCUrl: string;
   sessionAStreamEndpoint: string;
   sessionBStreamEndpoint: string;
   scenario: string;
@@ -40,6 +41,7 @@ export interface ClientOptions {
 export const options = parseOptions(await browserE2eConfig());
 export const nodeA = ZLinkHttpClient.create(options.nodeAUrl).timeout(40000).build();
 export const nodeB = ZLinkHttpClient.create(options.nodeBUrl).timeout(40000).build();
+export const nodeC = ZLinkHttpClient.create(options.nodeCUrl).timeout(40000).build();
 
 export async function runRemoteTransfer(scenario: string, actorId: string, actorType: string, stateVersion: number, stateful: boolean): Promise<void> {
   const sourceActor = await createActor(nodeA, actorId, actorType, stateVersion);
@@ -110,7 +112,16 @@ export async function createRemoteSpot(sourceNodeRid: string): Promise<CreateSpo
 export function actorNode(nodeRid: string): HttpClient {
   if (nodeRid === 'actor-a') return nodeA;
   if (nodeRid === 'actor-b') return nodeB;
+  if (nodeRid === 'actor-c') return nodeC;
   throw new Error(`Unknown actor node '${nodeRid}'.`);
+}
+
+export async function createSpotOutside(excludedNodeRids: readonly string[]): Promise<CreateSpotRes> {
+  for (let attempt = 0; attempt < 64; attempt++) {
+    const spot = await createSpot(nodeB, unique('spot-remote'));
+    if (!excludedNodeRids.includes(spot.nodeRid)) return spot;
+  }
+  throw new Error(`Could not place a Spot outside nodes '${excludedNodeRids.join(',')}'.`);
 }
 
 export async function assertSourceFailure(
@@ -225,6 +236,66 @@ export async function probeActor(node: HttpClient, actorId: string, scenario: st
   return await post(node, `/actors/${actorId}/probe`, { scenario, marker } satisfies ProbeReq);
 }
 
+export async function armTransportDelivery(
+  node: HttpClient,
+  operationId: string,
+  actorId: string,
+  kind: 'oneWay' | 'request'
+): Promise<void> {
+  await post(node, `/transport-delivery/${operationId}/arm`, { actorId, kind });
+}
+
+export async function waitTransportDelivery(
+  node: HttpClient,
+  operationId: string
+): Promise<{ capturedCount: number; releasedCount: number }> {
+  return await post(node, `/transport-delivery/${operationId}/wait`, {});
+}
+
+export async function releaseTransportDelivery(
+  node: HttpClient,
+  operationId: string,
+  submissionCopies = 1
+): Promise<{ capturedCount: number; releasedCount: number }> {
+  return await post(node, `/transport-delivery/${operationId}/release`, { submissionCopies });
+}
+
+export async function getTransportDelivery(
+  node: HttpClient,
+  operationId: string
+): Promise<{ capturedCount: number; releasedCount: number }> {
+  return await node.get(`/transport-delivery/${operationId}`).fetch();
+}
+
+export async function sendHandoffWithTransportGate(
+  node: HttpClient,
+  actorId: string,
+  scenario: string,
+  marker: string
+): Promise<void> {
+  await post(node, `/actors/${actorId}/handoff`, {
+    scenario,
+    marker
+  } satisfies ProbeReq);
+}
+
+export async function probeActorWithTransportGate(
+  node: HttpClient,
+  actorId: string,
+  scenario: string,
+  marker: string
+): Promise<{
+  readonly succeeded: boolean;
+  readonly errorKind?: string;
+  readonly response?: ProbeRes;
+}> {
+  return await post(node, `/actors/${actorId}/probe`, {
+    scenario,
+    marker,
+    requestTimeoutMs: 15000
+  } satisfies ProbeReq);
+}
+
 export async function sendHandoff(node: HttpClient, actorId: string, scenario: string, marker: string): Promise<void> {
   await post(node, `/actors/${actorId}/handoff`, { scenario, marker } satisfies ProbeReq);
 }
@@ -245,6 +316,33 @@ export async function waitSpotRef(node: HttpClient, spotId: string, expectedNode
 
 export async function getEvidence(node: HttpClient): Promise<readonly ActorEvidence[]> {
   return await node.get('/evidence').fetch<ActorEvidence[]>();
+}
+
+export interface MessageFollowRelayEvidence {
+  readonly operationId: string;
+  readonly objectGeneration: string;
+  readonly sourceOwner: { readonly authorityOwnerGeneration: string };
+  readonly targetOwner: { readonly authorityOwnerGeneration: string };
+  readonly deadlineUnixMs?: number;
+  readonly correlationId?: string;
+  readonly replyRouteId?: string;
+  readonly request: boolean;
+  readonly hopCount: number;
+  readonly payloadChecksumSha256: string;
+}
+
+export function messageFollowRelayEvidence(
+  entries: readonly ActorEvidence[],
+  scenario: string,
+  actorId: string
+): readonly MessageFollowRelayEvidence[] {
+  return entries
+    .filter(entry =>
+      entry.scenario === scenario
+      && entry.actorId === actorId
+      && entry.kind === 'message_follow_relay_context'
+    )
+    .map(entry => JSON.parse(entry.value) as MessageFollowRelayEvidence);
 }
 
 export async function waitEvidence(node: HttpClient, containsAll: readonly string[], timeoutMilliseconds = 15000): Promise<readonly ActorEvidence[]> {
@@ -328,6 +426,7 @@ export function parseOptions(value: unknown): ClientOptions {
   return {
     nodeAUrl: get('nodeAUrl'),
     nodeBUrl: get('nodeBUrl'),
+    nodeCUrl: get('nodeCUrl'),
     sessionAStreamEndpoint: get('sessionAStreamEndpoint'),
     sessionBStreamEndpoint: get('sessionBStreamEndpoint'),
     scenario: typeof values.scenario === 'string' ? values.scenario : 'all'
@@ -335,5 +434,5 @@ export function parseOptions(value: unknown): ClientOptions {
 }
 
 export async function closeScenarioClients(): Promise<void> {
-  await Promise.allSettled([nodeA.close(), nodeB.close()]);
+  await Promise.allSettled([nodeA.close(), nodeB.close(), nodeC.close()]);
 }

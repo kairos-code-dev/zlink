@@ -27,7 +27,7 @@ internal sealed class ZLinkActorDispatchRouter(
         var state = actorSessions.GetOrCreate(actorId);
         var actor = state.Actor
                     ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        ZLinkFrameworkErrorKind.NotFound,
                         $"Actor '{actorId}' is not active.");
 
         await Async(
@@ -49,7 +49,7 @@ internal sealed class ZLinkActorDispatchRouter(
         var state = actorSessions.GetOrCreate(actorId);
         var actor = state.Actor
                     ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        ZLinkFrameworkErrorKind.NotFound,
                         $"Actor '{actorId}' is not active.");
 
         return await SubmitForReplyAsync(
@@ -83,7 +83,13 @@ internal sealed class ZLinkActorDispatchRouter(
         {
             shouldPrune = await state.ExecuteDispatchAsync(
                     header,
-                    ct => SubmitByCurrentLocationAsync(actor, state, header, payload, ct),
+                    ct => SubmitByCurrentLocationAsync(
+                        actor,
+                        state,
+                        header,
+                        payload,
+                        relocationReplay,
+                        ct),
                     countAsPendingRequest: false,
                     allowRelocationReplay: relocationReplay,
                     cancellationToken: cancellationToken)
@@ -107,7 +113,7 @@ internal sealed class ZLinkActorDispatchRouter(
         var state = actorSessions.GetOrCreate(actorId);
         var actor = state.Actor
                     ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        ZLinkFrameworkErrorKind.NotFound,
                         $"Actor '{actorId}' is not active.");
 
         await state.ExecuteLifecycleAsync(
@@ -131,7 +137,13 @@ internal sealed class ZLinkActorDispatchRouter(
             ZLinkFlowOrigin.Inbound);
         return await state.ExecuteDispatchAsync(
                 header,
-                ct => SubmitByCurrentLocationForReplyAsync(actor, state, header, payload, ct),
+                ct => SubmitByCurrentLocationForReplyAsync(
+                    actor,
+                    state,
+                    header,
+                    payload,
+                    relocationReplay,
+                    ct),
                 countAsPendingRequest: true,
                 allowRelocationReplay: relocationReplay,
                 cancellationToken: cancellationToken)
@@ -143,6 +155,7 @@ internal sealed class ZLinkActorDispatchRouter(
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
         Message payload,
+        bool relocationReplay,
         CancellationToken cancellationToken)
     {
         var placement = await state.ExecuteLockedAsync(
@@ -167,7 +180,19 @@ internal sealed class ZLinkActorDispatchRouter(
             return placement.Prune;
         }
 
-        await placement.Activation.SubmitActorAsync(actor, state, header, payload, cancellationToken)
+        var replayAdmission = relocationReplay
+            ? ZLinkSpotRelocationReplayScope.Current
+            : null;
+        if (relocationReplay && replayAdmission is null)
+            throw new InvalidOperationException(
+                "SPOT Actor relocation replay has no target admission.");
+        await placement.Activation.SubmitActorAsync(
+                actor,
+                state,
+                header,
+                payload,
+                replayAdmission,
+                cancellationToken)
             .ConfigureAwait(false);
         return placement.Prune;
     }
@@ -177,6 +202,7 @@ internal sealed class ZLinkActorDispatchRouter(
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
         Message payload,
+        bool relocationReplay,
         CancellationToken cancellationToken)
     {
         var placement = await state.ExecuteLockedAsync(
@@ -184,13 +210,22 @@ internal sealed class ZLinkActorDispatchRouter(
             cancellationToken).ConfigureAwait(false);
 
         if (placement.Activation is not null)
+        {
+            var replayAdmission = relocationReplay
+                ? ZLinkSpotRelocationReplayScope.Current
+                : null;
+            if (relocationReplay && replayAdmission is null)
+                throw new InvalidOperationException(
+                    "SPOT Actor relocation replay has no target admission.");
             return await placement.Activation.SubmitActorForReplyAsync(
                     actor,
                     state,
                     header,
                     payload,
+                    replayAdmission,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
 
         var entryResult = await runtime.TrySubmitEntrySpotActorForReplyAsync(
                 actor,
@@ -198,6 +233,7 @@ internal sealed class ZLinkActorDispatchRouter(
                 header,
                 payload,
                 callerOwnsDispatchTurn: true,
+                relocationReplay: false,
                 cancellationToken)
             .ConfigureAwait(false);
         if (entryResult.Handled)
@@ -212,7 +248,7 @@ internal sealed class ZLinkActorDispatchRouter(
         }
 
         var error = new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound,
+            ZLinkFrameworkErrorKind.NotFound,
             $"No Spot actor request handler is registered for '{header.Name}'.");
         ReportMissingHandler(
             actor,

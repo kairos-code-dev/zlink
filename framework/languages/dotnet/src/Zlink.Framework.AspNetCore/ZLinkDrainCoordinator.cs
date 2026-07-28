@@ -17,13 +17,6 @@ internal enum ZLinkDrainState
     ForceStopping = 3
 }
 
-internal sealed record ZLinkDrainEvent(
-    DateTimeOffset Timestamp,
-    ZLinkDrainState State) : IZLinkRuntimeEvent
-{
-    public string SourceName => "drain";
-}
-
 internal enum ZLinkDrainForceReason
 {
     DeadlineExceeded = 0,
@@ -66,6 +59,10 @@ internal sealed class ZLinkDrainBlockedException(
 
 internal interface IZLinkDrainExecutor
 {
+    void RequestShutdown(TimeSpan deadline)
+    {
+    }
+
     ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
         TimeSpan deadline,
         CancellationToken deadlineToken);
@@ -122,7 +119,6 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
 
     private readonly ZLinkDrainAdmissionGate _admission;
     private readonly IZLinkDrainExecutor _executor;
-    private readonly IZLinkRuntimeEventPublisher? _events;
     private readonly Func<bool> _flowCaptureEnabled;
     private readonly ILogger<ZLinkDrainCoordinator>? _logger;
     private readonly object _gate = new();
@@ -135,14 +131,12 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
 
     public ZLinkDrainCoordinator(
         ZLinkDrainAdmissionGate admission,
-    IZLinkDrainExecutor executor,
-    IZLinkRuntimeEventPublisher? events,
-    Func<bool>? flowCaptureEnabled = null,
-    ILogger<ZLinkDrainCoordinator>? logger = null)
+        IZLinkDrainExecutor executor,
+        Func<bool>? flowCaptureEnabled = null,
+        ILogger<ZLinkDrainCoordinator>? logger = null)
     {
         _admission = admission;
         _executor = executor;
-        _events = events;
         _flowCaptureEnabled = flowCaptureEnabled ?? AlwaysDisabled;
         _logger = logger;
         _metricRegistration = ZLinkRuntimeMetrics.RegisterDrainState(
@@ -150,6 +144,15 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
     }
 
     public bool IsReady => !_admission.IsDraining;
+
+    internal void RequestShutdown(TimeSpan deadline)
+    {
+        if (deadline <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(deadline));
+        _admission.BeginDrain();
+        Volatile.Write(ref _state, "draining");
+        _executor.RequestShutdown(deadline);
+    }
 
     public ValueTask<ZLinkDrainResult> DrainAsync(
         CancellationToken cancellationToken = default) =>
@@ -322,7 +325,14 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
 
         if (result is DrainBlocked)
         {
-            Volatile.Write(ref _state, "serving");
+            Volatile.Write(
+                ref _state,
+                result is DrainBlocked
+                {
+                    Reason: ZLinkFrameworkRelocationReason.ShutdownRequested
+                }
+                    ? "draining"
+                    : "serving");
             lock (_gate)
                 _operation = null;
             ZLinkRuntimeMetrics.CompleteDrain(metricStarted, "blocked");
@@ -414,11 +424,10 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
 
     private ValueTask PublishStateAsync(ZLinkDrainState state)
     {
-        return _events is null
-            ? ValueTask.CompletedTask
-            : _events.PublishAsync(
-                new ZLinkDrainEvent(DateTimeOffset.UtcNow, state),
-                CancellationToken.None);
+        _logger?.LogInformation(
+            "ZLink host lifecycle changed. state={State}",
+            state);
+        return ValueTask.CompletedTask;
     }
 
     private static bool AlwaysDisabled() => false;

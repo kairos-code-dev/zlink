@@ -9,14 +9,14 @@ internal static class TdB4YieldTimerInterleaveScenario
     {
         var spot = await context.SpotAsync();
         var requestId = ExecutionTurnScenarioContext.NewId("TD-B4");
-        context.SendSpot(new TimerStartMsg(requestId, requestId, "fast", 40, 0), spot);
+        await context.SendSpotAsync(new TimerStartMsg(requestId, requestId, "fast", 40, 0), spot);
         await context.EvidenceAsync(requestId, "timer-started");
-        context.SendSpot(new AwaitMsg(requestId, 300, "TD-B4", "yield"), spot);
+        await context.SendSpotAsync(new AwaitMsg(requestId, 300, "TD-B4", "yield"), spot);
         await context.EvidenceAsync(requestId, "yield-released");
         await context.EvidenceAsync(requestId, "yield-completed");
         var evidence = await context.EvidenceAsync(requestId, "timer-fast-completed");
         EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
             ["yield-released", "timer-fast-started", "timer-fast-completed", "yield-resumed"]);
-        context.SendSpot(new TimerStopMsg(requestId), spot);
+        await context.SendSpotAsync(new TimerStopMsg(requestId), spot);
     }
 }

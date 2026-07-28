@@ -30,6 +30,12 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
         // Framework-owned service descriptors.
     }
 
+    default void setObjectRole(
+        systems.zlink.framework.locations.ZLinkMeshNodeObjectRole role) {
+        // Optional for alternate backends that do not publish Framework
+        // service admission descriptors.
+    }
+
     default long maxMessageSize() {
         return 0;
     }

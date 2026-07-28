@@ -3,7 +3,7 @@
 # 5. Request Body
 
 body 소스는 **상호 배타**다. `Body`, `BodyStream`, `Form`, `Multipart` 중 하나만 쓸 수
-있고 둘 이상 지정하면 `RequestProtocolError`로 실패한다.
+있고 둘 이상 지정하면 `ProtocolError`로 실패한다.
 
 ## typed JSON DTO
 
@@ -13,8 +13,9 @@ await client.Post("/games")
     .Async<CreateGameRes>();
 ```
 
-`Body<T>(dto)`는 DTO를 Web 기본값(`JsonSerializerDefaults.Web`)으로 직렬화하고
-`content-type: application/json`을 설정한다.
+별도 codec extension을 등록하지 않으면 `Body<T>(dto)`는 DTO를 Web 기본값
+(`JsonSerializerDefaults.Web`)으로 직렬화하고 `content-type: application/json`을
+설정한다. Message 타입마다 codec을 등록할 필요는 없다.
 
 ## raw body
 

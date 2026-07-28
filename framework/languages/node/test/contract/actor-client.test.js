@@ -52,6 +52,9 @@ function actorLocation(actorId = 'actor-1', generation = 1n, meshName = 'play-me
     spotGeneration: 1n,
     membershipEpoch: 1n,
     ownerId: 'owner-a',
+    ownerLeaseGeneration: 3n,
+    authorityOwnerGeneration: 4n,
+    authorityStoreVersion: 'store-version-1',
     updatedAt: new Date()
   };
 }
@@ -110,6 +113,28 @@ test('actor client submit completes without exposing an admission result', async
     return true;
   });
   assert.equal(sends.length, 1);
+});
+
+test('actor client rejects an incomplete authority fence before transport submission', async () => {
+  let sends = 0;
+  const client = new framework.DefaultZLinkActorClient({
+    nodeProvider: () => ({
+      sendToActor() {
+        sends += 1;
+        return 0;
+      }
+    }),
+    locationResolver: () => createResolver(({ actorId }) => ({
+      ...actorLocation(actorId),
+      ownerLeaseGeneration: 0n
+    }))
+  });
+
+  await assert.rejects(
+    () => client.sendToActor('actor-1', new ActorNotify('ping')).submit(),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+  );
+  assert.equal(sends, 0);
 });
 
 test('actor client selects the MeshNode and completion table from the current Actor authority', async () => {

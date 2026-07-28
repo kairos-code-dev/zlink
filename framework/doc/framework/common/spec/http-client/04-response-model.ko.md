@@ -10,7 +10,7 @@
 | typed | `submit<T>()` | `HttpResponse<T>` | 전송 실패 + **status ≥ 400** + 디코드 실패 |
 | 다운로드 | `download(sink)` | `RawHttpResponse`(body 빈 값) | 전송 실패. status는 raw와 동일 취급 |
 
-- typed 제출의 status ≥ 400은 `requestFailed`로 보고한다. 현행 계약에서는
+- typed 제출의 status ≥ 400은 `InternalFailure`로 보고한다. 현행 계약에서는
   이때 응답 body가 노출되지 않는다 — 에러 페이로드가 필요하면 `submitRaw()`를
   쓴다(개정 후보 [R1](10-revision-candidates.ko.md)).
 - 완료 값을 동기로 언래핑하는 public terminator는 두지 않는다. typed response의 body만
@@ -43,6 +43,6 @@
 
 ## 4.5 typed 디코드
 
-- JSON 디코드 실패는 `payloadDecodeFailed`.
+- JSON 디코드 실패는 `ProtocolError`.
 - node는 prototype-pollution 방어로 `__proto__`/`constructor`/`prototype`
   키를 제거한다(언어 고유 보안 규칙, 계약 위반 아님).

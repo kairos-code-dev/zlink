@@ -18,6 +18,7 @@ using Zlink.Framework.Contracts.Eventing;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace ResilienceLifecycle.Server.Consumer;
 
@@ -41,15 +42,14 @@ internal static class ConsumerHostFactory
         });
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton<ConnectionEvidence>();
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, "consumer-flow.log"),
+            "consumer"));
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint)
-                .SetKeyPrefix(options.RedisKeyPrefix)));
-            framework.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, "consumer-flow.log"))
-                .TraceLabel("consumer");
+            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; }));
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             JoinConsumerMesh(framework, "consumer");
         });
         // Mesh peers replace the 9.x socket monitor as the connection-evidence
@@ -82,32 +82,31 @@ internal static class ConsumerHostFactory
             var elapsed = Stopwatch.StartNew();
             while (true)
             {
-                var peers = await query.ListMeshNodeDescriptorsAsync(ResilienceLifecycleNames.Channel);
-                var matches = peers
-                    .Where(peer => peer.Rid == RoutingId.From(request.RoutingId)
+                var peers = await query.ListTopologyAsync(
+                    new ZLinkLocationTopologyFilter(ResilienceLifecycleNames.Channel));
+                var matches = peers.Items
+                    .Where(peer => peer.NodeRid == RoutingId.From(request.RoutingId)
                                    && (request.ExpectedWeight is null
-                                       || (peer.ChannelWeights.TryGetValue(peer.MeshName, out var weight)
-                                           ? weight : 0) == request.ExpectedWeight)
+                                       || request.ExpectedWeight == 0)
                                    && (request.ExpectedDraining is null
                                        || peer.Draining == request.ExpectedDraining))
                     .ToArray();
-                var readyRids = meshRuntime.Snapshot(ResilienceLifecycleNames.Channel).Peers
-                    .Where(static peer => peer.Ready)
-                    .Select(static peer => peer.Rid.ToString())
+                var readyRids = meshRuntime.GetStatus(ResilienceLifecycleNames.Channel).Peers
+                    .Where(static peer => peer.State == ZLinkPeerState.Ready)
+                    .Select(static peer => peer.NodeRid.ToString())
                     .ToHashSet(StringComparer.Ordinal);
                 var satisfied = request.ExpectedCount == 0
                     ? matches.Length == 0
                     : matches.Length >= request.ExpectedCount
-                      && matches.All(peer => readyRids.Contains(peer.Rid.ToString()));
+                      && matches.All(peer => readyRids.Contains(peer.NodeRid.ToString()));
                 if (satisfied)
                     return Results.Ok(matches
                         .Select(peer => new TopologyEntryRes(
-                            peer.Rid.ToString(),
+                            peer.NodeRid.ToString(),
                             peer.Endpoint,
-                            "Ready",
-                            (uint)(peer.ChannelWeights.TryGetValue(peer.MeshName, out var weight)
-                                ? weight : 0),
-                            (long)peer.LifecycleGeneration,
+                            peer.State.ToString(),
+                            0,
+                            peer.UpdatedAt.UtcTicks,
                             peer.Draining))
                         .ToArray());
 
@@ -134,7 +133,7 @@ internal static class ConsumerHostFactory
             try
             {
                 var reply = await channel.RequestToChannel(
-                        ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel, request)
+                        ResilienceLifecycleNames.Channel, request)
                     .Timeout(TimeSpan.FromMilliseconds(milliseconds))
                     .Async<ProfileRes>();
                 return Results.Ok(reply);
@@ -152,7 +151,7 @@ internal static class ConsumerHostFactory
             try
             {
                 var reply = await channel.RequestToChannel(
-                        ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel, request)
+                        ResilienceLifecycleNames.Channel, request)
                     .Timeout(TimeSpan.FromMilliseconds(milliseconds))
                     .Async<ProfileRes>();
                 return new ProfileAttemptRes(reply, null, false);
@@ -163,7 +162,7 @@ internal static class ConsumerHostFactory
             }
             catch (ZLinkFrameworkException error)
             {
-                return new ProfileAttemptRes(null, error.Kind.ToString(), error.IsRetriable);
+                return new ProfileAttemptRes(null, error.Kind.ToString(), error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry);
             }
         });
         app.MapPost("/profile/request/missing", async (
@@ -173,7 +172,6 @@ internal static class ConsumerHostFactory
             try
             {
                 var reply = await channel.RequestToChannel(
-                        ResilienceLifecycleNames.Channel,
                         ResilienceLifecycleNames.Channel,
                         new MissingProfileReq(request.Value, request.Marker))
                     .Timeout(TimeSpan.FromSeconds(3))
@@ -191,8 +189,8 @@ internal static class ConsumerHostFactory
             CancellationToken cancellationToken) =>
         {
             await channel.SendToChannel(
-                    ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel, command)
-                .SubmitAsync(cancellationToken);
+                    ResilienceLifecycleNames.Channel, command)
+                .Async(cancellationToken);
             return Results.Ok(new { status = "sent" });
         });
         return app;
@@ -206,14 +204,14 @@ internal static class ConsumerHostFactory
         var mesh = framework.AddRouteMesh(ResilienceLifecycleNames.Channel)
             .Listen("tcp://127.0.0.1:0")
             .SetRoutingIdPrefix(ridPrefix);
-        mesh.ChannelName(ResilienceLifecycleNames.ConsumerChannel);
+        mesh.Channel(ResilienceLifecycleNames.Channel).Client();
     }
 
     static async Task<ProfileRes> RequestProfileAsync(
         IZLinkRouteClient channel,
         ProfileReq request)
         => await channel.RequestToChannel(
-                        ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel, request)
+                        ResilienceLifecycleNames.Channel, request)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<ProfileRes>();
 }
@@ -334,23 +332,23 @@ internal sealed class MeshConnectionObserverService(
         {
             try
             {
-                var snapshot = meshRuntime.Snapshot(ResilienceLifecycleNames.Channel);
-                // Core reuses the peer entry (and its dialed-endpoint label)
-                // across same-RID lifetime replacements; the descriptor row
-                // carries the endpoint the peer currently advertises.
-                var rows = await query.ListMeshNodeDescriptorsAsync(
-                    ResilienceLifecycleNames.Channel, stoppingToken);
-                var advertised = rows.ToDictionary(
-                    static row => row.Rid.ToString(),
+                var snapshot = meshRuntime.GetStatus(ResilienceLifecycleNames.Channel);
+                // The topology query carries the endpoint currently
+                // advertised for each Ready peer.
+                var rows = await query.ListTopologyAsync(
+                    new ZLinkLocationTopologyFilter(ResilienceLifecycleNames.Channel),
+                    cancellationToken: stoppingToken);
+                var advertised = rows.Items.ToDictionary(
+                    static row => row.NodeRid.ToString(),
                     static row => row.Endpoint,
                     StringComparer.Ordinal);
                 var current = snapshot.Peers
-                    .Where(static peer => peer.Ready)
+                    .Where(static peer => peer.State == ZLinkPeerState.Ready)
                     .ToDictionary(
-                        static peer => peer.Rid.ToString(),
-                        peer => advertised.TryGetValue(peer.Rid.ToString(), out var endpoint)
+                        static peer => peer.NodeRid.ToString(),
+                        peer => advertised.TryGetValue(peer.NodeRid.ToString(), out var endpoint)
                             ? endpoint
-                            : peer.Endpoint,
+                            : string.Empty,
                         StringComparer.Ordinal);
                 foreach (var (rid, endpoint) in current)
                     if (!ready.TryGetValue(rid, out var previousEndpoint))

@@ -42,7 +42,7 @@ internal static class ZLinkUnawaitedSubmit
                 var reason = exception switch
                 {
                     TimeoutException => "backpressure",
-                    ZLinkFrameworkException { Kind: ZLinkFrameworkErrorKind.RouteNotConnected } => "stale-route",
+                    ZLinkFrameworkException { Kind: ZLinkFrameworkErrorKind.Unavailable } => "stale-route",
                     _ => null
                 };
                 if (reason is not null)

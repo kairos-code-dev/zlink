@@ -1,12 +1,14 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/mesh/route_mesh_runtime_service.hpp"
+#include "runtime/mesh/route_mesh_connection_policy.hpp"
 
 #include <zlink/framework/contracts/errors/error.hpp>
 
 #include <algorithm>
 #include <condition_variable>
 #include <deque>
+#include <set>
 #include <thread>
 #include <utility>
 
@@ -375,11 +377,39 @@ route_mesh_runtime_service_t::snapshot (std::string mesh_name) const
     const auto descriptor =
       hub->node->native_node ().transport ().topology ().local_descriptor ();
     const auto peers = hub->node->native_node ().transport ().topology ().peers ();
+    const auto not_required_peers =
+      hub->node->native_node ().transport ().topology ().not_required_peers ();
     const auto mapped_state = map_state (status.state);
+
+    std::vector<mesh_node_descriptor_t> location_descriptors;
+    if (_state->location_store != nullptr) {
+        try {
+            location_page_request_t page;
+            for (;;) {
+                auto listed =
+                  _state->location_store->list_mesh_nodes (mesh_name, page);
+                const auto &result = listed.result ();
+                if (!result)
+                    break;
+                const auto &value = result.value ();
+                location_descriptors.insert (
+                  location_descriptors.end (),
+                  value.items.begin (), value.items.end ());
+                if (!value.continuation_token)
+                    break;
+                page.continuation_token = value.continuation_token;
+            }
+        }
+        catch (...) {
+        }
+    }
 
     std::vector<mesh_peer_snapshot_t> peer_snapshots;
     std::map<std::string, std::uint64_t> ready_remote_members;
-    peer_snapshots.reserve (peers.size ());
+    std::set<std::string> classified_peer_ids;
+    peer_snapshots.reserve (
+      peers.size () + not_required_peers.size ()
+      + location_descriptors.size ());
     for (const auto &peer : peers) {
         std::vector<std::string> channel_names;
         for (const auto &channel : peer.descriptor.channels) {
@@ -388,6 +418,9 @@ route_mesh_runtime_service_t::snapshot (std::string mesh_name) const
                 ++ready_remote_members[channel.name];
         }
         std::sort (channel_names.begin (), channel_names.end ());
+        classified_peer_ids.insert (
+          zlink::routing_id_t::from (
+            peer.descriptor.node_routing_id).to_hex ());
         peer_snapshots.push_back (mesh_peer_snapshot_t{
           .rid = zlink::routing_id_t::from (peer.descriptor.node_routing_id),
           .lifecycle_generation = peer.descriptor.lifecycle_generation,
@@ -401,6 +434,79 @@ route_mesh_runtime_service_t::snapshot (std::string mesh_name) const
               : "serving",
           .channel_names = std::move (channel_names),
           .last_failure = std::nullopt});
+    }
+    for (const auto &peer : not_required_peers) {
+        std::vector<std::string> channel_names;
+        for (const auto &channel : peer.channels)
+            channel_names.push_back (channel.name);
+        const auto rid =
+          zlink::routing_id_t::from (peer.node_routing_id);
+        if (!classified_peer_ids.insert (rid.to_hex ()).second)
+            continue;
+        peer_snapshots.push_back (mesh_peer_snapshot_t{
+          .rid = rid,
+          .lifecycle_generation = peer.lifecycle_generation,
+          .descriptor_revision = peer.descriptor_revision,
+          .endpoint = peer.advertised_endpoint,
+          .admission_state = "not_required",
+          .ready = false,
+          .drain_state = "serving",
+          .channel_names = std::move (channel_names),
+          .last_failure = std::nullopt});
+    }
+
+    const auto local_location = std::find_if (
+      location_descriptors.begin (), location_descriptors.end (),
+      [&status] (const mesh_node_descriptor_t &candidate) {
+          return candidate.rid == status.routing_id ()
+                 && candidate.lifecycle_generation
+                      == status.lifecycle_generation ();
+      });
+    const auto local_role =
+      local_location != location_descriptors.end ()
+        ? local_location->object_role
+        : descriptor.object_role == mesh::service_object_role_t::client
+            ? object_role_t::client
+            : descriptor.object_role == mesh::service_object_role_t::server
+                ? object_role_t::server
+                : object_role_t::none;
+    const auto local_channels =
+      local_location != location_descriptors.end ()
+        ? local_location->channel_weights
+        : hub->node->channel_weights ();
+    for (const auto &remote : location_descriptors) {
+        if (remote.rid == status.routing_id ()
+            || remote.state == framework_runtime_state_t::relocated
+            || remote.state == framework_runtime_state_t::stopped
+            || remote.state == framework_runtime_state_t::error
+            || !classified_peer_ids.insert (
+                 remote.rid.to_hex ()).second)
+            continue;
+        const auto not_required =
+          mesh::route_mesh_connection_not_required (
+            local_role, !local_channels.empty (),
+            remote.object_role, !remote.channel_weights.empty ());
+        std::vector<std::string> channel_names;
+        channel_names.reserve (remote.channel_weights.size ());
+        for (const auto &[channel_name, _] : remote.channel_weights)
+            channel_names.push_back (channel_name);
+        peer_snapshots.push_back (mesh_peer_snapshot_t{
+          .rid = remote.rid,
+          .lifecycle_generation = remote.lifecycle_generation,
+          .descriptor_revision = remote.descriptor_revision,
+          .endpoint = remote.endpoint,
+          .admission_state =
+            not_required ? "not_required" : "not_connected",
+          .ready = false,
+          .drain_state =
+            remote.state == framework_runtime_state_t::draining
+              ? "draining"
+              : "serving",
+          .channel_names = std::move (channel_names),
+          .last_failure =
+            not_required
+              ? std::nullopt
+              : std::optional<std::string> ("no_ready_peer")});
     }
 
     std::vector<mesh_channel_snapshot_t> channels;
@@ -439,43 +545,19 @@ route_mesh_runtime_service_t::snapshot (std::string mesh_name) const
     placement.lifecycle_generation = status.lifecycle_generation ();
     placement.descriptor_revision = descriptor.descriptor_revision;
     placement.endpoint = status.local_endpoint ();
-    placement.object_role = object_role_t::server;
+    placement.object_role =
+      descriptor.object_role == mesh::service_object_role_t::client
+        ? object_role_t::client
+        : descriptor.object_role == mesh::service_object_role_t::server
+            ? object_role_t::server
+            : object_role_t::none;
     placement.placement_weight = hub->node->placement_weight ();
     placement.capacity.actors.limit = hub->node->actor_limit ();
     placement.capacity.spots.limit = hub->node->spot_limit ();
     placement.activation_concurrency.limit =
       hub->node->activation_concurrency_limit ();
-    if (_state->location_store != nullptr) {
-        try {
-            location_page_request_t page;
-            for (;;) {
-                auto listed =
-                  _state->location_store->list_mesh_nodes (mesh_name, page);
-                const auto &result = listed.result ();
-                if (!result)
-                    break;
-                const auto &value = result.value ();
-                const auto found = std::find_if (
-                  value.items.begin (), value.items.end (),
-                  [&status] (const mesh_node_descriptor_t &candidate) {
-                      return candidate.rid == status.routing_id ()
-                             && candidate.lifecycle_generation
-                                  == status.lifecycle_generation ();
-                  });
-                if (found != value.items.end ()) {
-                    placement = *found;
-                    break;
-                }
-                if (!value.continuation_token)
-                    break;
-                page.continuation_token = value.continuation_token;
-            }
-        }
-        catch (...) {
-            // Monitoring keeps the last locally known limits when the
-            // authoritative descriptor cannot be read.
-        }
-    }
+    if (local_location != location_descriptors.end ())
+        placement = *local_location;
 
     return mesh_node_snapshot_t{
       .mesh_name = std::move (mesh_name),

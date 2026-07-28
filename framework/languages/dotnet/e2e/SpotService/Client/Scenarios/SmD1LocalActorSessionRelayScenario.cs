@@ -24,7 +24,7 @@ internal static class SmD1LocalActorSessionRelayScenario
             MaxReceivedMessages = 1024
         });
         await bound.Connect.Async();
-        await bound.Request(new AuthReq("actor-sm-d1", "local relay", "play-a"))
+        await bound.Request(new AuthReq("actor-sm-d1", "local relay"))
             .PacketName("AuthReq").Async<AuthRes>();
         var pushed = bound.WaitFor<ActorPushNotify>().Async().AsTask();
         var reply = await bound.Request(new ActorPushReq("push-local"))

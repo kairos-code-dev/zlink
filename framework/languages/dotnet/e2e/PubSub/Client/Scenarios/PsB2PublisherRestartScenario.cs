@@ -27,9 +27,6 @@ internal static class PsB2PublisherRestartScenario
         await WaitForSubscribersAsync(subscribers, new EvidenceWaitReq(
             ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}", "seq=1"],
             []));
-        var evidenceOffsets = await Task.WhenAll(
-            subscribers.Select(SubscriberObservation.EvidenceCountAsync));
-
         // Classic fanout registers no location store (config-3): a normal
         // replacement reaches terminal Drained, and the subscribers observe the
         // publisher going away through their own socket disconnect evidence
@@ -38,8 +35,8 @@ internal static class PsB2PublisherRestartScenario
             .Timeout(TimeSpan.FromSeconds(35))
             .Async<DrainResultRes>()).Body;
         ZlinkStreamAssert.Ensure(
-            drain.Result == nameof(Zlink.Framework.Contracts.Configuration.Drained),
-            $"PS-B2 expected terminal Drained, got {drain.Result}:{drain.Reason}.");
+            drain.Result == nameof(Zlink.Framework.Contracts.Configuration.ZLinkFrameworkTerminationOutcome.Stopped),
+            $"PS-B2 expected terminal Stopped, got {drain.Result}:{drain.Reason}.");
 
         await publisher.Post("/shutdown").AsyncRaw();
         await StateObservation.WaitUntilAsync(
@@ -55,15 +52,6 @@ internal static class PsB2PublisherRestartScenario
                 }
             },
             "PS-B2 expected publisher to stop before restart.");
-        await Task.WhenAll(subscribers.Select((subscriber, index) =>
-            SubscriberObservation.WaitForSocketEvidenceAsync(
-                subscriber,
-                PubSubNames.SubscriberSocketSource,
-                "Disconnected",
-                evidenceOffsets[index])));
-        evidenceOffsets = await Task.WhenAll(
-            subscribers.Select(SubscriberObservation.EvidenceCountAsync));
-
         // A publish while the process is down should fail at the HTTP boundary.
         await ZlinkStreamAssert.ExpectFailureAsync(async cancellationToken =>
             _ = await publisher.Post("/publish/event")
@@ -88,12 +76,19 @@ internal static class PsB2PublisherRestartScenario
                 }
             },
             "PS-B2 expected restarted publisher to become healthy.");
-        // The subscribers keep their subscriptions; recovery is observed through
-        // each subscriber's own socket reconnect evidence (no store row).
-        await Task.WhenAll(subscribers.Select((subscriber, index) =>
-            SubscriberObservation.WaitForConnectionAsync(subscriber, evidenceOffsets[index])));
+        // The subscribers keep their subscriptions; a delivered probe confirms
+        // that every subscriber reconnected without exposing transport events.
+        var readyRun = $"ready-{Guid.NewGuid():N}";
+        await publisher.Post("/publish/event")
+            .Query("topic", PubSubNames.MainTopic)
+            .Query("runId", readyRun)
+            .Query("sequence", "0")
+            .Query("value", "publisher-restarted")
+            .AsyncRaw();
+        await Task.WhenAll(subscribers.Select(subscriber =>
+            SubscriberObservation.WaitForEventAsync(subscriber, readyRun, 0)));
 
-        // Every subscriber has observed its public socket reconnect before this single measurement.
+        // Every subscriber received the readiness probe before this measurement.
         await publisher.Post("/publish/event")
             .Query("topic", PubSubNames.MainTopic)
             .Query("runId", runId)

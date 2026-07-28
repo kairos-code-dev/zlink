@@ -180,6 +180,120 @@ internal sealed class UserSpotActorWorkloadSendHandler(EvidenceStore evidence)
     }
 }
 
+[ZLinkSpotActorRequestHandler(nameof(RelocationWorkloadRequest))]
+internal sealed class PayloadUserSpotActorWorkloadRequestHandler(
+    EvidenceStore evidence)
+    : IZLinkSpotActorRequestHandler<
+        RelocationPayloadUserSpot,
+        TransferActor,
+        RelocationWorkloadRequest,
+        RelocationWorkloadReply>
+{
+    public ValueTask<RelocationWorkloadReply> HandleAsync(
+        RelocationPayloadUserSpot spot,
+        TransferActor actor,
+        IZLinkMessageContext context,
+        RelocationWorkloadRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(RelocationWorkloadHandlers.Reply(
+            actor.ActorId,
+            spot.Context.NodeRid.ToString(),
+            actor.Context.ObjectGeneration,
+            request,
+            evidence,
+            context.Metadata.Find(
+                RelocationWorkloadMetadata.OperationId),
+            context.CorrelationId));
+    }
+}
+
+[ZLinkSpotActorSendHandler(nameof(RelocationWorkloadPacket))]
+internal sealed class PayloadUserSpotActorWorkloadSendHandler(
+    EvidenceStore evidence)
+    : IZLinkSpotActorSendHandler<
+        RelocationPayloadUserSpot,
+        TransferActor,
+        RelocationWorkloadPacket>
+{
+    public ValueTask HandleAsync(
+        RelocationPayloadUserSpot spot,
+        TransferActor actor,
+        IZLinkMessageContext context,
+        RelocationWorkloadPacket message,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        RelocationWorkloadHandlers.Accept(
+            actor.ActorId,
+            spot.Context.NodeRid.ToString(),
+            actor.Context.ObjectGeneration,
+            message,
+            evidence,
+            context.Metadata.Find(
+                RelocationWorkloadMetadata.OperationId));
+        return ValueTask.CompletedTask;
+    }
+}
+
+[ZLinkSpotActorRequestHandler(nameof(RelocationWorkloadRequest))]
+internal sealed class PerActorUserSpotActorWorkloadRequestHandler(
+    EvidenceStore evidence)
+    : IZLinkSpotActorRequestHandler<
+        RelocationPayloadPerActorUserSpot,
+        TransferActor,
+        RelocationWorkloadRequest,
+        RelocationWorkloadReply>
+{
+    public ValueTask<RelocationWorkloadReply> HandleAsync(
+        RelocationPayloadPerActorUserSpot spot,
+        TransferActor actor,
+        IZLinkMessageContext context,
+        RelocationWorkloadRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(RelocationWorkloadHandlers.Reply(
+            actor.ActorId,
+            spot.Context.NodeRid.ToString(),
+            actor.Context.ObjectGeneration,
+            request,
+            evidence,
+            context.Metadata.Find(
+                RelocationWorkloadMetadata.OperationId),
+            context.CorrelationId));
+    }
+}
+
+[ZLinkSpotActorSendHandler(nameof(RelocationWorkloadPacket))]
+internal sealed class PerActorUserSpotActorWorkloadSendHandler(
+    EvidenceStore evidence)
+    : IZLinkSpotActorSendHandler<
+        RelocationPayloadPerActorUserSpot,
+        TransferActor,
+        RelocationWorkloadPacket>
+{
+    public ValueTask HandleAsync(
+        RelocationPayloadPerActorUserSpot spot,
+        TransferActor actor,
+        IZLinkMessageContext context,
+        RelocationWorkloadPacket message,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        RelocationWorkloadHandlers.Accept(
+            actor.ActorId,
+            spot.Context.NodeRid.ToString(),
+            actor.Context.ObjectGeneration,
+            message,
+            evidence,
+            context.Metadata.Find(
+                RelocationWorkloadMetadata.OperationId));
+        return ValueTask.CompletedTask;
+    }
+}
+
 internal abstract class SpotWorkloadHandler
 {
     protected SpotWorkloadHandler(EvidenceStore evidence) => Evidence = evidence;
@@ -219,6 +333,55 @@ internal sealed class PayloadUserSpotWorkloadSendHandler(EvidenceStore evidence)
 {
     public ValueTask HandleAsync(
         RelocationPayloadUserSpot spot,
+        RelocationWorkloadPacket message,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        RelocationWorkloadHandlers.Accept(
+            spot.Context.SpotId,
+            spot.Context.NodeRid.ToString(),
+            spot.Context.ObjectGeneration,
+            message,
+            Evidence,
+            observedOperationId: null);
+        return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class PayloadPerActorUserSpotWorkloadRequestHandler(
+    EvidenceStore evidence)
+    : SpotWorkloadHandler(evidence),
+        IZLinkSpotRequestHandler<
+            RelocationPayloadPerActorUserSpot,
+            RelocationWorkloadRequest,
+            RelocationWorkloadReply>
+{
+    public ValueTask<RelocationWorkloadReply> HandleAsync(
+        RelocationPayloadPerActorUserSpot spot,
+        RelocationWorkloadRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(RelocationWorkloadHandlers.Reply(
+            spot.Context.SpotId,
+            spot.Context.NodeRid.ToString(),
+            spot.Context.ObjectGeneration,
+            request,
+            Evidence,
+            observedOperationId: null,
+            correlationId: null));
+    }
+}
+
+internal sealed class PayloadPerActorUserSpotWorkloadSendHandler(
+    EvidenceStore evidence)
+    : SpotWorkloadHandler(evidence),
+        IZLinkSpotPacketHandler<
+            RelocationPayloadPerActorUserSpot,
+            RelocationWorkloadPacket>
+{
+    public ValueTask HandleAsync(
+        RelocationPayloadPerActorUserSpot spot,
         RelocationWorkloadPacket message,
         CancellationToken cancellationToken)
     {

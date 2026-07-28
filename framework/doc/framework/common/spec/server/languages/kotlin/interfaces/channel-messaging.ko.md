@@ -130,15 +130,14 @@ public inline fun <reified T> ZLinkMessage.decode(): T
 `ZLinkKotlinRequestCall.yield()`는 Java `yield(...)`의 coroutine bridge일 뿐 임의 suspension을 Yield로
 바꾸지 않는다.
 `SPOT_WIDE` User Spot 또는 Instance Spot application handler가 아니면 coroutine을 suspend하거나 underlying
-operation을 제출하기 전에 `InvalidConfiguration`으로 완료한다. Node direct request, Entry·`PER_ACTOR`,
+operation을 제출하기 전에 `InvalidOperation`으로 완료한다. Node direct request, Entry·`PER_ACTOR`,
 Channel handler와 owner context 밖에도 같은 규칙을 적용한다. 현재 Spot gate가 필요한 target을 기다리는
 일반 `await()`도 submission 전에 거부한다. One-way wrapper는 FIFO queue admission을 유지하고 handler를
 inline 또는 reentrant하게 호출하지 않는다.
 
-Queue가 가득 차면 send timeout까지 기다린다. Timeout, cancellation, route 단절과 runtime 종료는 exception으로
-완료하며 runtime 종료 kind는 `RuntimeShutdown=36`이다. Target 부재는 operation별 기존 not-found kind를
-사용한다. Actor는 `ActorRouteNotFound`, Spot은 `SpotRouteNotFound`, Mesh는 `MeshNotFound`, request는
-`RequestTargetNotFound`, bound session과 Session Actor mapping은 `ActorSessionNotBound`다.
+Queue가 가득 차면 send timeout까지 기다린다. Timeout은 `DeadlineExceeded`, route 단절은
+`Unavailable`, runtime 종료는 `ShuttingDown`으로 완료한다. Target이나 session binding이 없으면
+`NotFound`다. Cancellation이 먼저 확정되면 coroutine cancellation로 완료한다.
 
 Topic을 받는 `publishToTopic(...)`에 내부 liveness용 exact byte `01 5A 4C 46 31`을 전달하면 transport를
 시작하지 않고 Java runtime의 `ZLinkConfigurationException`을 발생시킨다.

@@ -1,15 +1,12 @@
 using Microsoft.Extensions.Configuration;
 
 using Bingo.Server.Configuration;
-using Bingo.Server.Play.Application.RoomAllocation;
-using Bingo.Server.Play.Infrastructure.Redis;
 using Bingo.Server.Play.Infrastructure.ZLink.Actors;
 using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot;
 using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Notifications;
 using Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using StackExchange.Redis;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Codecs.Protobuf;
@@ -39,10 +36,6 @@ public static class PlayServerHostFactory
             traceLabel);
         builder.Services.AddSingleton(configuration);
         builder.Services.AddSingleton(node);
-        builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-            ConnectionMultiplexer.Connect(configuration.RedisEndpoint));
-        builder.Services.AddSingleton<IBingoMatchQueue, RedisBingoMatchQueue>();
-        builder.Services.AddSingleton<BingoRoomAllocator>();
         builder.Services.AddSingleton<BingoRoomEventMapper>();
         builder.Services.AddSingleton<BingoNotificationPublisher>();
         if (enableMetrics) builder.Services.AddBingoMetrics();
@@ -53,16 +46,21 @@ public static class PlayServerHostFactory
             var locations = options.ConfigureLocations();
             locations.RouteCacheMaxAge = TimeSpan.Zero;
             locations.MessageFollowDuration = TimeSpan.FromSeconds(5);
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(configuration.RedisEndpoint)
-                .SetKeyPrefix(configuration.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = configuration.RedisEndpoint;
+                redis.KeyPrefix = configuration.RedisKeyPrefix;
+            }));
+            options.AddRelocationStore(new ZLinkRedisRelocationStore(redis =>
+            {
+                redis.ConnectionString = configuration.RedisEndpoint;
+                redis.KeyPrefix = $"{configuration.RedisKeyPrefix}relocation:";
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(logDirectory, traceLabel))
-                .TraceLabel(traceLabel);
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
-            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+            var mesh = options.AddRouteMesh(SampleNames.PlayMeshName)
                 .SetRoutingIdPrefix("play")
                 .Listen(node.MeshEndpoint);
             mesh.Objects().Server()
@@ -74,17 +72,21 @@ public static class PlayServerHostFactory
                         .Snapshot<PlayerActorRelocationAdapter>())
                 .AddSpotFactory<BingoRoom>(
                     SampleNames.RoomSpotType,
-                    null,
-                    ZLinkRelocationPolicy<BingoRoom>.Disabled);
-            mesh.Channel(SampleNames.ApiChannel).Client();
-            mesh.Channel(SampleNames.PlayChannel).Server()
-                .AddHandlerGroup("play");
+                    new ZLinkUserSpotFactoryOptions
+                    {
+                        ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide,
+                        RelocationReadiness =
+                            ZLinkSpotRelocationReadinessMode.ApplicationSignaled
+                    },
+                    ZLinkRelocationPolicy<BingoRoom>
+                        .Snapshot<BingoRoomRelocationAdapter>());
             mesh.Channel(SampleNames.RoomChannel).Server();
+            options.AddClientServerChannel(SampleNames.ApiChannel).Client();
         });
-        builder.Services.AddSingleton(new BingoRoutingIdReport(
+        builder.Services.AddSingleton(new BingoMeshStatusReport(
             "play",
-            SampleNames.MeshName));
-        builder.Services.AddHostedService<BingoRoutingIdReporter>();
+            SampleNames.PlayMeshName));
+        builder.Services.AddHostedService<BingoMeshStatusReporter>();
         return builder.Build();
     }
 }

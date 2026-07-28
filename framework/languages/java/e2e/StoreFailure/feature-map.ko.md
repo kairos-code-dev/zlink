@@ -51,3 +51,12 @@
 
 `run_e2e.sh all`은 SF-A1부터 SF-E1까지 실행한다. 단일 ID를 전달하면 해당 시나리오만 실행한다.
 `SF-B2`는 남은 단언이 구현되기 전까지 runner의 성공 marker만으로 완료 처리하지 않는다.
+
+## 공통 scenario parity gap — 2026-07-29
+
+다음 공통 scenario에는 Java actual fixture와 runner selector가 없다.
+
+- `SF-B3`, `SF-C3`, `SF-C4`, `SF-C5`
+- `SF-F1`, `SF-F2`, `SF-F3`, `SF-F4`, `SF-F5`, `SF-F6`
+- `SF-F7`, `SF-F8`, `SF-F9`, `SF-F10`, `SF-F11`
+- `SF-G1`, `SF-G2`, `SF-G3`

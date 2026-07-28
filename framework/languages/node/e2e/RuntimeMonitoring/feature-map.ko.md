@@ -20,6 +20,20 @@ Node.js E2E는 public `ZLinkRouteMeshRuntime` snapshot과 typed event를 Config 
 | MON-C1 | 10.0.0 전환 대상 | Monitoring handler 예외가 error marker로 보고된 뒤 같은 Trigger request가 성공한다. | Application gate, 느린 observer와 정상 observer를 함께 열어 claim progress·request completion·coalescing·sequence gap 후 snapshot resync를 단언한다. |
 | MON-D1 | 10.0.0 전환 대상 | 중복 source, 비양수 interval, 없는 Spot·socket source startup 검증과 service 종료·재시작 경로가 있다. | 등록하지 않은 MeshName·0 이하 observer capacity 오류와 비정상 종료·lease 만료·재시작 3회의 sequence·snapshot·event field 제한을 검증한다. |
 
+### Object Client 연결 상태
+
+Node.js runtime은 Object Client pair를 다음과 같이 구분한다.
+
+- 양쪽 모두 Object Client이고 양쪽 모두 RouteMesh Channel Server membership이 없으면
+  peer 상태를 `NotRequired`로 기록한다. ready peer와 liveness 대상에는 포함하지 않는다.
+- 어느 한쪽에 RouteMesh Channel Server membership이 있으면 연결이 필요하다. weight가 `0`이어도
+  membership은 유지되므로 이 규칙은 바뀌지 않는다.
+- 연결이 필요한데 ready connection이 없으면 `NotConnected`이며 `NotRequired`로 바꾸지 않는다.
+
+Automatic discovery와 Manual handshake는 같은 내부 판정을 사용한다. Focused test는 planner,
+reason `4` admission, ready peer와 liveness 제외를 검증했다. Config 1 `RM-A3` actual-process
+scenario는 아직 실행하지 않았으므로 MON-A2 완료 증거로 사용하지 않는다.
+
 ## 실행 증거
 
 - 전체 runner 로그: `framework/languages/node/e2e/RuntimeMonitoring/logs/20260703-220339-17357/`

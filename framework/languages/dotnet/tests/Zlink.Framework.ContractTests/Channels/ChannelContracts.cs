@@ -76,6 +76,16 @@ public sealed class ChannelContracts
     }
 
     [Fact]
+    public async Task Fanout_client_uses_the_event_packet_name_when_topic_is_omitted()
+    {
+        var publisher = new ExampleFanoutPublisher();
+
+        await publisher.Publish("events", new RoomEvent("opened")).Async();
+
+        Assert.Equal(("events", nameof(RoomEvent)), publisher.LastPublish);
+    }
+
+    [Fact]
     [ContractExample(
         typeof(IZLinkRouteClient),
         typeof(IZLinkSendCall),
@@ -183,6 +193,11 @@ public sealed class ChannelContracts
     private sealed class ExampleFanoutPublisher : IZLinkFanoutClient
     {
         public (string ChannelName, string Topic) LastPublish { get; private set; }
+
+        public IZLinkFanoutPublishCall Publish<TEvent>(
+            string channelName,
+            TEvent message) =>
+            Publish(channelName, typeof(TEvent).Name, message);
 
         public IZLinkFanoutPublishCall Publish<TEvent>(
             string channelName,

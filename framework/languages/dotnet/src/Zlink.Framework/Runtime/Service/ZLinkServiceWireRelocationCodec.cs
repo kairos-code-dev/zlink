@@ -37,6 +37,7 @@ internal static partial class ZLinkServiceWireCodec
         RelocationWireId RelocationId,
         RelocationCoordinatorFence Coordinator,
         MeshOperationId OperationId,
+        ulong ReplyRouteId,
         RequestSourceFence RequestSource,
         byte Status);
 
@@ -141,7 +142,9 @@ internal static partial class ZLinkServiceWireCodec
 
     internal static byte[] EncodeReplyRelayAck(ReplyRelayAckRecord record)
     {
-        if (record.RelocationId.IsEmpty || record.Status is not (1 or 2))
+        if (record.RelocationId.IsEmpty
+            || record.ReplyRouteId == 0
+            || record.Status is not (1 or 2))
             throw new ArgumentOutOfRangeException(nameof(record));
         ValidateCoordinator(record.Coordinator);
         ValidateOperation(record.OperationId);
@@ -153,6 +156,7 @@ internal static partial class ZLinkServiceWireCodec
         WriteCoordinator(body, record.Coordinator);
         body.U64(record.OperationId.High);
         body.U64(record.OperationId.Low);
+        body.U64(record.ReplyRouteId);
         WriteRequestSource(body, record.RequestSource);
         body.U8(record.Status);
         var result = Prefix(
@@ -185,6 +189,7 @@ internal static partial class ZLinkServiceWireCodec
         if (!TryRelocationId(ref reader, out var relocation)
             || !TryCoordinator(ref reader, out var coordinator)
             || !TryOperation(ref reader, out var operation)
+            || !reader.TryU64(out var replyRouteId) || replyRouteId == 0
             || !TryRequestSource(ref reader, out var requestSource)
             || !reader.TryU8(out var status)
             || status is not (1 or 2))
@@ -198,6 +203,7 @@ internal static partial class ZLinkServiceWireCodec
             relocation,
             coordinator,
             operation,
+            replyRouteId,
             requestSource,
             status);
         error = DecodeError.None;

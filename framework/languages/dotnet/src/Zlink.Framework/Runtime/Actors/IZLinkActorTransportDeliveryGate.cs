@@ -9,6 +9,11 @@ internal interface IZLinkActorTransportDeliveryGate
     ValueTask WaitAsync(
         ZLinkActorTransportDelivery delivery,
         CancellationToken cancellationToken);
+
+    SubmitResult? OverrideReplyAdmission(
+        string actorId,
+        ulong requestId,
+        ulong deadlineUnixMs);
 }
 
 internal readonly record struct ZLinkActorTransportDelivery(

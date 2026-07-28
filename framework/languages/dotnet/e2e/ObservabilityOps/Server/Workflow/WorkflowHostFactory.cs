@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.Extensions.Configuration;
 
 using ObservabilityOps.Server.Support;
@@ -15,6 +14,7 @@ using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace ObservabilityOps.Server.Workflow;
 
@@ -39,38 +39,63 @@ internal static class WorkflowHostFactory
         builder.Services.AddSingleton<WorkflowStateStore>();
         builder.Services.AddSingleton<WorkflowEvidenceStore>();
         builder.Services.AddSingleton<MetricEvidenceCollector>();
-        builder.Services.AddSingleton<DrainOperation>();
-        builder.Services.AddSingleton<StaleSpotHandleProbe>();
-        var locationStore = new ZLinkRedisLocationStore(redis => redis
-            .SetConnectionString(options.RedisEndpoint).SetKeyPrefix(options.RedisKeyPrefix));
+        builder.Services.AddSingleton<RelocationOperation>();
+        builder.Services.AddSingleton<ShutdownOperation>();
+        builder.Services.AddSingleton<StaleSpotIdProbe>();
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"flow-{options.Rid}.log"),
+            options.Rid));
+        var locationStore = new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; });
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.AddLocationStore(locationStore);
             var locations = framework.ConfigureLocations();
             locations.OwnerLeaseRenewInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
             locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
-            framework.ConfigureDispatch().MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
-                .TraceLabel(options.Rid);
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             framework.AddHandlersFromAssemblyOf(typeof(WorkflowHostFactory));
             var mesh16 = framework.AddRouteMesh(ObservabilityNames.WorkflowMesh)
                 .Listen(options.RouterEndpoint)
-                .SetRoutingId(RoutingId.From(options.Rid));
+                .SetPlacementWeight(100)
+                .SetActorLimit(64)
+                .SetSpotLimit(64)
+                .SetActivationConcurrency(16);
             mesh16.Objects().Server()
                 .AddSpotFactory<WorkflowSpot>(
                     WorkflowSpotType,
-                    null,
+                    new ZLinkUserSpotFactoryOptions { StableTypeLimit = 64 },
                     ZLinkRelocationPolicy<WorkflowSpot>.Disabled)
                 .AddSpotFactory<ProjectionSpot>(
                     ProjectionSpotType,
-                    null,
+                    new ZLinkUserSpotFactoryOptions { StableTypeLimit = 64 },
                     ZLinkRelocationPolicy<ProjectionSpot>.Disabled);
-            mesh16.ChannelName(ObservabilityNames.WorkflowMesh);
+            mesh16.Channel(ObservabilityNames.WorkflowMesh).Client();
         });
 
         var app = builder.Build();
         _ = app.Services.GetRequiredService<MetricEvidenceCollector>();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Rid }));
+        app.MapGet("/identity", async (
+            IZLinkLocationRuntimeQuery locations,
+            CancellationToken cancellationToken) =>
+        {
+            var topology = await locations.ListTopologyAsync(
+                new ZLinkLocationTopologyFilter(
+                    ObservabilityNames.WorkflowMesh),
+                cancellationToken: cancellationToken);
+            var local = topology.Items.SingleOrDefault(row =>
+                string.Equals(
+                    row.Endpoint,
+                    options.RouterEndpoint,
+                    StringComparison.Ordinal));
+            return local is null
+                ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable)
+                : Results.Ok(new NodeIdentityRes(
+                    options.Rid,
+                    local.NodeRid.ToString()));
+        });
+        app.MapDiagnosticsControl();
         app.MapPost("/workflows", async (CreateWorkflowReq request, IZLinkSpotManager spots,
             CancellationToken cancellationToken) =>
         {
@@ -83,90 +108,104 @@ internal static class WorkflowHostFactory
                 .Request(request)
                 .Async(cancellationToken);
             return Results.Ok(new CreateWorkflowRes(
-                created.Spot.SpotId, options.Rid, 0, "created"));
+                created.Spot.SpotId,
+                created.Spot.NodeRid.ToString(),
+                0,
+                "created"));
         });
         app.MapPost("/workflows/{workflowRid}/advance", async (string workflowRid,
-            AdvanceWorkflowReq request, IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes,
+            AdvanceWorkflowReq request, IZLinkSpotClient routes,
             CancellationToken cancellationToken) =>
         {
-            var handle = await resolver.ResolveSpotHandleAsync(
-                ObservabilityNames.WorkflowMesh,
-                workflowRid,
-                cancellationToken)
-                ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
-            var response = await routes.RequestToSpot(handle, request).Async<AdvanceWorkflowRes>(cancellationToken);
+            var response = await routes.RequestToSpot(workflowRid, request)
+                .Async<AdvanceWorkflowRes>(cancellationToken);
             return Results.Ok(response);
         });
         app.MapGet("/workflows/{workflowRid}/state", async (string workflowRid,
-            IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes, CancellationToken cancellationToken) =>
+            IZLinkSpotClient routes, CancellationToken cancellationToken) =>
         {
-            var handle = await resolver.ResolveSpotHandleAsync(
-                ObservabilityNames.WorkflowMesh,
-                workflowRid,
-                cancellationToken)
-                ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
-            var response = await routes.RequestToSpot(handle, new ReadWorkflowReq())
+            var response = await routes.RequestToSpot(workflowRid, new ReadWorkflowReq())
                 .Async<ReadWorkflowRes>(cancellationToken);
             return Results.Ok(response);
         });
         app.MapPost("/workflows/{workflowRid}/signal", async (string workflowRid,
-            WorkflowSignalReq request, IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes,
+            WorkflowSignalReq request, IZLinkSpotClient routes,
             CancellationToken cancellationToken) =>
         {
-            var handle = await resolver.ResolveSpotHandleAsync(
-                ObservabilityNames.WorkflowMesh,
-                workflowRid,
-                cancellationToken)
-                ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
-            var submit = await routes.SendToSpot(handle, request).SubmitAsync(cancellationToken);
-            return Results.Ok(new
-            {
-                submitted = submit.Status
-            });
-        });
-        app.MapPost("/workflows/{workflowRid}/stale-handle/capture", async (string workflowRid,
-            IZLinkSpotHandleResolver resolver, StaleSpotHandleProbe probe,
-            CancellationToken cancellationToken) =>
-        {
-            var handle = await resolver.ResolveSpotHandleAsync(
-                ObservabilityNames.WorkflowMesh,
-                workflowRid,
-                cancellationToken)
-                ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
-            probe.Capture(handle);
+            await routes.SendToSpot(workflowRid, request).Async(cancellationToken);
             return Results.Ok();
         });
-        app.MapPost("/stale-handle/execute", async (StaleSpotHandleProbe probe,
+        app.MapPost("/workflows/{workflowRid}/diagnostics-probe/{phase}",
+            async (
+                string workflowRid,
+                string phase,
+                IZLinkSpotClient routes,
+                CancellationToken cancellationToken) =>
+            {
+                var marker = $"diagnostics-{phase}";
+                var response = phase switch
+                {
+                    "before" => await routes
+                        .RequestToSpot(
+                            workflowRid,
+                            new DiagnosticsBeforeReq(marker))
+                        .Async<DiagnosticsProbeRes>(cancellationToken),
+                    "off" => await routes
+                        .RequestToSpot(
+                            workflowRid,
+                            new DiagnosticsOffReq(marker))
+                        .Async<DiagnosticsProbeRes>(cancellationToken),
+                    "errors" => await routes
+                        .RequestToSpot(
+                            workflowRid,
+                            new DiagnosticsErrorsReq(marker))
+                        .Async<DiagnosticsProbeRes>(cancellationToken),
+                    "after" => await routes
+                        .RequestToSpot(
+                            workflowRid,
+                            new DiagnosticsAfterReq(marker))
+                        .Async<DiagnosticsProbeRes>(cancellationToken),
+                    _ => throw new ArgumentOutOfRangeException(nameof(phase))
+                };
+                return Results.Ok(response);
+            });
+        app.MapPost("/workflows/{workflowRid}/stale-spot-id/capture", async (string workflowRid,
+            IZLinkSpotManager spots, StaleSpotIdProbe probe,
+            CancellationToken cancellationToken) =>
+        {
+            var spot = await spots.FindAsync(workflowRid, cancellationToken)
+                ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
+            probe.Capture(spot.SpotId);
+            return Results.Ok();
+        });
+        app.MapPost("/stale-spot-id/execute", async (StaleSpotIdProbe probe,
             IZLinkSpotClient routes, CancellationToken cancellationToken) =>
             Results.Ok(await probe.ExecuteAsync(routes, cancellationToken)));
         app.MapPost("/workflows/{workflowRid}/publish", async (string workflowRid,
-            PublishProjectionReq request, IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes,
+            PublishProjectionReq request, IZLinkSpotClient routes,
             CancellationToken cancellationToken) =>
         {
-            var handle = await resolver.ResolveSpotHandleAsync(
-                ObservabilityNames.WorkflowMesh,
-                workflowRid,
-                cancellationToken)
-                ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
-            var response = await routes.RequestToSpot(handle, request).Async<PublishProjectionRes>(cancellationToken);
+            var response = await routes.RequestToSpot(workflowRid, request)
+                .Async<PublishProjectionRes>(cancellationToken);
             return Results.Ok(response);
         });
-        app.MapGet("/evidence", async (IZLinkDrainControl drain, IZLinkLocationRuntimeQuery locations,
-            WorkflowEvidenceStore evidence, MetricEvidenceCollector metrics, string? spotRid) =>
+        app.MapGet("/evidence", async (
+            IZLinkFrameworkRuntime runtime,
+            IZLinkLocationRuntimeQuery locations,
+            IZLinkSpotManager spots,
+            WorkflowEvidenceStore evidence,
+            MetricEvidenceCollector metrics,
+            string? spotRid) =>
         {
-            // Spot rows are resolve-only store records in 10.0.0: the
-            // operational surface enumerates MeshNode descriptors only. The
-            // evidence endpoint must stay observable through a store outage
-            // (OBS-B3 pauses Redis and reads the lease-lateness metrics), so
-            // a failing row read degrades to an empty peer list.
-            IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor> peers;
+            // The evidence endpoint uses only the public topology and Spot
+            // resolver surfaces. It must still answer while Redis is paused.
+            IReadOnlyList<ZLinkLocationTopologyEntry> peers;
             try
             {
-                // Evidence must answer fast even while the store is paused
-                // (OBS-B3 polls the lease metrics through the outage); the
-                // row listing is auxiliary, so it gets a short bound.
-                peers = await locations.ListMeshNodeDescriptorsAsync(ObservabilityNames.WorkflowMesh)
-                    .AsTask().WaitAsync(TimeSpan.FromMilliseconds(500));
+                peers = (await locations.ListTopologyAsync(
+                            new ZLinkLocationTopologyFilter(ObservabilityNames.WorkflowMesh))
+                        .AsTask().WaitAsync(TimeSpan.FromMilliseconds(500)))
+                    .Items;
             }
             catch (Exception)
             {
@@ -177,17 +216,17 @@ internal static class WorkflowHostFactory
             {
                 try
                 {
-                    if (await locationStore.ReadAuthorityAsync(SpotAuthorityKey(spotRid))
+                    if (await spots.FindAsync(spotRid)
                             .AsTask().WaitAsync(TimeSpan.FromMilliseconds(500))
-                        is ZLinkAuthorityReadResult.Found { Snapshot: var row })
+                        is { } spot)
                         spotRows =
                         [
                             new SpotRow(
-                                row.Allocation.Descriptor.MeshName,
-                                row.Allocation.Descriptor.Rid.ToString(),
-                                spotRid,
-                                row.Allocation.ObjectKind.ToString(),
-                                checked((long)row.ObjectGeneration))
+                                spot.MeshName,
+                                spot.NodeRid.ToString(),
+                                spot.SpotId,
+                                "spot",
+                                checked((long)spot.ObjectGeneration))
                         ];
                 }
                 catch (Exception)
@@ -196,9 +235,9 @@ internal static class WorkflowHostFactory
                 }
             }
 
-            return Results.Ok(new EvidenceSnapshot(options.Rid, drain.IsReady, evidence.Snapshot(),
-                metrics.Snapshot(), peers.Select(row => new PeerRow(row.Rid.ToString(),
-                    row.Draining, (long)row.LifecycleGeneration)).ToArray(), [],
+            return Results.Ok(new EvidenceSnapshot(options.Rid, runtime.Status.IsReady, evidence.Snapshot(),
+                metrics.Snapshot(), peers.Select(row => new PeerRow(row.NodeRid.ToString(),
+                    row.Draining, row.UpdatedAt.UtcTicks)).ToArray(), [],
                 spotRows));
         });
         app.MapPost("/evidence/wait", async (EvidenceWaitReq request, WorkflowEvidenceStore evidence,
@@ -213,7 +252,7 @@ internal static class WorkflowHostFactory
             samples => MetricWait.Matches(samples, request),
             TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000)),
             cancellationToken)));
-        app.MapDrainOperations();
+        app.MapMaintenanceOperations();
         return app;
     }
 
@@ -222,20 +261,4 @@ internal static class WorkflowHostFactory
         && request.ContainsAnyGroups.All(group => group.Any(expected =>
             entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal))));
 
-    private static ZLinkAuthorityKey SpotAuthorityKey(string spotId)
-    {
-        var bytes = new UTF8Encoding(false, true).GetBytes(spotId);
-        var builder = new StringBuilder($"zla1:s:{bytes.Length}:");
-        foreach (var item in bytes)
-        {
-            if (item is >= (byte)'A' and <= (byte)'Z'
-                or >= (byte)'a' and <= (byte)'z'
-                or >= (byte)'0' and <= (byte)'9'
-                or (byte)'-' or (byte)'.' or (byte)'_' or (byte)'~')
-                builder.Append((char)item);
-            else
-                builder.Append('%').Append(item.ToString("X2"));
-        }
-        return new ZLinkAuthorityKey(builder.ToString());
-    }
 }

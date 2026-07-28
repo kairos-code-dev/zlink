@@ -58,6 +58,13 @@ export {
   type ZLinkActorHandoffTarget
 } from './actor-handoff';
 export {
+  actorMessageFollowContext,
+  attachActorMessageFollowContext,
+  decodeActorMessageFollowContext,
+  type ZLinkActorMessageFollowContext,
+  type ZLinkActorMessageFollowOwnerFence
+} from './actor-message-follow-context';
+export {
   ZLinkActorRuntimeState,
   toFrameworkActorRef,
   toFrameworkRoutingId,
@@ -73,6 +80,7 @@ export {
 export {
   decodeActorAuthorityIdentity,
   encodeActorAuthorityIdentity,
+  rewriteActorAuthorityRoute,
   publishInitialActorAuthority,
   type ZLinkActorAuthorityIdentity
 } from './actor-authority-publication';
@@ -445,6 +453,14 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
 
   completeRelocationSource(actorId: string): void {
     this.abortRelocationActor(actorId);
+  }
+
+  completeCoreRelocationSource(actorId: string): void {
+    const state = this.states.get(actorId);
+    state?.clearAfterDestroy();
+    this.states.delete(actorId);
+    this.actorMeshNames.delete(actorId);
+    this.relocationStaged.delete(actorId);
   }
 
   async getOrCreateActor(actorId: string, actorType: string, signal?: AbortSignal): Promise<ZLinkActor> {

@@ -26,7 +26,7 @@ internal static class SmD6BoundSessionPushTargetingScenario
                 MaxReceivedMessages = 1024
             });
             await bound.Connect.Async();
-            await bound.Request(new AuthReq("actor-sm-d6", "bound", "play-a"))
+        await bound.Request(new AuthReq("actor-sm-d6", "bound"))
                 .PacketName("AuthReq")
                 .Async<AuthRes>();
 
@@ -43,7 +43,7 @@ internal static class SmD6BoundSessionPushTargetingScenario
                 MaxReceivedMessages = 1024
             });
             await unbound.Connect.Async();
-            await unbound.Request(new AuthReq("actor-sm-d6-shadow", "unbound", "play-b"))
+        await unbound.Request(new AuthReq("actor-sm-d6-shadow", "unbound"))
                 .PacketName("AuthReq")
                 .Async<AuthRes>();
 

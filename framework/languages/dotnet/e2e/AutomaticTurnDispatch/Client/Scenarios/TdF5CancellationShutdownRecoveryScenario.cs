@@ -10,9 +10,9 @@ internal static class TdF5CancellationShutdownRecoveryScenario
         var spotRid = $"await-cancel-{Guid.NewGuid():N}";
         await context.EnsureSpotAsync(spotRid, "play-a");
         var requestId = $"TD-F5-{Guid.NewGuid():N}";
-        context.SendSpot(new AwaitCancelMsg(requestId, 800, 100), spotRid);
+        await context.SendSpotAsync(new AwaitCancelMsg(requestId, 800, 100), spotRid);
         await context.EvidenceAsync(requestId, "cancel-await-completed");
-        context.SendSpot(new ProbeMsg(requestId, "cancel-probe"), spotRid);
+        await context.SendSpotAsync(new ProbeMsg(requestId, "cancel-probe"), spotRid);
         var evidence = await context.EvidenceAsync(requestId, "probe-completed");
         EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
         [

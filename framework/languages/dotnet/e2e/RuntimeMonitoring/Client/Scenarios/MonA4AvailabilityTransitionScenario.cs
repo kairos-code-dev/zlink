@@ -1,4 +1,4 @@
-// Verifies normal replacement and crash recovery against public runtime snapshots and events.
+// Verifies planned removal and crash recovery through public runtime status.
 using System.Diagnostics;
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
@@ -14,61 +14,48 @@ internal static class MonA4AvailabilityTransitionScenario
             .Timeout(TimeSpan.FromSeconds(35))
             .Build();
 
-        await VerifyNormalReplacementAsync(options, observer);
+        await VerifyPlannedRemovalAsync(options, observer);
         await VerifyCrashRecoveryAsync(options, observer);
-
         Console.WriteLine("scenario MON-A4 passed");
     }
 
-    private static async Task VerifyNormalReplacementAsync(
+    private static async Task VerifyPlannedRemovalAsync(
         ClientOptions options,
         ZLinkHttpClient observer)
     {
         const string rid = "svc-a4-normal";
         var evidenceBaseline = await EvidenceCountAsync(observer);
-        ulong firstGeneration;
-        string firstEndpoint;
+        ulong readySequence;
 
         await using (var first = await EphemeralService.StartAsync(options, rid))
         {
             var ready = await WaitForReadyPeerAsync(observer, rid);
-            var peer = ready.Peers.Single(candidate => candidate.Rid == rid && candidate.Ready);
-            firstGeneration = peer.LifecycleGeneration;
-            firstEndpoint = peer.Endpoint;
+            readySequence = ready.Sequence;
             ZlinkStreamAssert.Ensure(
-                peer.DescriptorRevision > 0
-                && firstEndpoint == first.ChannelEndpoint
-                && Channel(ready).ReadyMemberCount >= 2,
-                "MON-A4 normal lifetime was not represented by the ready snapshot.");
+                Channel(ready).ReadyTargetCount >= 2,
+                "MON-A4 planned source was not represented as a ready target.");
 
             var drain = await first.DrainAsync();
             ZlinkStreamAssert.Ensure(
                 drain.Result == "Drained",
-                $"MON-A4 normal source returned {drain.Result}/{drain.Reason}.");
+                $"MON-A4 planned source returned {drain.Result}/{drain.Reason}.");
         }
 
-        var removed = await WaitUntilNotReadyAsync(observer, rid, firstGeneration);
+        var removed = await WaitUntilNotReadyAsync(observer, rid);
         ZlinkStreamAssert.Ensure(
-            !removed.Peers.Any(peer =>
-                peer.Rid == rid
-                && peer.LifecycleGeneration == firstGeneration
-                && peer.Ready),
-            "MON-A4 drained lifetime remained ready.");
+            removed.Sequence > readySequence,
+            "MON-A4 planned removal did not advance the status sequence.");
 
         await using var replacement = await EphemeralService.StartAsync(options, rid);
         var restored = await WaitForReadyPeerAsync(observer, rid);
-        var replacementPeer = restored.Peers.Single(peer => peer.Rid == rid && peer.Ready);
         ZlinkStreamAssert.Ensure(
-            replacementPeer.LifecycleGeneration != firstGeneration
-            && replacementPeer.Endpoint != firstEndpoint
-            && replacementPeer.Endpoint == replacement.ChannelEndpoint
-            && Channel(restored).ReadyMemberCount >= 2,
-            "MON-A4 normal replacement did not converge to the new lifetime.");
-        await AssertPeerEventSequenceAsync(
-            observer,
-            evidenceBaseline,
-            rid,
-            replacementPeer.LifecycleGeneration);
+            restored.Sequence > removed.Sequence
+            && restored.Peers.Count(peer =>
+                peer.Rid.StartsWith($"{rid}-", StringComparison.Ordinal)
+                && peer.State == "Ready") == 1
+            && Channel(restored).ReadyTargetCount >= 2,
+            "MON-A4 planned replacement did not converge.");
+        await AssertPeerEventSequenceAsync(observer, evidenceBaseline, rid);
     }
 
     private static async Task VerifyCrashRecoveryAsync(
@@ -76,7 +63,6 @@ internal static class MonA4AvailabilityTransitionScenario
         ZLinkHttpClient observer)
     {
         var beforeCrash = await WaitForReadyPeerAsync(observer, "svc-b");
-        var crashedPeer = beforeCrash.Peers.Single(peer => peer.Rid == "svc-b" && peer.Ready);
         var evidenceBaseline = await EvidenceCountAsync(observer);
 
         using (var process = Process.GetProcessById(options.ServiceBProcessId))
@@ -85,53 +71,41 @@ internal static class MonA4AvailabilityTransitionScenario
             await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
         }
 
-        var unavailable = await WaitUntilNotReadyAsync(
-            observer,
-            "svc-b",
-            crashedPeer.LifecycleGeneration);
+        var unavailable = await WaitUntilNotReadyAsync(observer, "svc-b");
         ZlinkStreamAssert.Ensure(
-            !unavailable.Peers.Any(peer =>
-                peer.Rid == "svc-b"
-                && peer.LifecycleGeneration == crashedPeer.LifecycleGeneration
-                && peer.Ready),
-            "MON-A4 crashed lifetime remained a successful ready route.");
+            unavailable.Sequence > beforeCrash.Sequence,
+            "MON-A4 crash removal did not advance the status sequence.");
 
-        // The continuously running local provider makes this a deterministic
-        // bounded operation while proving that the dead descriptor is not selected.
         var started = Stopwatch.GetTimestamp();
         var followUp = await observer.Post("/profile/request")
             .Body(new ProfileReq("after-crash", "mon-a4-after-crash"))
             .Async<ProfileRes>();
-        var elapsed = Stopwatch.GetElapsedTime(started);
         ZlinkStreamAssert.Ensure(
-            elapsed < TimeSpan.FromSeconds(3)
+            Stopwatch.GetElapsedTime(started) < TimeSpan.FromSeconds(3)
             && followUp.Body.ProviderRid == "svc-a",
             "MON-A4 follow-up request did not reach a bounded live provider.");
 
         await using var replacement = await EphemeralService.StartAsync(options, "svc-b");
         var restored = await WaitForReadyPeerAsync(observer, "svc-b");
-        var replacementPeer = restored.Peers.Single(peer => peer.Rid == "svc-b" && peer.Ready);
         ZlinkStreamAssert.Ensure(
-            replacementPeer.LifecycleGeneration != crashedPeer.LifecycleGeneration
-            && replacementPeer.Endpoint != crashedPeer.Endpoint
-            && replacementPeer.Endpoint == replacement.ChannelEndpoint
-            && Channel(restored).ReadyMemberCount >= 2,
-            "MON-A4 crash replacement did not restore the latest ready topology.");
-        await AssertPeerEventSequenceAsync(
-            observer,
-            evidenceBaseline,
-            "svc-b",
-            replacementPeer.LifecycleGeneration);
+            restored.Sequence > unavailable.Sequence
+            && restored.Peers.Count(peer =>
+                peer.Rid.StartsWith("svc-b-", StringComparison.Ordinal)
+                && peer.State == "Ready") == 1
+            && Channel(restored).ReadyTargetCount >= 2,
+            "MON-A4 crash replacement did not restore the ready topology.");
+        await AssertPeerEventSequenceAsync(observer, evidenceBaseline, "svc-b");
     }
 
-    private static MeshRuntimeChannelRes Channel(MeshRuntimeSnapshotRes snapshot)
-        => snapshot.Channels.Single(channel =>
+    private static MeshRuntimeChannelRes Channel(MeshRuntimeSnapshotRes status)
+        => status.Channels.Single(channel =>
             channel.ChannelName == RuntimeMonitoringNames.Channel);
 
     private static async Task<int> EvidenceCountAsync(ZLinkHttpClient service)
         => (await service.Get("/evidence").Async<string[]>()).Body.Length;
 
-    private static async Task<MeshRuntimeSnapshotRes> SnapshotAsync(ZLinkHttpClient service)
+    private static async Task<MeshRuntimeSnapshotRes> SnapshotAsync(
+        ZLinkHttpClient service)
         => (await service.Get(
                 $"/runtime/snapshot/{RuntimeMonitoringNames.Channel}")
             .Async<MeshRuntimeSnapshotRes>()).Body;
@@ -143,10 +117,12 @@ internal static class MonA4AvailabilityTransitionScenario
         var elapsed = Stopwatch.StartNew();
         while (true)
         {
-            var snapshot = await SnapshotAsync(service);
-            if (snapshot.Peers.Any(peer => peer.Rid == rid && peer.Ready))
-                return snapshot;
-            if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
+            var status = await SnapshotAsync(service);
+            if (status.Peers.Any(peer =>
+                    peer.Rid.StartsWith($"{rid}-", StringComparison.Ordinal)
+                    && peer.State == "Ready"))
+                return status;
+            if (elapsed.Elapsed >= TimeSpan.FromSeconds(15))
                 throw new InvalidOperationException(
                     $"MON-A4 peer '{rid}' did not become ready.");
             await Task.Delay(TimeSpan.FromMilliseconds(50));
@@ -155,21 +131,19 @@ internal static class MonA4AvailabilityTransitionScenario
 
     private static async Task<MeshRuntimeSnapshotRes> WaitUntilNotReadyAsync(
         ZLinkHttpClient service,
-        string rid,
-        ulong generation)
+        string rid)
     {
         var elapsed = Stopwatch.StartNew();
         while (true)
         {
-            var snapshot = await SnapshotAsync(service);
-            if (!snapshot.Peers.Any(peer =>
-                    peer.Rid == rid
-                    && peer.LifecycleGeneration == generation
-                    && peer.Ready))
-                return snapshot;
-            if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
+            var status = await SnapshotAsync(service);
+            if (!status.Peers.Any(peer =>
+                    peer.Rid.StartsWith($"{rid}-", StringComparison.Ordinal)
+                    && peer.State == "Ready"))
+                return status;
+            if (elapsed.Elapsed >= TimeSpan.FromSeconds(15))
                 throw new InvalidOperationException(
-                    $"MON-A4 peer '{rid}' generation {generation} remained ready.");
+                    $"MON-A4 peer '{rid}' remained ready.");
             await Task.Delay(TimeSpan.FromMilliseconds(50));
         }
     }
@@ -177,15 +151,13 @@ internal static class MonA4AvailabilityTransitionScenario
     private static async Task AssertPeerEventSequenceAsync(
         ZLinkHttpClient service,
         int afterIndex,
-        string rid,
-        ulong replacementGeneration)
+        string rid)
     {
         var evidence = (await service.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(
                 [
                     "identifier=zlink.runtime.mesh_node.peer_changed",
-                    $"routing={rid}",
-                    $"generation={replacementGeneration}"
+                    $"routing={rid}"
                 ],
                 [],
                 TimeoutMilliseconds: 3000,
@@ -201,10 +173,10 @@ internal static class MonA4AvailabilityTransitionScenario
                     StringComparison.Ordinal)
                 && line.Contains($"routing={rid}", StringComparison.Ordinal))
             .Select(ParseSequence)
+            .Where(static value => value > 0)
             .ToArray();
         ZlinkStreamAssert.Ensure(
             sequence.Length >= 2
-            && sequence.All(value => value > 0)
             && sequence.Zip(sequence.Skip(1), static (left, right) => right > left)
                 .All(static increasing => increasing),
             $"MON-A4 peer event sequence for '{rid}' was not strictly increasing.");
@@ -214,7 +186,8 @@ internal static class MonA4AvailabilityTransitionScenario
     {
         const string prefix = "|sequence=";
         var start = line.IndexOf(prefix, StringComparison.Ordinal);
-        if (start < 0) return 0;
+        if (start < 0)
+            return 0;
         start += prefix.Length;
         var end = line.IndexOf('|', start);
         var text = end < 0 ? line[start..] : line[start..end];

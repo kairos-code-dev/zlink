@@ -19,7 +19,7 @@ internal static class SmD4MultipleActorBindingScenario
             MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
-        var bound = await client.Request(new MultiBindReq("actor-sm-d4-x", "actor-sm-d4-y", "play-a"))
+        var bound = await client.Request(new MultiBindReq("actor-sm-d4-x", "actor-sm-d4-y"))
             .PacketName("MultiBindReq").Async<MultiBindRes>();
         ZlinkStreamAssert.Ensure(bound.BoundCount == 2, "SM-D4 expected two bound actors.");
 

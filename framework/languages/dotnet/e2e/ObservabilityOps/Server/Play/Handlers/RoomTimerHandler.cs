@@ -12,7 +12,7 @@ internal sealed class RoomTimerHandler(EvidenceStore evidence) : IZLinkSpotTimer
     public async ValueTask HandleAsync(RoomSpot spot, ZLinkTimerTick tick, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"timer-tick|room={spot.Context.SpotRid}|sequence={tick.DeliveryIndex}");
+        evidence.Add($"timer-tick|room={spot.Context.SpotId}|sequence={tick.DeliveryIndex}");
         if (spot.AutoCloseAfter is { } closeAfter && DateTimeOffset.UtcNow >= closeAfter)
         {
             spot.AutoCloseAfter = null;

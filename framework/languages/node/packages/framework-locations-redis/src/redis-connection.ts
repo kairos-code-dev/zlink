@@ -8,12 +8,13 @@ import type {
 export type RedisCommandValue = string | Buffer;
 export type RedisCommandClient = Pick<
   RedisClientType,
-  'isOpen' | 'connect' | 'sendCommand' | 'quit' | 'on'
+  'isOpen' | 'isReady' | 'connect' | 'sendCommand' | 'quit' | 'on'
 >;
 
 export class RedisConnection {
   private readonly providedClient?: RedisCommandClient;
   private client?: RedisCommandClient;
+  private connectionAttempt?: Promise<void>;
   private disposed = false;
   private readonly operationTimeoutMs?: number;
 
@@ -76,9 +77,32 @@ export class RedisConnection {
     if (this.disposed) throw new Error('Redis Store is disposed.');
     const client = this.providedClient ?? this.client;
     if (client === undefined) throw new Error('Redis Store is disposed.');
-    if (client.isOpen !== true) await client.connect();
+    if (isClientReady(client)) return client;
+    if (this.connectionAttempt === undefined) {
+      if (client.isOpen === true) {
+        throw new Error('Redis client is connecting outside the Store lifecycle.');
+      }
+      const attempt = client.connect().then(() => undefined);
+      this.connectionAttempt = attempt;
+      attempt.then(
+        () => {
+          if (this.connectionAttempt === attempt) this.connectionAttempt = undefined;
+        },
+        () => {
+          if (this.connectionAttempt === attempt) this.connectionAttempt = undefined;
+        }
+      );
+    }
+    await waitForOperation(this.connectionAttempt, signal, this.operationTimeoutMs);
+    if (!isClientReady(client)) {
+      throw new Error('Redis client connection completed before it became ready.');
+    }
     return client;
   }
+}
+
+function isClientReady(client: RedisCommandClient): boolean {
+  return client.isReady === true;
 }
 
 function requireOptions(

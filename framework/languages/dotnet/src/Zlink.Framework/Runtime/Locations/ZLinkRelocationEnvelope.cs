@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Text;
 using System.Security.Cryptography;
@@ -137,7 +138,8 @@ internal static class ZLinkRelocationEnvelopeCodec
     private const uint Magic = 0x5a4c5231; // ZLR1
     private const ushort Version = 2;
     private const int MaxFieldBytes = 64 * 1024 * 1024;
-    private const int MaxParticipants = 1024;
+    private const int MinEncodedParticipantBytes = 38;
+    private const int MinCanonicalStateBytes = 17;
     private const int MaxItemsPerParticipant = 65_536;
 
     internal static byte[] Encode(ZLinkRelocationEnvelope envelope)
@@ -156,7 +158,7 @@ internal static class ZLinkRelocationEnvelopeCodec
         truncated = false;
         try
         {
-            var reader = new CanonicalReader(encoded);
+            var reader = new CanonicalReader(encoded.ToArray());
             ReadCanonicalFrozenRecord(ref reader);
             reader.RequireEnd("relocation frozen record");
             return true;
@@ -487,8 +489,13 @@ internal static class ZLinkRelocationEnvelopeCodec
 
     internal static ZLinkRelocationEnvelope Decode(ReadOnlySpan<byte> encoded)
     {
-        using var stream = new MemoryStream(encoded.ToArray(), writable: false);
-        return Decode(stream);
+        if (encoded.Length < sizeof(uint))
+            throw new InvalidDataException(
+                "The relocation logical stream is truncated.");
+        var bytes = encoded.ToArray();
+        if (BinaryPrimitives.ReadUInt32LittleEndian(encoded) != Magic)
+            return DecodeCanonical(bytes, default);
+        return DecodeVersioned(bytes);
     }
 
     internal static ZLinkRelocationEnvelope Decode(
@@ -496,15 +503,201 @@ internal static class ZLinkRelocationEnvelopeCodec
         ReadOnlyMemory<byte> inventoryDigest = default)
     {
         ArgumentNullException.ThrowIfNull(stream);
-        using var encoded = new MemoryStream();
-        stream.CopyTo(encoded);
-        var bytes = encoded.ToArray();
-        if (bytes.Length < sizeof(uint))
-            throw new InvalidDataException("The relocation logical stream is truncated.");
-        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes) != Magic)
-            return DecodeCanonical(bytes, inventoryDigest);
+        if (!stream.CanSeek)
+        {
+            var memory = ReadNonSeekableOwnedMemory(stream);
+            if (memory.Length < sizeof(uint))
+                throw new InvalidDataException(
+                    "The relocation logical stream is truncated.");
+            if (BinaryPrimitives.ReadUInt32LittleEndian(memory.Span)
+                != Magic)
+                return DecodeCanonical(memory, inventoryDigest);
+            return DecodeVersioned(memory);
+        }
 
-        using var input = new MemoryStream(bytes, writable: false);
+        var start = stream.Position;
+        Span<byte> header = stackalloc byte[sizeof(uint)];
+        try
+        {
+            stream.ReadExactly(header);
+        }
+        catch (EndOfStreamException)
+        {
+            throw new InvalidDataException("The relocation logical stream is truncated.");
+        }
+        finally
+        {
+            stream.Position = start;
+        }
+        if (BinaryPrimitives.ReadUInt32LittleEndian(header) != Magic)
+        {
+            var remaining = stream.Length - start;
+            if (remaining > int.MaxValue)
+                throw new InvalidDataException(
+                    "The canonical relocation logical stream exceeds its decode bound.");
+            var bytes = new byte[checked((int)remaining)];
+            stream.ReadExactly(bytes);
+            return DecodeCanonical(bytes, inventoryDigest);
+        }
+        return DecodeVersioned(stream);
+    }
+
+    private static ReadOnlyMemory<byte> ReadNonSeekableOwnedMemory(
+        Stream stream)
+    {
+        const int segmentBytes = 1024 * 1024;
+        var segments = new List<(byte[] Buffer, int Count)>();
+        long total = 0;
+        try
+        {
+            while (true)
+            {
+                var buffer = ArrayPool<byte>.Shared.Rent(segmentBytes);
+                var count = 0;
+                while (count < buffer.Length)
+                {
+                    var read = stream.Read(
+                        buffer,
+                        count,
+                        buffer.Length - count);
+                    if (read == 0) break;
+                    count += read;
+                }
+                if (count == 0)
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    break;
+                }
+                total = checked(total + count);
+                if (total > int.MaxValue)
+                    throw new InvalidDataException(
+                        "The relocation logical stream exceeds its decode bound.");
+                segments.Add((buffer, count));
+                if (count < buffer.Length) break;
+            }
+
+            var owned = GC.AllocateUninitializedArray<byte>(
+                checked((int)total));
+            var offset = 0;
+            foreach (var segment in segments)
+            {
+                segment.Buffer.AsSpan(0, segment.Count)
+                    .CopyTo(owned.AsSpan(offset));
+                offset += segment.Count;
+            }
+            return owned;
+        }
+        finally
+        {
+            foreach (var segment in segments)
+                ArrayPool<byte>.Shared.Return(segment.Buffer);
+        }
+    }
+
+    private static ZLinkRelocationEnvelope DecodeVersioned(
+        ReadOnlyMemory<byte> encoded)
+    {
+        var reader = new VersionedMemoryReader(encoded);
+        if (reader.ReadUInt32() != Magic || reader.ReadUInt16() != Version)
+            throw new InvalidDataException(
+                "The relocation root header is invalid.");
+        var aggregateId = new Guid(reader.ReadBytes(16).Span);
+        var aggregateGeneration = reader.ReadUInt64();
+        var decodedInventoryDigest = reader.ReadByteField(32);
+        if (decodedInventoryDigest.Length != 32)
+            throw new InvalidDataException(
+                "The relocation inventory digest must contain 32 bytes.");
+        var participantCount = reader.ReadCount(
+            int.MaxValue,
+            "participant");
+        if (participantCount
+            > reader.Remaining / MinEncodedParticipantBytes)
+            throw new InvalidDataException(
+                "The relocation participant count exceeds the remaining payload.");
+        var participants =
+            new ZLinkRelocationParticipantEnvelope[participantCount];
+        for (var participantIndex = 0;
+             participantIndex < participantCount;
+             participantIndex++)
+        {
+            var key = new ZLinkAuthorityKey(reader.ReadString());
+            var objectKind =
+                (ZLinkPlacementObjectKind)reader.ReadByte();
+            if (!Enum.IsDefined(objectKind))
+                throw new InvalidDataException(
+                    "The relocation object kind is invalid.");
+            var objectGeneration = reader.ReadUInt64();
+            var ownerGeneration = reader.ReadUInt64();
+            if (objectGeneration == 0 || ownerGeneration == 0)
+                throw new InvalidDataException(
+                    "Relocation participant generations must be non-zero.");
+            var state = reader.ReadByteField(MaxFieldBytes);
+            var jobs = new ZLinkRelocationQueuedJob[
+                reader.ReadCount(
+                    MaxItemsPerParticipant,
+                    "accepted job")];
+            ulong previousSequence = 0;
+            for (var jobIndex = 0;
+                 jobIndex < jobs.Length;
+                 jobIndex++)
+            {
+                var sequence = reader.ReadUInt64();
+                if (sequence == 0 || sequence <= previousSequence)
+                    throw new InvalidDataException(
+                        "Accepted job sequences must be strictly increasing.");
+                previousSequence = sequence;
+                jobs[jobIndex] = new ZLinkRelocationQueuedJob(
+                    sequence,
+                    reader.ReadByteField(MaxFieldBytes));
+            }
+            var timers = new ZLinkRelocationLogicalTimer[
+                reader.ReadCount(
+                    MaxItemsPerParticipant,
+                    "logical timer")];
+            var timerIds = new HashSet<string>(StringComparer.Ordinal);
+            for (var timerIndex = 0;
+                 timerIndex < timers.Length;
+                 timerIndex++)
+            {
+                var timerId = reader.ReadString();
+                if (!timerIds.Add(timerId))
+                    throw new InvalidDataException(
+                        $"Duplicate logical timer '{timerId}'.");
+                var due = reader.ReadInt64();
+                var period = reader.ReadInt64();
+                if (period < 0)
+                    throw new InvalidDataException(
+                        "A logical timer period cannot be negative.");
+                timers[timerIndex] = new ZLinkRelocationLogicalTimer(
+                    timerId,
+                    due,
+                    period,
+                    reader.ReadByteField(MaxFieldBytes));
+            }
+            participants[participantIndex] =
+                new ZLinkRelocationParticipantEnvelope(
+                    key,
+                    objectKind,
+                    objectGeneration,
+                    ownerGeneration,
+                    state,
+                    jobs,
+                    timers,
+                    reader.ReadByteField(MaxFieldBytes),
+                    reader.ReadByteField(MaxFieldBytes));
+        }
+        reader.RequireEnd("relocation root");
+        var envelope = new ZLinkRelocationEnvelope(
+            aggregateId,
+            aggregateGeneration,
+            decodedInventoryDigest,
+            participants);
+        ValidateEnvelope(envelope);
+        return envelope;
+    }
+
+    private static ZLinkRelocationEnvelope DecodeVersioned(Stream input)
+    {
         using var reader = new BinaryReader(input, Encoding.UTF8, leaveOpen: true);
         if (reader.ReadUInt32() != Magic || reader.ReadUInt16() != Version)
             throw new InvalidDataException("The relocation root header is invalid.");
@@ -514,7 +707,11 @@ internal static class ZLinkRelocationEnvelopeCodec
         if (decodedInventoryDigest.Length != 32)
             throw new InvalidDataException(
                 "The relocation inventory digest must contain 32 bytes.");
-        var participantCount = ReadCount(reader, MaxParticipants, "participant");
+        var participantCount = ReadCount(reader, int.MaxValue, "participant");
+        if (participantCount
+            > (input.Length - input.Position) / MinEncodedParticipantBytes)
+            throw new InvalidDataException(
+                "The relocation participant count exceeds the remaining payload.");
         var participants = new ZLinkRelocationParticipantEnvelope[participantCount];
         for (var participantIndex = 0; participantIndex < participantCount; participantIndex++)
         {
@@ -573,7 +770,7 @@ internal static class ZLinkRelocationEnvelopeCodec
                 ReadBytes(reader, MaxFieldBytes),
                 ReadBytes(reader, MaxFieldBytes));
         }
-        if (input.ReadByte() != -1)
+        if (input.Position != input.Length)
             throw new InvalidDataException(
                 "The relocation root contains trailing bytes.");
 
@@ -590,9 +787,9 @@ internal static class ZLinkRelocationEnvelopeCodec
         ReadOnlyMemory<byte> encoded,
         ReadOnlyMemory<byte> inventoryDigest)
     {
-        var reader = new CanonicalReader(encoded.Span);
+        var reader = new CanonicalReader(encoded);
         var relocationId = reader.ReadBytes(16);
-        if (relocationId.IndexOfAnyExcept((byte)0) < 0)
+        if (relocationId.Span.IndexOfAnyExcept((byte)0) < 0)
             throw new InvalidDataException("The relocation id must not be zero.");
 
         var objectKindValue = reader.ReadByte();
@@ -628,7 +825,8 @@ internal static class ZLinkRelocationEnvelopeCodec
             ReadOnlyMemory<byte> Application,
             ReadOnlyMemory<byte> Recovery)>();
         var stateCount = reader.ReadUInt32();
-        if (stateCount is 0 or > MaxParticipants)
+        if (stateCount == 0
+            || stateCount > reader.Remaining / MinCanonicalStateBytes)
             throw new InvalidDataException(
                 "The relocation application-state count exceeds its bound.");
         ulong previousParticipantId = 0;
@@ -646,10 +844,10 @@ internal static class ZLinkRelocationEnvelopeCodec
             ReadOnlyMemory<byte> state = default;
             ReadOnlyMemory<byte> recovery = default;
             if (stateEncoding is 1 or 2)
-                state = body.ReadBytes(body.ReadUInt64AsInt()).ToArray();
+                state = body.ReadBytes(body.ReadUInt64AsInt());
             if (stateEncoding == 2)
             {
-                recovery = body.ReadBytes(body.ReadUInt64AsInt()).ToArray();
+                recovery = body.ReadBytes(body.ReadUInt64AsInt());
                 _ = ZLinkCanonicalParticipantRecoveryCodec.Decode(recovery.Span);
             }
             body.RequireEnd("relocation application state");
@@ -700,11 +898,7 @@ internal static class ZLinkRelocationEnvelopeCodec
                     .Select(static timer => timer.ToRelocationTimer())
                     .ToArray(),
                 entry.Value.Recovery,
-                CompletionPayload: JoinCanonicalRecords(
-                    completions.GetValueOrDefault(entry.Key, [])
-                        .Select(static completion => completion.RawRecord)
-                        .Select(static record => record.ToArray())
-                        .ToList()))
+                CompletionPayload: ReadOnlyMemory<byte>.Empty)
             {
                 CanonicalParticipantId = entry.Key,
                 AcceptedBoundary = progress[entry.Key].AcceptedBoundary,
@@ -719,14 +913,16 @@ internal static class ZLinkRelocationEnvelopeCodec
             throw new InvalidDataException(
                 "The relocation inventory digest must contain 32 bytes.");
         var result = new ZLinkRelocationEnvelope(
-            new Guid(relocationId, bigEndian: true),
+            new Guid(relocationId.Span, bigEndian: true),
             applicationVersion == 0 ? 1UL : checked((ulong)applicationVersion),
             digest,
             participants)
         {
-            CanonicalLogicalStream = encoded.ToArray(),
-            CanonicalRelocationHigh = BinaryPrimitives.ReadUInt64BigEndian(relocationId),
-            CanonicalRelocationLow = BinaryPrimitives.ReadUInt64BigEndian(relocationId[8..]),
+            CanonicalLogicalStream = encoded,
+            CanonicalRelocationHigh = BinaryPrimitives.ReadUInt64BigEndian(
+                relocationId.Span),
+            CanonicalRelocationLow = BinaryPrimitives.ReadUInt64BigEndian(
+                relocationId.Span[8..]),
             CanonicalApplicationVersion = applicationVersion,
             CanonicalLayout = new ZLinkCanonicalRelocationLayout(
                 replayCursorOffsets,
@@ -808,7 +1004,6 @@ internal static class ZLinkRelocationEnvelopeCodec
         string? previousName = null;
         for (var index = 0; index < count; index++)
         {
-            var start = reader.Position;
             var participantId = reader.ReadUInt64();
             var name = reader.ReadText8();
             var handlerType = reader.ReadText8();
@@ -843,7 +1038,8 @@ internal static class ZLinkRelocationEnvelopeCodec
                     stopOnUnhandledException == 1,
                     lastCompletedDeliveryIndex,
                     lastCompletedScheduledIndex,
-                    reader.CopyRange(start)));
+                    nextScheduledAtUnixMilliseconds:
+                        checked((long)nextScheduledAt)));
         }
         return timers;
     }
@@ -858,7 +1054,6 @@ internal static class ZLinkRelocationEnvelopeCodec
         ulong previousSequence = 0;
         for (var index = 0; index < count; index++)
         {
-            var start = reader.Position;
             var participantId = reader.ReadUInt64();
             var sequence = reader.ReadUInt64();
             var timerName = reader.ReadText8();
@@ -882,7 +1077,6 @@ internal static class ZLinkRelocationEnvelopeCodec
                 throw new InvalidDataException(
                     "The pending relocation timer timestamp is invalid.");
             timer.AppendPendingTick(
-                reader.CopyRange(start),
                 new ZLinkCanonicalPendingTimerTick(
                     sequence,
                     deliveryIndex,
@@ -1300,7 +1494,7 @@ internal static class ZLinkRelocationEnvelopeCodec
         if (reader.ReadByte() > 9 || reader.ReadByte() is < 1 or > 3)
             throw new InvalidDataException("The relocation control discriminator is invalid.");
         var relocationId = reader.ReadBytes(16);
-        if (relocationId.IndexOfAnyExcept((byte)0) < 0)
+        if (relocationId.Span.IndexOfAnyExcept((byte)0) < 0)
             throw new InvalidDataException("The relocation control id is invalid.");
         ReadCanonicalRelocationObject(ref reader);
         if (!IsCanonicalTerminalResult(reader.ReadUInt32()))
@@ -1398,7 +1592,7 @@ internal static class ZLinkRelocationEnvelopeCodec
         var body = new CanonicalReader(reader.ReadBytes(checked((int)reader.ReadUInt32())));
         var packetName = body.ReadText8();
         var contentType = body.ReadText8();
-        var payload = body.ReadBytes(checked((int)body.ReadUInt32())).ToArray();
+        var payload = body.ReadBytes(checked((int)body.ReadUInt32()));
         body.RequireEnd("relocation application payload");
         return new ZLinkCanonicalApplicationPayload(packetName, contentType, payload);
     }
@@ -1434,21 +1628,6 @@ internal static class ZLinkRelocationEnvelopeCodec
     private static bool IsCanonicalTerminalResult(uint value) =>
         value == 0 || value is >= 101 and <= 113;
 
-    private static byte[] JoinCanonicalRecords(IReadOnlyList<byte[]> records)
-    {
-        var length = records.Sum(static record => sizeof(int) + record.Length);
-        var result = new byte[length];
-        var offset = 0;
-        foreach (var record in records)
-        {
-            BinaryPrimitives.WriteInt32BigEndian(result.AsSpan(offset), record.Length);
-            offset += sizeof(int);
-            record.CopyTo(result, offset);
-            offset += record.Length;
-        }
-        return result;
-    }
-
     private sealed class CanonicalTimerProjection(
         string timerId,
         long dueUnixTimeMilliseconds,
@@ -1459,18 +1638,15 @@ internal static class ZLinkRelocationEnvelopeCodec
         bool stopOnUnhandledException,
         ulong lastCompletedDeliveryIndex,
         ulong lastCompletedScheduledIndex,
-        byte[] registration)
+        long nextScheduledAtUnixMilliseconds)
     {
-        private readonly List<byte[]> _records = [registration];
         private ZLinkCanonicalPendingTimerTick? _pendingTick;
 
         internal string TimerId { get; } = timerId;
 
         internal void AppendPendingTick(
-            byte[] tick,
             ZLinkCanonicalPendingTimerTick pendingTick)
         {
-            _records.Add(tick);
             _pendingTick = pendingTick;
         }
 
@@ -1479,7 +1655,7 @@ internal static class ZLinkRelocationEnvelopeCodec
                 TimerId,
                 dueUnixTimeMilliseconds,
                 periodMilliseconds,
-                JoinCanonicalRecords(_records))
+                ReadOnlyMemory<byte>.Empty)
             {
                 PendingAcceptedSequence = _pendingTick?.AcceptedSequence ?? 0,
                 CanonicalTimer = new ZLinkCanonicalLogicalTimer(
@@ -1489,31 +1665,119 @@ internal static class ZLinkRelocationEnvelopeCodec
                     stopOnUnhandledException,
                     lastCompletedDeliveryIndex,
                     lastCompletedScheduledIndex,
-                    dueUnixTimeMilliseconds,
+                    nextScheduledAtUnixMilliseconds,
                     _pendingTick)
             };
     }
 
-    private ref struct CanonicalReader(ReadOnlySpan<byte> source)
+    private ref struct VersionedMemoryReader(
+        ReadOnlyMemory<byte> source)
     {
-        private readonly ReadOnlySpan<byte> _source = source;
+        private readonly ReadOnlyMemory<byte> _source = source;
+        private int _offset;
+
+        internal int Remaining => _source.Length - _offset;
+
+        internal byte ReadByte() => ReadBytes(1).Span[0];
+
+        internal ushort ReadUInt16() =>
+            BinaryPrimitives.ReadUInt16LittleEndian(
+                ReadBytes(sizeof(ushort)).Span);
+
+        internal uint ReadUInt32() =>
+            BinaryPrimitives.ReadUInt32LittleEndian(
+                ReadBytes(sizeof(uint)).Span);
+
+        internal ulong ReadUInt64() =>
+            BinaryPrimitives.ReadUInt64LittleEndian(
+                ReadBytes(sizeof(ulong)).Span);
+
+        internal long ReadInt64() =>
+            BinaryPrimitives.ReadInt64LittleEndian(
+                ReadBytes(sizeof(long)).Span);
+
+        internal int ReadInt32() =>
+            BinaryPrimitives.ReadInt32LittleEndian(
+                ReadBytes(sizeof(int)).Span);
+
+        internal string ReadString()
+        {
+            var size = ReadUInt16();
+            if (size == 0)
+                throw new InvalidDataException(
+                    "A relocation string is empty.");
+            try
+            {
+                return StrictUtf8.GetString(ReadBytes(size).Span);
+            }
+            catch (DecoderFallbackException error)
+            {
+                throw new InvalidDataException(
+                    "A relocation string contains invalid UTF-8.",
+                    error);
+            }
+        }
+
+        internal ReadOnlyMemory<byte> ReadByteField(int maximum)
+        {
+            var size = ReadInt32();
+            if (size < 0 || size > maximum)
+                throw new InvalidDataException(
+                    "A relocation byte field exceeds its bound.");
+            return ReadBytes(size);
+        }
+
+        internal int ReadCount(int maximum, string name)
+        {
+            var count = ReadInt32();
+            if (count < 0 || count > maximum)
+                throw new InvalidDataException(
+                    $"The relocation {name} count exceeds its bound.");
+            return count;
+        }
+
+        internal ReadOnlyMemory<byte> ReadBytes(int length)
+        {
+            if (length < 0 || length > _source.Length - _offset)
+                throw new EndOfStreamException();
+            var value = _source.Slice(_offset, length);
+            _offset += length;
+            return value;
+        }
+
+        internal void RequireEnd(string field)
+        {
+            if (_offset != _source.Length)
+                throw new InvalidDataException(
+                    $"The {field} contains trailing bytes.");
+        }
+    }
+
+    private ref struct CanonicalReader(ReadOnlyMemory<byte> source)
+    {
+        private readonly ReadOnlyMemory<byte> _source = source;
         private int _offset;
 
         internal int Position => _offset;
+        internal int Remaining => _source.Length - _offset;
 
-        internal byte ReadByte() => ReadBytes(1)[0];
+        internal byte ReadByte() => ReadBytes(1).Span[0];
 
         internal ushort ReadUInt16() =>
-            BinaryPrimitives.ReadUInt16BigEndian(ReadBytes(sizeof(ushort)));
+            BinaryPrimitives.ReadUInt16BigEndian(
+                ReadBytes(sizeof(ushort)).Span);
 
         internal uint ReadUInt32() =>
-            BinaryPrimitives.ReadUInt32BigEndian(ReadBytes(sizeof(uint)));
+            BinaryPrimitives.ReadUInt32BigEndian(
+                ReadBytes(sizeof(uint)).Span);
 
         internal ulong ReadUInt64() =>
-            BinaryPrimitives.ReadUInt64BigEndian(ReadBytes(sizeof(ulong)));
+            BinaryPrimitives.ReadUInt64BigEndian(
+                ReadBytes(sizeof(ulong)).Span);
 
         internal long ReadInt64() =>
-            BinaryPrimitives.ReadInt64BigEndian(ReadBytes(sizeof(long)));
+            BinaryPrimitives.ReadInt64BigEndian(
+                ReadBytes(sizeof(long)).Span);
 
         internal int ReadUInt64AsInt()
         {
@@ -1529,7 +1793,7 @@ internal static class ZLinkRelocationEnvelopeCodec
             var length = ReadByte();
             if (length == 0)
                 throw new InvalidDataException("A relocation string is empty.");
-            return DecodeText(ReadBytes(length));
+            return DecodeText(ReadBytes(length).Span);
         }
 
         internal string ReadText16()
@@ -1537,7 +1801,7 @@ internal static class ZLinkRelocationEnvelopeCodec
             var length = ReadUInt16();
             if (length == 0)
                 throw new InvalidDataException("A relocation string is empty.");
-            return DecodeText(ReadBytes(length));
+            return DecodeText(ReadBytes(length).Span);
         }
 
         private static string DecodeText(ReadOnlySpan<byte> encoded)
@@ -1563,14 +1827,14 @@ internal static class ZLinkRelocationEnvelopeCodec
             return checked((int)count);
         }
 
-        internal byte[] CopyRange(int start)
+        internal ReadOnlyMemory<byte> CopyRange(int start)
         {
             if (start < 0 || start > _offset)
                 throw new ArgumentOutOfRangeException(nameof(start));
-            return _source.Slice(start, _offset - start).ToArray();
+            return _source.Slice(start, _offset - start);
         }
 
-        internal ReadOnlySpan<byte> ReadBytes(int length)
+        internal ReadOnlyMemory<byte> ReadBytes(int length)
         {
             if (length < 0 || length > _source.Length - _offset)
                 throw new EndOfStreamException();
@@ -1600,10 +1864,10 @@ internal static class ZLinkRelocationEnvelopeCodec
             throw new ArgumentException(
                 "A relocation inventory digest must contain 32 bytes.",
                 nameof(envelope));
-        if (envelope.Participants.Count is < 1 or > MaxParticipants)
+        if (envelope.Participants.Count < 1)
             throw new ArgumentOutOfRangeException(
                 nameof(envelope),
-                "A relocation aggregate must contain 1 to 1024 participants.");
+                "A relocation aggregate must contain at least one participant.");
 
         var keys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var participant in envelope.Participants)

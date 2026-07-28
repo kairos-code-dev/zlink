@@ -150,57 +150,6 @@ public sealed class FlowCorrelationTests
         Assert.Null(ZLinkFlowContext.Current);
     }
 
-    [Fact]
-    public async Task Connector_outbound_flow_is_the_framework_actor_gateway_inbound_event_identity()
-    {
-        var sender = new ZlinkStreamFrameSender(
-            new ZlinkStreamConnectorOptions
-            {
-                Endpoint = new Uri("tcp://127.0.0.1:1"),
-                Compression = ZlinkStreamCompression.None
-            },
-            new ZlinkStreamHeaderCodec(),
-            null,
-            new SemaphoreSlim(1, 1),
-            static () => null);
-        var outbound = sender.BuildOutboundFrame(
-            ZlinkStreamMessageKind.Send,
-            "connector-to-actor",
-            new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, ReadOnlyMemory<byte>.Empty),
-            ZlinkStreamMetadata.Empty,
-            false,
-            null);
-        var connectorHeader = new ZlinkStreamHeaderCodec().Decode(outbound.HeaderBytes);
-        var frameworkHeader = ZLinkStreamProtocolDefaults.DecodeHeader(outbound.HeaderBytes);
-        var observer = new ReceivedFlowObserver();
-        var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
-        options.SetRuntimeMessageFlowObserver(observer);
-        await using var services = new ServiceCollection().BuildServiceProvider();
-        var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
-        await using var pump = new ZLinkMessageFlowObserverPump(options, services, runner);
-        var dispatcher = new ZLinkSpotActorPacketDispatcher(
-            static () => null,
-            static () => throw new InvalidOperationException("No handler is expected."),
-            new ZLinkDispatchErrorReporter(options, observerPump: pump),
-            ZLinkStandardErrorLogger.Instance);
-        var actor = new FlowActor("actor-1");
-        var state = new ZLinkActorRuntimeState(actor.ActorId);
-        state.BindActorInstance(actor);
-
-        using var body = Message.From(outbound.PayloadBytes.Span);
-        await dispatcher.DispatchAsync(actor, state, frameworkHeader, body, CancellationToken.None);
-        var received = await observer.Received.Task.WaitAsync(TimeSpan.FromSeconds(2));
-
-        Assert.True(ZlinkStreamFlowId.IsValid(connectorHeader.FlowId));
-        Assert.Equal(connectorHeader.FlowId, frameworkHeader.FlowId);
-        Assert.Equal(connectorHeader.FlowId, received.FlowId);
-        Assert.Equal(ZlinkStreamFlowOrigin.Application, connectorHeader.FlowOrigin);
-        Assert.Equal("application", received.FlowOrigin);
-        Assert.Equal(connectorHeader.CorrelationId, received.CorrelationId);
-        await runner.StopAsync();
-    }
-
     private sealed class FlowTimerSpot;
 
     private sealed class FlowTimerHandler : IZLinkSpotTimerHandler<FlowTimerSpot>
@@ -222,18 +171,4 @@ public sealed class FlowCorrelationTests
         }
     }
 
-    private sealed class ReceivedFlowObserver : IZLinkRuntimeMessageFlowObserver
-    {
-        public TaskCompletionSource<ZLinkRuntimeMessageFlowEvent> Received { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public ValueTask OnMessageFlowAsync(
-            ZLinkRuntimeMessageFlowEvent flow,
-            CancellationToken cancellationToken)
-        {
-            if (flow.Phase == "received")
-                Received.TrySetResult(flow);
-            return ValueTask.CompletedTask;
-        }
-    }
 }

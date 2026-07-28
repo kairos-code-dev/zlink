@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
 using Systems.Zlink;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
@@ -15,6 +16,7 @@ namespace SupportChat.Server.Session.Sessions;
 internal sealed class SupportChatSession(
     IZLinkSessionContext context,
     IZLinkRouteClient channels,
+    IZLinkActorManager actors,
     ILogger<SupportChatSession> logger) : IZLinkSession
 {
     private readonly Dictionary<string, IZLinkSessionActor> _conversationActors = new(StringComparer.Ordinal);
@@ -62,7 +64,7 @@ internal sealed class SupportChatSession(
     private async ValueTask AuthenticateAsync(ZLinkMessage payload, CancellationToken cancellationToken)
     {
         var request = payload.Decode<AuthenticateReq>();
-        var authenticated = await channels.RequestToChannel(SampleNames.MeshName, SampleNames.ApiChannel,
+        var authenticated = await channels.RequestToChannel(SampleNames.ApiChannel,
                 new AuthenticateUserReq(request.AccessToken))
             .Async<AuthenticateUserRes>(cancellationToken);
 
@@ -73,16 +75,17 @@ internal sealed class SupportChatSession(
             throw new InvalidOperationException(authenticated.Reason ?? "SupportChat authentication failed.");
 
         // The identity actor's ParticipantId is its own ActorId (customer id or roster id).
-        var ensured = await channels.RequestToChannel(SampleNames.MeshName, SampleNames.SupportChannel,
-                new EnsureSupportUserActorReq(
-                    authenticated.ActorId,
-                    authenticated.DisplayName,
-                    authenticated.Role,
-                    authenticated.ActorId))
-            .Async<EnsureSupportUserActorRes>(cancellationToken);
+        var actor = await GetOrCreateActorAsync(
+            authenticated.ActorId,
+            new SupportUserActorCreateReq(
+                authenticated.ActorId,
+                authenticated.DisplayName,
+                authenticated.Role,
+                authenticated.ActorId),
+            cancellationToken);
 
         _identityActor = await Context.Actors.BindOrGetAsync(
-            ensured.Actor.ToActorRef(),
+            actor,
             cancellationToken);
         _identityActorId = authenticated.ActorId;
         _identityDisplayName = authenticated.DisplayName;
@@ -118,19 +121,26 @@ internal sealed class SupportChatSession(
         // An agent joins each conversation through its own per-conversation actor. Ask
         // the Support server to create it and join it into the ConversationSpot, then
         // bind it onto this session so the agent client receives that room's pushes.
-        var ensured = await channels.RequestToChannel(SampleNames.MeshName, SampleNames.SupportChannel,
-                new EnsureAgentConversationReq(_identityActorId, _identityDisplayName, conversationId))
-            .Async<EnsureAgentConversationRes>(cancellationToken);
+        var conversationActorId = $"{_identityActorId}@{conversationId}";
+        var actor = await GetOrCreateActorAsync(
+            conversationActorId,
+            new SupportUserActorCreateReq(
+                conversationActorId,
+                _identityDisplayName,
+                SupportChatRoles.Agent,
+                _identityActorId),
+            cancellationToken);
 
         _conversationActors[conversationId] = await Context.Actors.BindOrGetAsync(
-            ensured.Actor.ToActorRef(),
+            actor,
+            cancellationToken);
+        await _conversationActors[conversationId].RelayAsync(
+            payload,
             cancellationToken);
         logger.LogInformation(
-            "session: agent joined conversation. roster={RosterActorId}, conversation={ConversationId}",
+            "session: agent conversation join submitted. roster={RosterActorId}, conversation={ConversationId}",
             _identityActorId,
             conversationId);
-        await Context.Client.Reply(new JoinConversationRes(ensured.State))
-            .Async(cancellationToken);
     }
 
     private async ValueTask RelayConversationPacketAsync(
@@ -149,6 +159,26 @@ internal sealed class SupportChatSession(
     {
         return _identityActor
                ?? throw new InvalidOperationException("Client must authenticate before sending conversation packets.");
+    }
+
+    private async ValueTask<ActorRef> GetOrCreateActorAsync(
+        string actorId,
+        SupportUserActorCreateReq createRequest,
+        CancellationToken cancellationToken)
+    {
+        return await actors
+            .GetOrCreate(actorId, SampleNames.SupportActorType)
+            .InMesh(SampleNames.MeshName)
+            .Request(createRequest)
+            .Async(cancellationToken) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            ZLinkActorCreateResult.Rejected => throw new InvalidOperationException(
+                $"Support Actor '{actorId}' creation was rejected."),
+            _ => throw new InvalidOperationException(
+                $"Support Actor '{actorId}' returned an unknown creation result.")
+        };
     }
 
     private static string RequireConversationId(ZLinkSessionDispatchContext dispatch)

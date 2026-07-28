@@ -15,6 +15,7 @@
     <ProjectReference Include="Client\Bingo.Client.csproj" />
     <ProjectReference Include="Server\Api\Bingo.Server.Api.csproj" />
     <ProjectReference Include="Server\Configuration\Bingo.Server.Configuration.csproj" />
+    <ProjectReference Include="Server\Matchmaking\Bingo.Server.Matchmaking.csproj" />
     <ProjectReference Include="Server\Play\Bingo.Server.Play.csproj" />
     <ProjectReference Include="Server\Session\Bingo.Server.Session.csproj" />
   </ItemGroup>

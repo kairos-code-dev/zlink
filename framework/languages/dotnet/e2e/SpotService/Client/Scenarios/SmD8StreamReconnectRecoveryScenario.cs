@@ -14,7 +14,7 @@ internal static class SmD8StreamReconnectRecoveryScenario
 
         await using var first = CreateConnector(sessionAStreamEndpoint);
         await first.Connect.Async();
-        await first.Request(new AuthReq(actorId, "stream reconnect", "play-a"))
+        await first.Request(new AuthReq(actorId, "stream reconnect"))
             .PacketName("AuthReq").Async<AuthRes>();
 
         var pending = first.Request(new SlowActorPingReq("before-disconnect", 1000))
@@ -37,7 +37,7 @@ internal static class SmD8StreamReconnectRecoveryScenario
 
         await using var second = CreateConnector(sessionAStreamEndpoint);
         await second.Connect.Async();
-        await second.Request(new AuthReq(actorId, "stream reconnect", "play-a"))
+        await second.Request(new AuthReq(actorId, "stream reconnect"))
             .PacketName("AuthReq").Async<AuthRes>();
 
         var resumed = await second.Request(new ActorPingReq("after-reconnect"))

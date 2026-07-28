@@ -32,7 +32,7 @@ internal static class FixtureSamples
                 var mesh = options.AddRouteMesh("orders")
                     .Listen("tcp://127.0.0.1:7201")
                     .SetRoutingId(RoutingId.From("doc-orders"));
-                mesh.ChannelName("orders"); // 논리 channel의 handler namespace를 MeshNode에 등록한다.
+                mesh.Channel("orders").Client(); // 논리 channel의 handler namespace를 MeshNode에 등록한다.
                 mesh.PeerConnections.Connect(
                     RoutingId.From("doc-orders"),
                     "tcp://127.0.0.1:7201"); // manual peer도 같은 MeshNode admission을 사용한다.
@@ -56,9 +56,12 @@ internal static class FixtureSamples
         {
             {
                 var mesh = options.AddRouteMesh("game.stage");
-                mesh.ChannelName("game.stage");
+                mesh.Channel("game.stage").Client();
                 mesh.Listen("tcp://127.0.0.1:7302");
-                mesh.AddSpotFactory<FixtureStageSpot>();
+                mesh.Objects().Server().AddSpotFactory<FixtureStageSpot>(
+                    "fixture-stage",
+                    null,
+                    ZLinkRelocationPolicy<FixtureStageSpot>.Recreate);
             }
         });
         return builder;
@@ -94,19 +97,18 @@ internal static class FixtureSamples
                 var mesh = options.AddRouteMesh("orders")
                     .Listen("tcp://127.0.0.1:7603")
                     .SetRoutingId(RoutingId.From("doc-orders"));
-                mesh.ChannelName("orders");
+                mesh.Channel("orders").Client();
             }
 
             {
                 var mesh = options.AddRouteMesh("game.stage");
-                mesh.ChannelName("game.stage");
+                mesh.Channel("game.stage").Client();
                 mesh.Listen("tcp://127.0.0.1:7605");
-                mesh.AddSpotFactory<FixtureStageSpot>();
+                mesh.Objects().Server().AddSpotFactory<FixtureStageSpot>(
+                    "fixture-stage",
+                    null,
+                    ZLinkRelocationPolicy<FixtureStageSpot>.Recreate);
             }
-        });
-        builder.Services.AddZLinkMonitoring(options =>
-        {
-            options.AddMeshNodeEvents("orders");
         });
         return builder;
     }
@@ -125,10 +127,17 @@ internal static class FixtureSamples
 
             {
                 var mesh = options.AddRouteMesh("game.stage");
-                mesh.ChannelName("game.stage");
+                mesh.Channel("game.stage").Client();
                 mesh.Listen("tcp://127.0.0.1:7702");
-                mesh.AddSpotFactory<FixtureActorSpot>();
-                mesh.AddActorFactory<FixtureActorFactory>("hero");
+                mesh.Objects().Server()
+                    .AddSpotFactory<FixtureActorSpot>(
+                        "fixture-actor-spot",
+                        null,
+                        ZLinkRelocationPolicy<FixtureActorSpot>.Recreate)
+                    .AddActorFactory<FixtureActor, FixtureActorFactory>(
+                        "hero",
+                        null,
+                        ZLinkRelocationPolicy<FixtureActor>.Recreate);
             }
         });
         return builder;
@@ -165,7 +174,7 @@ internal sealed class FixtureSpotTimerHandler
     {
         _ = tick;
         await spot.Context.Outbound
-            .Publish("game.stage", "stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
+            .Publish("game.stage", "stage.event", new FixtureSpotEvent(spot.Context.SpotId))
             .Async(cancellationToken);
     }
 }
@@ -274,14 +283,14 @@ internal sealed record FixtureActorJoinRequest(string RoomId);
 
 internal sealed record FixtureActorJoinReply(string RoomId);
 
-internal sealed class FixtureActorFactory : IZLinkActorFactory
+internal sealed class FixtureActorFactory : IZLinkActorFactory<FixtureActor>
 {
-    public ValueTask<IZLinkActor> CreateAsync(
+    public ValueTask<FixtureActor> CreateAsync(
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkActor>(new FixtureActor(context.ActorId, context));
+        return ValueTask.FromResult(new FixtureActor(context.ActorId, context));
     }
 }
 

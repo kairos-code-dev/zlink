@@ -1,72 +1,56 @@
 namespace Zlink.Framework.Contracts.Errors;
 
-public sealed class ZLinkFrameworkException(
-    ZLinkFrameworkErrorKind kind,
-    string message,
-    bool? isRetriable = null,
-    Exception? innerException = null)
-    : Exception(message, innerException)
+public sealed class ZLinkFrameworkException : Exception
 {
-    public ZLinkFrameworkErrorKind Kind { get; } = kind;
-
-    public bool IsRetriable { get; } = isRetriable ?? IsRetriableByDefault(kind);
-
-    private static bool IsRetriableByDefault(ZLinkFrameworkErrorKind kind)
+    internal ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind kind,
+        string message,
+        ZLinkRetryAdvice? retryAdvice = null,
+        Exception? innerException = null)
+        : base(message, innerException)
     {
-        // The public failure contract keeps retry policy with the error
-        // kind so callers do not need per-surface tables. Only connection
-        // readiness and stale location races are useful bounded-retry cases.
-        return kind is ZLinkFrameworkErrorKind.RouteNotConnected
-            or ZLinkFrameworkErrorKind.ActorLocationStale
-            or ZLinkFrameworkErrorKind.ActorMoving
-            or ZLinkFrameworkErrorKind.DeadlineExceeded
-            or ZLinkFrameworkErrorKind.PlacementCapacityExhausted
-            or ZLinkFrameworkErrorKind.SpotMoving
-            or ZLinkFrameworkErrorKind.RelocationTargetUnavailable
-            or ZLinkFrameworkErrorKind.RelocationFailed;
+        Kind = kind;
+        RetryAdvice = retryAdvice ?? DefaultRetryAdvice(kind);
     }
+
+    public ZLinkFrameworkErrorKind Kind { get; }
+
+    public ZLinkRetryAdvice RetryAdvice { get; }
+
+    private static ZLinkRetryAdvice DefaultRetryAdvice(
+        ZLinkFrameworkErrorKind kind) =>
+        kind switch
+        {
+            ZLinkFrameworkErrorKind.Unavailable
+                or ZLinkFrameworkErrorKind.CapacityExceeded
+                or ZLinkFrameworkErrorKind.DeadlineExceeded =>
+                ZLinkRetryAdvice.RetryAfterBackoff,
+            ZLinkFrameworkErrorKind.ShuttingDown =>
+                ZLinkRetryAdvice.RetryAfterStateChange,
+            _ => ZLinkRetryAdvice.DoNotRetry
+        };
 }
 
 public enum ZLinkFrameworkErrorKind
 {
-    ActorRouteNotFound = 0,
-    ActorCreateFailed = 1,
-    ActorAlreadyExists = 2,
-    ActorTypeMismatch = 3,
-    SpotCreateFailed = 4,
-    SpotRouteNotFound = 5,
-    SpotTypeMismatch = 6,
-    ActorSessionNotBound = 7,
-    HandlerNotFound = 8,
-    RouteHandlerNotFound = 9,
-    ActorDispatchHandlerNotFound = 10,
-    PayloadDecodeFailed = 11,
-    RouteNotConnected = 12,
-    RequestTargetNotFound = 13,
-    RequestRejected = 14,
-    RequestProtocolError = 15,
-    RequestFailed = 16,
-    WorkerQueueFull = 17,
-    WorkerTimedOut = 18,
-    WorkerFailed = 19,
-    ActorLocationStale = 20,
-    ActorCreateRejected = 21,
-    ObjectClientNotConfigured = 22,
-    MeshSelectionRequired = 23,
-    MeshNotFound = 24,
-    InvalidConfiguration = 25,
-    AlreadySubmitted = 26,
-    ActorGenerationStale = 27,
-    ActorMoving = 28,
-    DeadlineExceeded = 29,
-    PlacementCapacityExhausted = 30,
-    RoutingIdConflict = 31,
-    SpotGenerationStale = 32,
-    SpotMoving = 33,
-    RelocationDataLost = 34,
-    SpotIdConflict = 35,
-    RuntimeShutdown = 36,
-    RelocationDisabled = 37,
-    RelocationTargetUnavailable = 38,
-    RelocationFailed = 39
+    NotFound = 0,
+    AlreadyExists = 1,
+    TypeMismatch = 2,
+    NotConfigured = 3,
+    Rejected = 4,
+    Unavailable = 5,
+    CapacityExceeded = 6,
+    DeadlineExceeded = 7,
+    ShuttingDown = 8,
+    ProtocolError = 9,
+    InvalidOperation = 10,
+    DataLost = 11,
+    InternalFailure = 12
+}
+
+public enum ZLinkRetryAdvice
+{
+    DoNotRetry = 0,
+    RetryAfterBackoff = 1,
+    RetryAfterStateChange = 2
 }

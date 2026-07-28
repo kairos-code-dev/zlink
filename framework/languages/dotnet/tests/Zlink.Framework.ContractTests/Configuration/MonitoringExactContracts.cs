@@ -11,9 +11,8 @@ public sealed class MonitoringExactContracts
         Assert.Equal(
             new string[]
             {
-                "IsReady",
+                "GetStatus",
                 "ObserveAsync",
-                "Snapshot"
             },
             typeof(IZLinkClientServerRuntime)
                 .GetMethods()
@@ -28,91 +27,61 @@ public sealed class MonitoringExactContracts
                     parameter.Name,
                     "meshName"));
         Assert.Equal(
-            typeof(ValueTask),
-            typeof(IZLinkRuntimeMessageFlowObserver)
-                .GetMethod(nameof(
-                    IZLinkRuntimeMessageFlowObserver.OnMessageFlowAsync))!
-                .ReturnType);
-        Assert.Equal(
-            typeof(ValueTask),
-            typeof(IZLinkRuntimeErrorSink)
-                .GetMethod(nameof(IZLinkRuntimeErrorSink.OnRuntimeErrorAsync))!
+            typeof(ZLinkClientServerStatus),
+            typeof(IZLinkClientServerRuntime)
+                .GetMethod(nameof(IZLinkClientServerRuntime.GetStatus))!
                 .ReturnType);
     }
 
     [Fact]
     [ContractExample(
-        typeof(IZLinkMessageFlowRuntime),
-        typeof(IZLinkRuntimeMessageFlowObserver),
-        typeof(IZLinkRuntimeErrorSink))]
-    public void RuntimeMessageFlowModeAndEventFollowExactContract()
+        typeof(IZLinkDiagnosticsOptions),
+        typeof(IZLinkDiagnosticsRuntime))]
+    public void DiagnosticsConfigurationAndRuntimeFollowExactContract()
     {
         Assert.Equal(
             [
-                ZLinkRuntimeMessageFlowMode.Off,
-                ZLinkRuntimeMessageFlowMode.ErrorsOnly,
-                ZLinkRuntimeMessageFlowMode.KeyTransitions,
-                ZLinkRuntimeMessageFlowMode.Verbose
+                ZLinkDiagnosticsLevel.Off,
+                ZLinkDiagnosticsLevel.Errors,
+                ZLinkDiagnosticsLevel.Normal,
+                ZLinkDiagnosticsLevel.Detailed
             ],
-            Enum.GetValues<ZLinkRuntimeMessageFlowMode>());
+            Enum.GetValues<ZLinkDiagnosticsLevel>());
         Assert.Equal(
-            new string[]
+            new[]
             {
-                "Action",
-                "ActivationState",
-                "ActorId",
-                "ChannelName",
-                "ChannelRouteKind",
-                "CorrelationId",
-                "DurationSeconds",
-                "EventId",
-                "FlowId",
-                "FlowOrigin",
-                "InstanceSpotType",
-                "MeshName",
-                "MessageKind",
-                "MessageSizeBytes",
-                "Outcome",
-                "PacketName",
-                "Phase",
-                "Reason",
-                "ServerRid",
-                "SourceRid",
-                "SpotId",
-                "Surface",
-                "TargetRid",
-                "Timestamp",
-                "Topic"
+                "IncludeMessageSizes",
+                "SetLevel",
+                "SetSampleRate"
             },
-            typeof(ZLinkRuntimeMessageFlowEvent)
-                .GetProperties()
-                .Select(static property => property.Name)
+            typeof(IZLinkDiagnosticsOptions)
+                .GetMethods()
+                .Select(static method => method.Name)
                 .Order(StringComparer.Ordinal)
                 .ToArray());
+        var level = Assert.Single(typeof(IZLinkDiagnosticsRuntime).GetProperties());
+        Assert.Equal(nameof(IZLinkDiagnosticsRuntime.Level), level.Name);
+        Assert.True(level.CanRead);
+        Assert.True(level.CanWrite);
     }
 
     [Fact]
-    public void InstanceSpotTypeSnapshotIsAnAggregateWithoutIdentityLeaks()
+    public void PublicMonitoringStatusOmitsInternalIdentityAndCapacity()
     {
-        var names = typeof(ZLinkInstanceSpotTypeSnapshot)
-            .GetProperties()
+        var names = new[]
+            {
+                typeof(ZLinkRouteMeshStatus),
+                typeof(ZLinkClientServerStatus),
+                typeof(ZLinkFanoutStatus),
+                typeof(ZLinkPeerStatus)
+            }
+            .SelectMany(static type => type.GetProperties())
             .Select(static property => property.Name)
             .ToHashSet(StringComparer.Ordinal);
 
-        Assert.Equal(
-            new string[]
-            {
-                "ActivatingCount",
-                "ActiveCount",
-                "ClosingCount",
-                "InstanceSpotType",
-                "LastActivationOutcome",
-                "PendingByteCount",
-                "PendingMessageCount"
-            },
-            names.Order(StringComparer.Ordinal).ToArray());
-        Assert.DoesNotContain("SpotId", names);
-        Assert.DoesNotContain("ObjectGeneration", names);
-        Assert.DoesNotContain("AuthorityOwnerGeneration", names);
+        Assert.DoesNotContain("Endpoint", names);
+        Assert.DoesNotContain("LifecycleGeneration", names);
+        Assert.DoesNotContain("DescriptorRevision", names);
+        Assert.DoesNotContain("Capacity", names);
     }
 }

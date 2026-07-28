@@ -19,8 +19,8 @@ internal static class RmC5MissingPacketScenario
             .Body(new ProfileReq("missing-request"))
             .Async<ExpectedFailureRes>()).Body;
         ZlinkStreamAssert.Ensure(
-            missingRequest.ErrorKind == nameof(ZLinkFrameworkErrorKind.HandlerNotFound),
-            "RM-C5 missing request should report HandlerNotFound.");
+            missingRequest.ErrorKind == nameof(ZLinkFrameworkErrorKind.NotFound),
+            "RM-C5 missing request should report NotFound.");
 
         await storeConsumer.Post("/profile/missing-command")
             .Body(new ProfileMsg("missing-send"))

@@ -16,9 +16,9 @@ internal static class TdC4CpuWorkerTurnOrderScenario
     {
         var spot = await context.SpotAsync();
         var requestId = ExecutionTurnScenarioContext.NewId(scenarioId);
-        context.SendSpot(new CpuWorkerAwaitMsg(requestId, 250, terminator), spot);
+        await context.SendSpotAsync(new CpuWorkerAwaitMsg(requestId, 250, terminator), spot);
         await context.EvidenceAsync(requestId, $"cpu-worker-{terminator}-{(probeDuringWait ? "released" : "held")}");
-        context.SendSpot(new ProbeMsg(requestId, "cpu-probe"), spot);
+        await context.SendSpotAsync(new ProbeMsg(requestId, "cpu-probe"), spot);
         await context.EvidenceAsync(requestId, $"cpu-worker-{terminator}-completed");
         var evidence = await context.EvidenceAsync(requestId, "probe-completed");
         EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId, probeDuringWait

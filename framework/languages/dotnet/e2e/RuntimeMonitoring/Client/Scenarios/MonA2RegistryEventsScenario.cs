@@ -1,4 +1,4 @@
-// Verifies Config 7 MON-A2 peer admission and same-RID lifetime replacement.
+// Verifies Config 7 MON-A2 peer removal and same-RID replacement.
 using System.Diagnostics;
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
@@ -13,43 +13,35 @@ internal static class MonA2RegistryEventsScenario
         using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
             .Timeout(TimeSpan.FromSeconds(35))
             .Build();
-        var evidenceBaseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
+        var evidenceBaseline =
+            (await observer.Get("/evidence").Async<string[]>()).Body.Length;
+        ulong firstReadySequence;
 
-        ulong firstGeneration;
-        string firstEndpoint;
         await using (var first = await EphemeralService.StartAsync(options, "svc-b"))
         {
             var firstReady = await WaitForReadyPeerAsync(observer, "svc-b");
+            firstReadySequence = firstReady.Sequence;
             var peer = firstReady.Peers.Single(candidate =>
-                candidate.Rid == "svc-b" && candidate.Ready);
-            firstGeneration = peer.LifecycleGeneration;
-            firstEndpoint = peer.Endpoint;
+                candidate.Rid.StartsWith("svc-b-", StringComparison.Ordinal)
+                && candidate.State == "Ready");
             ZlinkStreamAssert.Ensure(
-                firstGeneration > 0
-                && peer.DescriptorRevision > 0
-                && peer.Endpoint == first.ChannelEndpoint
-                && peer.AdmissionState == "ready"
-                && peer.LastFailure is null,
-                "MON-A2 first admitted lifetime fields were incomplete.");
+                peer.UnavailableReason is null,
+                "MON-A2 first peer was not reported as ready.");
         }
 
-        await WaitUntilNotReadyAsync(observer, "svc-b", firstGeneration);
+        var removed = await WaitUntilPeerMissingAsync(observer, "svc-b");
+        ZlinkStreamAssert.Ensure(
+            removed.Sequence > firstReadySequence,
+            "MON-A2 removal did not advance the status sequence.");
 
         await using var replacement = await EphemeralService.StartAsync(options, "svc-b");
         var replacementReady = await WaitForReadyPeerAsync(observer, "svc-b");
-        var replacementPeer = replacementReady.Peers.Single(candidate =>
-            candidate.Rid == "svc-b" && candidate.Ready);
         ZlinkStreamAssert.Ensure(
-            replacementPeer.LifecycleGeneration != firstGeneration
-            && replacementPeer.Endpoint != firstEndpoint
-            && replacementPeer.Endpoint == replacement.ChannelEndpoint,
-            "MON-A2 replacement did not expose a new generation and endpoint.");
-        ZlinkStreamAssert.Ensure(
-            !replacementReady.Peers.Any(peer =>
-                peer.Rid == "svc-b"
-                && peer.LifecycleGeneration == firstGeneration
-                && peer.Ready),
-            "MON-A2 old peer lifetime remained ready after replacement.");
+            replacementReady.Sequence > removed.Sequence
+            && replacementReady.Peers.Count(peer =>
+                peer.Rid.StartsWith("svc-b-", StringComparison.Ordinal)
+                && peer.State == "Ready") == 1,
+            "MON-A2 replacement did not publish one ready peer with the same RID.");
 
         var evidence = (await observer.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(
@@ -71,17 +63,13 @@ internal static class MonA2RegistryEventsScenario
                     StringComparison.Ordinal)
                 && line.Contains("routing=svc-b", StringComparison.Ordinal))
             .Select(ParseSequence)
+            .Where(static sequence => sequence > 0)
             .ToArray();
         ZlinkStreamAssert.Ensure(
             sequences.Length >= 3
             && sequences.Zip(sequences.Skip(1), static (left, right) => right > left)
                 .All(static increasing => increasing),
             "MON-A2 peer event sequence was not strictly increasing.");
-        ZlinkStreamAssert.Ensure(
-            evidence.Any(line => line.Contains(
-                $"generation={replacementPeer.LifecycleGeneration}",
-                StringComparison.Ordinal)),
-            "MON-A2 replacement event did not carry the new lifecycle generation.");
 
         Console.WriteLine("scenario MON-A2 passed");
     }
@@ -99,9 +87,11 @@ internal static class MonA2RegistryEventsScenario
         var elapsed = Stopwatch.StartNew();
         while (true)
         {
-            var snapshot = await SnapshotAsync(service);
-            if (snapshot.Peers.Any(peer => peer.Rid == rid && peer.Ready))
-                return snapshot;
+            var status = await SnapshotAsync(service);
+            if (status.Peers.Any(peer =>
+                    peer.Rid.StartsWith($"{rid}-", StringComparison.Ordinal)
+                    && peer.State == "Ready"))
+                return status;
             if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
                 throw new InvalidOperationException(
                     $"MON-A2 peer '{rid}' did not become ready.");
@@ -109,23 +99,21 @@ internal static class MonA2RegistryEventsScenario
         }
     }
 
-    private static async Task WaitUntilNotReadyAsync(
+    private static async Task<MeshRuntimeSnapshotRes> WaitUntilPeerMissingAsync(
         ZLinkHttpClient service,
-        string rid,
-        ulong generation)
+        string rid)
     {
         var elapsed = Stopwatch.StartNew();
         while (true)
         {
-            var snapshot = await SnapshotAsync(service);
-            if (!snapshot.Peers.Any(peer =>
-                    peer.Rid == rid
-                    && peer.LifecycleGeneration == generation
-                    && peer.Ready))
-                return;
+            var status = await SnapshotAsync(service);
+            if (!status.Peers.Any(peer =>
+                    peer.Rid.StartsWith($"{rid}-", StringComparison.Ordinal)
+                    && peer.State == "Ready"))
+                return status;
             if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
                 throw new InvalidOperationException(
-                    $"MON-A2 peer '{rid}' generation {generation} remained ready.");
+                    $"MON-A2 peer '{rid}' remained ready.");
             await Task.Delay(TimeSpan.FromMilliseconds(50));
         }
     }

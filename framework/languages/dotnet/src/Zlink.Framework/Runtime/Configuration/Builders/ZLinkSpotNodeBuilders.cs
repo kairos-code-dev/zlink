@@ -406,6 +406,14 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         if (!Enum.IsDefined(options.ExecutionMode))
             throw new ZLinkConfigurationException(
                 "User Spot execution mode is not supported.");
+        if (!Enum.IsDefined(options.RelocationReadiness))
+            throw new ZLinkConfigurationException(
+                "User Spot relocation readiness mode is not supported.");
+        if (options.ExecutionMode != ZLinkUserSpotExecutionMode.SpotWide
+            && options.RelocationReadiness
+            == ZLinkSpotRelocationReadinessMode.ApplicationSignaled)
+            throw new ZLinkConfigurationException(
+                "ApplicationSignaled relocation readiness is valid only for SpotWide User Spots.");
     }
 
     private static void ValidateStableTypeLimit(int limit, string kind)

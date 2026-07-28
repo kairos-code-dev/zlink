@@ -4,6 +4,7 @@ using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Actors;
+using ZoneWorld.Server.ZoneNode.Domain.ZoneWorld;
 using ZoneWorld.Shared.Contracts;
 
 namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Spots;
@@ -83,37 +84,30 @@ internal sealed class PlayerJoinWorldHandler(ILogger<PlayerJoinWorldHandler> log
 
 internal static class EnterWorld
 {
-    public static async ValueTask<EnterWorldRes> RunAsync(
+    public static ValueTask<EnterWorldRes> RunAsync(
         PlayerActor actor,
         EnterWorldReq message,
         ILogger logger,
         CancellationToken cancellationToken)
     {
         // The patrol direction has to be on the actor before it joins, because the zone
-        // spot preserves it across the join and a transfer carries it to the next node.
+        // spot preserves it across the join and relocation carries it to the next node.
         actor.SetPatrol(message.DirX, message.DirY);
 
         var zoneId = ZoneWorldSpec.ZoneOf(message.X, message.Y);
-        var joined = await actor.Context
-            .JoinSpot(
+        actor.TrackDeferredJoin(new PlayerPosition(message.X, message.Y));
+        actor.Context.JoinSpot(
                 zoneId,
                 new EnterZoneMsg(actor.ActorId, message.X, message.Y, message.IsBot, InitialEntry: true))
-            .Yield(cancellationToken);
-
-        var reply = joined switch
-        {
-            ZLinkActorJoinResult.Accepted accepted => accepted.Reply.Decode<EnterZoneRes>(),
-            ZLinkActorJoinResult.Rejected rejected => rejected.Reply.Decode<EnterZoneRes>(),
-            _ => throw new InvalidOperationException("Unknown actor join result.")
-        };
+            .Defer();
 
         logger.LogInformation(
-            "player entering world. player={PlayerId}, zone={ZoneId}, bot={IsBot}, error={Error}",
+            "player entry scheduled. player={PlayerId}, zone={ZoneId}, bot={IsBot}",
             actor.ActorId,
             zoneId,
-            message.IsBot,
-            reply.Error ?? "(none)");
+            message.IsBot);
 
-        return new EnterWorldRes(reply.ZoneId, message.X, message.Y, reply.Error);
+        return ValueTask.FromResult(
+            new EnterWorldRes(zoneId, message.X, message.Y));
     }
 }

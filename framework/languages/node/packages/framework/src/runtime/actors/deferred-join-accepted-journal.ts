@@ -73,8 +73,12 @@ export class ZLinkDeferredJoinAcceptedJournal {
     requireAuthorityActor(read.payload, actor);
     const existing = await this.readPublished(read, signal);
     if (existing !== undefined) {
-      requireSameOperation(existing, operationId, actor);
-      return existing;
+      if (isSameOperation(existing, operationId, actor)) {
+        return existing;
+      }
+      if (existing.cursor !== 'delivered') {
+        requireSameOperation(existing, operationId, actor);
+      }
     }
 
     const root = await this.storeRoot({
@@ -83,8 +87,11 @@ export class ZLinkDeferredJoinAcceptedJournal {
       rawReply: Buffer.from(rawReply),
       cursor: 'prepared'
     }, signal);
+    const currentPublication = decodeAuthorityPublication(read.payload);
     const publication: DeferredJoinAuthorityPublication = {
-      applicationPayload: Buffer.from(read.payload),
+      applicationPayload: Buffer.from(
+        currentPublication?.applicationPayload ?? read.payload
+      ),
       reference: root.reference,
       checksumCrc32c: root.checksumCrc32c
     };
@@ -108,6 +115,9 @@ export class ZLinkDeferredJoinAcceptedJournal {
         return current;
       }
       throw new Error(`Actor '${actorId}' authority rejected Join completion publication.`);
+    }
+    if (existing !== undefined) {
+      await this.deleteBestEffort(existing.reference);
     }
     return {
       ...root,
@@ -468,14 +478,20 @@ function requireSameOperation(
   operationId: ZLinkActorJoinOperationId,
   actor: ActorRef
 ): void {
-  if (
-    root.operationId.high !== operationId.high
-    || root.operationId.low !== operationId.low
-    || root.actor.actorId !== actor.actorId
-    || root.actor.objectGeneration !== actor.objectGeneration
-  ) {
+  if (!isSameOperation(root, operationId, actor)) {
     throw new Error(`Actor '${actor.actorId}' already has a different durable Join completion.`);
   }
+}
+
+function isSameOperation(
+  root: ZLinkDeferredJoinAcceptedRoot,
+  operationId: ZLinkActorJoinOperationId,
+  actor: ActorRef
+): boolean {
+  return root.operationId.high === operationId.high
+    && root.operationId.low === operationId.low
+    && root.actor.actorId === actor.actorId
+    && root.actor.objectGeneration === actor.objectGeneration;
 }
 
 function requireSameActor(

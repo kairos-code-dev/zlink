@@ -7,6 +7,7 @@ namespace Zlink.Framework.Runtime.Messaging;
 internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 {
     private const int DefaultCapacity = 4096;
+    private static readonly TimeSpan RouteRetryDelay = TimeSpan.FromMilliseconds(25);
 
     private readonly object _gate = new();
     private readonly object _disposeGate = new();
@@ -22,6 +23,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     private readonly Func<bool>? _failFastNotConnected;
     private TaskCompletionSource? _activeDrainCompletion;
     private Task? _disposeTask;
+    private Timer? _routeRetryTimer;
     private bool _draining;
     private bool _accepting = true;
     private int _initialAttempts;
@@ -90,8 +92,14 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             _admissionClosed.Cancel();
         }
 
+        Timer? routeRetryTimer;
         lock (_gate)
+        {
             activeDrain = _activeDrainCompletion?.Task ?? Task.CompletedTask;
+            routeRetryTimer = _routeRetryTimer;
+            _routeRetryTimer = null;
+        }
+        routeRetryTimer?.Dispose();
 
         await activeDrain.ConfigureAwait(false);
 
@@ -180,7 +188,8 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         Message message,
         Func<Message, Action<T>, Action<Exception>, bool> trySubmit,
         CancellationToken cancellationToken = default,
-        Action<T>? discardResult = null)
+        Action<T>? discardResult = null,
+        TimeSpan? operationTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(message);
         ArgumentNullException.ThrowIfNull(trySubmit);
@@ -189,20 +198,27 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             new SingleMessageParts(message),
             (parts, onResult, onError) => trySubmit(parts[0], onResult, onError),
             cancellationToken,
-            discardResult);
+            discardResult,
+            operationTimeout);
     }
 
     public ValueTask<T> SubmitRequestAsync<T>(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, Action<T>, Action<Exception>, bool> trySubmit,
         CancellationToken cancellationToken = default,
-        Action<T>? discardResult = null)
+        Action<T>? discardResult = null,
+        TimeSpan? operationTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(parts);
         ArgumentNullException.ThrowIfNull(trySubmit);
         EnsureNotEmpty(parts);
 
-        return SubmitRequestCoreAsync(parts, trySubmit, cancellationToken, discardResult);
+        return SubmitRequestCoreAsync(
+            parts,
+            trySubmit,
+            cancellationToken,
+            discardResult,
+            operationTimeout);
     }
 
     private async ValueTask SubmitCommandAsync(
@@ -245,6 +261,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
                 ownsParts = false;
                 await EnqueuePendingAsync(pending, cancellationToken).ConfigureAwait(false);
+                if (IsNotConnectedFailure(submitFailure)) ScheduleRouteRetry();
                 pendingCompletion = pending.Task;
             }
             finally
@@ -265,15 +282,27 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, Action<T>, Action<Exception>, bool> trySubmit,
         CancellationToken cancellationToken,
-        Action<T>? discardResult)
+        Action<T>? discardResult,
+        TimeSpan? operationTimeout)
     {
         var operationId = ZLinkTelemetry.CaptureSubmitOperationId();
         var ownsParts = true;
-        using var completion = new ZLinkRequestCompletion<T>(
-            cancellationToken,
-            _stopToken,
-            discardResult,
-            Drain);
+        var operationDeadline = operationTimeout is { } timeout
+            ? DateTimeOffset.UtcNow.Add(timeout)
+            : (DateTimeOffset?)null;
+        using var completion = operationTimeout is { } completionTimeout
+            ? new ZLinkRequestCompletion<T>(
+                cancellationToken,
+                _stopToken,
+                completionTimeout,
+                "ZLink request timed out before completion.",
+                discardResult,
+                Drain)
+            : new ZLinkRequestCompletion<T>(
+                cancellationToken,
+                _stopToken,
+                discardResult,
+                Drain);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -315,11 +344,13 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                     parts,
                     Submit,
                     completion,
-                    operationId);
+                    operationId,
+                    operationDeadline);
                 if (retryableFailure is not null) pendingSubmit.RecordSubmitFailure(retryableFailure);
 
                 ownsParts = false;
                 await EnqueuePendingAsync(pendingSubmit, cancellationToken).ConfigureAwait(false);
+                if (IsNotConnectedFailure(retryableFailure)) ScheduleRouteRetry();
                 return await completion.Task.ConfigureAwait(false);
             }
             finally
@@ -513,6 +544,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                         }
 
                         item.RecordSubmitFailure(retryableFailure);
+                        if (IsNotConnectedFailure(retryableFailure)) ScheduleRouteRetry();
                     }
 
                     continue;
@@ -578,6 +610,48 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
         return submitError.Result == ZlinkSubmitException.ErrorCode.NotConnected
                && _failFastNotConnected?.Invoke() != true;
+    }
+
+    private static bool IsNotConnectedFailure(Exception? error)
+    {
+        return error is ZlinkSubmitException
+        {
+            Result: ZlinkSubmitException.ErrorCode.NotConnected
+        };
+    }
+
+    private void ScheduleRouteRetry()
+    {
+        lock (_gate)
+        {
+            if (!Volatile.Read(ref _accepting)
+                || _pending.Count == 0
+                || _routeRetryTimer is not null)
+                return;
+
+            _routeRetryTimer = new Timer(
+                static state => ((ZLinkAsyncSubmitter)state!).OnRouteRetry(),
+                this,
+                RouteRetryDelay,
+                Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private void OnRouteRetry()
+    {
+        Timer? completedTimer;
+        lock (_gate)
+        {
+            completedTimer = _routeRetryTimer;
+            _routeRetryTimer = null;
+            if (Volatile.Read(ref _accepting)
+                && _pending.Count > 0
+                && _readyCredits < long.MaxValue)
+                _readyCredits++;
+        }
+
+        completedTimer?.Dispose();
+        Drain();
     }
 
     private void Dequeue(PendingSubmit expected)

@@ -8,6 +8,14 @@ internal static class TdD1CrossActorYieldInterleaveScenario
     public static async Task RunAsync(ExecutionTurnScenarioContext context)
     {
         var actors = await context.ActorsAsync();
+        await context.EnsureActorInSpotAsync(
+            actors.ActorA,
+            actors.SpotRid,
+            "TD-D1-prepare-a");
+        await context.EnsureActorInSpotAsync(
+            actors.ActorB,
+            actors.SpotRid,
+            "TD-D1-prepare-b");
         var requestId = ExecutionTurnScenarioContext.NewId("TD-D1");
         var pending = context.ActorRequest(actors.ActorA, new ActorAwaitReq(requestId, 300, "yield"))
             .Async<ActorAwaitRes>();

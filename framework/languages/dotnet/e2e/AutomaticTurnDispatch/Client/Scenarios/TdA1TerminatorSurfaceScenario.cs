@@ -15,7 +15,7 @@ internal static class TdA1TerminatorSurfaceScenario
         AssertDeferredJoinTerminators(typeof(IZLinkActorJoinSpotCall));
         AssertDeferredJoinTerminators(typeof(IZLinkActorJoinEntrySpotCall));
         AssertTerminators(typeof(IZLinkWorkerCall<>));
-        AssertAwaitedTerminators(typeof(ZLinkHttpServerRequestBuilder));
+        AssertHttpServerTerminators(typeof(ZLinkHttpServerRequestBuilder));
 
         var methods = typeof(ZLinkHttpRequestBuilder).GetMethods()
             .Select(method => method.Name)
@@ -27,6 +27,15 @@ internal static class TdA1TerminatorSurfaceScenario
         ZlinkStreamAssert.Ensure(!methods.Contains("Fetch"),
             "TD-A1 standalone HTTP request builder exposes blocking Fetch.");
         return Task.CompletedTask;
+    }
+
+    private static void AssertHttpServerTerminators(Type type)
+    {
+        var methods = type.GetMethods().Select(method => method.Name).ToHashSet(StringComparer.Ordinal);
+        ZlinkStreamAssert.Ensure(methods.Contains("Async"),
+            $"TD-A1 {type.Name} is missing Async.");
+        foreach (var name in new[] { "Submit", "Yield", "Fetch" })
+            ZlinkStreamAssert.Ensure(!methods.Contains(name), $"TD-A1 {type.Name} exposes {name}.");
     }
 
     private static void AssertAwaitedTerminators(Type type)

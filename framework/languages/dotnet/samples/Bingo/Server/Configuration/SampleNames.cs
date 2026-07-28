@@ -4,12 +4,11 @@ namespace Bingo.Server.Configuration;
 
 public static class SampleNames
 {
-    public const string MeshName = "bingo";
+    public const string PlayMeshName = "bingo.play";
+    public const string MatchmakingMeshName = "bingo.matchmaking";
     public const string ApiChannel = "bingo.api";
-    public const string PlayChannel = "bingo.play";
-    public const string RoomChannel = "bingo.room.reward.publisher";
-    public const string ApiAllocationGroup = "bingo.api";
-    public const string PlayAllocationGroup = "bingo.play";
+    public const string RoomChannel = "bingo.room";
+    public const string MatchmakerSpotType = "bingo.matchmaker";
     public const string RouterChannel = "bingo.gateway";
     public const string RewardTopic = "bingo.room.reward";
     public const string StreamNode = "bingo.client.stream";

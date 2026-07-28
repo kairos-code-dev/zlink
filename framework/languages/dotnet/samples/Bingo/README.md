@@ -18,8 +18,10 @@ Directory layout:
   framework timing settings used by the server roles.
 - `Server/Api/` contains player authentication, matching, and in-memory player
   record handlers.
+- `Server/Matchmaking/` contains the level-bucket Matchmaker Instance Spot and
+  the Redis reservation adapter.
 - `Server/Play/` contains player actors, Entry Spot admission, room spots,
-  Redis-backed room matching, submitted cards, server-driven draws, automatic
+  submitted cards, server-driven draws, automatic
   marks, winner detection, rare reward Logical Multicast to subscribed Spots, and
   session-bound push.
 - `Server/Session/` contains the stream Session server and actor relay handlers.
@@ -49,8 +51,8 @@ On Windows PowerShell:
 .\framework\languages\dotnet\samples\Bingo\run_sample.ps1
 ```
 
-The script starts two Api servers, two Play servers, two Session
-servers, and Redis-backed store access as separate processes. It waits for the
+The script starts two Api servers, one Matchmaking server, two Play servers,
+two Session servers, and Redis-backed store access as separate processes. It waits for the
 public endpoints that the client and server roles use, and then runs the
 connector client. The
 client flow is self-checking. It fails if the three connectors do not
@@ -64,16 +66,16 @@ and two result reports before confirming that room actors leave the room Spot,
 return to Entry Spot, and are destroyed from the Entry Spot context.
 
 Session and Play also attach the standard .NET `MeterListener` to
-`ZLinkMeters.Framework`. The runner verifies real STREAM and Spot samples, while
+the standard .NET meter named `zlink.framework`. The runner verifies real STREAM and Spot samples, while
 Play uses the fixed MeshNode drain sequence. It stops new application admission,
 finishes accepted work, completes Actor handoff and the STREAM barrier, and then
 closes the remaining local rooms before releasing location ownership.
 
 Redis is required for two responsibilities: framework location store data and
-the Bingo match queue. The runner always provisions a dedicated Redis Docker
+the Matchmaking reservation store. The runner always provisions a dedicated Redis Docker
 container for the current execution, asks Docker to assign a free loopback host
 port, writes that endpoint to each role's temporary config file, and removes only that
 container on success or failure. It does not reuse an externally supplied Redis
 container. The runner also writes a Redis key prefix that includes the
 sample name and execution id so parallel sample runs do not share location store
-or match queue keys.
+or reservation keys.

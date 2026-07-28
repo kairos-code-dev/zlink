@@ -4,8 +4,8 @@
 
 # 5. Channel Messaging — request · send · pub/sub
 
-> 정식 계약은 [spec/aspnet-core-channel-messaging](../../common/spec/server/languages/dotnet/01-system-structure.ko.md)와
-> [spec/handler-interfaces](../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다. 이
+> 정식 계약은 [Channel messaging exact interface](../../common/spec/server/languages/dotnet/interfaces/04-channel-messaging.ko.md)와
+> [Topology exact interface](../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)가 다룬다. 이
 > 챕터는 그 표면을 실제로 어떻게 등록하고 호출하는지 사용법 중심으로 다룬다.
 
 channel messaging은 framework의 가장 기본 축이다. 세 가지 상호작용을 다룬다.
@@ -718,74 +718,57 @@ graph LR
 > 논리 id의 새 endpoint로 이어 주므로(same-rid failover), 응답에 어느 노드가 처리했는지(rid)를 실어 보내거나
 > 프로세스 교체 후에도 라우팅을 이어 갈 때 쓴다.
 
-## 9. route mesh — 주소 라우팅
+## 9. route mesh — 관리 대상 노드 직접 호출
 
-RouteMesh의 RID direct 호출은 `RoutingId`로 특정 MeshNode를 지정한다. `Listen`은 이
-노드의 endpoint를 열고 `SetRoutingId`는 논리 주소를 정한다. 수동 peer는
-`PeerConnections.Connect(...)`로 등록한다.
-SPOT 라우팅 백본이 필요할 때 이 channel 종류를 쓴다([06-spot](06-spot.ko.md)).
+Node direct 호출은 `RoutingId`로 특정 MeshNode 하나를 지정한다. 이 경로는 상태 점검이나
+운영 명령처럼 **그 노드 자체**가 대상일 때만 사용한다. Actor·Spot 생성 위치를 고르거나
+업무 메시지를 특정 서버에 고정하는 용도로 사용하지 않는다.
 
 ```csharp
-{
-    var mesh = options.AddRouteMesh("tictactoe")
-        .Listen(playRouterEndpoint)
-        .SetRoutingId(RoutingId.From(playRouterId));
-    mesh.PeerConnections.Connect(peerRouterEndpoint);
-    mesh.AddRouteRequestHandler<AllocateRoomRouteHandler, AllocateRoom, RoomAllocated>(
-        "room.allocate");                  // 마지막 인자 = packet 이름
-}
+var mesh = options.AddRouteMesh("play")
+    .Listen(playRouterEndpoint)
+    .SetRoutingId(RoutingId.From(playRouterId));
+
+// 노드 자체의 운영 상태를 반환하는 handler다.
+mesh.AddRouteRequestHandler<NodeStatusHandler, GetNodeStatus, NodeStatus>(
+    "ops.node.status");
 ```
 
-RID direct 호출도 `IZLinkRouteClient`를 주입받고 MeshName과 대상 `RoutingId`를
-지정한다. `IZLinkRouteClient`는 특정 MeshNode 하나에 묶인 client가 아니므로 호출마다
-MeshName을 분명하게 정한다.
+호출자는 관리 시스템에서 확인한 Node RID와 MeshName을 함께 전달한다.
 
 ```csharp
-var target = RoutingId.From("play-node-1");   // 보낼 대상 노드의 RoutingId
+var target = RoutingId.From("play-node-1");
 
-var room = await routeClient
-    // 인자 = (MeshName, 대상 RoutingId, payload)
-    .RequestToNode("tictactoe", target, new AllocateRoom("alice"))
-    .Async<RoomAllocated>(ct);
+var status = await routeClient
+    // 특정 노드의 운영 상태를 묻기 때문에 Node direct를 사용한다.
+    .RequestToNode("play", target, new GetNodeStatus())
+    .Async<NodeStatus>(ct);
 
-public sealed class AllocateRoomRouteHandler
-    : IZLinkRouteRequestHandler<AllocateRoom, RoomAllocated>
+public sealed class NodeStatusHandler
+    : IZLinkRouteRequestHandler<GetNodeStatus, NodeStatus>
 {
-    public ValueTask<RoomAllocated> HandleAsync(
-        AllocateRoom request,
+    public ValueTask<NodeStatus> HandleAsync(
+        GetNodeStatus request,
         ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
-        => ValueTask.FromResult(new RoomAllocated("room-1"));
+        => ValueTask.FromResult(NodeStatus.Ready());
 }
 ```
 
-같은 route channel로 반복 호출하면 application 코드에서 작은 wrapper를 만들어 DI에
-등록해도 된다. 이 wrapper는 framework API가 아니라 application이 정한 이름이다. 그래서
-업무 코드는 매번 channel 문자열을 반복하지 않고, wrapper 내부에서 어떤 route channel로
-나가는지만 한 곳에 둔다.
+업무 메시지는 대상의 논리 주소를 사용한다.
 
-```csharp
-public interface IPlayRoutes
-{
-    IZLinkRequestCall Request<TRequest>(RoutingId targetNodeRid, TRequest request);
-}
+- Actor는 `IZLinkActorClient`와 ActorId로 호출한다.
+- Spot은 `IZLinkSpotClient`와 SpotId로 호출한다.
+- 서비스 구성원 하나를 선택하려면 `SendToChannel(...)` 또는 `RequestToChannel(...)`을
+  사용한다.
 
-public sealed class PlayRoutes(IZLinkRouteClient routes) : IPlayRoutes
-{
-    public IZLinkRequestCall Request<TRequest>(
-        RoutingId targetNodeRid,
-        TRequest request)
-        => routes.RequestToNode("tictactoe", targetNodeRid, request);
-}
-
-builder.Services.AddSingleton<IPlayRoutes, PlayRoutes>();
-```
+Framework가 현재 owner와 eligible node를 선택하므로 application은 Node RID를 보관하지 않는다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
-    C["caller"] -->|"target routing id = A"| A["node A"]
-    C -->|"target routing id = B"| B["node B"]
+    O["operations"] -->|"target node rid"| N["managed node"]
+    A["application"] -->|"actor id / spot id / channel"| F["Framework routing"]
 ```
 
 SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
@@ -878,8 +861,10 @@ public sealed class UserCacheRefreshedEventHandler
 ## 12. 더 보기
 
 - 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec): [13-interface-catalog](13-interface-catalog.ko.md) §1 — 검증 클래스 `ChannelContracts`·`HandlerContracts`·`CodecContracts`
-- 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)
-- dispatch 흐름·lifecycle 정식 계약: [spec/aspnet-core-channel-messaging](../../common/spec/server/languages/dotnet/01-system-structure.ko.md)
+- 전체 interface와 handler context:
+  [Channel messaging exact interface](../../common/spec/server/languages/dotnet/interfaces/04-channel-messaging.ko.md)
+- topology와 handler 등록:
+  [Topology exact interface](../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)
 - 전체 시나리오: [공통 샘플](../../common/sample/README.ko.md)
 - 다음 축: [06-spot](06-spot.ko.md)
 

@@ -106,7 +106,9 @@ internal static class ZLinkMeshRecordAdapters
                     DeadlineUnixMs: NormalizeDeadline(record.DeadlineUnixMs)),
                 SourceNodeGeneration: record.SourceBindingGeneration,
                 RequestSource: requestSource,
-                DirectReply: i == 0 ? directReply : null);
+                DirectReply: i == 0 ? directReply : null,
+                ApplicationMetadata:
+                    record.ApplicationMetadata ?? ReadOnlyMemory<byte>.Empty);
         return parts;
     }
 
@@ -117,7 +119,7 @@ internal static class ZLinkMeshRecordAdapters
         if (deadlineUnixMs == ulong.MaxValue)
             return 0;
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.RequestProtocolError,
+            ZLinkFrameworkErrorKind.ProtocolError,
             $"Actor message deadline '{deadlineUnixMs}' is outside the supported range.");
     }
 }

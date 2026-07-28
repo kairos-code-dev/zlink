@@ -9,7 +9,7 @@ internal sealed class AuthenticateUserHandler : IZLinkRequestHandler<Authenticat
 {
     public ValueTask<AuthenticateUserRes> HandleAsync(
         AuthenticateUserReq request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         return ValueTask.FromResult(request.AccessToken switch

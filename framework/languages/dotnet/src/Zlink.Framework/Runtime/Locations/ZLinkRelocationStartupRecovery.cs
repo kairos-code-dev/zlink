@@ -82,9 +82,9 @@ internal sealed class ZLinkRelocationStartupRecovery(
             catch (ZLinkRelocationDataLostException error)
             {
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RelocationDataLost,
+                    ZLinkFrameworkErrorKind.DataLost,
                     error.Message,
-                    isRetriable: false,
+                    retryAdvice: ZLinkRetryAdvice.DoNotRetry,
                     error);
             }
             ValidateLinkedAuthorities(group.Authorities, envelope);
@@ -352,9 +352,9 @@ internal sealed class ZLinkRelocationStartupRecovery(
         string message,
         Exception? innerException = null) =>
         new(
-            ZLinkFrameworkErrorKind.RelocationDataLost,
+            ZLinkFrameworkErrorKind.DataLost,
             message,
-            isRetriable: false,
+            retryAdvice: ZLinkRetryAdvice.DoNotRetry,
             innerException);
 
     private sealed record RecoveryGroup(

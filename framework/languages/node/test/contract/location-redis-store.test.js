@@ -86,6 +86,28 @@ test('redis opaque Location Store applies conditional batches atomically', async
   }
 });
 
+test('redis Store serializes concurrent first-use connection', async (t) => {
+  const fixture = await redisFixture(t);
+  if (fixture === undefined) return;
+  const prefix = testPrefix('concurrent-first-use');
+  const store = new redisLocations.ZLinkRedisLocationStore({
+    url: fixture.url,
+    keyPrefix: prefix
+  });
+
+  try {
+    const reads = await Promise.all(
+      Array.from({ length: 16 }, (_, index) => store.read(key(`missing/${index}`)))
+    );
+    assert.equal(reads.length, 16);
+    assert.equal(reads.every(result => result.kind === 'missing'), true);
+  } finally {
+    await store.dispose();
+    await cleanup(fixture.client, prefix);
+    await fixture.client.quit();
+  }
+});
+
 test('redis opaque Location Store enforces TTL and fixed scan snapshots', async (t) => {
   const fixture = await redisFixture(t);
   if (fixture === undefined) return;

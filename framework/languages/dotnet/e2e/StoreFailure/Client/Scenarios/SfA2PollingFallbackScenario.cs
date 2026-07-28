@@ -4,9 +4,8 @@ using Zlink.HttpClient;
 
 namespace StoreFailure.Client.Scenarios;
 
-// SF-A2: a store registration without the change-stamp surface still
-// reflects peer add/remove within polling ticks — polling is the
-// correctness path, the stamp only trims latency.
+// SF-A2: the opaque Store SPI reflects peer additions and removals through
+// polling without a provider-specific notification capability.
 internal static class SfA2PollingFallbackScenario
 {
     public static async Task RunAsync(

@@ -179,6 +179,117 @@ public sealed class MaintenanceRuntimeTests
             status.State == ZLinkFrameworkRuntimeState.Relocated);
     }
 
+    [Fact]
+    public async Task Relocated_runtime_replays_the_first_terminal_result_for_every_intent()
+    {
+        using var fixture = Create(sourceApplicationVersion: 7);
+        fixture.Runtime.MarkServing();
+        fixture.Executor.Complete.TrySetResult(null);
+        var rollingOptions = new ZLinkFrameworkRelocationOptions
+        {
+            Mode = ZLinkFrameworkRelocationMode.RollingUpdate,
+            TargetApplicationVersion = 8
+        };
+
+        var first = await fixture.Runtime.RelocateAsync(rollingOptions);
+        var replay = await fixture.Runtime.RelocateAsync(rollingOptions);
+        var planned = await fixture.Runtime.RelocateAsync(
+            new ZLinkFrameworkRelocationOptions
+            {
+                Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance
+            });
+
+        Assert.Equal(first, replay);
+        Assert.Equal(first, planned);
+        Assert.Equal(ZLinkFrameworkRelocationMode.RollingUpdate, planned.Mode);
+        Assert.Equal(8, planned.TargetApplicationVersion);
+        Assert.Equal(ZLinkFrameworkRelocationOutcome.Relocated, planned.Outcome);
+        Assert.Equal(1, fixture.Executor.ExecuteCount);
+    }
+
+    [Fact]
+    public async Task Shutdown_cancels_only_the_shared_relocation_operation_not_its_waiters()
+    {
+        var preflightEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var fixture = Create(async (_, _, cancellationToken) =>
+        {
+            preflightEntered.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return null;
+        });
+        fixture.Runtime.MarkServing();
+        fixture.Executor.Complete.TrySetResult(null);
+        var options = new ZLinkFrameworkRelocationOptions
+        {
+            Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance,
+            Deadline = TimeSpan.FromSeconds(30)
+        };
+
+        var primary = fixture.Runtime.RelocateAsync(options).AsTask();
+        await preflightEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        using var cancelledWaiter = new CancellationTokenSource();
+        var waiter = fixture.Runtime.RelocateAsync(
+            options,
+            cancelledWaiter.Token).AsTask();
+        cancelledWaiter.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => waiter);
+
+        var shutdown = fixture.Runtime.ShutdownAsync().AsTask();
+        var relocationResult = await primary;
+        var shutdownResult = await shutdown;
+        var relocationReplay = await fixture.Runtime.RelocateAsync(options);
+        var shutdownReplay = await fixture.Runtime.ShutdownAsync();
+
+        Assert.Equal(
+            ZLinkFrameworkRelocationReason.ShutdownRequested,
+            relocationResult.Reason);
+        Assert.Equal(ZLinkFrameworkRelocationOutcome.Blocked, relocationResult.Outcome);
+        Assert.Equal(relocationResult, relocationReplay);
+        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, shutdownResult.Outcome);
+        Assert.Equal(shutdownResult, shutdownReplay);
+        Assert.Equal(1, fixture.Executor.ExecuteCount);
+    }
+
+    [Fact]
+    public async Task Shutdown_after_relocating_seals_immediately_and_starts_no_next_unit()
+    {
+        using var fixture = Create();
+        fixture.Runtime.MarkServing();
+        var options = new ZLinkFrameworkRelocationOptions
+        {
+            Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance,
+            Deadline = TimeSpan.FromSeconds(30)
+        };
+
+        var relocation = fixture.Runtime.RelocateAsync(options).AsTask();
+        await fixture.Executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var shutdown = fixture.Runtime
+            .ShutdownAsync(TimeSpan.FromSeconds(2))
+            .AsTask();
+
+        Assert.Equal(
+            ZLinkFrameworkRuntimeState.Draining,
+            fixture.Runtime.Status.State);
+        Assert.Equal(1, fixture.Executor.ShutdownRequestCount);
+
+        var relocationResult = await relocation;
+        Assert.Equal(
+            ZLinkFrameworkRelocationOutcome.Blocked,
+            relocationResult.Outcome);
+        Assert.Equal(
+            ZLinkFrameworkRelocationReason.ShutdownRequested,
+            relocationResult.Reason);
+
+        fixture.Executor.Complete.TrySetResult(null);
+        var shutdownResult = await shutdown;
+        Assert.Equal(
+            ZLinkFrameworkTerminationOutcome.Stopped,
+            shutdownResult.Outcome);
+        Assert.Equal(2, fixture.Executor.ExecuteCount);
+    }
+
     private static Fixture Create(
         Func<
             ZLinkFrameworkRelocationMode,
@@ -190,8 +301,7 @@ public sealed class MaintenanceRuntimeTests
         var executor = new MaintenanceExecutor();
         var drain = new ZLinkDrainCoordinator(
             new ZLinkDrainAdmissionGate(),
-            executor,
-            events: null);
+            executor);
         var runtime = new ZLinkFrameworkMaintenanceRuntime(
             drain,
             preflight ?? (static (_, _, _) =>
@@ -218,9 +328,24 @@ public sealed class MaintenanceRuntimeTests
         public TaskCompletionSource<ZLinkDrainForceReason?> Complete { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        private TaskCompletionSource ShutdownRequested { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public int ExecuteCount { get; private set; }
 
+        public int ShutdownRequestCount { get; private set; }
+
         public ZLinkFrameworkLifecycleIntent? Intent { get; private set; }
+
+        public void RequestShutdown(TimeSpan deadline)
+        {
+            _ = deadline;
+            ShutdownRequestCount++;
+            ShutdownRequested.TrySetResult();
+        }
 
         public ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
             TimeSpan deadline,
@@ -235,6 +360,17 @@ public sealed class MaintenanceRuntimeTests
             _ = deadline;
             Intent = intent;
             ExecuteCount++;
+            Started.TrySetResult();
+            if (intent == ZLinkFrameworkLifecycleIntent.Relocate)
+            {
+                var first = await Task.WhenAny(
+                        Complete.Task,
+                        ShutdownRequested.Task)
+                    .ConfigureAwait(false);
+                if (ReferenceEquals(first, ShutdownRequested.Task))
+                    throw new ZLinkDrainBlockedException(
+                        ZLinkFrameworkRelocationReason.ShutdownRequested);
+            }
             return await Complete.Task.WaitAsync(deadlineToken).ConfigureAwait(false);
         }
 

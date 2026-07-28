@@ -40,3 +40,8 @@
 fanout delivery인 경우, subscriber handler가 남긴 bounded `/evidence/wait` marker를 성공 기준으로
 쓸 수 있다고 정한다. Java PubSub client는 같은 snapshot GET을 반복하지 않고 `/evidence/wait`로
 각 subscriber의 실제 dispatch marker를 기다린 뒤 필요한 snapshot만 대조한다.
+
+## 공통 scenario parity gap — 2026-07-29
+
+- `PS-F1`, `PS-F2`, `PS-F3`, `PS-F4`, `PS-F5`: 공통 scenario는 추가됐지만 Java actual
+  fixture와 runner selector가 없다.

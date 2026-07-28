@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using StackExchange.Redis;
 
@@ -11,7 +10,6 @@ namespace Zlink.Framework.Locations.Redis;
 /// payloads. Location authority remains in <see cref="ZLinkRedisLocationStore"/>.
 /// </summary>
 public sealed class ZLinkRedisRelocationStore :
-    IZLinkRelocationRepository,
     IZLinkRelocationStore,
     IAsyncDisposable
 {
@@ -57,7 +55,9 @@ public sealed class ZLinkRedisRelocationStore :
         return { 'renewed', nowMs }
         """;
 
-    private readonly ZLinkRedisRelocationOptions _options;
+    private readonly ConfigurationOptions _configuration;
+    private readonly TimeSpan _operationTimeout;
+    private readonly string _keyPrefix;
     private readonly Func<ConfigurationOptions, ValueTask<IZLinkRedisConnection>> _connect;
     private readonly SemaphoreSlim _connectGate = new(1, 1);
     private readonly object _disposeGate = new();
@@ -68,19 +68,32 @@ public sealed class ZLinkRedisRelocationStore :
     private int _disposed;
 
     public ZLinkRedisRelocationStore(ZLinkRedisRelocationOptions options)
-        : this(options, ConnectAsync)
+        : this(options, connect: null, useSharedConnection: true)
     {
     }
 
     internal ZLinkRedisRelocationStore(
         ZLinkRedisRelocationOptions options,
         Func<ConfigurationOptions, ValueTask<IZLinkRedisConnection>> connect)
+        : this(options, connect, useSharedConnection: false)
+    {
+    }
+
+    private ZLinkRedisRelocationStore(
+        ZLinkRedisRelocationOptions options,
+        Func<ConfigurationOptions, ValueTask<IZLinkRedisConnection>>? connect,
+        bool useSharedConnection)
     {
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(connect);
         options.Validate();
-        _options = options;
-        _connect = connect;
+        _configuration = options.BuildConfiguration();
+        _operationTimeout = options.OperationTimeout;
+        _keyPrefix = options.KeyPrefix;
+        _connect = connect
+                   ?? ZLinkRedisConnectionPool.CreateFactory(
+                       _configuration,
+                       useSharedConnection
+                       && options.ConfigurationOptions is null);
     }
 
     public ZLinkRedisRelocationStore(Action<ZLinkRedisRelocationOptions> configure)
@@ -174,95 +187,13 @@ public sealed class ZLinkRedisRelocationStore :
         ZLinkBlobReference reference,
         CancellationToken cancellationToken = default)
     {
-        _ = await ((IZLinkRelocationRepository)this).DeleteRelocationAsync(
-                reference.Value,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    async ValueTask<ZLinkRelocationStored> IZLinkRelocationRepository.PutRelocationAsync(
-        ReadOnlyMemory<byte> payload,
-        TimeSpan retention,
-        CancellationToken cancellationToken = default)
-    {
-        ValidatePayload(payload);
-        var retentionMs = ValidateRetention(retention);
-        var reference = Convert.ToHexString(SHA256.HashData(payload.Span))
-            .ToLowerInvariant();
-        var checksum = ComputeCrc32C(payload.Span);
-        var result = await ExecuteAsync(
-                async database => (RedisResult[])(await database.ScriptEvaluateAsync(
-                    PutScript,
-                    [PayloadKey(reference)],
-                    [payload.ToArray(), retentionMs]).ConfigureAwait(false))!,
-                cancellationToken)
-            .ConfigureAwait(false);
-        if ((string)result[0]! == "collision")
-        {
-            throw new InvalidDataException(
-                $"Redis already contains different bytes for relocation reference '{reference}'.");
-        }
-
-        var storeNow = DateTimeOffset.FromUnixTimeMilliseconds((long)result[1]);
-        return new ZLinkRelocationStored(
-            reference,
-            checksum,
-            storeNow + TimeSpan.FromMilliseconds(retentionMs),
-            storeNow);
-    }
-
-    async ValueTask<ZLinkRelocationReadResult> IZLinkRelocationRepository.GetRelocationAsync(
-        string reference,
-        CancellationToken cancellationToken = default)
-    {
-        ValidateReference(reference);
-        var payload = await ExecuteAsync(
-                async database => await database.StringGetAsync(
-                        PayloadKey(reference))
-                    .ConfigureAwait(false),
-                cancellationToken)
-            .ConfigureAwait(false);
-        return payload.IsNull
-            ? new ZLinkRelocationReadResult.Missing()
-            : new ZLinkRelocationReadResult.Found((byte[])payload!);
-    }
-
-    async ValueTask<ZLinkRelocationRenewResult> IZLinkRelocationRepository.RenewRelocationAsync(
-        string reference,
-        TimeSpan retention,
-        CancellationToken cancellationToken = default)
-    {
-        ValidateReference(reference);
-        var retentionMs = ValidateRetention(retention);
-        var result = await ExecuteAsync(
-                async database => (RedisResult[])(await database.ScriptEvaluateAsync(
-                    RenewScript,
-                    [PayloadKey(reference)],
-                    [retentionMs]).ConfigureAwait(false))!,
-                cancellationToken)
-            .ConfigureAwait(false);
-        if ((string)result[0]! == "missing")
-            return new ZLinkRelocationRenewResult.Missing();
-        var storeNow = DateTimeOffset.FromUnixTimeMilliseconds((long)result[1]);
-        return new ZLinkRelocationRenewResult.Renewed(
-            storeNow + TimeSpan.FromMilliseconds(retentionMs),
-            storeNow);
-    }
-
-    async ValueTask<ZLinkRelocationDeleteResult> IZLinkRelocationRepository.DeleteRelocationAsync(
-        string reference,
-        CancellationToken cancellationToken = default)
-    {
-        ValidateReference(reference);
-        var removed = await ExecuteAsync(
+        ValidateReference(reference.Value);
+        _ = await ExecuteAsync(
                 async database => await database.KeyDeleteAsync(
-                        PayloadKey(reference))
+                        PayloadKey(reference.Value))
                     .ConfigureAwait(false),
                 cancellationToken)
             .ConfigureAwait(false);
-        return removed
-            ? ZLinkRelocationDeleteResult.Deleted
-            : ZLinkRelocationDeleteResult.Missing;
     }
 
     public ValueTask DisposeAsync()
@@ -312,15 +243,26 @@ public sealed class ZLinkRedisRelocationStore :
     }
 
     private RedisKey PayloadKey(string reference) =>
-        $"{_options.KeyPrefix}:payload:{reference}";
+        $"{_keyPrefix}:payload:{reference}";
 
     private async ValueTask<TResult> ExecuteAsync<TResult>(
         Func<IDatabase, ValueTask<TResult>> operation,
         CancellationToken cancellationToken)
     {
-        using var lease = EnterOperation();
         cancellationToken.ThrowIfCancellationRequested();
-        var database = await GetDatabaseAsync(cancellationToken).ConfigureAwait(false);
+        return await ExecuteCoreAsync(operation, cancellationToken)
+            .AsTask()
+            .WaitAsync(_operationTimeout, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<TResult> ExecuteCoreAsync<TResult>(
+        Func<IDatabase, ValueTask<TResult>> operation,
+        CancellationToken cancellationToken)
+    {
+        using var lease = EnterOperation();
+        var database = await GetDatabaseAsync(cancellationToken)
+            .ConfigureAwait(false);
         return await operation(database).ConfigureAwait(false);
     }
 
@@ -334,7 +276,7 @@ public sealed class ZLinkRedisRelocationStore :
         try
         {
             var connection = _connection ??= await _connect(
-                    _options.BuildConfiguration())
+                    _configuration.Clone())
                 .ConfigureAwait(false);
             return connection.GetDatabase();
         }
@@ -383,7 +325,9 @@ public sealed class ZLinkRedisRelocationStore :
         if (retention <= TimeSpan.Zero
             || retention.TotalMilliseconds > long.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(retention));
-        return Math.Max(1, checked((long)retention.TotalMilliseconds));
+        return Math.Max(
+            1,
+            checked((long)Math.Ceiling(retention.TotalMilliseconds)));
     }
 
     private static void ValidatePayload(ReadOnlyMemory<byte> payload)
@@ -400,24 +344,6 @@ public sealed class ZLinkRedisRelocationStore :
                 "Relocation references must contain 1..4096 UTF-8 bytes.",
                 nameof(reference));
     }
-
-    private static uint ComputeCrc32C(ReadOnlySpan<byte> payload)
-    {
-        const uint polynomial = 0x82f63b78;
-        var crc = uint.MaxValue;
-        foreach (var value in payload)
-        {
-            crc ^= value;
-            for (var bit = 0; bit < 8; bit++)
-                crc = (crc >> 1) ^ ((crc & 1) == 0 ? 0 : polynomial);
-        }
-        return ~crc;
-    }
-
-    private static async ValueTask<IZLinkRedisConnection> ConnectAsync(
-        ConfigurationOptions options) =>
-        new ZLinkStackExchangeRedisConnection(
-            await ConnectionMultiplexer.ConnectAsync(options).ConfigureAwait(false));
 
     private sealed class OperationLease(ZLinkRedisRelocationStore owner) : IDisposable
     {

@@ -74,6 +74,7 @@ final class ZLinkJavaRawMeshNodeRelocationReplyTest {
                                 relay.relocation(),
                                 relay.coordinator(),
                                 relay.operation(),
+                                relay.replyRouteId(),
                                 new ZLinkServiceRelocationWireCodec
                                     .RequestSourceFence(
                                         "source-owner",
@@ -174,6 +175,30 @@ final class ZLinkJavaRawMeshNodeRelocationReplyTest {
                                 relay.relocation(),
                                 relay.coordinator(),
                                 relay.operation(),
+                                relay.replyRouteId() + 1,
+                                expectedSource,
+                                1))));
+            var wrongRoute = assertThrows(
+                java.util.concurrent.ExecutionException.class,
+                () -> target.requestRelocationReplyRelay(
+                        sourceRid,
+                        expectedSource,
+                        codec.encodeReplyRelay(relay),
+                        List.of(payload),
+                        Duration.ofMillis(100))
+                    .toCompletableFuture().get(1, TimeUnit.SECONDS));
+            assertTrue(wrongRoute.getCause()
+                instanceof java.util.concurrent.TimeoutException);
+
+            source.setRelocationReplyRelayHandler(
+                (transportSource, command, frames) ->
+                    CompletableFuture.completedFuture(
+                        codec.encodeReplyRelayAck(
+                            new ZLinkServiceRelocationWireCodec.ReplyRelayAck(
+                                relay.relocation(),
+                                relay.coordinator(),
+                                relay.operation(),
+                                relay.replyRouteId(),
                                 new ZLinkServiceRelocationWireCodec
                                     .RequestSourceFence(
                                         "source-owner",

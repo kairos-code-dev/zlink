@@ -68,7 +68,8 @@ internal sealed partial class ZLinkSpotActivation
             spot,
             SpotNodeName,
             _runtime.Registration.Codecs,
-            _runtime.Registration.StreamCompressionCodec);
+            _runtime.Registration.StreamCompressionCodec,
+            this);
     }
 
     public void AttachInstanceSpot(IZLinkInstanceSpot spot)
@@ -86,7 +87,8 @@ internal sealed partial class ZLinkSpotActivation
             spot,
             SpotNodeName,
             _runtime.Registration.Codecs,
-            _runtime.Registration.StreamCompressionCodec);
+            _runtime.Registration.StreamCompressionCodec,
+            this);
     }
 
     public async ValueTask BindDescriptorsAsync(CancellationToken cancellationToken)

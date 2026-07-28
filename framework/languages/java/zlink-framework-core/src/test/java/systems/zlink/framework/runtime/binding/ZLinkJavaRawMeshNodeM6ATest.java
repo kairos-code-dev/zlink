@@ -19,8 +19,57 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState;
 
 final class ZLinkJavaRawMeshNodeM6ATest {
+    @Test
+    void manualObjectClientPairIsNotRequiredButWeightZeroServerMembershipConnects()
+        throws Exception {
+        RoutingId leftRid = RoutingId.from("jvm-client-left");
+        RoutingId rightRid = RoutingId.from("jvm-client-right");
+        String endpoint = "inproc://jvm-client-pair-" + System.nanoTime();
+        try (var context = Zlink.createContext();
+             var left = new ZLinkJavaRawMeshNode(context, "mesh");
+             var right = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            left.setRoutingId(leftRid);
+            left.setBind(endpoint);
+            left.setObjectRole(ZLinkMeshNodeObjectRole.CLIENT);
+            right.setRoutingId(rightRid);
+            right.setBind("inproc://jvm-client-right-" + System.nanoTime());
+            right.setObjectRole(ZLinkMeshNodeObjectRole.CLIENT);
+            left.start();
+            right.start();
+            right.connectPeer(endpoint, leftRid);
+
+            awaitState(right, MeshPeerState.NOT_REQUIRED);
+            assertEquals(
+                ZLinkOneWayCalls.TARGET_NOT_FOUND,
+                right.spotNode().classifyNodeSendTarget(leftRid)
+                    .orElseThrow());
+        }
+
+        String serverEndpoint =
+            "inproc://jvm-client-server-channel-" + System.nanoTime();
+        try (var context = Zlink.createContext();
+             var left = new ZLinkJavaRawMeshNode(context, "mesh");
+             var right = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            left.setRoutingId(leftRid);
+            left.setBind(serverEndpoint);
+            left.setObjectRole(ZLinkMeshNodeObjectRole.CLIENT);
+            left.addChannel("weight-zero");
+            left.setChannelWeight("weight-zero", 0);
+            right.setRoutingId(rightRid);
+            right.setBind("inproc://jvm-client-caller-" + System.nanoTime());
+            right.setObjectRole(ZLinkMeshNodeObjectRole.CLIENT);
+            left.start();
+            right.start();
+            right.connectPeer(serverEndpoint, leftRid);
+
+            awaitState(right, MeshPeerState.ADMITTED);
+        }
+    }
+
     @Test
     void command44ReceivesCommand45ThroughInfrastructureDispatcher()
         throws Exception {
@@ -189,6 +238,7 @@ final class ZLinkJavaRawMeshNodeM6ATest {
             left.start();
             right.start();
             right.connectPeer(endpoint, leftRid);
+            awaitAdmitted(right);
             left.startDispatch(record -> {
                 try (record;
                      Message packet = Message.from("reply");
@@ -245,5 +295,19 @@ final class ZLinkJavaRawMeshNodeM6ATest {
             peer.state()
                 == systems.zlink.framework.runtime.internal.binding.spot
                     .MeshPeerState.ADMITTED));
+    }
+
+    private static void awaitState(
+        ZLinkJavaRawMeshNode node,
+        MeshPeerState state) throws InterruptedException {
+        long deadline =
+            System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (node.peers().stream().noneMatch(
+                peer -> peer.state() == state)
+            && System.nanoTime() < deadline) {
+            Thread.sleep(1);
+        }
+        assertTrue(node.peers().stream().anyMatch(
+            peer -> peer.state() == state));
     }
 }

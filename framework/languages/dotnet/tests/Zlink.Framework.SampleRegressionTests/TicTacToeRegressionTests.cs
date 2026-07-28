@@ -18,8 +18,6 @@ public sealed partial class RegressionTests
         Assert.Contains(sourceFiles, static source =>
             source.Contains("AddRequestHandler<AuthenticatePlayerHandler", StringComparison.Ordinal));
         Assert.Contains(sourceFiles, static source =>
-            source.Contains("AddRequestHandler<CreateGameHandler", StringComparison.Ordinal));
-        Assert.Contains(sourceFiles, static source =>
             source.Contains("AddActorPacket<PlayActorJoinGameHandler", StringComparison.Ordinal));
         Assert.Contains(sourceFiles, static source =>
             source.Contains("AddHandler<AuthenticatePlaySessionHandler>", StringComparison.Ordinal));
@@ -28,7 +26,7 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
-    public void TicTacToe_Uses_One_Physical_Mesh_With_The_Same_Channel_Set()
+    public void TicTacToe_Separates_Manual_Object_Mesh_And_Api_ClientServer_Channel()
     {
         var sampleRoot = ResolveSampleRoot("TicTacToe");
         var apiServer = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Api", "ApiServer.cs"));
@@ -48,24 +46,62 @@ public sealed partial class RegressionTests
         Assert.Contains("AddRouteMesh(SampleNodes.Mesh)", apiServer, StringComparison.Ordinal);
         Assert.Contains("AddRouteMesh(SampleNodes.Mesh)", playServer, StringComparison.Ordinal);
 
-        foreach (var source in new[] { apiServer, playServer })
-        {
-            Assert.Contains("ChannelName(SampleChannels.Api)", source, StringComparison.Ordinal);
-            Assert.Contains("ChannelName(SampleChannels.Play(0))", source, StringComparison.Ordinal);
-            Assert.Contains("ChannelName(SampleChannels.Play(1))", source, StringComparison.Ordinal);
-            Assert.Contains("ChannelName(SampleNodes.Mesh)", source, StringComparison.Ordinal);
-        }
+        Assert.Contains("mesh.Objects().Client()", apiServer, StringComparison.Ordinal);
+        Assert.Contains("mesh.Objects().Server()", playServer, StringComparison.Ordinal);
+        Assert.DoesNotContain("mesh.Channel(SampleChannels.Api)", apiServer, StringComparison.Ordinal);
+        Assert.DoesNotContain("mesh.Channel(SampleChannels.Api)", playServer, StringComparison.Ordinal);
 
-        Assert.Contains("EnableActorDispatch(SampleNodes.Mesh)", playServer, StringComparison.Ordinal);
-        Assert.Contains("RequestToChannel(\n                SampleNodes.Mesh,", createGame, StringComparison.Ordinal);
-        Assert.Contains("RequestToChannel(\n                SampleNodes.Mesh,", authenticate, StringComparison.Ordinal);
+        Assert.Contains("AddClientServerChannel(SampleChannels.Api)", apiServer, StringComparison.Ordinal);
+        Assert.Contains(".Server()", apiServer, StringComparison.Ordinal);
+        Assert.Contains("AddRequestHandler<AuthenticatePlayerHandler", apiServer, StringComparison.Ordinal);
+        Assert.Contains("AddClientServerChannel(SampleChannels.Api)", playServer, StringComparison.Ordinal);
+        Assert.Contains(".Client()", playServer, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("Channel(SampleTopics.PlayerMilestoneChannel)", apiServer,
+            StringComparison.Ordinal);
+        Assert.Contains("mesh.Channel(SampleTopics.PlayerMilestoneChannel).Server()", playServer,
+            StringComparison.Ordinal);
+
+        Assert.Contains(".EnableActorDispatch()", playServer, StringComparison.Ordinal);
+        Assert.Contains(".Create(SampleTypes.GameSpot)", createGame, StringComparison.Ordinal);
+        Assert.Contains(".InMesh(SampleNodes.Mesh)", createGame, StringComparison.Ordinal);
+        Assert.Contains(".Request(new TicTacToeGameCreateReq(", createGame, StringComparison.Ordinal);
+        Assert.DoesNotContain(".GetOrCreate(", createGame, StringComparison.Ordinal);
+        Assert.DoesNotContain("Guid.NewGuid", createGame, StringComparison.Ordinal);
+        Assert.Contains("RequestToChannel(\n                SampleChannels.Api,",
+            authenticate, StringComparison.Ordinal);
         var game = File.ReadAllText(Path.Combine(
             sampleRoot, "Server", "Play", "Infrastructure", "ZLink", "Spots", "TicTacToeGameSpot",
             "TicTacToeGame.cs"));
-        Assert.Contains("result.Detail.AdmittedRemoteNodeCount != 1", game, StringComparison.Ordinal);
-        Assert.Contains("result.Detail.AdmittedLocalSpotCount != 1", game, StringComparison.Ordinal);
+        Assert.Contains("Context.Outbound.Publish(", game, StringComparison.Ordinal);
+        Assert.DoesNotContain("ZLinkPublishResult", game, StringComparison.Ordinal);
+        Assert.DoesNotContain("result.Detail", game, StringComparison.Ordinal);
         Assert.Contains("string MeshEndpoint", settings, StringComparison.Ordinal);
         Assert.Contains("IReadOnlyList<string> PeerMeshEndpoints", settings, StringComparison.Ordinal);
+        Assert.Contains(
+            "\"PeerMeshEndpoints\": [\"${PLAY_A_MESH_ENDPOINT}\", \"${PLAY_B_MESH_ENDPOINT}\"]",
+            shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "play(\"play-a\", \"${PLAY_A_MESH_ENDPOINT}\", [], \"${PLAY_A_ENDPOINT}\")",
+            shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "play(\"play-b\", \"${PLAY_B_MESH_ENDPOINT}\", [\"${PLAY_A_MESH_ENDPOINT}\"], \"${PLAY_B_ENDPOINT}\")",
+            shellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "PeerMeshEndpoints = @($playAMeshEndpoint, $playBMeshEndpoint)",
+            powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "New-TicTacToePlaySettings -InstanceName \"play-a\" -MeshEndpoint $playAMeshEndpoint -PeerMeshEndpoints @()",
+            powershellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "New-TicTacToePlaySettings -InstanceName \"play-b\" -MeshEndpoint $playBMeshEndpoint -PeerMeshEndpoints @($playAMeshEndpoint)",
+            powershellRunner,
+            StringComparison.Ordinal);
         Assert.Contains("while len(sockets) < 8", shellRunner, StringComparison.Ordinal);
         Assert.Contains("$ports = New-SamplePorts -Count 8 -BasePort 0", powershellRunner,
             StringComparison.Ordinal);
@@ -84,9 +120,9 @@ public sealed partial class RegressionTests
         var sharedServerProject = File.ReadAllText(
             Path.Combine(sampleRoot, "Server", "TicTacToe.Server.csproj"));
         var apiProject = File.ReadAllText(
-            Path.Combine(sampleRoot, "Server.Api", "TicTacToe.Server.Api.csproj"));
+            Path.Combine(sampleRoot, "Server", "Api", "TicTacToe.Server.Api.csproj"));
         var playProject = File.ReadAllText(
-            Path.Combine(sampleRoot, "Server.Play", "TicTacToe.Server.Play.csproj"));
+            Path.Combine(sampleRoot, "Server", "Play", "TicTacToe.Server.Play.csproj"));
 
         Assert.Contains("<EnableDefaultCompileItems>false</EnableDefaultCompileItems>",
             sharedServerProject,
@@ -96,10 +132,14 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.DoesNotContain("Api/**/*.cs", sharedServerProject, StringComparison.Ordinal);
         Assert.DoesNotContain("Play/**/*.cs", sharedServerProject, StringComparison.Ordinal);
-        Assert.Contains("<Compile Include=\"../Server/Api/**/*.cs\"", apiProject, StringComparison.Ordinal);
-        Assert.DoesNotContain("../Server/Play/**/*.cs", apiProject, StringComparison.Ordinal);
-        Assert.Contains("<Compile Include=\"../Server/Play/**/*.cs\"", playProject, StringComparison.Ordinal);
-        Assert.DoesNotContain("../Server/Api/**/*.cs", playProject, StringComparison.Ordinal);
+        Assert.Contains("<ProjectReference Include=\"../TicTacToe.Server.csproj\"",
+            apiProject,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Play/**/*.cs", apiProject, StringComparison.Ordinal);
+        Assert.Contains("<ProjectReference Include=\"../TicTacToe.Server.csproj\"",
+            playProject,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Api/**/*.cs", playProject, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -160,10 +200,10 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.DoesNotContain("intentionally derived here, not read", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("sleep 2", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("${SCRIPT_DIR}/Server.Play/bin/Debug/net8.0/TicTacToe.Server.Play.dll",
+        Assert.Contains("${SCRIPT_DIR}/Server/Play/bin/Debug/net8.0/TicTacToe.Server.Play.dll",
             shellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("${SCRIPT_DIR}/Server.Api/bin/Debug/net8.0/TicTacToe.Server.Api.dll",
+        Assert.Contains("${SCRIPT_DIR}/Server/Api/bin/Debug/net8.0/TicTacToe.Server.Api.dll",
             shellRunner,
             StringComparison.Ordinal);
         Assert.Contains("dotnet \"${assembly}\" --config \"${config_file}\"", shellRunner,
@@ -216,7 +256,9 @@ public sealed partial class RegressionTests
         Assert.Contains("RequireString(section, nameof(RedisEndpoint))", settings, StringComparison.Ordinal);
         Assert.Contains("RequireString(section, nameof(RedisKeyPrefix))", settings, StringComparison.Ordinal);
 
-        Assert.Contains("Redis is required for the room route store", readme, StringComparison.Ordinal);
+        Assert.Contains("Redis is required as the sample's official Location Store provider",
+            readme,
+            StringComparison.Ordinal);
         Assert.Contains("always provisions a", readme, StringComparison.Ordinal);
         Assert.Contains("does not", readme, StringComparison.Ordinal);
         Assert.Contains("reuse an externally supplied Redis endpoint", readme, StringComparison.Ordinal);
@@ -240,8 +282,7 @@ public sealed partial class RegressionTests
         Assert.Contains("entry spot: actor destroy completed. actor=player-x", shellRunner, StringComparison.Ordinal);
         Assert.Contains("entry spot: actor destroy completed. actor=player-o", shellRunner, StringComparison.Ordinal);
         Assert.Contains("grep -R -q \"dispatch-error\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("grep -R -q \"message flow outcome=error\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("grep -Rq \"message flow\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("message flow", shellRunner, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("LeaveGameMsg", shellRunner, StringComparison.Ordinal);
 
         Assert.Contains("stream-inbound sample=TicTacToe", powershellRunner, StringComparison.Ordinal);
@@ -258,13 +299,8 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("entry spot: actor destroy completed. actor=player-o", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("Wait-SampleLogContains \"message flow\" \"TicTacToe message-flow evidence\"",
-            powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("Select-String -Pattern $Pattern -List", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("message flow", powershellRunner, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Select-String -Pattern \"dispatch-error\" -List", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("Select-String -Pattern \"message flow outcome=error\" -List", powershellRunner,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain("Select-String -Pattern $Pattern -Quiet", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("Select-String -Pattern \"dispatch-error\" -Quiet", powershellRunner,
             StringComparison.Ordinal);
         Assert.DoesNotContain("LeaveGameMsg", powershellRunner, StringComparison.Ordinal);
@@ -280,7 +316,7 @@ public sealed partial class RegressionTests
         Assert.Contains("string RedisKeyPrefix", settings, StringComparison.Ordinal);
         Assert.Contains("RequireString(section, nameof(RedisKeyPrefix))", settings, StringComparison.Ordinal);
         Assert.DoesNotContain("\"--redis-key-prefix\"", settings, StringComparison.Ordinal);
-        Assert.Contains("SetKeyPrefix(settings.RedisKeyPrefix)", playServer, StringComparison.Ordinal);
+        Assert.Contains("KeyPrefix = settings.RedisKeyPrefix", playServer, StringComparison.Ordinal);
     }
 
     [Fact]

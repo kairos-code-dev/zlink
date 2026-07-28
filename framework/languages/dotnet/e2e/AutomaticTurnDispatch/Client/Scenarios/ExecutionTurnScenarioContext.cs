@@ -8,7 +8,8 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
     private string? _spotRid;
     private readonly Dictionary<string, string> _evidenceNodes =
         new(StringComparer.Ordinal);
-    private AwaitActorScenarioContext? _actors;
+    private readonly Dictionary<string, string> _spotNodes =
+        new(StringComparer.Ordinal);
 
     internal async Task<string> SpotAsync()
     {
@@ -20,7 +21,6 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
 
     internal async Task<AwaitActorScenarioContext> ActorsAsync()
     {
-        if (_actors is not null) return _actors;
         var spot = await SpotAsync();
         var actorA = $"actor-a-{Guid.NewGuid():N}";
         var actorB = $"actor-b-{Guid.NewGuid():N}";
@@ -28,8 +28,7 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<BindAwaitActorsRes>();
         ZlinkStreamAssert.Ensure(result.Actors.Length == 2, "Execution turn actor binding failed.");
-        _actors = new AwaitActorScenarioContext(spot, actorA, actorB);
-        return _actors;
+        return new AwaitActorScenarioContext(spot, actorA, actorB);
     }
 
     internal async Task EnsureActorInSpotAsync(string actorId, string spotRid, string scenarioId)
@@ -40,7 +39,19 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
             .Async<ActorAwaitRes>();
         ZlinkStreamAssert.Ensure(reply.Marker.Contains("actor-join", StringComparison.Ordinal),
             $"{scenarioId} actor placement was not deferred.");
-        await AssertJoinCompletionAsync(requestId, "actor-join", spotRid, scenarioId);
+        var completionMarker = reply.Marker switch
+        {
+            "actor-join-await-released" => "actor-join-await",
+            "actor-join-deferred" => "actor-join",
+            _ => throw new InvalidOperationException(
+                $"{scenarioId} returned unknown Actor Join marker '{reply.Marker}'.")
+        };
+        await AssertJoinCompletionAsync(
+            requestId,
+            completionMarker,
+            spotRid,
+            scenarioId);
+        await WaitActorDispatchReadyAsync(actorId, scenarioId);
     }
 
     internal async Task EnsureSpotAsync(string spotRid, string targetNode)
@@ -50,13 +61,14 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
             builder.Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, targetNode);
         var result = await builder.Timeout(TimeSpan.FromSeconds(30)).Async<EnsureSpotRes>();
         ZlinkStreamAssert.Ensure(result.SpotRid == spotRid, $"Spot creation failed for {spotRid}.");
+        _spotNodes[spotRid] = ControlNode(result.NodeRid);
     }
 
-    internal void SendSpot<T>(T message, string spotRid)
+    internal ValueTask SendSpotAsync<T>(T message, string spotRid)
     {
-        client.Send(message)
+        return client.Send(message)
             .Metadata(AutomaticTurnDispatchNames.SpotRidMetadata, spotRid)
-            .Async().AsTask().GetAwaiter().GetResult();
+            .Async();
     }
 
     internal ZlinkStreamTypedRequestBuilder SpotRequest<TRequest>(
@@ -74,6 +86,38 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
         return client.Request(request)
             .Metadata(AutomaticTurnDispatchNames.ActorIdMetadata, actorId)
             .Timeout(TimeSpan.FromSeconds(30));
+    }
+
+    internal async Task WaitActorDispatchReadyAsync(
+        string actorId,
+        string scenarioId)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+        Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamException? last = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                var requestId = NewId($"{scenarioId}-route-ready");
+                _ = await ActorRequest(
+                        actorId,
+                        new ActorFastReq(requestId, "route-ready"))
+                    .Async<ActorAwaitRes>();
+                return;
+            }
+            catch (Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamException error)
+                when (error.Error.Code
+                      == Systems.Zlink.Stream.Connector.Contracts
+                          .ZlinkStreamErrorCode.RemoteError)
+            {
+                last = error;
+                await Task.Delay(25);
+            }
+        }
+
+        throw new TimeoutException(
+            $"{scenarioId} Actor '{actorId}' session route did not become ready.",
+            last);
     }
 
     internal async Task<string[]> EvidenceAsync(
@@ -135,9 +179,24 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
                 requestId,
                 marker,
                 MinimumCount: minimumCount))
-            .Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, targetNode)
+            .Metadata(
+                AutomaticTurnDispatchNames.TargetNodeRidMetadata,
+                ControlNode(targetNode))
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<AwaitEvidenceRes>(cancellationToken)).Evidence;
+
+    private static string ControlNode(string objectNodeRid)
+    {
+        const int generatedSuffixLength = 37;
+        return objectNodeRid.Length > generatedSuffixLength
+               && objectNodeRid[^generatedSuffixLength] == '-'
+               && Guid.TryParse(
+                   objectNodeRid.AsSpan(
+                       objectNodeRid.Length + 1 - generatedSuffixLength),
+                   out _)
+            ? objectNodeRid[..^generatedSuffixLength]
+            : objectNodeRid;
+    }
 
     internal async Task AssertJoinCompletionAsync(
         string requestId,
@@ -145,7 +204,11 @@ internal sealed class ExecutionTurnScenarioContext(IZlinkStreamConnector client)
         string targetSpotId,
         string scenarioId)
     {
-        var evidence = await EvidenceAsync(requestId, $"{marker}-completed");
+        _spotNodes.TryGetValue(targetSpotId, out var targetNode);
+        var evidence = await EvidenceAsync(
+            requestId,
+            $"{marker}-completed",
+            targetNode);
         ZlinkStreamAssert.Ensure(
             evidence.Any(line =>
                 line.Contains($"request={requestId}", StringComparison.Ordinal)

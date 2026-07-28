@@ -76,6 +76,31 @@ public sealed record NodeDiagnosticsRes(
     bool Maintenance,
     string? Error = null);
 
+/// <summary>
+/// Ops-only self-check request. It selects adjacent Zone Spots whose current owners
+/// differ without turning either owner RID into an application routing address.
+/// </summary>
+public sealed record RelocationPairReq;
+
+public sealed record RelocationPairRes(
+    string SourceZoneId,
+    string TargetZoneId,
+    string SourceOwnerNodeRid,
+    string TargetOwnerNodeRid,
+    string? Error = null);
+
+/// <summary>
+/// Ops-only self-check request used to verify that relocation preserves the Actor
+/// object generation while changing its current owner.
+/// </summary>
+public sealed record ActorLocationProbeReq(string ActorId);
+
+public sealed record ActorLocationProbeRes(
+    string ActorId,
+    ulong ObjectGeneration,
+    string OwnerNodeRid,
+    string? Error = null);
+
 // ---------------------------------------------------------------------------
 // §7.3 server internal
 // ---------------------------------------------------------------------------
@@ -91,7 +116,7 @@ public sealed record DeliverAnnounceMsg(string AnnouncementId, string Text);
 
 /// <summary>
 /// Zone spot -> bot actor. Drives one patrol step (§2.7). This is a request so the periodic
-/// producer cannot build an unbounded movement backlog while the actor is transferring.
+/// producer cannot build an unbounded movement backlog while the actor is relocating.
 /// </summary>
 public sealed record BotTickReq();
 
@@ -106,19 +131,6 @@ public sealed record BotTickRes();
 public sealed record EnterWorldReq(int X, int Y, bool IsBot, int DirX = 0, int DirY = 0);
 
 public sealed record EnterWorldRes(string ZoneId, int X, int Y, string? Error = null);
-
-/// <summary>Ops -> one runtime-discovered ZoneNode.</summary>
-public sealed record ApplyNodeMaintenanceReq(string NodeId, bool Enabled);
-
-public sealed record ApplyNodeMaintenanceRes(string NodeId, bool Enabled, IReadOnlyList<string> Zones);
-
-public sealed record GetNodeDiagnosticsReq(string NodeId);
-
-public sealed record GetNodeDiagnosticsRes(
-    string NodeId,
-    IReadOnlyList<string> Zones,
-    int PlayerCount,
-    bool Maintenance);
 
 /// <summary>ZoneNode -> Ops (channel `zoneworld.report`). Sent when the event occurs (§8.1).</summary>
 public sealed record ReportSpotEventMsg(string NodeId, string Kind, string Detail, string OccurredAt);
@@ -143,10 +155,9 @@ public sealed record ZoneBorderEvent(
 /// <summary>
 /// Player actor -> zone spot, as the JoinSpot admission payload. Joining is what
 /// moves the actor between zones, and across nodes it is what triggers the actor
-/// transfer, so the zone change rides the join rather than a plain send (§2.6).
-/// The spot resolves the ActorRef from the actor directory instead of reading it
-/// here: this payload is built on the source node, so an ActorRef carried in it
-/// would be stale the moment the transfer lands (§8.3).
+/// relocation, so the zone change rides the join rather than a plain send (§2.6).
+/// The payload carries the global ActorId only. The framework resolves the current
+/// owner, so application messages never carry a cached ActorRef (§8.3).
 /// </summary>
 public sealed record EnterZoneMsg(
     string PlayerId,
@@ -156,3 +167,28 @@ public sealed record EnterZoneMsg(
     bool InitialEntry);
 
 public sealed record EnterZoneRes(string ZoneId, string? Error = null);
+
+/// <summary>
+/// Zone spot -> player actor. The actor forwards the snapshot through its current
+/// bound session, so relocation and Message Follow remain on the normal Actor route.
+/// </summary>
+public sealed record DeliverZoneStateMsg(
+    string ZoneId,
+    long Tick,
+    IReadOnlyList<PlayerView> Players);
+
+public sealed record DeliverZoneChangedMsg(string PlayerId, string ZoneId);
+
+/// <summary>
+/// Zone spot -> player actor. Bots receive no instance of this message because they
+/// do not have a bound client session.
+/// </summary>
+public sealed record DeliverWorldAnnounceMsg(string AnnouncementId, string Text);
+
+/// <summary>
+/// Runner-only Actor request used after relocation to verify that Message Follow
+/// preserves the original payload and reply route.
+/// </summary>
+public sealed record MessageFollowProbeReq(string ProbeId, byte[] Payload);
+
+public sealed record MessageFollowProbeRes(string ProbeId, byte[] Payload);

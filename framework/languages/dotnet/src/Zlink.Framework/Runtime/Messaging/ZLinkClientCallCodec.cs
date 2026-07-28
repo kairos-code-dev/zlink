@@ -79,7 +79,7 @@ internal static class ZLinkEnvelopeReplyDecoder
     {
         if (reply.Count == 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 emptyMessage);
 
         ZLinkEnvelopeHeader replyHeader;
@@ -94,7 +94,7 @@ internal static class ZLinkEnvelopeReplyDecoder
         catch (Exception exception)
         {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "Reply envelope is malformed.",
                 innerException: exception);
         }
@@ -102,11 +102,11 @@ internal static class ZLinkEnvelopeReplyDecoder
             throw ZLinkEnvelopeErrorMapper.CreateException(replyHeader, errorMessage);
         if (replyHeader.Kind != ZLinkMessageKind.Response)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 $"Reply envelope kind '{replyHeader.Kind}' is not a response.");
         if (reply.Count < 2)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "Reply envelope body is missing.");
 
         try
@@ -117,7 +117,7 @@ internal static class ZLinkEnvelopeReplyDecoder
                        replyHeader.ContentType,
                        codecs)
                    ?? throw new ZLinkFrameworkException(
-                       ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                       ZLinkFrameworkErrorKind.ProtocolError,
                        "Reply body is null.");
         }
         catch (ZLinkFrameworkException)
@@ -127,7 +127,7 @@ internal static class ZLinkEnvelopeReplyDecoder
         catch (Exception exception)
         {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "Reply body could not be decoded.",
                 innerException: exception);
         }
@@ -151,7 +151,7 @@ internal static class ZLinkEnvelopeErrorMapper
             nameof(OperationCanceledException) => new OperationCanceledException(message),
             nameof(ZLinkActorHandoffRejectedException) => new ZLinkActorHandoffRejectedException(message),
             _ => new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 message)
         };
     }

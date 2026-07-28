@@ -10,6 +10,7 @@ using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace ObservabilityOps.Server.Session;
 
@@ -27,50 +28,49 @@ internal static class SessionHostFactory
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<MetricEvidenceCollector>();
-        builder.Services.AddSingleton<DrainOperation>();
+        builder.Services.AddSingleton<RelocationOperation>();
+        builder.Services.AddSingleton<ShutdownOperation>();
         builder.Services.AddSingleton<BoundedOperationGate>();
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"flow-{options.Rid}.log"),
+            options.Rid));
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint).SetKeyPrefix(options.RedisKeyPrefix)));
-            framework.ConfigureDispatch().MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
-                .TraceLabel(options.Rid);
+            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; }));
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             framework.AddHandlersFromAssemblyOf(typeof(SessionHostFactory));
             var mesh17 = framework.AddRouteMesh(ObservabilityNames.PlayMesh)
-                .Listen(options.RouterEndpoint)
-                .SetRoutingId(RoutingId.From(options.Rid));
-            mesh17.ChannelName(ObservabilityNames.PlayMesh);
+                .Listen(options.RouterEndpoint);
+            mesh17.Objects().Client();
+            mesh17.Channel(ObservabilityNames.PlayMesh).Client();
             framework.AddStreamNode(ObservabilityNames.StreamNode)
                 .Bind(options.StreamEndpoint)
-                .EnableActorDispatch(ObservabilityNames.PlayMesh)
+                .EnableActorDispatch()
                 .AddSession<ObservabilitySession>();
         });
         var app = builder.Build();
         _ = app.Services.GetRequiredService<MetricEvidenceCollector>();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Rid }));
-        app.MapPost("/message-flow/off", (IZLinkMessageFlowRuntime flow) =>
-        {
-            flow.Mode = ZLinkRuntimeMessageFlowMode.Off;
-            return Results.Ok(new { mode = "off" });
-        });
+        app.MapDiagnosticsControl();
         app.MapGet("/evidence", async (
             MetricEvidenceCollector metrics,
-            IZLinkDrainControl drain,
+            IZLinkFrameworkRuntime runtime,
             IZLinkLocationRuntimeQuery locations) =>
         {
-            var peers = await locations.ListMeshNodeDescriptorsAsync(ObservabilityNames.PlayMesh);
+            var peers = await locations.ListTopologyAsync(
+                new ZLinkLocationTopologyFilter(ObservabilityNames.PlayMesh));
             return Results.Ok(new EvidenceSnapshot(
-                options.Rid, drain.IsReady, [], metrics.Snapshot(),
-                peers.Select(row => new PeerRow(row.Rid.ToString(),
-                    row.Draining, (long)row.LifecycleGeneration)).ToArray(), [], []));
+                options.Rid, runtime.Status.IsReady, [], metrics.Snapshot(),
+                peers.Items.Select(row => new PeerRow(row.NodeRid.ToString(),
+                    row.Draining, row.UpdatedAt.UtcTicks)).ToArray(), [], []));
         });
         app.MapPost("/metrics/wait", async (MetricWaitReq request, MetricEvidenceCollector metrics,
             CancellationToken cancellationToken) => Results.Ok(await metrics.WaitAsync(
             samples => MetricWait.Matches(samples, request),
                 TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000)),
                 cancellationToken)));
-        app.MapDrainOperations();
+        app.MapMaintenanceOperations();
         app.MapBoundedOperationGate();
         return app;
     }

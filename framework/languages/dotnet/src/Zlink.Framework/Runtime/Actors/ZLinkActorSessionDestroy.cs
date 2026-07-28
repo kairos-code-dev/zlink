@@ -20,17 +20,17 @@ internal sealed partial class ZLinkActorSessionManager
 
                 if (state.Activation is not null)
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        ZLinkFrameworkErrorKind.NotFound,
                         $"Actor '{actor.Context.ActorId}' must leave its current SPOT before destroy.");
 
                 var actorRef = state.NativeActorRef
                                ?? throw new ZLinkFrameworkException(
-                                   ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                                   ZLinkFrameworkErrorKind.NotFound,
                                    $"Actor '{actor.Context.ActorId}' does not have a native Actor ref.");
 
                 if (actorRef.NodeRid != entrySpotNodeRid)
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        ZLinkFrameworkErrorKind.NotFound,
                         $"Actor '{actor.Context.ActorId}' is not owned by this Entry Spot.");
 
                 state.BeginTeardown();

@@ -13,26 +13,6 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
 $SUPPORTCHAT_LOG_DIR = $SampleLogDir
 
-function Wait-SampleLogContains {
-    param(
-        [Parameter(Mandatory = $true)][string]$Pattern,
-        [Parameter(Mandatory = $true)][string]$Description,
-        [int]$Attempts = 50
-    )
-
-    for ($i = 0; $i -lt $Attempts; $i++) {
-        $match = Get-ChildItem -Path $SampleLogDir -Filter "*.log" |
-            Select-String -Pattern $Pattern -List |
-            Select-Object -First 1
-        if ($null -ne $match) {
-            return
-        }
-        Start-Sleep -Milliseconds 200
-    }
-
-    throw "$Description was not found."
-}
-
 try {
     $ports = New-SamplePorts -Count 4 -BasePort 0
 
@@ -97,7 +77,6 @@ try {
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "status=Active"
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "status=WaitingForClose"
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "status=Closed"
-    Wait-SampleLogContains "message flow" "SupportChat message-flow evidence"
     Write-Host "supportchat-server-evidence=completed"
     $RunSucceeded = $true
 }

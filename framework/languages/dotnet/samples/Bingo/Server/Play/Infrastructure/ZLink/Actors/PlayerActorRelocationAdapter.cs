@@ -16,7 +16,15 @@ internal sealed class PlayerActorRelocationAdapter
             actor.DisplayName,
             actor.RoomId,
             actor.DestroyAfterEntrySpotJoin,
-            actor.Disconnected)));
+            actor.Disconnected,
+            actor.LastCompletedJoinOperationId?.High,
+            actor.LastCompletedJoinOperationId?.Low,
+            actor.LastCompletedJoinOutcome,
+            actor.PendingJoinsSnapshot()
+                .Select(static pending => new PendingJoinState(
+                    pending.RoomId,
+                    pending.ObserveOnly))
+                .ToArray())));
     }
 
     public ValueTask RestoreAsync(
@@ -31,6 +39,15 @@ internal sealed class PlayerActorRelocationAdapter
         if (!string.IsNullOrEmpty(transferred.RoomId)) actor.JoinRoom(transferred.RoomId);
         if (transferred.DestroyAfterEntrySpotJoin) actor.MarkForDestroyAfterRoomLeave();
         if (transferred.Disconnected) actor.MarkDisconnected();
+        actor.RestoreJoinCompletion(
+            transferred.JoinOperationHigh is { } high
+            && transferred.JoinOperationLow is { } low
+                ? new ZLinkActorJoinOperationId(high, low)
+                : null,
+            transferred.JoinOutcome);
+        actor.RestorePendingJoins(
+            transferred.PendingJoins.Select(static pending =>
+                (pending.RoomId, pending.ObserveOnly)));
         return ValueTask.CompletedTask;
     }
 
@@ -38,5 +55,13 @@ internal sealed class PlayerActorRelocationAdapter
         string DisplayName,
         string RoomId,
         bool DestroyAfterEntrySpotJoin,
-        bool Disconnected);
+        bool Disconnected,
+        ulong? JoinOperationHigh,
+        ulong? JoinOperationLow,
+        string JoinOutcome,
+        PendingJoinState[] PendingJoins);
+
+    private sealed record PendingJoinState(
+        string RoomId,
+        bool ObserveOnly);
 }

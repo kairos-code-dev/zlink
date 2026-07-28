@@ -1,3 +1,4 @@
+using AutomaticTurnDispatch.Shared;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
@@ -54,7 +55,7 @@ internal sealed class AwaitActor(
     {
         cancellationToken.ThrowIfCancellationRequested();
         var pending = _pendingJoins.Count == 0
-            ? (RequestId: "unknown", Marker: "actor-join")
+            ? ResolveRelocatedJoin(completion)
             : _pendingJoins.Dequeue();
         var accepted = completion is ZLinkActorJoinCompletion.Accepted;
         evidence.Add(
@@ -64,5 +65,20 @@ internal sealed class AwaitActor(
             $"{pending.Marker}-completed|rid={evidence.Rid}|spot={Context.SpotId}"
             + $"|actor={ActorId}|request={pending.RequestId}|accepted={accepted}");
         return ValueTask.CompletedTask;
+    }
+
+    private static (string RequestId, string Marker) ResolveRelocatedJoin(
+        ZLinkActorJoinCompletion completion)
+    {
+        if (completion is ZLinkActorJoinCompletion.Accepted
+            {
+                Reply: { IsEmpty: false } reply
+            })
+        {
+            var request = reply.Decode<JoinDelayReq>();
+            return (request.RequestId, request.CompletionMarker);
+        }
+
+        return (RequestId: "unknown", Marker: "actor-join");
     }
 }

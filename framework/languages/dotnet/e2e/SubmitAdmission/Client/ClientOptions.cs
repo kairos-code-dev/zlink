@@ -8,6 +8,7 @@ internal sealed record ClientOptions(
     string PublisherUrl,
     string CallerRid,
     string TargetRid,
+    string ObjectClientRid,
     string Scenario)
 {
     public static ClientOptions Parse(string[] args) =>

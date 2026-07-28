@@ -3,7 +3,6 @@ using StackExchange.Redis;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Locations.Redis;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.Ops.Application.Ops;
@@ -45,14 +44,15 @@ builder.Services.AddSingleton<AnnouncementService>();
 builder.Services.AddSingleton<MaintenanceService>();
 builder.Services.AddSingleton<NodeDiagnosticsService>();
 builder.Services.AddHostedService<NodeStatusBroadcaster>();
-builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>, LocationEventHandler>();
-builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>, SocketEventHandler>();
+builder.Services.AddHostedService<SocketEventHandler>();
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-        .SetConnectionString(shared.RedisEndpoint)
-        .SetKeyPrefix(shared.RedisKeyPrefix)));
+    options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+    {
+        redis.ConnectionString = shared.RedisEndpoint;
+        redis.KeyPrefix = shared.RedisKeyPrefix;
+    }));
     // These values govern registrations owned by Ops. Zone nodes keep the documented 30-second
     // defaults, so crash scenarios still exercise real lease expiry (§4.2 and §8.1).
     var locations = options.ConfigureLocations();
@@ -62,8 +62,7 @@ builder.Services.AddZLinkFramework(options =>
     locations.OwnerLeaseRenewTimeout = TimeSpan.FromMilliseconds(500);
 
     options.ConfigureDispatch()
-        .MessageFlow(ZLinkRuntimeMessageFlowMode.ErrorsOnly)
-        .TraceLabel("ops");
+        .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Errors);
     options.AddHandlersFromAssemblyOf(typeof(OpsConsoleSession));
 
     options.AddStreamNode(ZoneWorldNames.OpsStreamNode)
@@ -80,15 +79,6 @@ builder.Services.AddZLinkFramework(options =>
         .SetRoutingIdPrefix("ops");
     mesh.Channel(ZoneWorldNames.ReportChannel).Server()
         .AddHandlerGroup(HandlerGroups.Ops);
-    mesh.Channel(ZoneWorldNames.ZoneChannel).Client();
-});
-
-builder.Services.AddZLinkMonitoring(monitor =>
-{
-    // Node registration and connection are changes, not answers to a question: a node that
-    // shut down cannot reply (§8.1).
-    monitor.AddLocationRuntimeEvents(ZoneWorldNames.OpsLocationSource, TimeSpan.FromMilliseconds(300));
-    monitor.AddMeshNodeEvents(ZoneWorldNames.MeshName);
 });
 
 await builder.Build().RunAsync();

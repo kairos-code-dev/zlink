@@ -5,6 +5,9 @@ using SubmitAdmission.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
+using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Locations;
+using Zlink.Framework.Locations.Redis;
 
 var options = ServerOptions.Parse(args);
 var builder = WebApplication.CreateBuilder(args);
@@ -31,7 +34,7 @@ builder.Services.AddZLinkFramework(framework =>
         routerSocket.ReceiveHighWaterMark = 1;
         mesh.AddRouteSendHandler<NodeAdmissionHandler, AdmissionMessage>();
         mesh.AddRouteRequestHandler<NodeReadyHandler, RouteReadyRequest, RouteReadyReply>();
-        var channel = mesh.ChannelName(SubmitAdmissionNames.Channel);
+        var channel = mesh.Channel(SubmitAdmissionNames.Channel).Server();
         channel.SetWeight(100);
         channel.AddSendHandler<ChannelAdmissionHandler, AdmissionMessage>();
         channel.AddRequestHandler<ChannelReadyHandler, RouteReadyRequest, RouteReadyReply>();
@@ -43,6 +46,21 @@ builder.Services.AddZLinkFramework(framework =>
                 options.PeerEndpoint);
         }
         peerConnections = mesh.PeerConnections;
+    }
+    else if (options.Role == "object-client")
+    {
+        framework.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+        {
+            redis.ConnectionString =
+                Require(options.RedisEndpoint, nameof(options.RedisEndpoint));
+            redis.KeyPrefix =
+                Require(options.RedisKeyPrefix, nameof(options.RedisKeyPrefix));
+        }));
+        framework.AddRouteMesh(SubmitAdmissionNames.Mesh)
+            .Listen(Require(options.MeshEndpoint, nameof(options.MeshEndpoint)))
+            .SetRoutingIdPrefix("submit-object-client")
+            .Objects()
+            .Client();
     }
     else if (options.Role == "publisher")
     {
@@ -235,6 +253,58 @@ if (options.Role == "caller")
             Require(options.PeerEndpoint, nameof(options.PeerEndpoint)));
         return Results.Ok();
     });
+    app.MapPost("/admin/connect-object-client", (
+        string rid,
+        string endpoint,
+        IZLinkMeshPeerConnections connections) =>
+    {
+        connections.Connect(RoutingId.From(rid), endpoint);
+        return Results.Ok();
+    });
+    app.MapGet("/topology/peer/{rid}", (
+        string rid,
+        IZLinkRouteMeshRuntime runtime) =>
+    {
+        var peer = runtime.GetStatus(SubmitAdmissionNames.Mesh)
+            .Peers
+            .SingleOrDefault(candidate =>
+                candidate.NodeRid == RoutingId.From(rid));
+        return peer is null
+            ? Results.NotFound()
+            : Results.Ok(new { state = peer.State.ToString() });
+    });
+    app.MapPost("/submit/node-target-outcome/{targetRid}", async (
+        string targetRid,
+        IZLinkRouteClient routes,
+        IZLinkRouteMeshRuntime runtime,
+        CancellationToken cancellationToken) =>
+    {
+        var rid = RoutingId.From(targetRid);
+        var before = runtime.GetStatus(SubmitAdmissionNames.Mesh);
+        var send = await CaptureTargetAsync(async () =>
+            await routes.SendToNode(
+                    SubmitAdmissionNames.Mesh,
+                    rid,
+                    new AdmissionMessage(
+                        $"object-client-send-{Guid.NewGuid():N}",
+                        1,
+                        "send"))
+                .Async(cancellationToken));
+        var request = await CaptureTargetAsync(async () =>
+            await routes.RequestToNode(
+                    SubmitAdmissionNames.Mesh,
+                    rid,
+                    new RouteReadyRequest("object-client-request"))
+                .Async<RouteReadyReply>(cancellationToken));
+        var after = runtime.GetStatus(SubmitAdmissionNames.Mesh);
+        return Results.Ok(new NodeTargetOutcome(
+            send,
+            request,
+            before.Peers.Count,
+            after.Peers.Count,
+            before.ReadyPeerCount,
+            after.ReadyPeerCount));
+    });
     app.MapPost("/admin/stop-twice", (HttpResponse response, IHostApplicationLifetime lifetime) =>
     {
         response.OnCompleted(() =>
@@ -244,6 +314,22 @@ if (options.Role == "caller")
             return Task.CompletedTask;
         });
         return Results.Accepted();
+    });
+}
+
+if (options.Role == "object-client")
+{
+    app.MapGet("/object-client/identity", async (
+        IZLinkLocationRuntimeQuery locations,
+        CancellationToken cancellationToken) =>
+    {
+        var rows = await locations.ListTopologyAsync(
+            new ZLinkLocationTopologyFilter(SubmitAdmissionNames.Mesh),
+            cancellationToken: cancellationToken);
+        var row = AssertSingle(rows.Items);
+        return Results.Ok(new ObjectClientIdentity(
+            row.NodeRid.ToString(),
+            row.Endpoint));
     });
 }
 
@@ -268,6 +354,27 @@ if (options.Role == "publisher")
 }
 
 await app.RunAsync();
+
+static async Task<string> CaptureTargetAsync(Func<Task> operation)
+{
+    try
+    {
+        await operation();
+        return "Submitted";
+    }
+    catch (ZLinkFrameworkException error)
+    {
+        return error.Kind.ToString();
+    }
+}
+
+static T AssertSingle<T>(IReadOnlyList<T> values)
+{
+    if (values.Count != 1)
+        throw new InvalidOperationException(
+            $"Expected one local descriptor, found {values.Count}.");
+    return values[0];
+}
 
 static string Require(string? value, string name) =>
     string.IsNullOrWhiteSpace(value)

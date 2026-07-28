@@ -45,7 +45,7 @@ runner는 "시작 → cleanup → 종료"만 지원하므로, 아래 시나리�
 이 연산이 없으면 해당 시나리오는 "미구현(하네스 대기)"로 둔다.
 
 **성공 기준 어휘:** "정해진 public error"는 시나리오마다 정확한 `ZLinkFrameworkErrorKind`
-(`RouteNotConnected`·`RequestTargetNotFound`·`RequestRejected`·`RequestFailed`) 또는
+(`Unavailable`·`NotFound`·`Rejected`·`InternalFailure`) 또는
 `TimeoutException`과, 그 retriable 여부·timeout window를 명시한다. 재시도가 framework 동작인지
 client harness 동작인지도 구분한다. 복구는 "이후 follow-up request 성공과 public RouteMesh status의
 ready peer·Channel target에서 제거·추가가 반영되는지 확인하는 방식처럼
@@ -72,7 +72,7 @@ crash·termination·failover 시나리오는 `corr=` 흐름으로 어디서 끊�
   짧은 timeout의 target 미지정 request 한 건을 보낸 뒤 provider를 같은 endpoint로 재시작한다. Automatic
   discovery가 새 lifecycle RID를 발급하며 application은 이전 RID를 다시 설정하지 않는다.
 - 검증: 종료 전에 시작한 request는 `Shutdown` deadline 안에서 정상 reply로 끝난다. old descriptor 제거 뒤의
-  target 미지정 request는 send readiness 한계 안에서 `RouteNotConnected`로 끝나며 자동 재전송되지
+  target 미지정 request는 send readiness 한계 안에서 `Unavailable`로 끝나며 자동 재전송되지
   않는다. 재시작 뒤 이전 RID와 다른 RID, 같은 endpoint를 가진 새 MeshNode descriptor가 조회되고
   `ConnectionReady` 뒤 follow-up request 20개가 모두 성공한다. consumer 재시작은 없다. crash restart는
   RL-A2의 old lease 만료 경로에서 별도로 검증한다.
@@ -180,7 +180,7 @@ crash·termination·failover 시나리오는 `corr=` 흐름으로 어디서 끊�
 남지 않으며 다른 provider의 트래픽은 계속 처리되는가.
 
 - 절차: handler가 처리 중일 때 provider를 SIGKILL한다.
-- 검증: 연결 종료가 먼저 관측되면 해당 request는 retriable `RouteNotConnected`, 이미 제출되어 handler
+- 검증: 연결 종료가 먼저 관측되면 해당 request는 `Unavailable`과 `RetryAfterBackoff`, 이미 제출되어 handler
   실행 여부를 caller가 확정할 수 없으면 설정한 request timeout 안의 timeout으로 끝난다. 오류는
   socket/location 상태 evidence와 함께 기록한다. framework가 in-flight request를 다른 provider로 자동
   재전송했다고 단언하지 않는다. 같은 consumer가 다른 provider로 보내는 follow-up request는 성공한다.
@@ -222,7 +222,7 @@ crash·termination·failover 시나리오는 `corr=` 흐름으로 어디서 끊�
 > 해당 membership만 제외한다. `Relocate`와 `Shutdown`의 admission seal은 MeshNode를 신규 자동 선택에서
 > 제외할 뿐 아니라 node-local 신규
 > application admission도 seal하므로, 호출자가 target을 직접 지정해 우회할 수 없다
-> ([54 §7~9](../spec/28-graceful-drain-handoff.ko.md#7-relocation-unit과-실행량-제한)). 이 시나리오는 channel
+> ([Host relocation §7~9](../spec/28-graceful-drain-handoff.ko.md#7-relocation-unit과-실행량-제한)). 이 시나리오는 channel
 > request의 weight 축만 검증하며 Actor·Spot `Relocate`·`Shutdown` 동작은 Config 11이 담당한다.
 
 #### RL-B5 ChannelName weight 변경 중 in-flight 완료
@@ -247,14 +247,14 @@ crash·termination·failover 시나리오는 `corr=` 흐름으로 어디서 끊�
 **검증 질문:** provider 하나가 느려지거나 일부 request에 실패해도 다른 provider의 reply가 오염되지
 않고 각 request가 해당 provider의 결과로 유한 시간 안에 끝나는가.
 
-- 절차: provider A는 정상 응답하고 B는 correlation 끝자리가 짝수면 `RequestFailed` error reply, 홀수면
+- 절차: provider A는 정상 응답하고 B는 correlation 끝자리가 짝수면 `InternalFailure` error reply, 홀수면
   request timeout보다 길게 응답을 지연하도록 결과가 입력으로 결정되는 fault를 켠다. 두 provider의
   weight를 같은 값으로 유지한 채 target 미지정 request 200개를 최대 동시 실행 수 20으로 보낸다.
   provider handler-start evidence로 각 request의 처리 provider를 식별한다. provider 상태에 따른 자동
   routing이나 circuit breaker를 가정하지 않는다.
 - 검증: A와 B가 각각 20개 이상을 처리하고 B가 짝수·홀수 correlation을 각각 하나 이상 받아야 한다.
   A handler-start evidence가 있는 request는 모두 설정한 request timeout 안에 정상 reply로 끝난다. B
-  evidence가 있는 request는 주입 규칙과 같은 `RequestFailed` 또는 timeout으로 각각 한 번 끝난다.
+  evidence가 있는 request는 주입 규칙과 같은 `InternalFailure` 또는 timeout으로 각각 한 번 끝난다.
   pending이 남지 않고 B의 실패가 A의 payload와 reply correlation을 오염시키지 않는다. framework가 B를
   자동으로 제외하거나 A로 request를 재전송했다고 단언하지 않는다.
 - 세부 동작: 고정 routing 조건의 gray failure 격리와 유한 완료.
@@ -633,7 +633,7 @@ monitor callback이 남지 않는가.
   먼저 공개되지 않는다.
 - 세부 동작: Framework queue notification, readiness-first 선택, bounded sliding concurrency와 aggregate 단위.
 
-#### RL-F12 User Spot queue·hold relay·timer 자동 복원
+#### RL-F12 User Spot queue·Message Follow·timer 자동 복원
 
 우선순위: `P0`
 
@@ -649,7 +649,7 @@ monitor callback이 남지 않는가.
   pending tick의 원래 ordering boundary를 보존한 뒤 `H1 -> H2`, Ready 이후 target이 직접 수락한 message
   순서이며 각 operation과 tick은 정확히 한 번만 관측된다.
 - 세부 동작: 현재 turn만 source에서 완료, 미실행 queue와 logical timer의 durable relocation, seal 중 ingress
-  hold와 commit 뒤 relay.
+  hold와 commit 뒤 Message Follow.
 
 #### RL-F13 relocation count·callback·payload permit
 

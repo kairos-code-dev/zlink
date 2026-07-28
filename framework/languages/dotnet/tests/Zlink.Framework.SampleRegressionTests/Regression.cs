@@ -109,6 +109,47 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
+    public void Sample_Object_Creation_Uses_Framework_Placement()
+    {
+        string[] forbiddenPlacementTokens =
+        [
+            "PlacementProfile",
+            "AffinityKey",
+            "PreferredOwner",
+            "TargetNodeRid",
+            ".InNode(",
+            ".OnNode("
+        ];
+        var samplesRoot = ResolveSamplesRoot();
+        var sourceFiles = EnumerateSourceFiles(samplesRoot).ToArray();
+        var placementOffenders = sourceFiles
+            .SelectMany(file => forbiddenPlacementTokens
+                .Where(token => File.ReadAllText(file).Contains(token, StringComparison.Ordinal))
+                .Select(token =>
+                    $"{NormalizeRelativePath(Path.GetRelativePath(samplesRoot, file))}:{token}"))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Empty(placementOffenders);
+
+        // Samples teach owner-neutral application routing. Infrastructure can expose
+        // Node direct as a public capability, but sample workflows must not turn an
+        // observed transport RID back into an application target.
+        var nodeDirectUsers = sourceFiles
+            .Where(file =>
+            {
+                var source = File.ReadAllText(file);
+                return source.Contains("RequestToNode(", StringComparison.Ordinal)
+                       || source.Contains("SendToNode(", StringComparison.Ordinal);
+            })
+            .Select(file => NormalizeRelativePath(Path.GetRelativePath(samplesRoot, file)))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Empty(nodeDirectUsers);
+    }
+
+    [Fact]
     public void Sample_Session_Binding_Uses_BindOrGetAsync()
     {
         var allowedExplicitRebindFiles = new HashSet<string>(StringComparer.Ordinal)
@@ -117,6 +158,7 @@ public sealed partial class RegressionTests
             NormalizeRelativePath(Path.Combine("e2e", "SpotService", "Server", "Play", "Handlers", "PlaySessionHandlers.cs")),
             NormalizeRelativePath(Path.Combine("e2e", "SpotService", "Server", "Session", "Handlers", "SessionSessionHandlers.cs")),
             NormalizeRelativePath(Path.Combine("e2e", "SpotActorTransfer", "Server", "ActorNode", "Program.cs")),
+            NormalizeRelativePath(Path.Combine("e2e", "SpotActorTransfer", "Client", "Scenarios", "StE1ANewIncarnationExplicitBindScenario.cs")),
             NormalizeRelativePath(Path.Combine("e2e", "AutomaticTurnDispatch", "Server", "Session", "Support", "AwaitSession.cs"))
         };
         var sampleSessionFiles = new[] { "Bingo", "DeliveryDispatch", "SupportChat", "TicTacToe" }
@@ -156,6 +198,27 @@ public sealed partial class RegressionTests
 
         Assert.Contains("IZLinkLocationReadiness", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("IZLinkLocationRuntimeQuery", allText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EntrySpotCreationHooks_Use_Exact_Response_Type()
+    {
+        var hookDeclaration = new Regex(
+            @"public\s+(?:async\s+)?(?<return>\S+)\s+OnCreateActorAsync\s*\(",
+            RegexOptions.CultureInvariant);
+        var offenders = EnumerateSourceFiles(ResolveSamplesRoot())
+            .Concat(EnumerateSourceFiles(ResolveE2eRoot()))
+            .SelectMany(path => hookDeclaration.Matches(File.ReadAllText(path))
+                .Cast<Match>()
+                .Where(match => !string.Equals(
+                    match.Groups["return"].Value,
+                    "ValueTask<ZLinkActorCreateResponse>",
+                    StringComparison.Ordinal))
+                .Select(_ => NormalizeRelativePath(Path.GetRelativePath(ResolveDotnetRoot(), path))))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Empty(offenders);
     }
 
     private static void AssertShellRunnerUsesRedisDockerHelper(
@@ -271,8 +334,8 @@ public sealed partial class RegressionTests
     private static void AssertLocationStoreHost(string hostFactory)
     {
         Assert.Contains("AddLocationStore(new ZLinkRedisLocationStore", hostFactory, StringComparison.Ordinal);
-        Assert.Contains(".SetConnectionString(topology.RedisEndpoint)", hostFactory, StringComparison.Ordinal);
-        Assert.Contains(".SetKeyPrefix(topology.RedisKeyPrefix)", hostFactory, StringComparison.Ordinal);
+        Assert.Contains("redis.ConnectionString = topology.RedisEndpoint", hostFactory, StringComparison.Ordinal);
+        Assert.Contains("redis.KeyPrefix = topology.RedisKeyPrefix", hostFactory, StringComparison.Ordinal);
     }
 
     private static void AssertSampleUsesProtobufPayloads(string sampleRoot)
@@ -538,10 +601,10 @@ public sealed partial class RegressionTests
 
     private static void AssertEnsureActorHandlersReturnSessionRelayRemoteAddresses(string sampleRoot)
     {
-        var playRoot = Path.Combine(sampleRoot, "Server", "Play");
-        var sourceFiles = EnumerateSourceFiles(playRoot)
+        var sessionRoot = Path.Combine(sampleRoot, "Server", "Session");
+        var sourceFiles = EnumerateSourceFiles(sessionRoot)
             .Where(static file => Path.GetFileName(file).Equals(
-                "EnsurePlayerActorHandler.cs",
+                "AuthenticateSessionHandler.cs",
                 StringComparison.Ordinal))
             .ToArray();
 
@@ -553,8 +616,14 @@ public sealed partial class RegressionTests
             Assert.DoesNotContain("IZLinkActorRemoteAddressResolver", text, StringComparison.Ordinal);
             Assert.DoesNotContain("ResolveActorRemoteAddressAsync", text, StringComparison.Ordinal);
             Assert.DoesNotContain("GetRemoteAddressAsync", text, StringComparison.Ordinal);
-            Assert.Contains("ActorRefWire", text, StringComparison.Ordinal);
-            Assert.DoesNotContain("ActorRefSnapshot", text, StringComparison.Ordinal);
+            Assert.Contains(".GetOrCreate(authenticated.ActorId, SampleNames.PlayerActorType)", text,
+                StringComparison.Ordinal);
+            Assert.Contains("context.Actors.BindOrGetAsync", text, StringComparison.Ordinal);
+            Assert.Contains("ZLinkActorCreateResult.Existing value => value.Actor", text,
+                StringComparison.Ordinal);
+            Assert.Contains("ZLinkActorCreateResult.Created value => value.Actor", text,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("ActorRefWire", text, StringComparison.Ordinal);
         }
     }
 

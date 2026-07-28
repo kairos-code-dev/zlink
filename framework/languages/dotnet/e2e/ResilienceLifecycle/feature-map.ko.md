@@ -24,3 +24,28 @@
 | RL-D3 | 구현 | dispatch-error evidence의 `failed`·`no_handler`·`reply_error`·packet 값을 확인했다(`logs/20260720-033851-1989147`). |
 | RL-D4 | 구현 | missing handler의 wire Error와 client request 예외, 정상 follow-up Response를 확인했다(`logs/20260720-033905-1990307`). |
 | RL-D5 | 구현 | request/send 혼합 burst와 두 evidence 흐름을 확인했다(`logs/20260720-033918-1991019`). |
+
+현행 공통 Config 5에 추가된 아래 시나리오는 `.NET` role server와 runner에 아직 등록되지 않았다.
+기존 `RL-A1~D5`가 통과해도 아래 행을 완료로 계산하지 않는다.
+
+| 시나리오 | 상태 | 누락 범위 |
+|---|---|---|
+| RL-E1 | 미구현 | Orderly disconnect 즉시 반영 |
+| RL-E2 | 미구현 | RouteMesh·ClientServer half-open 판정 |
+| RL-E3 | 미구현 | Connection lifetime과 stale ACK |
+| RL-E4 | 미구현 | Connection loss와 terminal completion |
+| RL-E5 | 미구현 | Store 독립과 liveness cleanup |
+| RL-F1 | 미구현 | Preflight·admission seal capacity 경쟁 |
+| RL-F2 | 미구현 | Actor owner ABA fence |
+| RL-F3 | 미구현 | 언어 간 terminal failure 해석 |
+| RL-F4 | 미구현 | ClientServer topology·direction command 격리 |
+| RL-F5 | 미구현 | Activated seal과 Completed 공개 경계 |
+| RL-F6 | 미구현 | Admitted descriptor update fence |
+| RL-F7 | 미구현 | Relocated request reply ACK barrier |
+| RL-F8 | 미구현 | Manual source의 accepted work와 maintenance capture |
+| RL-F9 | 미구현 | Preflight deadline과 seal 경계 |
+| RL-F10 | 미구현 | Entry Actor와 SpotWide User Spot 이전 |
+| RL-F11 | 미구현 | Readiness-first relocation과 느린 turn 격리 |
+| RL-F12 | 미구현 | User Spot queue·Message Follow·timer 자동 복원 |
+| RL-F13 | 미구현 | Relocation count·callback·payload permit |
+| RL-F14 | 미구현 | Precommit abort의 frozen·hold queue 복원 |

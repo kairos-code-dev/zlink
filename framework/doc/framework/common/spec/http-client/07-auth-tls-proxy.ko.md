@@ -17,7 +17,7 @@
 - hostname 검증은 항상 수행한다. 검증 끄기 옵션은 제공하지 않는다.
 - 언어 매핑: dotnet `SslClientAuthenticationOptions`, java `SSLContext`
   (TrustManager/KeyManager), node undici `Agent.connect.{ca,cert,key}`,
-  cpp OpenSSL(빌드에 OpenSSL이 없으면 https 요청은 `requestProtocolError`).
+  C++ OpenSSL(빌드에 OpenSSL이 없으면 HTTPS 요청은 `NotConfigured`).
 
 ## 7.3 Proxy
 
@@ -29,5 +29,5 @@
 - `proxyBasicAuth(user, password)` → `Proxy-Authorization: Basic`.
   proxy 인증 정보는 **대상 서버로 새지 않아야 한다**(CONNECT tunnel 요청에만
   실림. node는 undici `ProxyAgent`의 `token`으로 전달).
-- CONNECT 거부(407 등)는 `requestFailed`.
+- CONNECT 거부(407 등)는 `Unavailable`.
 - pool 키에 proxy가 포함되어 proxy 유무가 연결 재사용을 오염시키지 않는다.

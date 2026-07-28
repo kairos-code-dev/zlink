@@ -152,6 +152,10 @@ test('backend mesh dispatch pump drains a local channel record through claim and
     assert.equal(record.kind, framework.ReceiveKind.ChannelSend);
     assert.equal(record.channelName, 'backend.dispatch');
     assert.equal(record.payload, 'mesh-pump');
+    assert.equal(sender.peers().find(peer =>
+      String(peer.routingId) === String(receiver.status().routingId))?.state, 3);
+    assert.equal(receiver.peers().find(peer =>
+      String(peer.routingId) === String(sender.status().routingId))?.state, 3);
   } finally {
     await senderPump?.dispose();
     await pump?.dispose();

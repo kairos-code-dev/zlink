@@ -259,7 +259,7 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
     public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
     {
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.InvalidConfiguration,
+            ZLinkFrameworkErrorKind.InvalidOperation,
             "MeshNode request does not support Yield.");
     }
 
@@ -343,7 +343,7 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
             ZLinkOneWaySubmitOutcome.EnsureAccepted(
                 result,
                 "Spot send",
-                ZLinkFrameworkErrorKind.SpotRouteNotFound);
+                ZLinkFrameworkErrorKind.NotFound);
         }
         catch (ZLinkFrameworkException error)
             when (ZLinkSpotHandleRequestExecution.IsStaleRoute(error))

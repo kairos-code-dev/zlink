@@ -139,13 +139,14 @@ internal sealed class ZLinkSessionReplyCall<TMessage>(
         ZlinkStreamMetadata metadata,
         ZLinkSessionDispatchContext? currentDispatch)
     {
-        if (currentDispatch?.Header?.RequestSeq is not { } requestSeq)
+        if (currentDispatch?.RuntimeState is not ZlinkStreamHeader header
+            || header.RequestSeq is not { } requestSeq)
             throw new InvalidOperationException("Reply is only available while handling a request packet.");
         if (!currentDispatch.TryClaimReply())
             throw new InvalidOperationException("The reply token has already been used.");
 
         return ZLinkStreamReplyHeaders.CreateForRequest(
-            currentDispatch.Header,
+            header,
             ZlinkStreamMessageKind.Response,
             codec,
             flags,

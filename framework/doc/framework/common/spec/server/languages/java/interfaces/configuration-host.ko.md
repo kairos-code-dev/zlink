@@ -227,6 +227,11 @@ connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 �
 양쪽 연결이나 automatic discovery 경합·오래된 snapshot으로 중복 후보가 생기면 handshake와 admission이
 같은 RID와 lifecycle generation을 확인해 하나만 ready 상태로 유지한다.
 
+두 MeshNode의 object role이 모두 `Client`이고 양쪽 모두 RouteMesh Channel Server membership이 없을
+때만 peer connection이 필요하지 않다. Channel Client membership만 등록한 경우도 같다. 어느 한쪽에라도
+Channel Server membership이 있으면 weight가 `0`이어도 connection을 만들고 liveness를 유지한다.
+ClientServer와 classic fanout registration은 별도 물리 topology이므로 이 판정에 포함하지 않는다.
+
 ClientServer는 manual endpoint와 location store [automatic discovery](../../../../01-glossary.ko.md#automatic-discovery)를 함께 사용할 수 있다. 두 source가 같은
 Server RID와 [lifecycle generation](../../../../01-glossary.ko.md#lifecycle-generation)을 가리키면 connection intent와 ready target을 하나로 합친다. Automatic과
 manual 모두 Client만 server로 connect하며 Server는 client endpoint를 찾거나 outbound connect를 시작하지
@@ -245,6 +250,9 @@ Object role을 생략하면 `None`이다. `client()`는 global object operation�
 않으며 `server()`는 Client capability와 Entry Spot·factory registration을 제공한다. Client와 Server는
 [Location Store](../../../../01-glossary.ko.md#location-store)가 필수다. Actor·User Spot·Instance Spot [factory](../../../../01-glossary.ko.md#factory)는 stable type과 explicit relocation policy를
 반드시 받으며 policy를 생략하는 overload는 없다.
+
+Object Client에도 RouteMesh Channel Server를 등록할 수 있다. Application Node direct handler는 등록할
+수 없으며 Object Client RID를 Node direct target으로 지정하면 다른 RID로 바꾸지 않고 not-found로 끝낸다.
 
 `ZLinkRelocationPolicy.snapshot(adapterClass)`의 `Class<?>`는 factory kind에 따라 socket bind 전에 검증한다.
 Actor factory에는 같은 Actor type의 `ZLinkActorRelocationAdapter`, User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory에는 같은 Spot

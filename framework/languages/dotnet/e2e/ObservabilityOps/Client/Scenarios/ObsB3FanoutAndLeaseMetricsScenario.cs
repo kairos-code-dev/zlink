@@ -8,12 +8,16 @@ namespace ObservabilityOps.Client.Scenarios;
 internal static class ObsB3FanoutAndLeaseMetricsScenario
 {
     private static readonly string[] ForbiddenTags =
-        ["correlation_id", "flow_id", "actor_id", "spot_rid"];
+        ["correlation_id", "flow_id", "actor_id", "spot_id"];
+
+    private static readonly string[] ForbiddenPublishMetrics =
+    [
+        "zlink.fanout.",
+        "zlink.mesh_node.multicast."
+    ];
 
     public static async Task RunAsync(ScenarioContext context)
     {
-        var beforeA = await EvidenceAsync(context.WorkflowA);
-        var beforeB = await EvidenceAsync(context.WorkflowB);
         var suffix = Guid.NewGuid().ToString("N");
         var owner = $"workflow-b3-owner-{suffix}";
         await context.WorkflowA.Post("/workflows").Body(new CreateWorkflowReq(owner)).AsyncRaw();
@@ -39,19 +43,11 @@ internal static class ObsB3FanoutAndLeaseMetricsScenario
 
         var afterA = await EvidenceAsync(context.WorkflowA);
         var afterB = await EvidenceAsync(context.WorkflowB);
-        var published = Total(afterA.Metrics, "zlink.fanout.published")
-                        + Total(afterB.Metrics, "zlink.fanout.published")
-                        - Total(beforeA.Metrics, "zlink.fanout.published")
-                        - Total(beforeB.Metrics, "zlink.fanout.published");
-        var received = Total(afterA.Metrics, "zlink.fanout.received")
-                       + Total(afterB.Metrics, "zlink.fanout.received")
-                       - Total(beforeA.Metrics, "zlink.fanout.received")
-                       - Total(beforeB.Metrics, "zlink.fanout.received");
-        ZlinkStreamAssert.Ensure(published == 1 && received == 2,
-            $"OBS-B3 expected fanout delta 1:2, got {published}:{received}.");
         var all = afterA.Metrics.Concat(afterB.Metrics).ToArray();
-        ZlinkStreamAssert.Ensure(all.All(sample => sample.Name != "zlink.fanout.dropped"),
-            "OBS-B3 unobservable fanout backend exposed fanout.dropped.");
+        ZlinkStreamAssert.Ensure(
+            all.All(sample => ForbiddenPublishMetrics.All(prefix =>
+                !sample.Name.StartsWith(prefix, StringComparison.Ordinal))),
+            "OBS-B3 exposed a publish-specific metric.");
         ZlinkStreamAssert.Ensure(all.All(sample => ForbiddenTags.All(tag => !sample.Tags.ContainsKey(tag))),
             "OBS-B3 a metric exposed a forbidden high-cardinality tag.");
         ZlinkStreamAssert.Ensure(all.Any(sample => sample.Name == "zlink.location.owner_lease.renew.lateness"
@@ -59,9 +55,6 @@ internal static class ObsB3FanoutAndLeaseMetricsScenario
             "OBS-B3 external Redis pause did not produce lease renewal lateness.");
         Console.WriteLine("scenario OBS-B3 passed");
     }
-
-    private static decimal Total(IEnumerable<MetricSample> samples, string name) =>
-        samples.Where(sample => sample.Name == name).Sum(sample => sample.Value);
 
     private static async Task<EvidenceSnapshot> EvidenceAsync(Zlink.HttpClient.ZLinkHttpClient client) =>
         (await client.Get("/evidence").Async<EvidenceSnapshot>()).Body;

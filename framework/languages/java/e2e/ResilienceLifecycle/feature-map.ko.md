@@ -78,3 +78,11 @@ snapshot을 사용한다. 10.0.0에서는 `ZLinkRouteMeshRuntimeOptions.channel(
 
 `run_e2e.sh all`은 RL-A1부터 RL-D5까지 selector를 실행한다. 차단 행은 runner가 성공 marker를
 출력하더라도 표에 적은 10.0.0 단언이 모두 충족되기 전에는 완료로 바꾸지 않는다.
+
+## 공통 scenario parity gap — 2026-07-29
+
+다음 공통 scenario에는 Java actual fixture와 runner selector가 없다.
+
+- `RL-E1`, `RL-E2`, `RL-E3`, `RL-E4`, `RL-E5`
+- `RL-F1`, `RL-F2`, `RL-F3`, `RL-F4`, `RL-F5`, `RL-F6`, `RL-F7`
+- `RL-F8`, `RL-F9`, `RL-F10`, `RL-F11`, `RL-F12`, `RL-F13`, `RL-F14`

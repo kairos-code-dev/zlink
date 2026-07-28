@@ -49,7 +49,7 @@
 | ST-G1 | 미구현 | SpotWide·PerActor의 yielded continuation과 모든 실행 lane을 포함한 relocation barrier E2E가 없다. |
 | ST-G2 | 미구현 | 큰 participant inventory와 typed capacity aggregate all-or-none E2E가 없다. |
 | ST-G3 | 미구현 | PerActor Spot authority 선전환과 Actor별 source·target route 분할 E2E가 없다. |
-| ST-G4 | 미구현 | relocation 중 stale `ToActor` relay와 target queue 순서를 검증하는 E2E가 없다. |
+| ST-G4 | 미구현 | relocation 중 stale `ToActor` Message Follow와 target queue 순서를 검증하는 E2E가 없다. |
 | ST-G5 | 미구현 | Entry·PerActor Actor relocation interruption 목표와 초과 시 계속 진행을 검증하는 E2E가 없다. |
 | ST-G6 | 미구현 | `ApplicationSignaled` readiness와 completion callback의 source·target owner를 검증하는 E2E가 없다. |
 | ST-H1 | 미구현 | Deferred Join 등록, immutable request와 Actor queue barrier를 실제 process에서 검증하지 않는다. |

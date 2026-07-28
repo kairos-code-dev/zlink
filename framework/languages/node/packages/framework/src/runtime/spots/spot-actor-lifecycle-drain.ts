@@ -1,16 +1,15 @@
-import type { ZLinkActor, ZLinkActorMembership } from '../../contracts';
+import type { ZLinkActor } from '../../contracts';
 import type {
   ZLinkBackendActorRef,
   ZLinkBackendSpot
 } from '../backend/contracts';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { ZLINK_RECV_DONT_WAIT } from './spot-native-flags';
-import { createActorMembership } from '../actors/actor-lifecycle-snapshot';
 
 interface ZLinkSpotActorLifecycleTarget {
-  onJoinedActor?(actor: ZLinkActorMembership): Promise<void> | void;
-  onLeaveActor?(actor: ZLinkActorMembership): Promise<void> | void;
-  onDisconnectActor?(actor: ZLinkActorMembership): Promise<void> | void;
+  onJoinedActor?(actor: ZLinkActor): Promise<void> | void;
+  onLeaveActor?(actor: ZLinkActor): Promise<void> | void;
+  onDisconnectActor?(actor: ZLinkActor): Promise<void> | void;
 }
 
 interface ZLinkSpotActorLifecycleDrainOptions {
@@ -62,29 +61,16 @@ export class ZLinkSpotActorLifecycleDrain {
           return undefined;
         }
         const target = this.options.getTarget();
-        const membershipEpoch = event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT
-          ? event.info.previousMembershipEpoch
-          : event.info.currentMembershipEpoch;
-        const membership = createActorMembership(
-          actor,
-          {
-            actorId: actorRef.actorId,
-            objectGeneration: actorRef.generation,
-            meshName: actor.context.meshName,
-            nodeRid: actorRef.nodeRid
-          },
-          membershipEpoch
-        );
         if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED) {
-          return target.onJoinedActor?.(membership);
+          return target.onJoinedActor?.(actor);
         }
         if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT) {
-          return Promise.resolve(target.onLeaveActor?.(membership)).then(() => {
+          return Promise.resolve(target.onLeaveActor?.(actor)).then(() => {
             this.options.commitActorDeparture?.(actorId);
           });
         }
         if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_DISCONNECTED) {
-          return target.onDisconnectActor?.(membership);
+          return target.onDisconnectActor?.(actor);
         }
         return undefined;
       });

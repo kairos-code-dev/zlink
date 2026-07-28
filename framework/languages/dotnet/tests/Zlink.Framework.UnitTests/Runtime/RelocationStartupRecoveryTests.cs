@@ -200,8 +200,8 @@ public sealed class RelocationStartupRecoveryTests
             () => recovery.TryReadExactPublishedAsync(fixture.Envelope)
                 .AsTask());
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RelocationDataLost, error.Kind);
-        Assert.False(error.IsRetriable);
+        Assert.Equal(ZLinkFrameworkErrorKind.DataLost, error.Kind);
+        Assert.False(error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry);
     }
 
     [Fact]
@@ -217,8 +217,8 @@ public sealed class RelocationStartupRecoveryTests
             async () => await recovery.RecoverAsync(
                 static (_, _) => ValueTask.CompletedTask));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RelocationDataLost, error.Kind);
-        Assert.False(error.IsRetriable);
+        Assert.Equal(ZLinkFrameworkErrorKind.DataLost, error.Kind);
+        Assert.False(error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry);
     }
 
     [Fact]
@@ -485,6 +485,26 @@ public sealed class RelocationStartupRecoveryTests
             var bytes = payload.ToArray();
             var reference = Convert.ToHexString(
                 System.Security.Cryptography.SHA256.HashData(bytes));
+            _roots[reference] = bytes;
+            var now = DateTimeOffset.UnixEpoch;
+            return ValueTask.FromResult(new ZLinkRelocationStored(
+                reference,
+                ZLinkCrc32C.Compute(bytes),
+                now + retention,
+                now));
+        }
+
+        public ValueTask<ZLinkRelocationStored> PutRelocationAtAsync(
+            string reference,
+            ReadOnlyMemory<byte> payload,
+            TimeSpan retention,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var bytes = payload.ToArray();
+            if (_roots.TryGetValue(reference, out var current)
+                && !current.AsSpan().SequenceEqual(bytes))
+                throw new InvalidDataException("Relocation reference collision.");
             _roots[reference] = bytes;
             var now = DateTimeOffset.UnixEpoch;
             return ValueTask.FromResult(new ZLinkRelocationStored(

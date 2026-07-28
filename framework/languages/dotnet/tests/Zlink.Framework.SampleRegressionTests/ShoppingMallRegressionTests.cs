@@ -5,7 +5,7 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
-    public void ShoppingMall_Uses_One_Physical_Mesh_And_Scanned_Channel_Handlers()
+    public void ShoppingMall_Uses_One_Physical_Mesh_And_Instance_Spot_Owners()
     {
         var sampleRoot = ResolveSampleRoot("ShoppingMall");
         var hosts = new[]
@@ -22,13 +22,15 @@ public sealed partial class RegressionTests
             Assert.Contains("AddHandlersFromAssemblyOf", source, StringComparison.Ordinal);
             Assert.DoesNotContain("AddRequestHandler<", source, StringComparison.Ordinal);
             Assert.DoesNotContain("AddSendHandler<", source, StringComparison.Ordinal);
-            Assert.Contains("Channel(SampleNames.OrderWorkflowChannel)", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("OrderWorkflowChannelFor", source, StringComparison.Ordinal);
         }
 
+        var api = File.ReadAllText(hosts[0]);
         var workflow = File.ReadAllText(hosts[1]);
-        Assert.Contains("AddHandlerGroup(SampleNames.OrderWorkflowHandlerGroup)", workflow,
+        Assert.Contains("mesh.Objects().Client()", api, StringComparison.Ordinal);
+        Assert.Contains("AddInstanceSpotFactory<OrderWorkflowSpot>", workflow,
             StringComparison.Ordinal);
+        Assert.DoesNotContain("OrderWorkflowChannel", api, StringComparison.Ordinal);
+        Assert.DoesNotContain("OrderWorkflowChannel", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -53,8 +55,6 @@ public sealed partial class RegressionTests
             "ZLink", "Spots", "OrderWorkflowSpot", "OrderWorkflowSpot.cs"));
         var startUseCase = File.ReadAllText(Path.Combine(sampleRoot, "Server", "CommerceApi", "Application",
             "OrderWorkflow", "StartOrderUseCase.cs"));
-        var routeHandlers = File.ReadAllText(Path.Combine(sampleRoot, "Server", "OrderWorkflow", "Infrastructure",
-            "ZLink", "Handlers", "OrderWorkflowRouteHandlers.cs"));
         var messages = File.ReadAllText(Path.Combine(sampleRoot, "Shared", "Contracts", "Messages.cs"));
         var clientScenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "ShoppingMallClientScenario.cs"));
         var stores = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Shared", "Store", "RedisCommerceStores.cs"));
@@ -91,8 +91,7 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("SHOPPINGMALL_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
         Assert.Contains("shoppingmall=completed", shellRunner, StringComparison.Ordinal);
         Assert.Contains("shoppingmall-server-evidence=completed", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("grep -Rq \"message flow\" \"${SHOPPINGMALL_LOG_DIR}\"", shellRunner,
-            StringComparison.Ordinal);
+        Assert.DoesNotContain("message flow", shellRunner, StringComparison.OrdinalIgnoreCase);
 
         Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner,
             StringComparison.Ordinal);
@@ -114,11 +113,14 @@ public sealed partial class RegressionTests
         Assert.Contains("Join-Path $LogDir \"workflow-b.out.log\"", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("No workflow instance recorded a shoppingmall order start", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern \"message flow\"",
-            powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("message flow", powershellRunner, StringComparison.OrdinalIgnoreCase);
 
         Assert.Contains("RedisEndpoint", topology, StringComparison.Ordinal);
         Assert.Contains("RedisKeyPrefix", topology, StringComparison.Ordinal);
+        Assert.Contains(
+            "OrderWorkflowSpotType = \"shoppingmall.order-workflow\"",
+            topology,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("Environment.GetEnvironmentVariable", topology, StringComparison.Ordinal);
         Assert.DoesNotContain("SHOPPINGMALL_STORE_DIR", topology, StringComparison.Ordinal);
         Assert.Contains("new RedisCommerceStores(topology)", commerceApi, StringComparison.Ordinal);
@@ -144,17 +146,27 @@ public sealed partial class RegressionTests
         Assert.Contains("internal sealed record ServerAssertionReq", clientScenario, StringComparison.Ordinal);
         Assert.DoesNotContain("StartOrderWorkflowToInventoryReq", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("StartOrderWorkflowToInventoryRes", messages, StringComparison.Ordinal);
-        Assert.DoesNotContain("StartOrderWorkflowToInventoryRouteHandler", routeHandlers, StringComparison.Ordinal);
+        Assert.DoesNotContain("StartOrderWorkflowToInventoryRouteHandler", commerceWorkflowRouter,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("StartToInventoryAsync", workflowService, StringComparison.Ordinal);
         Assert.Contains("OrderWorkflowSelfCheckService", workflowHostFactory, StringComparison.Ordinal);
+        Assert.Contains("AddInstanceSpotFactory<OrderWorkflowSpot>", workflowHostFactory,
+            StringComparison.Ordinal);
         Assert.Contains("PrepareInventoryReservedCheckpointReq", workflowSpot, StringComparison.Ordinal);
         Assert.Contains("ContinueUntilInventoryReservedAsync(command.OrderId, cancellationToken)", workflowSelfCheck,
             StringComparison.Ordinal);
-        Assert.Contains("ResolveSpotHandleAsync", routeHandlers, StringComparison.Ordinal);
-        Assert.Contains("RequestToSpot(address", routeHandlers, StringComparison.Ordinal);
-        Assert.DoesNotContain("workflow.StartAsync(request", routeHandlers, StringComparison.Ordinal);
-        Assert.DoesNotContain("workflow.ContinueAsync(request", routeHandlers, StringComparison.Ordinal);
-        Assert.DoesNotContain("workflow.RebuildProjectionAsync", routeHandlers, StringComparison.Ordinal);
+        Assert.Contains("RequestToSpot(orderId, command)", commerceWorkflowRouter,
+            StringComparison.Ordinal);
+        Assert.Contains(".InstanceSpot(SampleNames.OrderWorkflowSpotType)", commerceWorkflowRouter,
+            StringComparison.Ordinal);
+        Assert.Contains("CloseIfTerminalAsync", workflowSpot, StringComparison.Ordinal);
+        Assert.Contains("Context.CloseAsync(cancellationToken)", workflowSpot, StringComparison.Ordinal);
+        Assert.Contains(".InMesh(SampleNames.MeshName)", commerceWorkflowRouter, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetOrCreate(", commerceWorkflowRouter, StringComparison.Ordinal);
+        Assert.DoesNotContain("IZLinkSpotManager", commerceWorkflowRouter, StringComparison.Ordinal);
+        Assert.Contains("IZLinkInstanceSpot", workflowSpot, StringComparison.Ordinal);
+        Assert.Contains("IZLinkInstanceSpotContext", workflowSpot, StringComparison.Ordinal);
+        Assert.DoesNotContain("OnCreateAsync", workflowSpot, StringComparison.Ordinal);
         Assert.Contains("StartAndContinueAsync", workflowService, StringComparison.Ordinal);
         Assert.DoesNotContain("ContinueAfterStartAsync", workflowSpot, StringComparison.Ordinal);
         Assert.Contains("await workflows.StartAsync(command, cancellationToken)", startUseCase,

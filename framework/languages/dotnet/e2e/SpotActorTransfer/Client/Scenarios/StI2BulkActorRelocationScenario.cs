@@ -1,3 +1,4 @@
+// Verifies bulk Actor relocation throughput, interruption, and service continuity bounds.
 using System.Diagnostics;
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;

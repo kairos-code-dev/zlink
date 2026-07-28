@@ -158,13 +158,13 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 우선순위: `P1`
 
 **검증 질문:** 서로 codec 등록이 다른 두 서비스가 통신할 때 보낸 쪽의 명시적 content-type을 받는 쪽이
-모르면 `PayloadDecodeFailed`로 끝나고 정상 codec 트래픽은 유지되는가.
+모르면 `ProtocolError`로 끝나고 정상 codec 트래픽은 유지되는가.
 
 - 절차: server는 JSON만 등록하고, client는 MessagePack(또는 Protobuf) 전용 DTO로 같은 server에 request를 보낸다(=받는 쪽이 그 content-type codec을 안 가진 상황).
 - 검증: 명시된 non-JSON content-type에 맞는 codec이 없으면 JSON으로 해석하지 않고 public error kind
-  `PayloadDecodeFailed`로 terminal 완료한다. 같은 server의 정상 JSON 트래픽은 영향받지 않는다. JSON
+  `ProtocolError`로 terminal 완료한다. 같은 server의 정상 JSON 트래픽은 영향받지 않는다. JSON
   fallback은 outbound에서 명시적 non-JSON content-type을 선택하지 않은 미지원 타입에만 적용한다.
-- 세부 동작: peer 간 codec registry 불일치의 `PayloadDecodeFailed` 분류와 정상 JSON 격리.
+- 세부 동작: peer 간 codec registry 불일치의 `ProtocolError` 분류와 정상 JSON 격리.
 
 #### RC-B6 framework JSON v1 언어 간 의미 일치
 

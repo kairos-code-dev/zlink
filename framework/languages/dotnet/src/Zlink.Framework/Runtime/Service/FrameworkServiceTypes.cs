@@ -5,7 +5,16 @@ namespace Zlink.Framework.Runtime.Service;
 
 internal enum MeshNodeState { Created = 1, Started, PartialReady, Ready, Draining, Stopped, Error }
 internal enum MeshPeerSource { Manual = 1, Discovery, Mixed }
-internal enum MeshPeerState { Configured = 1, Connecting, Admitted, Draining, Closed, Error }
+internal enum MeshPeerState
+{
+    Configured = 1,
+    Connecting,
+    Admitted,
+    Draining,
+    Closed,
+    Error,
+    NotRequired
+}
 
 internal sealed record MeshNodeStatus(
     MeshNodeState State, RoutingId RoutingId, string MeshName, string LocalEndpoint,
@@ -17,7 +26,10 @@ internal sealed record MeshNodeStatus(
 internal sealed record MeshNodePeer(
     ulong ConnectionIntentId, MeshPeerSource Source, MeshPeerState State,
     RoutingId RoutingId, ulong LifecycleGeneration, ulong DescriptorRevision,
-    string Endpoint, uint ChannelCount, int LastError, ulong LastChangedMs);
+    string Endpoint, uint ChannelCount, int LastError, ulong LastChangedMs)
+{
+    internal ZLinkMeshNodeObjectRole ObjectRole { get; init; }
+}
 
 internal sealed record MeshPeerChannel(string Name, uint Weight);
 internal readonly record struct MeshOperationId(ulong High, ulong Low);
@@ -175,6 +187,27 @@ internal interface IActorDestroyOperationTarget
         CancellationToken cancellationToken);
 }
 
+internal readonly record struct ActorMessageFollowIngress(
+    RoutingId SourceNodeRid,
+    ulong SourceNodeGeneration,
+    string SourceSpotId,
+    ActorRef TargetActor,
+    MeshOperationId OperationId,
+    ulong ReplyRouteId,
+    ulong TargetNodeGeneration,
+    ulong AuthorityOwnerGeneration,
+    ulong OwnerLeaseGeneration,
+    byte MessageFollowHopCount,
+    ulong DeadlineUnixMs,
+    ReadOnlyMemory<byte> ApplicationMetadata,
+    IReadOnlyList<Message> Parts,
+    Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? Reply);
+
+internal interface IActorMessageFollowIngressTarget
+{
+    bool TryFollow(ActorMessageFollowIngress ingress);
+}
+
 internal readonly record struct InstanceSpotActivationTarget(
     string MeshName,
     RoutingId TargetNodeRid,
@@ -299,14 +332,15 @@ internal enum MeshMonitorEventMask : ulong
     OperationCompleted = 1UL << 9,
     ProtocolError = 1UL << 10,
     ClaimRevoked = 1UL << 11,
-    All = (1UL << 12) - 1
+    PeerNotRequired = 1UL << 12,
+    All = (1UL << 13) - 1
 }
 
 internal enum MeshMonitorEventKind
 {
     StateChanged = 1, PeerConnecting, PeerAdmitted, PeerDraining, PeerClosed,
     PeerRejected, ChannelChanged, MessageSubmitted, Backpressured,
-    OperationCompleted, ProtocolError, ClaimRevoked
+    OperationCompleted, ProtocolError, ClaimRevoked, PeerNotRequired
 }
 
 internal sealed record MeshMonitorEvent(
@@ -494,6 +528,7 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
     ulong MailboxByteBudget { get; set; }
     TimeSpan? SendTimeout { get; set; }
     void SetRoutingId(RoutingId routingId);
+    void SetObjectRole(ZLinkMeshNodeObjectRole objectRole);
     void SetBind(string endpoint);
     void Start();
     ulong ConnectPeer(string endpoint, RoutingId? expectedRid = null);
@@ -544,6 +579,8 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
     void SetUserSpotOperationTarget(IUserSpotOperationTarget target);
     void SetActorCreateOperationTarget(IActorCreateOperationTarget target);
     void SetActorDestroyOperationTarget(IActorDestroyOperationTarget target);
+    void SetActorMessageFollowIngressTarget(
+        IActorMessageFollowIngressTarget target);
     void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target);
     void SetRelocationReplyRelayTarget(IRelocationReplyRelayTarget target);
     void SetCanonicalRelocationReservationTarget(

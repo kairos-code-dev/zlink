@@ -23,7 +23,7 @@ public sealed class EntrySpotIdentityStoreTests
         var error = Assert.Throws<ZLinkFrameworkException>(() =>
             ZLinkSpotId.RequireCallerProvided(spotId, "spotId"));
         Assert.Equal(
-            ZLinkFrameworkErrorKind.InvalidConfiguration,
+            ZLinkFrameworkErrorKind.InvalidOperation,
             error.Kind);
     }
 
@@ -84,13 +84,13 @@ public sealed class EntrySpotIdentityStoreTests
         await using var lifecycle = new ZLinkLocationLifecycle(runtime, resolvers);
 
         Assert.Equal(
-            ZLinkFrameworkErrorKind.RoutingIdConflict,
+            ZLinkFrameworkErrorKind.AlreadyExists,
             await lifecycle.ClassifyMeshNodeClaimConflictAsync(
                 "play",
                 RoutingId.From("node-a"),
                 "other-entry-00000000-0000-4000-8000-000000000002"));
         Assert.Equal(
-            ZLinkFrameworkErrorKind.SpotIdConflict,
+            ZLinkFrameworkErrorKind.AlreadyExists,
             await lifecycle.ClassifyMeshNodeClaimConflictAsync(
                 "play",
                 RoutingId.From("node-b"),

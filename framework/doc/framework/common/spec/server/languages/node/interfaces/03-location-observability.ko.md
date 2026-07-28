@@ -305,12 +305,20 @@ export enum ZLinkTopologyState {
   Failed = 5
 }
 
+export enum ZLinkPeerState {
+  Connecting = 0,
+  Ready = 1,
+  Draining = 2,
+  NotConnected = 3,
+  NotRequired = 4
+}
+
 export interface ZLinkMeshPeerSnapshot {
   readonly rid: RoutingId;
   readonly lifecycleGeneration: bigint;
   readonly descriptorRevision: bigint;
   readonly endpoint: string;
-  readonly admissionState: string;
+  readonly state: ZLinkPeerState;
   readonly ready: boolean;
   readonly drainState: string;
   readonly channelNames: readonly string[];
@@ -417,6 +425,12 @@ export interface ZLinkRouteMeshRuntime {
   isReady(meshName: string): boolean;
 }
 ```
+
+`NotConnected`는 topology상 연결이 필요하지만 ready connection이 없는 상태다.
+`NotRequired`는 두 Object Client 모두 RouteMesh Channel Server membership이 없어 연결이 필요하지 않은
+정상 상태다. Channel Client membership만 등록한 경우도 같다. 어느 한쪽에라도 weight `0`을 포함한
+Channel Server membership이 있으면 연결 부재는 `NotConnected`다. 두 상태 모두 ready peer 수에서
+제외하지만 `NotRequired`는 liveness·health failure 집계에 포함하지 않는다.
 
 ## 6. ClientServer와 fanout runtime 상태
 

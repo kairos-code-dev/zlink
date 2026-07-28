@@ -150,8 +150,8 @@ class spot_node_builder_state_t
     std::map<std::string, actor_factory_registration_t> actor_factories;
     std::map<std::string, actor_transfer_registration_t> actor_transfers;
     actor_transfer_coordinator_t actor_transfer_coordinator;
-    // A committed source route follows messages to the relocated actor only
-    // for this bounded duration. The common contract fixes the default at 30s.
+    // Message Follow relays messages that reach the committed source route
+    // after relocation. The common contract bounds its default duration to 30s.
     std::chrono::milliseconds message_follow_duration{30000};
     std::map<std::string, std::shared_ptr<void>> actor_instances;
     std::set<std::pair<std::uint64_t, std::uint64_t>>

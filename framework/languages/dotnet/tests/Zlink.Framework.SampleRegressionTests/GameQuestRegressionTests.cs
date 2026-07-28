@@ -5,7 +5,7 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
-    public void GameQuest_Uses_One_Physical_Mesh_And_Scanned_Channel_Handlers()
+    public void GameQuest_Uses_One_Physical_Mesh_And_Instance_Spot_Owners()
     {
         var sampleRoot = ResolveSampleRoot("GameQuest");
         var hosts = new[]
@@ -22,14 +22,13 @@ public sealed partial class RegressionTests
             Assert.Contains("AddHandlersFromAssemblyOf", source, StringComparison.Ordinal);
             Assert.DoesNotContain("AddRequestHandler<", source, StringComparison.Ordinal);
             Assert.DoesNotContain("AddSendHandler<", source, StringComparison.Ordinal);
-            Assert.Contains("ChannelName(SampleNames.GameApiChannel)", source, StringComparison.Ordinal);
-            Assert.Contains("QuestOwnerChannelFor", source, StringComparison.Ordinal);
-            Assert.Contains("ChannelName(SampleNames.MeshName)", source, StringComparison.Ordinal);
+            Assert.Contains("Channel(SampleNames.GameApiChannel)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Channel(SampleNames.MeshName)", source, StringComparison.Ordinal);
         }
 
         Assert.Contains("AddHandlerGroup(SampleNames.GameApiHandlerGroup)", File.ReadAllText(hosts[0]),
             StringComparison.Ordinal);
-        Assert.Contains("AddHandlerGroup(SampleNames.QuestOwnerHandlerGroup)", File.ReadAllText(hosts[1]),
+        Assert.Contains("AddInstanceSpotFactory<PlayerQuestSpot>", File.ReadAllText(hosts[1]),
             StringComparison.Ordinal);
     }
 
@@ -57,19 +56,17 @@ public sealed partial class RegressionTests
         var redisJsonStore = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Configuration", "RedisJsonStore.cs"));
         var gameApiProgram = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Program.cs"));
         var missionProgram = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Program.cs"));
-        var playerQuestProvisioner = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission",
-            "Infrastructure", "ZLink", "PlayerQuestSpotProvisioner.cs"));
         var gameplayIngress = missionProgram;
         var playerQuestSpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Infrastructure",
             "ZLink", "Spots", "PlayerQuestSpot", "PlayerQuestSpot.cs"));
-        var questOwnerHandlers = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission",
-            "Infrastructure", "ZLink", "QuestOwnerChannelHandlers.cs"));
         var questDomain = File.ReadAllText(Path.Combine(sampleRoot, "Server", "QuestMission", "Domain",
             "QuestDomain.cs"));
         var actionService = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Application",
             "GameplayActionService.cs"));
         var eventDispatcher = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi", "Infrastructure",
             "ZLink", "GameplayEventOwnerDispatcher.cs"));
+        var progressSynchronizer = File.ReadAllText(Path.Combine(sampleRoot, "Server", "GameApi",
+            "Infrastructure", "Http", "HttpQuestProgressSynchronizer.cs"));
         var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.ko.md"));
 
         Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
@@ -88,7 +85,7 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("${GAMEQUEST_REDIS_KEY_PREFIX:-", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("GAMEQUEST_STORE_DIR", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("GAMEQUEST_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("grep -Rq \"message flow\" \"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("message flow", shellRunner, StringComparison.OrdinalIgnoreCase);
 
         Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner,
             StringComparison.Ordinal);
@@ -103,8 +100,7 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("GAMEQUEST_BASE_PORT", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("GAMEQUEST_STORE_DIR", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("GAMEQUEST_STARTUP_DELAY_SECONDS", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern \"message flow\"",
-            powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("message flow", powershellRunner, StringComparison.OrdinalIgnoreCase);
 
         Assert.Contains("record JoinSessionReq", messages, StringComparison.Ordinal);
         Assert.Contains("record JoinSessionRes", messages, StringComparison.Ordinal);
@@ -165,6 +161,10 @@ public sealed partial class RegressionTests
 
         Assert.DoesNotContain("StoreDirectory", topology, StringComparison.Ordinal);
         Assert.DoesNotContain("GAMEQUEST_STORE_DIR", topology, StringComparison.Ordinal);
+        Assert.Contains(
+            "PlayerQuestSpotType = \"gamequest.player-quest\"",
+            topology,
+            StringComparison.Ordinal);
         Assert.Contains("new RedisJsonStore(topology.RedisEndpoint)", gameApiStore, StringComparison.Ordinal);
         Assert.Contains("new RedisJsonStore(topology.RedisEndpoint)", questStore, StringComparison.Ordinal);
         Assert.Contains("topology.RedisKeyPrefix", gameApiStore, StringComparison.Ordinal);
@@ -179,20 +179,27 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("MapPost(\"/internal/apply\"", missionProgram, StringComparison.Ordinal);
         Assert.Contains("AddRouteMesh(SampleNames.MeshName)", missionProgram,
             StringComparison.Ordinal);
+        Assert.Contains("AddInstanceSpotFactory<PlayerQuestSpot>", missionProgram,
+            StringComparison.Ordinal);
         Assert.Contains("IGameplayEventOwnerDispatcher", actionService, StringComparison.Ordinal);
-        Assert.Contains("IZLinkRouteClient", eventDispatcher, StringComparison.Ordinal);
-        Assert.Contains("SendToChannel", eventDispatcher, StringComparison.Ordinal);
+        Assert.Contains("IZLinkSpotClient", eventDispatcher, StringComparison.Ordinal);
+        Assert.Contains("SendToSpot(gameplayEvent.PlayerId", eventDispatcher, StringComparison.Ordinal);
+        Assert.Contains(".InstanceSpot(SampleNames.PlayerQuestSpotType)", eventDispatcher,
+            StringComparison.Ordinal);
+        Assert.Contains(".InMesh(SampleNames.MeshName)", eventDispatcher, StringComparison.Ordinal);
         Assert.Contains("new GameplayMsg", eventDispatcher, StringComparison.Ordinal);
         Assert.DoesNotContain("ZLinkHttpClient", eventDispatcher, StringComparison.Ordinal);
         Assert.DoesNotContain("interface IPlayerQuestOwnerProvisioner", questProcessor, StringComparison.Ordinal);
         Assert.DoesNotContain("IPlayerQuestOwnerProvisioner", gameplayIngress, StringComparison.Ordinal);
         Assert.DoesNotContain("ValueTask EnsureAsync", questProcessor, StringComparison.Ordinal);
-        Assert.DoesNotContain("public async ValueTask EnsureAsync", playerQuestProvisioner,
+        Assert.DoesNotContain("GetOrCreate(", eventDispatcher, StringComparison.Ordinal);
+        Assert.DoesNotContain("IZLinkSpotManager", eventDispatcher, StringComparison.Ordinal);
+        Assert.Contains("RequestToSpot(playerId", progressSynchronizer, StringComparison.Ordinal);
+        Assert.Contains(".InstanceSpot(SampleNames.PlayerQuestSpotType)", progressSynchronizer,
             StringComparison.Ordinal);
-        Assert.Contains("ResolveSpotHandleAsync", playerQuestProvisioner,
-            StringComparison.Ordinal);
-        Assert.Contains("SendToSpot(address", playerQuestProvisioner,
-            StringComparison.Ordinal);
+        Assert.Contains("IZLinkInstanceSpot", playerQuestSpot, StringComparison.Ordinal);
+        Assert.Contains("IZLinkInstanceSpotContext", playerQuestSpot, StringComparison.Ordinal);
+        Assert.DoesNotContain("OnCreateAsync", playerQuestSpot, StringComparison.Ordinal);
         Assert.Contains("IZLinkSpotPacketHandler<PlayerQuestSpot, GameplayMsg>",
             playerQuestSpot, StringComparison.Ordinal);
         Assert.Contains("QuestContractMapper.ToDomain(message)", playerQuestSpot,
@@ -204,7 +211,10 @@ public sealed partial class RegressionTests
         Assert.Contains("public QuestProgressDecision? Decide(GameplayFact gameplayFact)", questDomain,
             StringComparison.Ordinal);
         Assert.Contains("RecordOwnerRehydratedAsync", playerQuestSpot, StringComparison.Ordinal);
-        Assert.Contains("spots.CloseAsync(spotRid, cancellationToken)", missionProgram,
+        Assert.Contains("SendToSpot(playerId, new ClosePlayerQuestMsg())", missionProgram,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("spots.FindAsync", missionProgram, StringComparison.Ordinal);
+        Assert.Contains("spot.Context.CloseAsync(cancellationToken)", playerQuestSpot,
             StringComparison.Ordinal);
         Assert.Contains("ReadOwnerRehydrateEvidenceAsync", gameApiProgram, StringComparison.Ordinal);
         Assert.Contains("rehydrates.GetValueOrDefault(\"player-alice\") >= 2", gameApiProgram, StringComparison.Ordinal);

@@ -37,7 +37,7 @@ internal static class RmC2TargetedRouteScenario
             .Body(new ScenarioRoutePing("missing"))
             .Async<ExpectedFailureRes>()).Body;
         ZlinkStreamAssert.Ensure(
-            missing.ErrorKind == nameof(ZLinkFrameworkErrorKind.RequestTargetNotFound),
-            "RM-C2 missing rid request should report RequestTargetNotFound.");
+            missing.ErrorKind == nameof(ZLinkFrameworkErrorKind.NotFound),
+            "RM-C2 missing rid request should report NotFound.");
     }
 }

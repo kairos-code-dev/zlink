@@ -15,7 +15,7 @@ namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Actors;
 /// the zone spots this node hosts, and spawns their bots.
 ///
 /// The bots are why the world keeps moving with no client attached, and the four that
-/// patrol across the X boundary keep a cross-node actor transfer happening continuously
+/// patrol across the X boundary keep a cross-node actor relocation happening continuously
 /// (§2.7, ZW-F2).
 /// </summary>
 internal sealed class ZoneNodeBootstrap(
@@ -33,10 +33,13 @@ internal sealed class ZoneNodeBootstrap(
 
         foreach (var zoneId in ZoneTopology.Zones)
         {
-            await spots.GetOrCreate(zoneId, ZoneWorldNames.ZoneSpotType)
+            var result = await spots.GetOrCreate(zoneId, ZoneWorldNames.ZoneSpotType)
                 .InMesh(ZoneWorldNames.MeshName)
                 .Request(ZLinkMessage.Empty)
                 .Async(cancellationToken);
+            if (result.State is ZLinkSpotCreateState.Rejected)
+                throw new InvalidOperationException(
+                    $"Zone Spot creation was rejected. zone={zoneId}");
             logger.LogInformation("zone ensured. zone={ZoneId}", zoneId);
         }
 
@@ -71,24 +74,10 @@ internal sealed class ZoneNodeBootstrap(
 
     private async Task SpawnBotAsync(BotRoute route, CancellationToken cancellationToken)
     {
-        // A bot outlives the node that spawned it. The X patrollers cross the boundary, so by
-        // the time this node restarts one of "its" bots may be alive on the other node — and it
-        // is still the same actor. Recreating it would be a second actor with the same id.
-        //
-        // The *directory* is what can answer that: it looks this node up first and then falls
-        // back to the location store, so it sees the whole world. `IZLinkActorManager.FindAsync`
-        // only knows actors this node created, so on a fresh restart it says "no" about a bot
-        // that is very much alive next door.
-        if (await directory.FindAsync(route.PlayerId, cancellationToken) is not null)
-        {
-            logger.LogInformation("bot already in the world, not respawned. bot={PlayerId}", route.PlayerId);
-            return;
-        }
-
-        // Ensure, not create. If the create loses a claim race the directory looks again and
-        // returns the winner; and if the actor genuinely cannot be placed — the location store
-        // is unreachable, say — it throws. That distinction matters: swallowing the failure here
-        // would let the node log topology=ready over a world with no bots in it (§2.7).
+        // A bot outlives the node that first requested it. GetOrCreate resolves the global
+        // ActorId and joins a concurrent claim instead of doing a separate check-before-create.
+        // A placement or Store failure remains visible so the node cannot report a complete
+        // topology while a required bot is missing.
         var result = await directory
             .GetOrCreate(route.PlayerId, ZoneWorldNames.PlayerActorType)
             .InMesh(ZoneWorldNames.MeshName)
@@ -96,7 +85,12 @@ internal sealed class ZoneNodeBootstrap(
             .Async(cancellationToken);
 
         if (result is ZLinkActorCreateResult.Existing)
+        {
+            logger.LogInformation(
+                "bot already exists. bot={PlayerId}",
+                route.PlayerId);
             return;
+        }
         if (result is not ZLinkActorCreateResult.Created created)
             throw new InvalidOperationException("Bot Actor creation was rejected.");
 

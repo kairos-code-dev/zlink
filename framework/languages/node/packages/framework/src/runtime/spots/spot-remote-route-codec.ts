@@ -6,6 +6,7 @@ import {
   type ZLinkChannelEnvelopeCodecRegistry
 } from '../channels/channel-envelope';
 import {
+  attachActorMessageFollowContext,
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_ABORT_SEAL_PACKET,
@@ -127,7 +128,7 @@ export interface ZLinkRemoteActorPacketRelay {
   readonly payload: string;
   readonly actorRef?: ActorRef;
   readonly bindingActorRef?: ActorRef;
-  readonly deadlineUnixMs?: number;
+  readonly messageFollowContext?: import('../actors').ZLinkActorMessageFollowContext;
   readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
 }
 
@@ -244,14 +245,15 @@ export function decodeRemoteActorPacketRelay(
         actorId: relay.actorId,
         actorNodeRid: relay.actorNodeRid,
         actorNodeRidHex: relay.actorNodeRidHex,
-      actorGeneration: relay.actorGeneration
-      }, relay.handoffTargetSpotId, relay.operationId, relay.messageFollowHopCount, relay.deadlineUnixMs),
+        actorGeneration: relay.actorGeneration
+      }, relay.messageFollowContext),
       bindingActorRef: decodeActorRef({
         actorId: relay.actorId,
         actorNodeRid: relay.bindingActorNodeRid,
         actorNodeRidHex: relay.bindingActorNodeRidHex,
         actorGeneration: relay.bindingActorGeneration
       }),
+      messageFollowContext: relay.messageFollowContext,
       envelope: multipart.envelope
     };
   } catch {
@@ -264,20 +266,11 @@ function decodeForwardedActorRef(payload: {
   readonly actorNodeRid?: unknown;
   readonly actorNodeRidHex?: unknown;
   readonly actorGeneration?: unknown;
-}, targetSpotId: unknown, operationId?: string, messageFollowHopCount?: number, deadlineUnixMs?: number): ActorRef | undefined {
+}, messageFollowContext?: import('../actors').ZLinkActorMessageFollowContext): ActorRef | undefined {
   const actorRef = decodeActorRef(payload);
-  if (actorRef !== undefined) {
-    (actorRef as ActorRef & { handoffMessageFollowed?: boolean }).handoffMessageFollowed = true;
-    (actorRef as ActorRef & { handoffOperationId?: string }).handoffOperationId = operationId;
-    (actorRef as ActorRef & { handoffMessageFollowHopCount?: number })
-      .handoffMessageFollowHopCount = messageFollowHopCount;
-    (actorRef as ActorRef & { handoffDeadlineUnixMs?: number })
-      .handoffDeadlineUnixMs = deadlineUnixMs;
-    if (typeof targetSpotId === 'string') {
-      (actorRef as ActorRef & { handoffTargetSpotId?: string }).handoffTargetSpotId = targetSpotId;
-    }
-  }
-  return actorRef;
+  return actorRef === undefined || messageFollowContext === undefined
+    ? actorRef
+    : attachActorMessageFollowContext(actorRef, messageFollowContext);
 }
 
 function decodeRemoteBoundSessionControl(

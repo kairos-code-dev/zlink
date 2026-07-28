@@ -3,14 +3,13 @@
 # 7. 비동기
 
 `AsyncRaw()` / `Async<T>()` / `DownloadAsync(sink)`는 `ValueTask<T>`를 돌려준다.
-완료를 기다리지 않는 server 호출에는 `Submit()`을 사용한다. HTTP request builder에는 Spot turn을
-반납하는 `Yield<T>()`가 없다.
+응답 결과가 필요 없는 server 호출에는 인자 없는 `Async()`를 사용한다. 정상 완료 값과
+전송 상태는 반환하지 않으며, 시작 전 실패만 비동기 오류로 전달한다. HTTP request builder에는
+Spot turn을 반납하는 `Yield<T>()`가 없다.
 
 ## non-blocking 보장
 
-`SocketsHttpHandler`는 epoll/IOCP 기반 비동기 소켓을 쓴다. 따라서 응답을 기다리는
-동안 **어떤 스레드도 park되지 않는다.** 런타임의 비동기 I/O가 이를 제공하므로 별도의
-worker scheduler가 필요 없다.
+HTTP 호출은 비동기로 완료된다. 응답을 기다리기 위해 blocking API로 완료 값을 꺼내지 않는다.
 
 ```csharp
 public async ValueTask NotifyMatchResultAsync(ZLinkHttpClient client, MatchResult result)
@@ -21,14 +20,19 @@ public async ValueTask NotifyMatchResultAsync(ZLinkHttpClient client, MatchResul
 
     if (!response.Body.Accepted)
     {
-        throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.RequestFailed, "match result was not accepted");
+        // HTTP 호출은 성공했지만 application이 결과를 거부했다.
+        throw new InvalidOperationException("match result was not accepted");
     }
 }
 ```
 
-> DNS 해석(`getaddrinfo`)만 OS 레벨에서 blocking이지만 .NET은 이를 threadpool로
-> offload하므로 호출/handler 스레드는 막히지 않는다.
+응답이 필요 없다면 DI로 주입받은 server client에서 one-way terminal을 사용한다.
+
+```csharp
+await client.Post($"/matches/{result.MatchId}/events")
+    .Body(result)
+    .Async(); // 정상 완료 값은 없으며 request 실행만 시작한다.
+```
 
 ## Spot turn 선택
 

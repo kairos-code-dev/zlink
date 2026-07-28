@@ -14,12 +14,24 @@ public sealed record SessionBoundedOperationReq(string Marker);
 public sealed record SessionBoundedOperationRes(string Marker);
 public sealed record EnsurePlayerReq(string ActorId);
 public sealed record EnsurePlayerRes(string ActorId, string NodeRid, ulong Generation);
-public sealed record PlayBoundedOperationReq(string Marker);
+public sealed record PlayBoundedOperationReq(string RoomId, string Marker);
 public sealed record PlayBoundedOperationRes(string Marker, string NodeRid);
+public sealed record ActivateInstanceSpotReq(string Marker);
+public sealed record ActivateInstanceSpotRes(
+    string SpotId,
+    string NodeRid,
+    string Marker);
 public sealed record CreateRoomReq(string RoomRid, string Mode = "normal");
 public sealed record CreateRoomRes(string RoomRid, string NodeRid);
 public sealed record JoinRoomReq(string RoomRid);
 public sealed record JoinRoomRes(string ActorId, string RoomRid, string NodeRid);
+public sealed record ActorJoinCompletedNotify(
+    string ActorId,
+    string? SpotId,
+    string NodeRid,
+    string Marker,
+    bool Accepted,
+    string? Error);
 public sealed record GameActionReq(string Marker, int WorkMilliseconds = 0);
 public sealed record GameActionRes(string ActorId, string RoomRid, string NodeRid, string Marker);
 public sealed record PlayerMovedNotify(string ActorId, string TargetNodeRid);
@@ -32,7 +44,12 @@ public sealed record AdvanceWorkflowRes(string WorkflowRid, string NodeRid, int 
 public sealed record ReadWorkflowReq;
 public sealed record ReadWorkflowRes(string WorkflowRid, string NodeRid, int Version, string State);
 public sealed record WorkflowSignalReq(string Marker);
-public sealed record StaleHandleProbeRes(bool Failed, string? ErrorType);
+public sealed record DiagnosticsBeforeReq(string Marker);
+public sealed record DiagnosticsOffReq(string Marker);
+public sealed record DiagnosticsErrorsReq(string Marker);
+public sealed record DiagnosticsAfterReq(string Marker);
+public sealed record DiagnosticsProbeRes(string Marker, string NodeRid);
+public sealed record StaleSpotIdProbeRes(bool Failed, string? ErrorKind);
 public sealed record PublishProjectionReq(string Marker);
 public sealed record PublishProjectionRes(string WorkflowRid, int Version);
 public sealed record ProjectionUpdatedEvent(string WorkflowRid, int Version, string Marker);
@@ -61,10 +78,27 @@ public sealed record MetricSample(
 public sealed record PeerRow(string NodeRid, bool Draining, long Generation);
 public sealed record ActorRow(string ActorId, string NodeRid, long Generation);
 public sealed record SpotRow(string MeshName, string NodeRid, string SpotRid, string Kind, long Generation);
-public sealed record DrainStatus(
+public sealed record MaintenanceStatus(
     bool Started,
     bool Completed,
     string? Result,
     string? Reason,
     string? Error,
     int TerminalCount = 0);
+public sealed record RelocateHostReq(
+    string Mode,
+    long? TargetApplicationVersion,
+    int DeadlineMilliseconds = 30000);
+public sealed record RelocateHostRes(
+    string Mode,
+    long TargetApplicationVersion,
+    string Outcome,
+    string Reason);
+public sealed record ShutdownHostReq(int DeadlineMilliseconds = 30000);
+public sealed record ShutdownHostRes(string Outcome, string Reason);
+public sealed record RuntimeStatusRes(
+    string State,
+    bool IsReady,
+    bool AcceptingWork,
+    ulong Sequence);
+public sealed record NodeIdentityRes(string Role, string NodeRid);

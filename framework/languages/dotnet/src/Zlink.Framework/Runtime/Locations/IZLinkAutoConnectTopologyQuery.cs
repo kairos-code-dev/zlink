@@ -1,15 +1,25 @@
 namespace Zlink.Framework.Runtime.Locations;
 
+internal enum ZLinkRouteMeshTargetClassification
+{
+    Unknown = 0,
+    ObjectClientTarget = 1,
+    RequiredNotConnected = 2,
+    ReadyEligible = 3
+}
+
 /// <summary>
-/// Send-path view of the auto-connect state: is this node rid a peer the
-/// mesh knows? Answers come from the reconciler's desired-set snapshot and
-/// never from the store, so the send path stays free of hidden store I/O
-/// (spot-address messaging contract §7). Null means no judgment is possible —
-/// no loop manages the mesh, or the first reconcile has not completed.
+/// Send-path view of the last auto-connect descriptor snapshot. It preserves
+/// whether the target is an outbound-only Object Client so Node-direct
+/// messaging does not confuse a deliberately unsupported target with a
+/// temporarily disconnected eligible target. The runtime combines this
+/// descriptor classification with its physical peer state without store I/O.
 /// </summary>
 internal interface IZLinkAutoConnectTopologyQuery
 {
-    bool? IsKnownRouteMeshPeer(string meshName, RoutingId nodeRid);
+    ZLinkRouteMeshTargetClassification ClassifyRouteMeshTarget(
+        string meshName,
+        RoutingId nodeRid);
 
     IReadOnlyList<ZLinkRouteMeshPeerIdentity>? GetCompleteRouteMeshPeers(
         string meshName) => null;

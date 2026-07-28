@@ -11,40 +11,59 @@ internal static class RmC1RequestSendScenario
 {
     public static async Task RunAsync(ZLinkHttpClient providerA, ZLinkHttpClient providerB)
     {
-        var reply = (await providerA.Post("/profile/request")
-            .Body(new ProfileReq("rm-c1-request"))
-            .Async<ProfileRes>()).Body;
-        ZlinkStreamAssert.Ensure(reply.Value == "profile:rm-c1-request", "RM-C1 request reply mismatch.");
+        try
+        {
+            // Provider A remains the caller but its local server membership
+            // is excluded. The public calls below still name only "profile".
+            await providerA.Post("/profile/weight")
+                .Query("weight", "0")
+                .AsyncRaw();
 
-        var commandId = $"cmd-{Guid.NewGuid():N}";
-        await providerA.Post("/profile/command")
-            .Body(new ProfileMsg(commandId))
-            .Async<object>();
+            var reply = (await providerA.Post("/profile/request")
+                .Body(new ProfileReq("rm-c1-request"))
+                .Async<ProfileRes>()).Body;
+            ZlinkStreamAssert.Ensure(
+                reply.Value == "profile:rm-c1-request"
+                && reply.ProviderRid == "api-b",
+                "RM-C1 request did not complete at the remote Channel server.");
 
-        var evidence = await WaitForProviderEvidenceAsync(providerA, providerB, commandId);
-        ZlinkStreamAssert.Ensure(
-            evidence.Any(line => line.Contains("profile-request|", StringComparison.Ordinal)
-                                 && line.Contains("rm-c1-request", StringComparison.Ordinal)),
-            "RM-C1 request evidence missing.");
-        ZlinkStreamAssert.Ensure(
-            evidence.Any(line => line.Contains("profile-command|", StringComparison.Ordinal)),
-            "RM-C1 send evidence missing.");
-    }
+            var commandId = $"cmd-{Guid.NewGuid():N}";
+            await providerA.Post("/profile/command")
+                .Body(new ProfileMsg(commandId))
+                .Async<object>();
 
-    private static async Task<string[]> WaitForProviderEvidenceAsync(
-        ZLinkHttpClient providerA,
-        ZLinkHttpClient providerB,
-        string commandId)
-    {
-        // ChannelName send is select-one (spec 11 §2): the command lands on
-        // exactly one member, so the wait completes on whichever provider
-        // received it and the other side contributes its current snapshot.
-        var wait = new EvidenceWaitReq($"command={commandId}");
-        var providerAEvidence = providerA.Post("/evidence/wait").Body(wait).Async<string[]>().AsTask();
-        var providerBEvidence = providerB.Post("/evidence/wait").Body(wait).Async<string[]>().AsTask();
-        var winner = await Task.WhenAny(providerAEvidence, providerBEvidence);
-        var other = ReferenceEquals(winner, providerAEvidence) ? providerB : providerA;
-        var otherSnapshot = (await other.Get("/evidence").Async<string[]>()).Body;
-        return (await winner).Body.Concat(otherSnapshot).ToArray();
+            var remoteEvidence = (await providerB.Post("/evidence/wait")
+                .Body(new EvidenceWaitReq($"command={commandId}"))
+                .Async<string[]>()).Body;
+            ZlinkStreamAssert.Ensure(
+                remoteEvidence.Any(line =>
+                    line.Contains("profile-request|", StringComparison.Ordinal)
+                    && line.Contains(
+                        "rm-c1-request",
+                        StringComparison.Ordinal))
+                && remoteEvidence.Any(line =>
+                    line.Contains(
+                        $"profile-command|rid=api-b|command={commandId}",
+                        StringComparison.Ordinal)),
+                "RM-C1 remote request/send evidence missing.");
+
+            var sourceEvidence =
+                (await providerA.Get("/evidence").Async<string[]>()).Body;
+            ZlinkStreamAssert.Ensure(
+                sourceEvidence.All(line =>
+                    !line.Contains(
+                        "value=rm-c1-request",
+                        StringComparison.Ordinal)
+                    && !line.Contains(
+                        $"command={commandId}",
+                        StringComparison.Ordinal)),
+                "RM-C1 source handled a ChannelName call after local exclusion.");
+        }
+        finally
+        {
+            await providerA.Post("/profile/weight")
+                .Query("weight", "100")
+                .AsyncRaw();
+        }
     }
 }

@@ -48,11 +48,8 @@ public sealed class StreamSessionForcedCleanupTests
     [Fact]
     public async Task Stream_Request_Emits_Received_Then_Replied_With_Wire_Correlation()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"zlink-stream-flow-{Guid.NewGuid():N}");
-        var logPath = Path.Combine(root, "flow.log");
         var registration = new ZLinkFrameworkRegistration();
-        registration.DispatchOptions.MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions);
-        registration.DispatchOptions.TraceLogFile(logPath);
+        registration.DispatchOptions.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
         var lifetime = new StreamFlowLifetime();
         var loggerFactory = new StreamFlowLoggerFactory();
         ZLinkFrameworkRuntime runtime = null!;
@@ -100,7 +97,7 @@ public sealed class StreamSessionForcedCleanupTests
             Assert.Equal("stream-corr-17", response.CorrelationId);
             Assert.Equal(flowId, response.FlowId);
 
-            var lines = File.ReadAllLines(logPath);
+            var lines = loggerFactory.Messages.ToArray();
             Assert.Equal(2, lines.Length);
             Assert.Contains(lines, line => line.Contains("phase=received", StringComparison.Ordinal)
                                           && line.Contains("corr=stream-corr-17", StringComparison.Ordinal));
@@ -109,28 +106,25 @@ public sealed class StreamSessionForcedCleanupTests
                                           && line.Contains("src=stream-flow-client", StringComparison.Ordinal));
             Assert.DoesNotContain(lines, line => line.Contains("phase=dispatched", StringComparison.Ordinal));
             Assert.Contains(ZLinkMessageFlowTracer.LoggerCategory, loggerFactory.Categories);
-            Assert.Empty(loggerFactory.Messages);
         }
         finally
         {
             await session.DisposeAsync();
-            if (Directory.Exists(root)) Directory.Delete(root, true);
         }
     }
 
     [Fact]
     public async Task Stream_Request_Without_Wire_Correlation_DoesNotInvent_One_From_RequestSeq()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"zlink-stream-no-corr-{Guid.NewGuid():N}");
-        var logPath = Path.Combine(root, "flow.log");
         var registration = new ZLinkFrameworkRegistration();
-        registration.DispatchOptions.MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions);
-        registration.DispatchOptions.TraceLogFile(logPath);
+        registration.DispatchOptions.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
         var lifetime = new StreamFlowLifetime();
+        var loggerFactory = new StreamFlowLoggerFactory();
         ZLinkFrameworkRuntime runtime = null!;
         var services = new ServiceCollection()
             .AddSingleton(registration)
             .AddSingleton(lifetime)
+            .AddSingleton<ILoggerFactory>(loggerFactory)
             .AddSingleton(_ => runtime);
 
         await using var provider = services.BuildServiceProvider();
@@ -167,14 +161,14 @@ public sealed class StreamSessionForcedCleanupTests
             var frame = await socket.SentFrame.Task.WaitAsync(TimeSpan.FromSeconds(2));
             Assert.Null(DecodeStreamHeader(frame).CorrelationId);
 
-            var lines = File.ReadAllLines(logPath);
+            var lines = loggerFactory.Messages.ToArray();
             Assert.Equal(2, lines.Length);
-            Assert.All(lines, line => Assert.DoesNotContain("corr=", line, StringComparison.Ordinal));
+            Assert.All(lines, line => Assert.Contains("corr=(null)", line, StringComparison.Ordinal));
+            Assert.All(lines, line => Assert.DoesNotContain("corr=19", line, StringComparison.Ordinal));
         }
         finally
         {
             await session.DisposeAsync();
-            if (Directory.Exists(root)) Directory.Delete(root, true);
         }
     }
 

@@ -159,7 +159,7 @@ internal sealed class ZLinkResolvedSpotHandle
             {
                 if (_availability != ZLinkHandleAvailability.Available)
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                        ZLinkFrameworkErrorKind.NotFound,
                         "The resolved spot handle is no longer available.");
                 return _snapshot;
             }
@@ -245,6 +245,6 @@ internal static class ZLinkSpotHandleRequestExecution
     }
 
     internal static bool IsStaleRoute(ZLinkFrameworkException error) =>
-        error.Kind is ZLinkFrameworkErrorKind.SpotRouteNotFound
-            or ZLinkFrameworkErrorKind.RequestTargetNotFound;
+        error.Kind is ZLinkFrameworkErrorKind.NotFound
+            or ZLinkFrameworkErrorKind.NotFound;
 }

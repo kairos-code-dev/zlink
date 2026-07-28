@@ -68,7 +68,7 @@ request 구성(`get/post/put/delete/patch/head/options`, `header`, `query`, `tim
 ## 6. 에러 매핑
 
 [java spec 6절](../java/java-http-client.ko.md)과 동일하다
-(`kind()`/`retriable()` 노출 포함). suspend 호출은 `try`/`catch`로 잡는다.
+(`kind()`/`retryAdvice()` 노출 포함). suspend 호출은 `try`/`catch`로 잡는다.
 
 - Kotlin 고유 주의: coroutine 취소가 하부 요청에 전파되지 않는다
   (공통 spec [R5/R9](../../10-revision-candidates.ko.md) 검토 대상).

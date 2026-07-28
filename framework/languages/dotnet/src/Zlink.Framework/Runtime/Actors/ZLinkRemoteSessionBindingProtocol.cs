@@ -4,6 +4,8 @@ internal static class ZLinkRemoteSessionBindingProtocol
 {
     public const string PacketName = "framework.internal.actor-session-bind";
     public const string UnbindPacketName = "framework.internal.actor-session-unbind";
+    public const string SessionOwnerTombstonePacketName =
+        "framework.internal.actor-session-owner-tombstone";
 }
 
 // These records carry a binding projection across the wire. The Session owner
@@ -25,6 +27,8 @@ internal sealed record ZLinkRemoteSessionBindRequest(
 
 internal sealed record ZLinkRemoteSessionPreviousBinding(
     byte[] TargetNodeRid,
+    byte[] SessionNodeRid,
+    byte[] SessionRid,
     string BindingToken,
     ulong BindingGeneration,
     ulong ObjectGeneration,
@@ -32,7 +36,8 @@ internal sealed record ZLinkRemoteSessionPreviousBinding(
     ulong TargetNodeGeneration,
     ulong AuthorityOwnerGeneration,
     ulong OwnerLeaseGeneration,
-    ulong SessionOwnerNodeGeneration);
+    ulong SessionOwnerNodeGeneration,
+    ulong AcceptedHighWater);
 
 internal sealed record ZLinkRemoteSessionBindResponse(
     bool Acknowledged,
@@ -47,6 +52,8 @@ internal sealed record ZLinkRemoteSessionBindResponse(
 internal sealed record ZLinkRemoteSessionUnbindRequest(
     string ActorId,
     byte[] TargetNodeRid,
+    byte[] SessionNodeRid,
+    byte[] SessionRid,
     string BindingToken,
     ulong BindingGeneration,
     ulong ObjectGeneration,
@@ -54,9 +61,26 @@ internal sealed record ZLinkRemoteSessionUnbindRequest(
     ulong TargetNodeGeneration,
     ulong AuthorityOwnerGeneration,
     ulong OwnerLeaseGeneration,
-    ulong SessionOwnerNodeGeneration);
+    ulong SessionOwnerNodeGeneration,
+    ulong AcceptedHighWater);
 
 internal sealed record ZLinkRemoteSessionUnbindResponse(bool Acknowledged);
+
+[ZLinkPacket(ZLinkRemoteSessionBindingProtocol.SessionOwnerTombstonePacketName)]
+internal sealed record ZLinkRemoteSessionOwnerTombstoneRequest(
+    string ActorId,
+    byte[] ActorNodeRid,
+    ulong ObjectGeneration,
+    string MeshName,
+    ulong ActorNodeGeneration,
+    ulong AuthorityOwnerGeneration,
+    ulong OwnerLeaseGeneration,
+    byte[] SessionRid,
+    string BindingToken,
+    ulong BindingGeneration,
+    ulong SessionOwnerNodeGeneration);
+
+internal sealed record ZLinkRemoteSessionOwnerTombstoneResponse(bool Acknowledged);
 
 internal sealed class ZLinkRemoteSessionBindRouteHandler(
     ZLinkFrameworkRuntime runtime)
@@ -85,9 +109,25 @@ internal sealed class ZLinkRemoteSessionUnbindRouteHandler(
         ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
-        return runtime.UnbindRemoteBoundSessionRouteAsync(
+        return runtime.TombstoneRemoteActorBindingAsync(
             request,
+            context.SourceNodeRid,
             cancellationToken);
     }
+}
+
+internal sealed class ZLinkRemoteSessionOwnerTombstoneRouteHandler(
+    ZLinkFrameworkRuntime runtime)
+    : IZLinkRouteRequestHandler<
+        ZLinkRemoteSessionOwnerTombstoneRequest,
+        ZLinkRemoteSessionOwnerTombstoneResponse>
+{
+    public ValueTask<ZLinkRemoteSessionOwnerTombstoneResponse> HandleAsync(
+        ZLinkRemoteSessionOwnerTombstoneRequest request,
+        ZLinkRouteMessageContext context,
+        CancellationToken cancellationToken) =>
+        runtime.TombstoneRemoteSessionOwnerBindingAsync(
+            request,
+            context.SourceNodeRid,
+            cancellationToken);
 }

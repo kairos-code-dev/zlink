@@ -29,7 +29,7 @@ internal sealed class AwaitProbeSpot(
         cancellationToken.ThrowIfCancellationRequested();
         if (!request.IsEmpty)
         {
-            var delay = request.Decode<DelayReq>();
+            var delay = request.Decode<JoinDelayReq>();
             if (delay.DelayMs > 0) await Task.Delay(TimeSpan.FromMilliseconds(delay.DelayMs), cancellationToken);
         }
 

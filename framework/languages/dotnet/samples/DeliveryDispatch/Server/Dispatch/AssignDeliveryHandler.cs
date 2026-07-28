@@ -13,7 +13,7 @@ internal sealed class AssignDeliveryHandler(
 {
     public async ValueTask HandleAsync(
         AssignDeliveryMsg message,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         await queue.EnqueueAsync(message, cancellationToken);

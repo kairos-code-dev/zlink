@@ -94,7 +94,8 @@ Provider가 해석해야 하는 값은 reference, payload, retention뿐이다.
 | Application data chunk | Framework가 나누기 전 application bytes 기준으로 최대 64 MiB다. |
 | Redis encoded blob | Data chunk와 Framework가 붙이는 immutable envelope를 합친 provider 입력이다. 공식 Redis provider의 최대 크기는 `64 MiB + 23 bytes`다. |
 | 여러 blob으로 나눈 payload | Framework가 여러 blob으로 구성할 수 있는 전체 payload다. 최대 크기는 256 GiB다. |
-| Chunk 수 | 전체 payload의 맨 앞 목록이 가리키는 data chunk는 최대 4,096개다. |
+| Chunk 수 | 전체 payload의 맨 앞 목록이 가리키는 data chunk의 합계는 최대 4,096개다. |
+| Ordered stripe 수 | 하나의 relocation root를 병렬로 저장하고 읽기 위해 나누는 연속 구간은 최대 64개다. |
 | `StoreNow` | Provider가 `Put`·`Read`·`Renew` 결과에 넣는 현재 시각이다. 만료 여부는 이 시각과 provider clock으로 판단한다. |
 
 Provider는 reference를 만들거나 바꾸지 않는다. 같은 content라도 Framework가 서로 다른 reference를
@@ -107,6 +108,27 @@ Redis provider에 전달한다. 따라서 application data 제한과 provider가
 목록에는 format version, 전체 길이, checksum, chunk 순서와 각 chunk의
 reference·길이·checksum을 기록한다. Provider는 이 목록도 일반 bytes로 저장한다. 목록의
 내용이나 chunk 관계는 Framework가 확인한다.
+
+Framework는 participant 수와 payload 크기를 보고 relocation root 전체를 최대 64개의
+연속 구간으로 균등하게 나눈다. 이 구간을 ordered stripe라고 한다. Stripe는 특정 Actor나
+Spot의 payload를 뜻하지 않는다. Relocation Store는 stripe의 내용을 해석하지 않고 opaque
+bytes로 저장한다.
+
+Stripe가 64 MiB보다 크면 최대 64 MiB인 data chunk로 다시 나눈다. 모든 stripe가 가리키는
+data chunk의 합계는 4,096개를 넘을 수 없다. SpotWide User Spot에 Actor가 100개 있어도
+participant마다 blob 하나를 만들지 않고 최대 64개 stripe를 병렬로 처리한다. 한 process가
+병렬 I/O 결과로 보관하는 encoded chunk bytes 합계는 기본 256 MiB를 넘지 않는다.
+
+저장할 때는 모든 data chunk를 다시 읽어 bytes와 checksum을 확인한 뒤에만 맨 앞 목록을
+저장한다. 일부 chunk의 저장이나 확인이 실패하면 맨 앞 목록을 저장하지 않는다. 이때 남은
+chunk는 어떤 Location Store record도 가리키지 않으므로 retention 만료로 정리한다.
+
+복원할 때는 data chunk를 병렬로 읽고 각각의 checksum을 확인한다. I/O 완료 순서와 관계없이
+맨 앞 목록에 기록된 stripe와 chunk 순서로 합친다. 합친 bytes의 전체 checksum도 일치해야
+Spot state와 Actor state를 복원한다. Stripe 하나라도 없거나 checksum이 다르면 전체
+relocation unit을 `DataLost`로 처리한다. 일부 participant만 복원하지 않는다. 보관 기간을
+연장할 때도 각 data chunk의 존재와 checksum을 병렬로 확인하고, 모두 성공한 뒤 맨 앞
+목록의 보관 기간을 연장한다.
 
 Application state adapter 하나가 반환할 수 있는 bytes도 최대 64 MiB다. Process 하나에서 relocation
 payload를 동시에 처리할 때 적용하는 기본 256 MiB 제한은 Framework coordinator의 실행 중 memory
@@ -154,6 +176,11 @@ Operation을 시작하기 전에 cancellation이 요청되면 provider는 I/O와
 Operation을 시작한 뒤 cancellation, timeout 또는 transport error가 발생하면 저장이나 삭제가
 적용되었는지 알 수 없을 수 있다. Provider는 이 경우를 성공이나 정상 결과로 추정하지 않는다.
 
+공식 Redis provider의 `OperationTimeout`은 connection을 얻는 시간과 Redis command가 끝나는
+시간을 합친 operation 전체에 적용한다. 제한 시간이 지나면 waiter는 `TimeoutException`으로
+완료된다. 이미 Redis에 전달한 write는 timeout 뒤에도 적용될 수 있으므로 실패했다고
+추정하지 않는다.
+
 `Put` 결과를 받지 못한 Framework는 자신이 발급한 reference로 `Read`를 실행하거나, 같은 reference와
 같은 bytes로 `Put`을 다시 실행하여 저장 여부를 재구성할 수 있어야 한다. `Delete`는 다시 실행해도
 같은 상태가 되며, `Renew`도 payload를 변경하지 않는다.
@@ -174,7 +201,7 @@ Location Store authority가 아직 가리키지 않는 payload를 orphan이라�
 Location Store authority가 가리키는 published reference는 아직 복구에 필요할 수 있다. Framework는
 Location Store에서 해당 reference의 사용 종료를 먼저 commit한 뒤 payload를 삭제해야 한다. Provider는
 retention이 남아 있는 published payload를 임의로 삭제하지 않는다. 이 게시·해제 순서와 payload가
-없을 때의 `RelocationDataLost` 처리는
+없을 때의 `DataLost` 처리는
 [Location runtime의 결과 재구성 규칙](21-location-runtime.ko.md#8-store-응답을-받지-못했을-때)이 정한다.
 
 ## 7. 등록과 provider instance 수명
@@ -213,7 +240,11 @@ Location Store와 Relocation Store는 같은 Redis deployment에서 서로 다�
 - 같은 reference와 같은 bytes를 다시 `Put`하면 `AlreadyStored`, 다른 bytes를 저장하면 `Conflict`다.
 - 64 MiB application data와 23-byte envelope로 구성한 encoded blob, 최대 4,096개
   data chunk와 256 GiB 전체 payload 계약을 지원한다.
+- Participant 수와 관계없이 relocation root를 최대 64개의 ordered opaque stripe로
+  균등하게 나누고, 원래 순서와 전체 checksum을 보존한다.
 - `Put` 결과를 받지 못한 뒤 exact `Read`나 같은 입력의 `Put`으로 저장 여부를 재구성할 수 있다.
+- Redis operation timeout은 connection 획득과 실제 command를 제한하며, timeout 뒤 완료된
+  write는 같은 reference와 bytes를 사용한 retry로 `AlreadyStored`임을 확인할 수 있다.
 - `Read`가 반환한 bytes는 consumer가 사용하는 동안 변경되지 않는다.
 - `Renew`와 `Delete`를 다시 실행해도 payload가 달라지지 않으며, expiry는 provider clock으로 계산한다.
 - Published reference의 사용 종료를 Location Store에 commit하기 전에 payload를 삭제하지 않는다.

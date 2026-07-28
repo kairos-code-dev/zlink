@@ -29,22 +29,6 @@ public sealed class SharedAsyncDisposalTests
     }
 
     [Fact]
-    public async Task MonitoringHost_Repeated_Dispose_Callers_Share_Finalization()
-    {
-        var host = new ZLinkMonitoringHostedService(
-            new EmptyBackendAdapterFactory(),
-            new ZLinkMonitoringRegistration(),
-            null!,
-            null,
-            null,
-            null);
-        var first = host.DisposeAsync().AsTask();
-        var second = host.DisposeAsync().AsTask();
-        Assert.Same(first, second);
-        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
-    }
-
-    [Fact]
     public async Task LocationStoreOwner_Repeated_Dispose_Callers_Share_Finalization()
     {
         var owner = new ZLinkLocationStoreInstanceOwner(null!);
@@ -180,33 +164,6 @@ public sealed class SharedAsyncDisposalTests
         handler.Release.TrySetResult();
         await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, handler.DisposeCount);
-    }
-
-    [Fact]
-    public async Task MessageFlowPump_Concurrent_Dispose_Callers_Share_Observer_Cleanup()
-    {
-        await using var services = new ServiceCollection().BuildServiceProvider();
-        var options = new ZLinkDispatchOptionsModel();
-        options.SetRuntimeMessageFlowObserver<BlockingObserver>();
-        var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
-        var pump = new ZLinkMessageFlowObserverPump(options, services, runner);
-        Assert.True(ZLinkRuntimeMessageFlowProjection.TryProject(new ZLinkMessageFlowEvent(
-            ZLinkMessageFlowOutcome.Received,
-            ZLinkDispatchErrorSurface.StreamSession,
-            ZLinkDispatchMessageKind.Send,
-            "packet"), out var flow));
-        Assert.True(pump.EnqueueRuntime(flow));
-        var observer = await BlockingObserver.Created.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var first = pump.DisposeAsync().AsTask();
-        await observer.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var second = pump.DisposeAsync().AsTask();
-
-        Assert.Same(first, second);
-        Assert.False(second.IsCompleted);
-        observer.Release.TrySetResult();
-        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(1, observer.DisposeCount);
-        await runner.StopAsync();
     }
 
     [Fact]
@@ -532,35 +489,4 @@ public sealed class SharedAsyncDisposalTests
         }
     }
 
-    public sealed class BlockingObserver : IZLinkRuntimeMessageFlowObserver, IAsyncDisposable
-    {
-        internal static TaskCompletionSource<BlockingObserver> Created { get; private set; } = NewCreated();
-        private int _disposeCount;
-        public BlockingObserver()
-        {
-            var created = Created;
-            if (!created.TrySetResult(this))
-            {
-                Created = NewCreated();
-                Created.TrySetResult(this);
-            }
-        }
-        internal TaskCompletionSource Started { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource Release { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal int DisposeCount => Volatile.Read(ref _disposeCount);
-        public ValueTask OnMessageFlowAsync(
-            ZLinkRuntimeMessageFlowEvent flow,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
-        public async ValueTask DisposeAsync()
-        {
-            Interlocked.Increment(ref _disposeCount);
-            Started.TrySetResult();
-            await Release.Task.ConfigureAwait(false);
-        }
-        private static TaskCompletionSource<BlockingObserver> NewCreated() =>
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-    }
 }

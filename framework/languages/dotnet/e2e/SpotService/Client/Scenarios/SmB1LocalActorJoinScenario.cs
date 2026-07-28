@@ -23,7 +23,7 @@ internal static class SmB1LocalActorJoinScenario
             MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
-        await client.Request(new AuthReq(actorId, "local actor", "play-a"))
+        await client.Request(new AuthReq(actorId, "local actor"))
             .PacketName("AuthReq")
             .Async<AuthRes>();
         var ping = await client.Request(new ActorPingReq("b1"))

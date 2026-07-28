@@ -120,12 +120,21 @@ owner에 도달하는가.
 
 우선순위: `P2`
 
-**검증 질문:** Spot에 Stage wrapper(playhouse Stage 류)를 추가해도 Spot messaging·timer·lifecycle이
-같은 의미로 동작하는가.
+**검증 질문:** Application Stage wrapper가 별도 scheduler나 transport 지식을 만들지 않고 public
+Spot·Actor·timer 계약을 그대로 보존하는가.
 
-- 절차: Stage wrapper(playhouse Stage 류)를 추가한 Spot에 request와 timer command를 보낸다.
-- 검증: Stage wrapper를 통해도 spot 메시징·timer·lifecycle이 같은 의미로 동작한다.
-- 세부 동작: SPOT 위 Stage wrapper 계층.
+- 절차: 같은 Stage domain 동작을 `SpotWide`와 `PerActor` User Spot wrapper에 각각 구성한다. Spot direct,
+  Logical Multicast, timer, member Actor payload와 Actor가 명시적으로 시작한 Spot request를 섞어 실행한다.
+  Spot 종료 뒤 같은 입력을 한 번 더 제출한다.
+- 검증: `SpotWide`에서는 Spot·timer·member Actor callback이 하나의 Spot gate를 보존한다. `PerActor`에서는
+  Spot lane, Actor별 lane과 timer별 lane이 각각 FIFO를 유지하면서 서로 진행할 수 있다. Actor payload는
+  Spot callback이나 Spot application queue를 거치지 않으며 Stage state 변경은 명시적인 Spot request에서만
+  일어난다. Request continuation은 원래 Spot turn으로 돌아오고 transport completion thread에서 Stage state를
+  직접 변경하지 않는다. 종료 뒤에는 새 timer와 message callback이 0건이어야 한다.
+- 표면 검증: Wrapper code가 owner RID, endpoint, internal queue, native timer handle과 raw message storage를
+  읽거나 별도 Stage runtime·public base type을 만들면 실패다. Relocation permit과 timer 복원은 Config 10
+  `ST-G6`·`ST-I1`이 같은 wrapper에서 검증한다.
+- 세부 동작: public Spot 계약 위 application Stage wrapper와 execution-mode 보존.
 
 #### SM-A6 spot lifecycle (initialize·close)
 
@@ -141,15 +150,15 @@ current Actor membership이 있으면 상태를 바꾸지 않고 close를 거부
   leave 또는 destroy 뒤 close만 성공하고 `OnClosing(ExplicitClose)`가 직렬화된 close 경로에서 한 번 실행된다.
 - 세부 동작: spot 생성·종료 lifecycle 콜백.
 
-#### SM-A7 spot 타입 불일치 (SpotTypeMismatch)
+#### SM-A7 spot 타입 불일치 (`TypeMismatch`)
 
 우선순위: `P1`
 
-**검증 질문:** 이미 만든 spotId를 다른 spot 타입으로 다시 `GetOrCreate`하면, `SpotTypeMismatch`로 명확히 거부되는가.
+**검증 질문:** 이미 만든 spotId를 다른 spot 타입으로 다시 `GetOrCreate`하면, `TypeMismatch`로 명확히 거부되는가.
 
 - 절차: stable type A와 Spot ID로 User Spot `GetOrCreate`를 완료한 뒤, 같은 Spot ID를 stable type B의
   `GetOrCreate`로 다시 요청한다.
-- 검증: 두 번째 요청은 `SpotTypeMismatch` public error로 실패한다(`ZLinkFrameworkException`). 처음 만든 spot과 그 상태는 영향받지 않는다.
+- 검증: 두 번째 요청은 `TypeMismatch` public error로 실패한다(`ZLinkFrameworkException`). 처음 만든 spot과 그 상태는 영향받지 않는다.
 - 세부 동작: 같은 Spot ID 재사용 시 타입 일치 강제.
 
 #### SM-A8 worker offload (`Context.RunCpuWorker`)
@@ -195,7 +204,7 @@ mapping을 lifecycle 전체에서 사용하는가.
   MeshNode RID도 같은 UUID v4 bit·lowercase canonical 표현을 사용하되 두 UUID는 독립적이다.
   Full MeshNode RID에 marker나 suffix를 이어 붙인 값이 아니다. 같은 lifecycle에서는 RID가 유지되고
   replacement에서는 MeshNode RID와 Entry Spot ID가 모두 바뀐다. Active conflict는 기존 record를 변경하지
-  않고 첫 claim에서 `SpotIdConflict`로 startup을 실패하며 Ready descriptor나 Entry Spot authority를
+  않고 첫 claim에서 startup configuration error로 실패하며 Ready descriptor나 Entry Spot authority를
   남기지 않는다. 두 번째 UUID 생성과 두 번째 claim은 0건이다.
 - 검증: Descriptor의 Entry Spot ID와 lifecycle generation은 실제 Ready Entry Spot location과 정확히
   일치한다. Actor create, `JoinEntrySpot`과 relocation evidence는 이 mapping을 사용하며 RID 문자열 parse로
@@ -219,7 +228,7 @@ effect 전에 거부되는가.
 - 절차: `play-entry-f67e5507-21c6-4a15-bfd1-4a240bfab371`을 User Spot `GetOrCreate` Spot ID로 사용하고, 별도
   요청에서는 같은 Spot ID로 Instance Spot direct intent를 제출한다. Location Store reservation, target 선택과
   factory 실행 횟수를 기록한다.
-- 검증: 두 요청 모두 `InvalidConfiguration`으로 끝난다. Location Store reservation, target 선택과 factory
+- 검증: 두 요청 모두 `InvalidOperation`으로 끝난다. Location Store reservation, target 선택과 factory
   실행 횟수는 모두 0이며 authority, `Reserved` typed capacity bundle과 creation payload를 남기지 않는다.
 - 세부 동작: Framework-issued Entry Spot namespace의 pre-admission validation.
 
@@ -232,7 +241,7 @@ effect 전에 거부되는가.
 
 - 절차: UUID generator를 고정하고 User Spot `Create`의 첫 global authority reservation에 같은 Spot ID의 active
   authority conflict를 반환한다. UUID 생성, Location Store reservation과 factory 호출 횟수를 기록한다.
-- 검증: 호출은 기존 authority를 바꾸지 않고 `SpotIdConflict`로 즉시 끝난다. UUID 생성과 reservation은
+- 검증: 호출은 기존 authority를 바꾸지 않고 `AlreadyExists`로 즉시 끝난다. UUID 생성과 reservation은
   각각 1건이고 factory 호출은 0건이며 두 번째 UUID, reservation과 creation payload는 없다.
 - 세부 동작: Framework-issued logical Spot ID의 UUID v4와 active collision 즉시 실패.
 
@@ -247,11 +256,11 @@ effect 전에 거부되는가.
   제출한다. `Room`과 `room`, NFC `é`와 NFD `é`를 각각 별도 Spot ID로 생성한다. 마지막으로 legacy
   wire의 Spot field에 유효하지 않은 UTF-8 binary를 넣어 target admission에 제출한다.
 - 검증: 1-byte와 255-byte ID는 exact value로 생성·조회·호출되고 256-byte ID는 Store·factory side
-  effect 전에 `InvalidConfiguration`으로 거부된다. 대소문자 쌍과 Unicode 표현 쌍은 normalization 없이
+  effect 전에 `InvalidOperation`으로 거부된다. 대소문자 쌍과 Unicode 표현 쌍은 normalization 없이
   서로 다른 네 authority key를 만든다. Invalid UTF-8 frame은 application queue와 Location Store에
   도달하지 않고 protocol failure로 끝나며 binary 값을 base64나 replacement character로 바꾸지 않는다.
 - 검증: 같은 Spot ID의 User·Instance·Entry kind 또는 stable type 충돌은 namespace를 분리하지 않고
-  `SpotTypeMismatch` 또는 identity conflict로 끝난다. `MeshName`을 바꿔도 새 identity namespace가
+  `TypeMismatch` 또는 `AlreadyExists`로 끝난다. `MeshName`을 바꿔도 새 identity namespace가
   만들어지지 않는다.
 - 세부 동작: UTF-8 1..255-byte bound, case-sensitive exact equality, no normalization, global namespace와
   legacy binary Spot address 거부.
@@ -405,7 +414,7 @@ generation에는 영향을 주지 않는가.
   Manager의 exact destroy에 이 ref를 전달한다. 같은 ref로 한 번 더 호출한 뒤 같은 Actor ID를 새 generation으로
   다시 만들고 이전 ref로 destroy를 시도한다.
 - 검증: 첫 destroy만 current mailbox·binding·authority를 정리하고 `true`를 반환한다. 같은 incarnation이
-  없을 때는 `false`, 새 generation이 존재할 때 이전 ref는 `ActorGenerationStale`로 끝난다. Destroy 자체는
+  없을 때는 `false`, 새 generation이 존재할 때 이전 ref는 `InvalidOperation`으로 끝난다. Destroy 자체는
   membership 이동이 아니므로 완료된 leave 이후 `OnLeaveActor`를 다시 호출하지 않으며 새 incarnation은
   유지된다.
   `JoinEntrySpot`은 target Entry Spot의 `OnActorJoin` 없이 membership을 commit한 뒤 target
@@ -542,13 +551,15 @@ send·request·publish verb와 timeout·미등록 negative를 모두 본다(같�
 
 - 절차: 수락 가능한 remote peer와 ROUTER 송신 HWM에 도달한 remote peer를 함께 둔 상태에서 public
   asynchronous publish를 한 번 실행한다.
-- 검증: Runtime은 확정한 snapshot의 target마다 bounded admission을 최대 한 번 시도하고 막힌 target을
-  backpressure detail에 기록한다. 별도 blocking publish나 동기 `TrySubmit` 계열은 사용하지 않는다. 앞에서
-  수락된 peer의 전달은 뒤 target의 실패 때문에 취소되지 않으며, publish detail의 remote
-  snapshot·admitted·dropped 수가 실제 수신
-  evidence와 일치해야 한다.
+- 검증: Source runtime은 publish worker와 source-local queue 용량을 timeout 안에 확보하면 반환 데이터 없이
+  정상 완료한다. Runtime은 처음 고정한 target마다 bounded admission을 최대 한 번 시도한다. 막힌 target
+  때문에 앞에서 수락한 peer의 전달을 취소하거나 전체 publish를 실패로 바꾸거나 자동 재전송하지 않는다.
+  Target별 snapshot·admitted·dropped·unreachable 수는 public 반환값, status, metric, structured log와
+  message-flow trace 어디에도 남기지 않는다. Target별 단일 attempt는 검증 build의 bounded 내부 evidence로만
+  확인하고 public contract로 노출하지 않는다.
 - 별도 회귀: local matching Spot queue 하나를 가득 채우고 다른 local target은 수락 가능하게 두어,
-  가득 찬 target만 drop 수에 기록되고 다른 target은 수신하는지 확인한다.
+  수락 가능한 target만 한 번 수신하는지 확인한다. 가득 찬 target의 drop 수를 public monitoring으로
+  집계하거나 다른 target 전달을 rollback하면 실패다.
 
 ### Track D — session bind·relay·push와 stream
 
@@ -619,7 +630,8 @@ actor가 존재하는 Spot 종류(entry/user), 한 session에 bind된 actor 수(
   이전 binding token과 저장 route로 relay를 제출하고, Session A의 이전 connection lifecycle에서 늦게
   도착한 disconnect도 제출한다. 각 Session에는 Actor X 외의 Actor도 함께 bind해 다중 Actor binding을
   유지한다.
-- 검증: stale relay는 Actor X의 Session B binding으로 전달되지 않고 typed stale 결과로 끝난다. Session A의
+- 검증: 이전 binding token을 사용한 session relay는 Actor X의 Session B binding으로 전달되지 않고 typed
+  stale 결과로 끝난다. Session A의
   늦은 disconnect는 Session B binding을 해제하거나 Actor X의 disconnect callback을 다시 실행하지 않는다.
   Session A와 B에 함께 bind된 다른 Actor의 binding도 유지된다. Actor X의 `ObjectGeneration`과 Spot
   membership은 바뀌지 않는다.
@@ -639,7 +651,10 @@ stale route도 숨은 lookup이나 retry 없이 한 번의 Message Follow 또는
   local admission deadline 안에서 성공한다. Active mapping은 같은 exact identity를 최대 한 번
   Message Follow로 전달하고, expired/missing route는 typed stale 결과로 끝난다. Runtime은 fresh `ActorRef`를
   lookup하거나 Store 장애를 이유로 retry·deadline 연장을 하지 않는다.
-- 세부 동작: stored route no-Store dispatch와 single-hop Message Follow route.
+- 용어 경계: Session bind의 일반 request·push·disconnect 전달은 session relay다. Relocation commit이 만든
+  이전 owner route에서 current owner로 보내는 구간만 Message Follow라고 부른다. Rebind로 무효가 된
+  binding token을 Message Follow 대상으로 해석하면 실패다.
+- 세부 동작: stored route no-Store dispatch와 relocation 뒤 single-hop Message Follow.
 
 #### SM-D5 physical session disconnect automatic fan-out
 
@@ -909,12 +924,12 @@ spot 배포(play/session 노드)를 쓰는 시나리오는 Config 2에 둔다. �
      `play-b`만 eligible하도록 placement weight·capacity를 고정한 뒤 같은 global Actor ID의 manager
      `GetOrCreate(...).InMesh(...)`를 실행한다. 반환된 current `ActorRef`를 session에 rebind한 뒤
      application snapshot/replay를 적용한다.
-- 검증: crash 직전 처리 중인 request는 연결 단절이 먼저 확정되면 retriable `RouteNotConnected`,
+- 검증: crash 직전 처리 중인 request는 연결 단절이 먼저 확정되면 `Unavailable`과 `RetryAfterBackoff`,
   handler 완료 여부를 caller가 확정할 수 없으면 설정한 request timeout 안의 timeout으로 끝난다.
   owner lease 만료로 old Actor authority projection이 성공 조회에서 제외된 뒤, Actor를 다시 만들기 전에
-  global Actor ID request는 `ActorRouteNotFound`로 끝난다. Actor를 같은 ID와 새 generation으로 다시 만든 뒤
+  global Actor ID request는 `NotFound`로 끝난다. Actor를 같은 ID와 새 generation으로 다시 만든 뒤
   같은 global Actor ID의 fresh request는 성공한다. 이전 `ActorRef`는 session rebind 같은 exact-ref lifecycle
-  operation에서 `ActorLocationStale`로 거부되며 messaging target으로 사용하지 않는다. 각 실패는 설정한
+  operation에서 `Unavailable`로 거부되며 messaging target으로 사용하지 않는다. 각 실패는 설정한
   timeout 안에 종료되고 어느 단계에서도 old handler가
   실행되지 않아야 한다. stream 연결 종료는 framework request 오류와 섞지 않고
   connector/session의 `Disconnected`로 별도 확인한다. `play-b`의 기준 actor·session은 영향받지 않는다.

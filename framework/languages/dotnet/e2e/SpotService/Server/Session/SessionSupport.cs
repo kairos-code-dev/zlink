@@ -1,27 +1,9 @@
 using System.Collections.Concurrent;
-using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Streams;
 
 namespace SpotService.Server.Session;
 
 using Zlink.Framework.E2E.Configuration;
-
-internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
-    : IZLinkRuntimeMessageFlowObserver
-{
-    public ValueTask OnMessageFlowAsync(
-        ZLinkRuntimeMessageFlowEvent flow,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add(
-            "dispatch-error"
-            + $"|surface={flow.Surface}"
-            + $"|reason={flow.Reason}"
-            + $"|action={flow.Action}"
-            + $"|packet={flow.PacketName ?? "<null>"}");
-        return ValueTask.CompletedTask;
-    }
-}
 
 internal sealed class EvidenceStore
 {
@@ -99,6 +81,25 @@ internal sealed class EvidenceStore
 }
 
 internal sealed record NodeOptions(string Rid);
+
+internal sealed class SessionBindingProbeStore
+{
+    private readonly ConcurrentDictionary<(string SessionId, string ActorId), IZLinkSessionActor>
+        _bindings = new();
+
+    public void Record(string sessionId, IZLinkSessionActor actor)
+    {
+        _bindings[(sessionId, actor.ActorId)] = actor;
+    }
+
+    public IZLinkSessionActor Require(string sessionId, string actorId)
+    {
+        return _bindings.TryGetValue((sessionId, actorId), out var actor)
+            ? actor
+            : throw new InvalidOperationException(
+                $"Session '{sessionId}' did not preserve Actor '{actorId}' binding.");
+    }
+}
 
 internal sealed record ServerOptions(
     string Role,

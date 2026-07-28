@@ -15,6 +15,7 @@ using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Spots;
 
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace SpotService.Server.Play;
 
@@ -35,21 +36,31 @@ internal static class PlayHostFactory
             console.TimestampFormat = "HH:mm:ss.fff ";
         });
         builder.WebHost.UseUrls(options.HttpUrl);
-        builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
+        var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
+        builder.Services.AddSingleton(evidence);
         builder.Services.AddSingleton(new NodeOptions(options.Rid));
         builder.Services.AddSingleton<ApplicationJoinCoordinator>();
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"{options.Rid}-flow.log"),
+            options.Rid,
+            flow =>
+            {
+                if (flow.Phase is not ("error" or "dropped")) return;
+                evidence.Add(
+                    "dispatch-error"
+                    + $"|surface={flow.Surface}"
+                    + $"|reason={flow.Reason}"
+                    + $"|action={flow.Action}"
+                    + $"|packet={flow.PacketName ?? "<null>"}");
+            }));
 
         builder.Services.AddZLinkFramework(framework =>
         {
             if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
             {
-                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                    .SetConnectionString(options.RedisEndpoint)
-                    .SetKeyPrefix(options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
-                framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => redis
-                    .SetConnectionString(options.RedisEndpoint)
-                    .SetKeyPrefix($"{options.RedisKeyPrefix}:relocation")));
+                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix
+                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."); }));
+                framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = $"{options.RedisKeyPrefix}:relocation"; }));
                 // Crash-recovery scenarios re-claim actors from a killed
                 // node; a short owner lease keeps that takeover window
                 // within the scenario's patience.
@@ -59,11 +70,8 @@ internal static class PlayHostFactory
                 locations.PollingInterval = TimeSpan.FromMilliseconds(500);
             }
             framework.AddHandlersFromAssemblyOf(typeof(Program));
-            framework.ConfigureDispatch()
-                .SetRuntimeMessageFlowObserver<EvidenceDispatchErrorObserver>()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-                .TraceLabel(options.Rid);
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             var controlMesh = framework.AddRouteMesh(SpotServiceNames.ControlChannel)
                 .Listen(Require(options.ControlEndpoint, "ControlEndpoint"))
                 .SetRoutingIdPrefix(options.Rid);
@@ -120,28 +128,7 @@ internal static class PlayHostFactory
         SpotFailureEndpoints.MapSpotFailureEndpoints(app);
         SpotInteractionEndpoints.MapSpotInteractionEndpoints(app);
         app.MapGet("/mesh-snapshot", (IZLinkRouteMeshRuntime meshRuntime) =>
-            Results.Ok(meshRuntime.Snapshot(SpotServiceNames.SpotChannel)));
-        app.MapGet("/entry-self-check", async (
-            IZLinkLocationRuntimeQuery locations,
-            IZLinkSpotClient spotsClient,
-            CancellationToken cancellationToken) =>
-        {
-            var descriptors = await locations.ListMeshNodeDescriptorsAsync(
-                SpotServiceNames.SpotChannel,
-                cancellationToken: cancellationToken);
-            var entrySpotId = descriptors.Items.SingleOrDefault(descriptor =>
-                                  descriptor.Rid.ToString().StartsWith(
-                                      $"{options.Rid}-",
-                                      StringComparison.Ordinal))
-                              ?.EntrySpotId
-                              ?? throw new InvalidOperationException(
-                                  $"Entry Spot for '{options.Rid}' was not published.");
-            var marker = $"self-{Guid.NewGuid():N}";
-            var reply = await spotsClient.RequestToSpot(entrySpotId, new EntryReadinessReq(marker))
-                .Timeout(TimeSpan.FromSeconds(2))
-                .Async<EntryReadinessRes>(cancellationToken);
-            return Results.Ok(reply);
-        });
+            Results.Ok(meshRuntime.GetStatus(SpotServiceNames.SpotChannel)));
         return app;
     }
 

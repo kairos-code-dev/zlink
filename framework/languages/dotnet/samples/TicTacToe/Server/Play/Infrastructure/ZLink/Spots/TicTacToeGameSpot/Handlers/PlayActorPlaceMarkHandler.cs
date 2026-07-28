@@ -12,7 +12,7 @@ internal sealed class PlayActorPlaceMarkHandler(ILogger<PlayActorPlaceMarkHandle
     public async ValueTask<PlaceMarkRes> HandleAsync(
         TicTacToeGame spot,
         PlayActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         PlaceMarkReq message,
         CancellationToken cancellationToken)
     {

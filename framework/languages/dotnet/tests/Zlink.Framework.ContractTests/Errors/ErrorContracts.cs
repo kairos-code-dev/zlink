@@ -11,57 +11,32 @@ public sealed class ErrorContracts
         Assert.Equal(
             new Dictionary<string, int>(StringComparer.Ordinal)
             {
-                [nameof(ZLinkFrameworkErrorKind.ActorRouteNotFound)] = 0,
-                [nameof(ZLinkFrameworkErrorKind.ActorCreateFailed)] = 1,
-                [nameof(ZLinkFrameworkErrorKind.ActorAlreadyExists)] = 2,
-                [nameof(ZLinkFrameworkErrorKind.ActorTypeMismatch)] = 3,
-                [nameof(ZLinkFrameworkErrorKind.SpotCreateFailed)] = 4,
-                [nameof(ZLinkFrameworkErrorKind.SpotRouteNotFound)] = 5,
-                [nameof(ZLinkFrameworkErrorKind.SpotTypeMismatch)] = 6,
-                [nameof(ZLinkFrameworkErrorKind.ActorSessionNotBound)] = 7,
-                [nameof(ZLinkFrameworkErrorKind.HandlerNotFound)] = 8,
-                [nameof(ZLinkFrameworkErrorKind.RouteHandlerNotFound)] = 9,
-                [nameof(ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound)] = 10,
-                [nameof(ZLinkFrameworkErrorKind.PayloadDecodeFailed)] = 11,
-                [nameof(ZLinkFrameworkErrorKind.RouteNotConnected)] = 12,
-                [nameof(ZLinkFrameworkErrorKind.RequestTargetNotFound)] = 13,
-                [nameof(ZLinkFrameworkErrorKind.RequestRejected)] = 14,
-                [nameof(ZLinkFrameworkErrorKind.RequestProtocolError)] = 15,
-                [nameof(ZLinkFrameworkErrorKind.RequestFailed)] = 16,
-                [nameof(ZLinkFrameworkErrorKind.WorkerQueueFull)] = 17,
-                [nameof(ZLinkFrameworkErrorKind.WorkerTimedOut)] = 18,
-                [nameof(ZLinkFrameworkErrorKind.WorkerFailed)] = 19,
-                [nameof(ZLinkFrameworkErrorKind.ActorLocationStale)] = 20,
-                [nameof(ZLinkFrameworkErrorKind.ActorCreateRejected)] = 21,
-                [nameof(ZLinkFrameworkErrorKind.ObjectClientNotConfigured)] = 22,
-                [nameof(ZLinkFrameworkErrorKind.MeshSelectionRequired)] = 23,
-                [nameof(ZLinkFrameworkErrorKind.MeshNotFound)] = 24,
-                [nameof(ZLinkFrameworkErrorKind.InvalidConfiguration)] = 25,
-                [nameof(ZLinkFrameworkErrorKind.AlreadySubmitted)] = 26,
-                [nameof(ZLinkFrameworkErrorKind.ActorGenerationStale)] = 27,
-                [nameof(ZLinkFrameworkErrorKind.ActorMoving)] = 28,
-                [nameof(ZLinkFrameworkErrorKind.DeadlineExceeded)] = 29,
-                [nameof(ZLinkFrameworkErrorKind.PlacementCapacityExhausted)] = 30,
-                [nameof(ZLinkFrameworkErrorKind.RoutingIdConflict)] = 31,
-                [nameof(ZLinkFrameworkErrorKind.SpotGenerationStale)] = 32,
-                [nameof(ZLinkFrameworkErrorKind.SpotMoving)] = 33,
-                [nameof(ZLinkFrameworkErrorKind.RelocationDataLost)] = 34,
-                [nameof(ZLinkFrameworkErrorKind.SpotIdConflict)] = 35,
-                [nameof(ZLinkFrameworkErrorKind.RuntimeShutdown)] = 36,
-                [nameof(ZLinkFrameworkErrorKind.RelocationDisabled)] = 37,
-                [nameof(ZLinkFrameworkErrorKind.RelocationTargetUnavailable)] = 38,
-                [nameof(ZLinkFrameworkErrorKind.RelocationFailed)] = 39
+                [nameof(ZLinkFrameworkErrorKind.NotFound)] = 0,
+                [nameof(ZLinkFrameworkErrorKind.AlreadyExists)] = 1,
+                [nameof(ZLinkFrameworkErrorKind.TypeMismatch)] = 2,
+                [nameof(ZLinkFrameworkErrorKind.NotConfigured)] = 3,
+                [nameof(ZLinkFrameworkErrorKind.Rejected)] = 4,
+                [nameof(ZLinkFrameworkErrorKind.Unavailable)] = 5,
+                [nameof(ZLinkFrameworkErrorKind.CapacityExceeded)] = 6,
+                [nameof(ZLinkFrameworkErrorKind.DeadlineExceeded)] = 7,
+                [nameof(ZLinkFrameworkErrorKind.ShuttingDown)] = 8,
+                [nameof(ZLinkFrameworkErrorKind.ProtocolError)] = 9,
+                [nameof(ZLinkFrameworkErrorKind.InvalidOperation)] = 10,
+                [nameof(ZLinkFrameworkErrorKind.DataLost)] = 11,
+                [nameof(ZLinkFrameworkErrorKind.InternalFailure)] = 12
             },
             Enum.GetValues<ZLinkFrameworkErrorKind>()
                 .ToDictionary(static value => value.ToString(), static value => (int)value, StringComparer.Ordinal));
 
-        var constructor = Assert.Single(typeof(ZLinkFrameworkException).GetConstructors());
+        Assert.Empty(typeof(ZLinkFrameworkException).GetConstructors());
+        var constructor = Assert.Single(typeof(ZLinkFrameworkException).GetConstructors(
+            BindingFlags.Instance | BindingFlags.NonPublic));
         var parameters = constructor.GetParameters();
         Assert.Equal(
             [
                 typeof(ZLinkFrameworkErrorKind),
                 typeof(string),
-                typeof(bool?),
+                typeof(ZLinkRetryAdvice?),
                 typeof(Exception)
             ],
             parameters.Select(static parameter => parameter.ParameterType));
@@ -75,38 +50,35 @@ public sealed class ErrorContracts
         Assert.Equal(NullabilityState.Nullable, nullability.Create(parameters[3]).ReadState);
         Assert.Equal(typeof(ZLinkFrameworkErrorKind),
             typeof(ZLinkFrameworkException).GetProperty(nameof(ZLinkFrameworkException.Kind))!.PropertyType);
-        Assert.Equal(typeof(bool),
-            typeof(ZLinkFrameworkException).GetProperty(nameof(ZLinkFrameworkException.IsRetriable))!.PropertyType);
+        Assert.Equal(typeof(ZLinkRetryAdvice),
+            typeof(ZLinkFrameworkException).GetProperty(nameof(ZLinkFrameworkException.RetryAdvice))!.PropertyType);
     }
 
     [Fact]
-    public void Default_retriability_matches_the_spec_table_for_every_kind()
+    public void Default_retry_advice_matches_the_spec_table_for_every_kind()
     {
-        // 05-framework-api.ko.md 13 fixes a retriable column per kind. Pinning the
-        // property's TYPE (above) never checked a single value, so RelocationTarget-
-        // Unavailable and RelocationFailed were reported non-retriable. Driving this
-        // from Enum.GetValues means a newly added kind must be classified here or the
-        // test fails, rather than defaulting to unchecked.
-        var retriable = new HashSet<ZLinkFrameworkErrorKind>
+        var expected = new Dictionary<ZLinkFrameworkErrorKind, ZLinkRetryAdvice>
         {
-                ZLinkFrameworkErrorKind.RouteNotConnected,
-                ZLinkFrameworkErrorKind.ActorLocationStale,
-                ZLinkFrameworkErrorKind.ActorMoving,
-                ZLinkFrameworkErrorKind.DeadlineExceeded,
-                ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
-                ZLinkFrameworkErrorKind.SpotMoving,
-                ZLinkFrameworkErrorKind.RelocationTargetUnavailable,
-                ZLinkFrameworkErrorKind.RelocationFailed
+            [ZLinkFrameworkErrorKind.NotFound] = ZLinkRetryAdvice.DoNotRetry,
+            [ZLinkFrameworkErrorKind.AlreadyExists] = ZLinkRetryAdvice.DoNotRetry,
+            [ZLinkFrameworkErrorKind.TypeMismatch] = ZLinkRetryAdvice.DoNotRetry,
+            [ZLinkFrameworkErrorKind.NotConfigured] = ZLinkRetryAdvice.DoNotRetry,
+            [ZLinkFrameworkErrorKind.Rejected] = ZLinkRetryAdvice.DoNotRetry,
+            [ZLinkFrameworkErrorKind.Unavailable] = ZLinkRetryAdvice.RetryAfterBackoff,
+            [ZLinkFrameworkErrorKind.CapacityExceeded] = ZLinkRetryAdvice.RetryAfterBackoff,
+            [ZLinkFrameworkErrorKind.DeadlineExceeded] = ZLinkRetryAdvice.RetryAfterBackoff,
+            [ZLinkFrameworkErrorKind.ShuttingDown] = ZLinkRetryAdvice.RetryAfterStateChange,
+            [ZLinkFrameworkErrorKind.ProtocolError] = ZLinkRetryAdvice.DoNotRetry,
+            [ZLinkFrameworkErrorKind.InvalidOperation] = ZLinkRetryAdvice.DoNotRetry,
+            [ZLinkFrameworkErrorKind.DataLost] = ZLinkRetryAdvice.DoNotRetry,
+            [ZLinkFrameworkErrorKind.InternalFailure] = ZLinkRetryAdvice.DoNotRetry
         };
 
         var actual = Enum.GetValues<ZLinkFrameworkErrorKind>()
             .ToDictionary(
                 static kind => kind,
-                static kind => new ZLinkFrameworkException(kind, "kind").IsRetriable);
+                static kind => new ZLinkFrameworkException(kind, "kind").RetryAdvice);
 
-        Assert.Equal(
-            Enum.GetValues<ZLinkFrameworkErrorKind>()
-                .ToDictionary(kind => kind, kind => retriable.Contains(kind)),
-            actual);
+        Assert.Equal(expected, actual);
     }
 }

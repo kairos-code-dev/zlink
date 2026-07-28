@@ -11,6 +11,13 @@ descriptor가 사용하는 값과 같다. C++에서는 signed `int`의 `0..10000
 Host 단위 상태는 RouteMesh·ClientServer·fanout snapshot과 분리한다. `topology_state_t`는 등록한
 topology 하나의 가용성을 나타내며 host lifecycle 상태로 재사용하지 않는다.
 
+RouteMesh peer 상태는 [Channel messaging](03-channel-messaging.ko.md)의
+`peer_state_t`를 사용한다. `not_connected`는 연결이 필요하지만 ready connection이
+없는 상태다. `not_required`는 두 Object Client 모두 RouteMesh Channel Server membership이 없어
+연결이 필요하지 않은 정상 상태다. Channel Client membership만 등록한 경우도 같다. 어느 한쪽에라도
+weight `0`을 포함한 Channel Server membership이 있으면 연결 부재는 `not_connected`다. 둘 다 ready peer
+수에서 제외하지만 `not_required`는 liveness·health failure 집계에 포함하지 않는다.
+
 ```cpp
 struct framework_runtime_status_t {
     framework_runtime_state_t state;

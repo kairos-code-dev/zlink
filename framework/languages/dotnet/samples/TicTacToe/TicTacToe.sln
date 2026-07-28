@@ -5,9 +5,9 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TicTacToe.Server", "Server\TicTacToe.Server.csproj", "{1F580BCE-21FC-406A-B0A6-AD740BD66CCD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TicTacToe.Server.Api", "Server.Api\TicTacToe.Server.Api.csproj", "{A8B547E9-BA23-455B-A57F-4CED24D35899}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TicTacToe.Server.Api", "Server\Api\TicTacToe.Server.Api.csproj", "{A8B547E9-BA23-455B-A57F-4CED24D35899}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TicTacToe.Server.Play", "Server.Play\TicTacToe.Server.Play.csproj", "{8C1A6E70-B9D8-47B0-B6CB-C2B1DE17344B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TicTacToe.Server.Play", "Server\Play\TicTacToe.Server.Play.csproj", "{8C1A6E70-B9D8-47B0-B6CB-C2B1DE17344B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TicTacToe.Client", "Client\TicTacToe.Client.csproj", "{62E12BBE-F4DD-44CC-82B9-78FE711AA516}"
 EndProject

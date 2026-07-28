@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Backend.Contracts;
+
 namespace Zlink.Framework.UnitTests;
 
 public sealed class BackendMonitorWrapperTests

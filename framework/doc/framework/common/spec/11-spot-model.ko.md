@@ -163,7 +163,7 @@ Entry Spot ID는 MeshNode의 diagnostic prefix와 Entry Spot 전용 marker를 �
 replacement lifecycle에서는 endpoint가 같아도 새 RID를 발급한다.
 
 Location Store가 global Spot ID active conflict를 보고하면 새 UUID나 reservation을 만들지 않고 startup을
-즉시 `SpotIdConflict`로 끝낸다. MeshNode descriptor는 lifecycle generation과 exact Entry Spot ID의
+즉시 startup configuration error로 끝낸다. MeshNode descriptor는 lifecycle generation과 exact Entry Spot ID의
 mapping을 게시한다. Actor placement와 Entry Spot join은 이 mapping을 사용하며 Spot ID 문자열을 parsing하지
 않는다.
 
@@ -255,7 +255,7 @@ shared Spot turn이 없으므로 `Yield`를 제공하지 않는다.
 Round·match가 끝난 뒤에만 이동할 수 있는 Spot은 factory 등록에서
 `ApplicationSignaled`를 선택한다. Application은 안전한 turn에서
 `RelocationReady().Defer()`를 등록하고 handler를 끝낸다. `Defer()` 뒤 일반
-Framework operation을 같은 turn에서 시작하면 `InvalidConfiguration`이다.
+Framework operation을 같은 turn에서 시작하면 `InvalidOperation`이다.
 
 Framework는 등록한 경계 뒤 일반 application job을 잠시 보류하고 다음 중 하나를
 처리한다.
@@ -277,7 +277,7 @@ recovery에서 같은 completion을 다시 호출할 수 있다. Override는 ret
 
 `AnyTurnBoundary`, `PerActor`, Entry Spot 또는 Instance Spot에서
 `RelocationReady().Defer()`를 호출하면 queue mutation 전에
-`InvalidConfiguration`으로 실패하고 completion callback을 호출하지 않는다.
+`InvalidOperation`으로 실패하고 completion callback을 호출하지 않는다.
 
 Creation request, placement, `SpotRef`와 close의 exact generation 검사는
 [24 Spot 주소 메시징](16-spot-address-messaging.ko.md)이 정의한다.

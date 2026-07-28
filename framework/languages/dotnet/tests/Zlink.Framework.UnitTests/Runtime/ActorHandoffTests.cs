@@ -676,11 +676,20 @@ public sealed class ActorHandoffTests
 
         Assert.True(state.TryGetBoundSession(out var beforeAck));
         Assert.Equal((ulong)11, beforeAck.AuthorityOwnerGeneration);
+        Assert.True(state.TryGetCommittedRelocationSessionRoute(
+            "handoff-1",
+            out var firstCommit));
+        Assert.True(state.TryGetCommittedRelocationSessionRoute(
+            "handoff-1",
+            out var retriedCommit));
+        Assert.Equal(sessionNode, firstCommit.Route.NodeRid);
+        Assert.Equal(firstCommit.Route.NodeRid, retriedCommit.Route.NodeRid);
 
         state.CompleteRelocationSessionRoute("handoff-1");
 
         Assert.True(state.Handoff.BlocksLocalDispatch);
         Assert.True(state.TryGetBoundSession(out var completed));
+        Assert.Equal(sessionNode, completed.SessionNodeRid);
         Assert.Equal((ulong)7, completed.ObjectGeneration);
         Assert.Equal((ulong)12, completed.AuthorityOwnerGeneration);
         Assert.Equal("play", completed.MeshName);
@@ -689,6 +698,49 @@ public sealed class ActorHandoffTests
         Assert.Equal((ulong)10, completed.AcceptedHighWater);
         state.Handoff.Complete("handoff-1");
         Assert.False(state.Handoff.BlocksLocalDispatch);
+    }
+
+    [Fact]
+    public void Relocation_Session_Route_Allows_Target_Outbound_After_Authority_Commit()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        var targetNode = RoutingId.From("target-node");
+        var sessionNode = RoutingId.From("session-node");
+        var sessionRid = RoutingId.From("session-rid");
+        state.StageRelocationSessionRoute(
+            "handoff-1",
+            new ZLinkRemoteActorBoundSessionRoute(
+                sessionNode,
+                sessionRid,
+                "binding-1",
+                BindingGeneration: 4,
+                ObjectGeneration: 7,
+                AuthorityOwnerGeneration: 11,
+                MeshName: "play",
+                TargetNodeGeneration: 4,
+                OwnerLeaseGeneration: 8,
+                SessionOwnerNodeGeneration: 3,
+                AcceptedHighWater: 9));
+
+        Assert.False(state.TryGetBoundSessionForOutbound(out _));
+        state.MarkRelocationSessionAuthorityCommitted(
+            "handoff-1",
+            new ZLinkBackendActorRef(targetNode, "actor-1", 7),
+            targetAuthorityOwnerGeneration: 12,
+            targetMeshName: "play",
+            targetNodeGeneration: 5,
+            targetOwnerLeaseGeneration: 9);
+
+        Assert.False(state.TryGetBoundSession(out _));
+        Assert.True(state.TryGetBoundSessionForOutbound(out var outbound));
+        Assert.Equal(sessionNode, outbound.SessionNodeRid);
+        Assert.Equal(sessionRid, outbound.SessionRid);
+        Assert.Equal("binding-1", outbound.BindingToken);
+        Assert.Equal((ulong)12, outbound.AuthorityOwnerGeneration);
+
+        state.CompleteRelocationSessionRoute("handoff-1");
+        Assert.True(state.TryGetBoundSession(out var completed));
+        Assert.Equal(outbound, completed);
     }
 
     [Fact]
@@ -727,7 +779,7 @@ public sealed class ActorHandoffTests
                 },
                 CancellationToken.None));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, exception.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.NotFound, exception.Kind);
         Assert.False(invoked);
         _ = state.Handoff.AbortCapture();
     }
@@ -1111,7 +1163,7 @@ public sealed class ActorHandoffTests
         var exception = Assert.Throws<ZLinkFrameworkException>(() =>
             state.Handoff.MarkAuthorityCommitted("handoff-generation", 7, 8));
 
-        Assert.Equal(ZLinkFrameworkErrorKind.ActorGenerationStale, exception.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.InvalidOperation, exception.Kind);
         Assert.False(state.Handoff.IsAuthorityCommitted("handoff-generation"));
     }
 
@@ -1337,14 +1389,14 @@ public sealed class ActorHandoffTests
                 "reservation-abort",
                 abortLease)),
             CancellationToken.None);
-        Assert.Throws<InvalidOperationException>(() =>
-            admissions.AbortReservation(
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            admissions.AbortReservationAsync(
                 new ZLinkRemoteActorAdmissionAbortRequest(
                     abortRequest.ActorId,
                     abortRequest.HandoffId,
                     "wrong"),
-                target));
-        admissions.AbortReservation(
+                target).AsTask());
+        await admissions.AbortReservationAsync(
             new ZLinkRemoteActorAdmissionAbortRequest(
                 abortRequest.ActorId,
                 abortRequest.HandoffId,
@@ -1462,7 +1514,7 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
-    public void TerminalHandoffOutcome_SurvivesAdmissionCleanup_AndRejectsChangedRetry()
+    public async Task TerminalHandoffOutcome_SurvivesAdmissionCleanup_AndRejectsChangedRetry()
     {
         var admissions = new ZLinkActorHandoffAdmissions();
         var request = CommitRequest("handoff-1", []);
@@ -1470,7 +1522,7 @@ public sealed class ActorHandoffTests
         var reply = ZLinkRemoteActorJoinPackets.CreateJoinReply(true, ActorRef("node-b", 2));
 
         admissions.RecordJoinOutcome(request, targetSpot, reply);
-        admissions.Abort(request.HandoffId);
+        await admissions.AbortAsync(request.HandoffId);
 
         Assert.True(admissions.TryGetJoinOutcome(request, targetSpot, out var stored));
         Assert.Same(reply, stored);
@@ -1506,7 +1558,7 @@ public sealed class ActorHandoffTests
             admissions.TryBeginCompletion(
                 completion with { TargetSpotId = "spot-other" },
                 targetSpot));
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, changedTarget.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Rejected, changedTarget.Kind);
     }
 
     [Fact]
@@ -1557,7 +1609,7 @@ public sealed class ActorHandoffTests
             admissions.TryBeginCompletion(
                 completion with { BoundSessionOwnerLeaseGeneration = 31 },
                 targetSpot));
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, changedRoute.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Rejected, changedRoute.Kind);
     }
 
     [Fact]
@@ -1605,7 +1657,7 @@ public sealed class ActorHandoffTests
         // source's reconciliation (RequestRejected), never retried.
         var lateCompletion = Assert.Throws<ZLinkFrameworkException>(() =>
             admissions.TryBeginCompletion(completion, targetSpot));
-        Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, lateCompletion.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Rejected, lateCompletion.Kind);
     }
 
     [Fact]
@@ -1657,6 +1709,182 @@ public sealed class ActorHandoffTests
         Assert.Equal([2], reply.Reply);
         Assert.True(admissions.TryGetReply(replacement, targetSpot, out var stored));
         Assert.Same(reply, stored);
+    }
+
+    [Fact]
+    public async Task Abort_WaitsForDurableCapacityCleanup()
+    {
+        var cleanupStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowCleanup = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var time = new ManualTimeProvider();
+        var admissions = new ZLinkActorHandoffAdmissions(
+            time,
+            abortCapacityReservation: async (_, _) =>
+            {
+                cleanupStarted.TrySetResult();
+                await allowCleanup.Task;
+                return ZLinkRelocationCapacityAbortResult.Aborted;
+            });
+        var request = AdmissionRequest(time, "handoff-cleanup");
+        const string targetSpot = "spot-1";
+        _ = await admissions.AdmitReservedAsync(
+            request,
+            targetSpot,
+            _ => ValueTask.FromResult(
+                new ZLinkActorHandoffAdmissionDecision(
+                    new ZLinkRemoteActorAdmissionReply(
+                        true,
+                        "application/json",
+                        [1],
+                        request.DeadlineUnixTimeMilliseconds),
+                    default,
+                    new ZLinkRelocationCapacityFence("capacity-cleanup"))),
+            CancellationToken.None);
+
+        var abort = admissions.AbortAsync(request.HandoffId).AsTask();
+        await cleanupStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(abort.IsCompleted);
+
+        allowCleanup.TrySetResult();
+        await abort.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task StaleCapacityCleanup_KeepsAdmissionOwnedUntilRetryConverges()
+    {
+        var time = new ManualTimeProvider();
+        var result = ZLinkRelocationCapacityAbortResult.Stale;
+        var calls = 0;
+        var admissions = new ZLinkActorHandoffAdmissions(
+            time,
+            abortCapacityReservation: (_, _) =>
+            {
+                calls++;
+                return ValueTask.FromResult(result);
+            });
+        var request = AdmissionRequest(time, "handoff-stale-cleanup");
+        const string targetSpot = "spot-1";
+        _ = await admissions.AdmitReservedAsync(
+            request,
+            targetSpot,
+            _ => ValueTask.FromResult(
+                new ZLinkActorHandoffAdmissionDecision(
+                    new ZLinkRemoteActorAdmissionReply(
+                        true,
+                        "application/json",
+                        [1],
+                        request.DeadlineUnixTimeMilliseconds),
+                    default,
+                    new ZLinkRelocationCapacityFence("capacity-stale"))),
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => admissions.AbortAsync(request.HandoffId).AsTask());
+        Assert.Equal(3, calls);
+        Assert.True(
+            admissions.TryGetReply(request, targetSpot, out _));
+
+        result = ZLinkRelocationCapacityAbortResult.Aborted;
+        await admissions.AbortAsync(request.HandoffId);
+        Assert.False(
+            admissions.TryGetReply(request, targetSpot, out _));
+    }
+
+    [Fact]
+    public async Task ShutdownCleanup_UsesBoundedCancellationAndRetainsOwner()
+    {
+        var time = new ManualTimeProvider();
+        var admissions = new ZLinkActorHandoffAdmissions(
+            time,
+            abortCapacityReservation: async (_, cancellationToken) =>
+            {
+                await Task.Delay(
+                    Timeout.InfiniteTimeSpan,
+                    cancellationToken);
+                return ZLinkRelocationCapacityAbortResult.Aborted;
+            });
+        var request = AdmissionRequest(time, "handoff-shutdown-deadline");
+        const string targetSpot = "spot-1";
+        _ = await admissions.AdmitReservedAsync(
+            request,
+            targetSpot,
+            _ => ValueTask.FromResult(
+                new ZLinkActorHandoffAdmissionDecision(
+                    new ZLinkRemoteActorAdmissionReply(
+                        true,
+                        "application/json",
+                        [1],
+                        request.DeadlineUnixTimeMilliseconds),
+                    default,
+                    new ZLinkRelocationCapacityFence(
+                        "capacity-shutdown"))),
+            CancellationToken.None);
+        using var deadline = new CancellationTokenSource(
+            TimeSpan.FromMilliseconds(50));
+
+        var error = await Assert.ThrowsAsync<AggregateException>(
+            () => admissions.ResetGenerationAsync(deadline.Token)
+                .AsTask());
+
+        Assert.Contains(
+            error.Flatten().InnerExceptions,
+            exception => exception is OperationCanceledException);
+        Assert.True(
+            admissions.TryGetReply(request, targetSpot, out _));
+        using var drainDeadline = new CancellationTokenSource(
+            TimeSpan.FromMilliseconds(50));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => admissions.WaitUntilDrainSafeAsync(
+                drainDeadline.Token));
+    }
+
+    [Fact]
+    public async Task CallbackAfterDeadline_RetainsCleanupOwnerUntilStoreConverges()
+    {
+        var time = new ManualTimeProvider();
+        var result = ZLinkRelocationCapacityAbortResult.Stale;
+        var admissions = new ZLinkActorHandoffAdmissions(
+            time,
+            abortCapacityReservation: (_, _) =>
+                ValueTask.FromResult(result));
+        var request = AdmissionRequest(
+            time,
+            "handoff-callback-after-deadline");
+        const string targetSpot = "spot-1";
+
+        await Assert.ThrowsAsync<ZLinkFrameworkException>(
+            () => admissions.AdmitReservedAsync(
+                    request,
+                    targetSpot,
+                    _ =>
+                    {
+                        time.Advance(TimeSpan.FromSeconds(6));
+                        return ValueTask.FromResult(
+                            new ZLinkActorHandoffAdmissionDecision(
+                                new ZLinkRemoteActorAdmissionReply(
+                                    true,
+                                    "application/json",
+                                    [1],
+                                    request.DeadlineUnixTimeMilliseconds),
+                                default,
+                                new ZLinkRelocationCapacityFence(
+                                    "capacity-after-deadline")));
+                    },
+                    CancellationToken.None)
+                .AsTask());
+
+        using (var drainDeadline = new CancellationTokenSource(
+                   TimeSpan.FromMilliseconds(50)))
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => admissions.WaitUntilDrainSafeAsync(
+                    drainDeadline.Token));
+
+        result = ZLinkRelocationCapacityAbortResult.Aborted;
+        time.Advance(TimeSpan.FromSeconds(1));
+        await admissions.WaitUntilDrainSafeAsync(
+            new CancellationTokenSource(TimeSpan.FromSeconds(1)).Token);
     }
 
     private static void Capture(

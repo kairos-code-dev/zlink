@@ -19,7 +19,7 @@ internal static class PublisherEndpoints
                     PubSubNames.Channel,
                     topic,
                     new EventMsg(runId, sequence, value))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
             return Results.Ok(new { status = "published", topic, runId, sequence });
         });
         app.MapPost("/publish/missing", async (
@@ -34,7 +34,7 @@ internal static class PublisherEndpoints
                     PubSubNames.Channel,
                     topic,
                     new MissingEventMsg(runId, sequence, value))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
             return Results.Ok(new { status = "published", topic, runId, sequence });
         });
         return app;

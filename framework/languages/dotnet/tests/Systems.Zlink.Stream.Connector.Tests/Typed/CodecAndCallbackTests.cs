@@ -68,7 +68,7 @@ public sealed partial class StreamConnectorTests
         });
         await connector.Connect.Async();
 
-        connector.Send(new PackedPing { Text = "hello" })
+        await connector.Send(new PackedPing { Text = "hello" })
             .PacketName("packed").Async();
         await server;
     }
@@ -257,7 +257,7 @@ public sealed partial class StreamConnectorTests
         releaseDetached.SetResult();
         Assert.Null(await detached.WaitAsync(TimeSpan.FromSeconds(5)));
 
-        connector.Send(new ZlinkStreamEncodedPayload(
+        await connector.Send(new ZlinkStreamEncodedPayload(
                 ZlinkStreamCodec.Raw,
                 ReadOnlyMemory<byte>.Empty))
             .PacketName("unrelated")
@@ -308,7 +308,7 @@ public sealed partial class StreamConnectorTests
         });
         await connector.Connect.Async();
 
-        connector.Send(new Ping("custom"))
+        await connector.Send(new Ping("custom"))
             .PacketName("custom")
             .Compress().Async();
         await server;
@@ -336,7 +336,7 @@ public sealed partial class StreamConnectorTests
         });
         await connector.Connect.Async();
 
-        connector.Send(new Ping("single-compress"))
+        await connector.Send(new Ping("single-compress"))
             .PacketName("single-compress")
             .Compress().Async();
 

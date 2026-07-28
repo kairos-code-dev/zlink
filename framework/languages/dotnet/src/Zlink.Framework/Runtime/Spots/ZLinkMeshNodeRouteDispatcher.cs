@@ -34,6 +34,7 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
 
     private readonly ZLinkRouteHandlerRegistry _routeHandlers;
     private readonly ZLinkRouteHandlerInvoker _routeInvoker;
+    private readonly string _meshName;
     private readonly ZLinkChannelCommandDispatchPipeline _channelCommandPipeline;
     private readonly ZLinkChannelRequestDispatchPipeline _channelRequestPipeline;
     private readonly ZLinkCodecRegistryBuilder _codecs;
@@ -46,6 +47,7 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
         new(StringComparer.Ordinal);
 
     private ZLinkMeshNodeRouteDispatcher(
+        string meshName,
         ZLinkRouteHandlerRegistry routeHandlers,
         ZLinkRouteHandlerInvoker routeInvoker,
         ZLinkChannelCommandDispatchPipeline channelCommandPipeline,
@@ -56,6 +58,7 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
         ZLinkRuntimeTaskRunner taskRunner,
         ILogger logger)
     {
+        _meshName = meshName;
         _routeHandlers = routeHandlers;
         _routeInvoker = routeInvoker;
         _channelCommandPipeline = channelCommandPipeline;
@@ -98,6 +101,15 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
                             ZLinkRemoteSessionUnbindResponse>),
                         ZLinkMessageKind.Request,
                         ZLinkRemoteSessionBindingProtocol.UnbindPacketName)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkRemoteSessionOwnerTombstoneRouteHandler),
+                        typeof(IZLinkRouteRequestHandler<
+                            ZLinkRemoteSessionOwnerTombstoneRequest,
+                            ZLinkRemoteSessionOwnerTombstoneResponse>),
+                        ZLinkMessageKind.Request,
+                        ZLinkRemoteSessionBindingProtocol
+                            .SessionOwnerTombstonePacketName)))
                 .Append(ToRouteDescriptor(
                     ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
                         typeof(ZLinkRemoteSessionPushRelayHandler),
@@ -191,6 +203,7 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
             logger);
 
         return new ZLinkMeshNodeRouteDispatcher(
+            spotNode.SpotNodeName,
             routeHandlers,
             routeInvoker,
             commandPipeline,
@@ -361,7 +374,7 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
                         received,
                         header,
                         new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.RequestRejected,
+                            ZLinkFrameworkErrorKind.Rejected,
                             "MeshNode application admission is sealed for drain."));
                 return;
             }
@@ -412,7 +425,7 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
             if (isRequest)
             {
                 var error = new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RouteHandlerNotFound,
+                    ZLinkFrameworkErrorKind.NotFound,
                     $"No node route request handler is registered for '{header.MessageName}'.");
                 scope.HandlerMissing(
                     _logger,
@@ -436,7 +449,7 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
             {
                 await _routeInvoker.InvokeSendAsync(
                         descriptor,
-                        NodeRouteChannel,
+                        _meshName,
                         sourceRid,
                         header,
                         received.Parts,
@@ -462,7 +475,7 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
         {
             var reply = await _routeInvoker.InvokeRequestAsync(
                     descriptor,
-                    NodeRouteChannel,
+                    _meshName,
                     sourceRid,
                     header,
                     received.Parts,

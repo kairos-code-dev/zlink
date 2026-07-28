@@ -27,20 +27,18 @@ public static class CourierSessionHostFactory
         builder.Services.AddSingleton<CourierSessionBinder>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(configuration.FlowLogPath)
-                .TraceLabel("courier-session");
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(CourierSessionHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
                 .SetRoutingIdPrefix("courier-session");
-            mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
-            mesh.ChannelName(SampleNames.DispatchChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.TrackingRouteChannel).SetWeight(0);
+            mesh.Objects().Client();
             options.AddStreamNode(SampleNames.CourierStreamNode)
                 .Bind(topology.CourierStreamEndpoint)
                 .EnableActorDispatch()

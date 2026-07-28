@@ -129,7 +129,13 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
                 100,
                 new MeshNodeExecutor(node, manual, spots),
                 null,
-                null);
+                null,
+                mesh.objectServer()
+                    ? systems.zlink.framework.locations.ZLinkMeshNodeObjectRole.SERVER
+                    : mesh.objectRoleEnabled()
+                        ? systems.zlink.framework.locations.ZLinkMeshNodeObjectRole.CLIENT
+                        : systems.zlink.framework.locations.ZLinkMeshNodeObjectRole.NONE,
+                !mesh.channelWeights().isEmpty());
         }
         for (SpotNodeRegistration spot : registration.spotNodes()) {
             ZLinkInternalSpotNode node = spotNodesByName.get(spot.nodeName());
@@ -153,7 +159,9 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
                 100,
                 new SpotNodeExecutor(node, manual, spots),
                 metadata.isEmpty() ? null : Map.copyOf(metadata),
-                capabilities.isEmpty() ? null : capabilities);
+                capabilities.isEmpty() ? null : capabilities,
+                systems.zlink.framework.locations.ZLinkMeshNodeObjectRole.NONE,
+                false);
         }
 
         CompletionStage<Void> chain = hasAutomaticClientServer
@@ -231,7 +239,9 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             surface.weight(),
             executor,
             null,
-            null);
+            null,
+            systems.zlink.framework.locations.ZLinkMeshNodeObjectRole.NONE,
+            false);
     }
 
     private void addLoop(
@@ -243,13 +253,22 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         long weight,
         ZLinkAutoConnectExecutor executor,
         Map<String, String> metadata,
-        List<String> capabilities) {
+        List<String> capabilities,
+        systems.zlink.framework.locations.ZLinkMeshNodeObjectRole objectRole,
+        boolean hasRouteMeshServerChannel) {
         boolean advertisable = shouldAdvertise(type, role, nodeRid, endpoint);
         if (!advertisable && executor == ZLinkAutoConnectExecutor.NONE) {
             return;
         }
         ZLinkAutoConnectPlanner.Local local =
-            new ZLinkAutoConnectPlanner.Local(type, meshName, role, nodeRid, endpoint);
+            new ZLinkAutoConnectPlanner.Local(
+                type,
+                meshName,
+                role,
+                nodeRid,
+                endpoint,
+                objectRole,
+                hasRouteMeshServerChannel);
         ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
             local,
             null,

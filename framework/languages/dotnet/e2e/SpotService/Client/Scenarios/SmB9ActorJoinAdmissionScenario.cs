@@ -15,19 +15,28 @@ internal static class SmB9ActorJoinAdmissionScenario
         ZLinkHttpClient playB,
         string sessionAStreamEndpoint)
     {
-        await VerifyAdmissionAsync(
-            playA,
-            sessionAStreamEndpoint,
-            "play-a",
-            $"spot-sm-b9-local-{Guid.NewGuid():N}",
-            $"actor-sm-b9-local-{Guid.NewGuid():N}");
-        await VerifyAdmissionAsync(
-            playB,
-            sessionAStreamEndpoint,
-            "play-b",
-            $"spot-sm-b9-remote-{Guid.NewGuid():N}",
-            $"actor-sm-b9-remote-{Guid.NewGuid():N}");
-        Console.WriteLine("operation SpotService.sm-b9 passed");
+        try
+        {
+            await SetPlacementWeightsAsync(playA, playB, 100, 0);
+            await VerifyAdmissionAsync(
+                playA,
+                sessionAStreamEndpoint,
+                "play-a",
+                $"spot-sm-b9-local-{Guid.NewGuid():N}",
+                $"actor-sm-b9-local-{Guid.NewGuid():N}");
+            await SetPlacementWeightsAsync(playA, playB, 0, 100);
+            await VerifyAdmissionAsync(
+                playB,
+                sessionAStreamEndpoint,
+                "play-b",
+                $"spot-sm-b9-remote-{Guid.NewGuid():N}",
+                $"actor-sm-b9-remote-{Guid.NewGuid():N}");
+            Console.WriteLine("operation SpotService.sm-b9 passed");
+        }
+        finally
+        {
+            await SetPlacementWeightsAsync(playA, playB, 100, 100);
+        }
     }
 
     private static async Task VerifyAdmissionAsync(
@@ -51,7 +60,7 @@ internal static class SmB9ActorJoinAdmissionScenario
             MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
-        await client.Request(new AuthReq(actorId, $"admission {nodeRid}", nodeRid))
+        await client.Request(new AuthReq(actorId, $"admission {nodeRid}"))
             .PacketName("AuthReq")
             .Async<AuthRes>();
 
@@ -62,7 +71,7 @@ internal static class SmB9ActorJoinAdmissionScenario
         ZlinkStreamAssert.Ensure(allowed.SpotRid == spotRid, "SM-B9 allowed join spot mismatch.");
 
         var rejectedActorId = $"{actorId}-rejected";
-        await client.Request(new AuthReq(rejectedActorId, $"rejected {nodeRid}", nodeRid))
+        await client.Request(new AuthReq(rejectedActorId, $"rejected {nodeRid}"))
             .PacketName("AuthReq")
             .Async<AuthRes>();
         var rejected = await client.Request(new JoinAdmittedUserSpotActorReq(
@@ -88,5 +97,19 @@ internal static class SmB9ActorJoinAdmissionScenario
                 !line.Contains($"spot-actor-joined|rid={nodeRid}|spot={spotRid}|actor={rejectedActorId}",
                     StringComparison.Ordinal)),
             "SM-B9 rejected actor was joined to the user spot.");
+    }
+
+    private static async Task SetPlacementWeightsAsync(
+        ZLinkHttpClient playA,
+        ZLinkHttpClient playB,
+        int playAWeight,
+        int playBWeight)
+    {
+        await playA.Post("/placement-weight")
+            .Body(new PlacementWeightReq(playAWeight))
+            .Async<PlacementWeightRes>();
+        await playB.Post("/placement-weight")
+            .Body(new PlacementWeightReq(playBWeight))
+            .Async<PlacementWeightRes>();
     }
 }

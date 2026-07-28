@@ -11,9 +11,10 @@ internal static class ObsB4DisabledMetricsScenario
 
     public static async Task RunAsync(ScenarioContext context)
     {
+        var playBNode = await context.PlayNodeIdAsync("play-b");
         var suffix = Guid.NewGuid().ToString("N");
         var actorId = $"obs-b4-{suffix}";
-        var roomRid = $"room-b4-{suffix}";
+        string roomRid;
         // B4 follows B3's 11s store pause on the same topology: the first
         // store write can still sit behind the multiplexer's recovery, so the
         // room creation polls within a bounded window instead of racing it.
@@ -22,7 +23,9 @@ internal static class ObsB4DisabledMetricsScenario
         {
             try
             {
-                await context.PlayB.Post("/rooms").Body(new CreateRoomReq(roomRid)).AsyncRaw();
+                var room = await context.CreateRoomOnObservedNodeAsync(
+                    playBNode, $"room-b4-{suffix}");
+                roomRid = room.RoomRid;
                 break;
             }
             catch (Exception) when (DateTimeOffset.UtcNow < roomDeadline)
@@ -32,28 +35,16 @@ internal static class ObsB4DisabledMetricsScenario
         }
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
-        // The fresh room's row publish races the join resolve after the B3
-        // outage; poll the join within a bounded window.
-        JoinRoomRes joined;
-        var joinDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
-        while (true)
-        {
-            try
-            {
-                joined = await connector.Request(new JoinRoomReq(roomRid)).Async<JoinRoomRes>();
-                break;
-            }
-            catch (Exception) when (DateTimeOffset.UtcNow < joinDeadline)
-            {
-                await Task.Delay(300);
-            }
-        }
-        ZlinkStreamAssert.Ensure(joined.NodeRid == "play-b", "OBS-B4 actor did not reach play-b.");
+        var joined = await context.JoinRoomAsync(connector, actorId, roomRid);
+        ZlinkStreamAssert.Ensure(
+            joined.NodeRid == playBNode,
+            "OBS-B4 actor join did not publish its target owner.");
         for (var index = 0; index < TrafficCount; index++)
         {
             var marker = $"obs-b4-{index}";
             var action = await connector.Request(new GameActionReq(marker)).Async<GameActionRes>();
-            ZlinkStreamAssert.Ensure(action.Marker == marker && action.NodeRid == "play-b",
+            ZlinkStreamAssert.Ensure(
+                action.Marker == marker && action.NodeRid == joined.NodeRid,
                 "OBS-B4 messaging changed while metrics were disabled.");
         }
         var evidence = (await context.PlayB.Get("/evidence").Async<EvidenceSnapshot>()).Body;

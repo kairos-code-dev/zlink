@@ -111,7 +111,9 @@ packet으로 dispatch하거나 downstream correlation을 원래 correlation으�
 ### CH-E2E-03 — Spot handler와 timer의 ClientServer 호출
 
 Play Entry Spot의 packet handler는 `workflow.command` request를 `async`로 기다린 뒤 같은 Spot 상태를
-변경한다. Timer callback은 같은 Channel을 `yield`로 기다리고 재개 뒤 필요한 상태를 다시 확인한다.
+변경한다. Timer callback도 같은 Channel을 `Async`로 기다리고 automatic continuation에서 필요한 상태를
+다시 확인한다. Entry Spot과 `PerActor` User Spot은 Actor별 또는 timer별 lane을 사용하므로 `Yield`를
+허용하지 않는다. Shared Spot turn을 반납하는 `Yield` 검증은 `SpotWide` User Spot 시나리오가 소유한다.
 두 호출의 serial turn 순서, timeout, cancellation과 shutdown 경쟁이 공통 실행 정책과 일치해야 한다.
 다른 egress의 reply를 Spot application queue에 새 packet으로 넣으면 실패다.
 
@@ -143,12 +145,12 @@ listener bind와 dispatch 시작 전에 설정 오류로 종료하고, 진단에
 세 상태를 별도로 검증한다.
 
 1. 등록하지 않은 ChannelName 호출은 process-local 송신 경로가 없으므로 즉시
-   `RequestTargetNotFound`로 끝나야 한다.
+   `NotFound`로 끝나야 한다.
 2. `Api`의 `game.api` Server는 Client를 중복 등록하지 않은 상태에서 다른 ready `Api`를 대상으로
    outbound request를 시작한다. 같은 RouteMesh peer 연결의 target membership을 선택해 정상 reply 하나로
    완료되어야 한다.
 3. 등록한 ChannelName의 target identity는 알려져 있지만 해당 pipe가 아직 ready가 아닌 상태에서 호출하면
-   즉시 `RouteNotConnected`로 끝나야 한다. 이 검증을 위해 known target의 연결을 시작 전에 차단하고,
+   즉시 `Unavailable`로 끝나야 한다. 이 검증을 위해 known target의 연결을 시작 전에 차단하고,
    descriptor나 manual intent가 없는 상태와 섞지 않는다.
 
 세 경우 모두 다른 MeshNode, ClientServer client 또는 handler를 relay로 사용하면 실패다. 오류는 operation의
@@ -240,8 +242,8 @@ fixture 복사본을 두지 않는다. 통합 runner inventory에는 `ChannelEgr
 
 ```text
 all
-CH-E2E-01 ... CH-E2E-11
-CH-REG-01 ... CH-REG-09
+CH-E2E-01 ... CH-E2E-12
+CH-REG-01 ... CH-REG-10
 ```
 
 Runner는 build, 실행 전용 Redis 준비, role별 typed 설정 파일 생성, server readiness, scenario client,
@@ -252,7 +254,7 @@ descriptor 불일치와 completion 중복은 retry하지 않는다. Local readin
 
 ## 7. 완료 조건
 
-- 네 framework lane과 Java/Kotlin public compile fixture가 `CH-E2E-01~11`, `CH-REG-01~09`를 모두 통과한다.
+- 네 framework lane과 Java/Kotlin public compile fixture가 `CH-E2E-01~12`, `CH-REG-01~10`을 모두 통과한다.
 - 공통 fixture와 언어별 구성의 Channel topology projection에 차이가 없다. Object prerequisite는 §2의
   role server startup evidence와 일치한다.
 - 종료 뒤 남은 server/client/Redis process가 없고 native assertion과 timeout이 없다.

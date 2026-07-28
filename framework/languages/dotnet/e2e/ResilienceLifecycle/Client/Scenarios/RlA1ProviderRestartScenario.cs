@@ -46,12 +46,12 @@ internal static class RlA1ProviderRestartScenario
             .Body(new ProfileReq("fast", "rl-a1-down"))
             .Async<ProfileAttemptRes>()).Body;
         // 10.0.0 select-one: a provider whose row is gone leaves the member
-        // snapshot, so the down-window submit maps to RequestTargetNotFound
+        // snapshot, so the down-window submit maps to NotFound
         // (spec 05 §13.1 ZLINK_SUBMIT_NOT_FOUND), not the 9.x dealer's
-        // RouteNotConnected.
+        // Unavailable.
         ZlinkStreamAssert.Ensure(
-            down is { Reply: null, ErrorKind: "RequestTargetNotFound" },
-            $"RL-A1 down-window result was '{down.ErrorKind}', expected RequestTargetNotFound.");
+            down is { Reply: null, ErrorKind: "NotFound" },
+            $"RL-A1 down-window result was '{down.ErrorKind}', expected NotFound.");
 
         var connectionCount = (await consumer.Get("/connections").Async<string[]>()).Body.Length;
         var restarted = await processes.StartProviderBAsync();

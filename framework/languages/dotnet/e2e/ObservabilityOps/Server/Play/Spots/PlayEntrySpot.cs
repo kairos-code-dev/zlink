@@ -11,12 +11,14 @@ internal sealed class PlayEntrySpot(IZLinkEntrySpotContext context, EvidenceStor
 {
     public IZLinkEntrySpotContext Context { get; } = context;
 
-    public ValueTask OnCreateActorAsync(PlayerActor actor, ZLinkMessage createRequest,
+    public ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
+        PlayerActor actor,
+        ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"actor-created|actor={actor.ActorId}|node={Context.NodeRid}");
-        return ValueTask.CompletedTask;
+        return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(string actorId, ZLinkMessage request,
@@ -27,9 +29,20 @@ internal sealed class PlayEntrySpot(IZLinkEntrySpotContext context, EvidenceStor
     {
         evidence.Add($"actor-entry-joined|actor={actor.ActorId}|node={Context.NodeRid}|previous-room={actor.Player.RoomRid}");
         await actor.Context.BoundSession.Send(new PlayerMovedNotify(actor.ActorId, Context.NodeRid.ToString()))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 
     public ValueTask OnLeaveActorAsync(PlayerActor actor, CancellationToken cancellationToken) =>
         ValueTask.CompletedTask;
+
+    public ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
+    {
+        cleanupCancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"spot-closing|kind=entry|spot={Context.SpotId}"
+            + $"|node={Context.NodeRid}|reason={context.Reason}");
+        return ValueTask.CompletedTask;
+    }
 }

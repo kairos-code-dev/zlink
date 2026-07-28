@@ -1,4 +1,3 @@
-using Systems.Zlink;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
@@ -7,14 +6,14 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 
-[ZLinkSpotActorRequestHandler(nameof(JoinGameReq))]
+[ZLinkSpotActorSendHandler(nameof(JoinGameReq))]
 internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler> logger)
-    : IZLinkEntrySpotActorRequestHandler<PlayEntrySpot, PlayActor, JoinGameReq, JoinGameRes>
+    : IZLinkEntrySpotActorSendHandler<PlayEntrySpot, PlayActor, JoinGameReq>
 {
-    public async ValueTask<JoinGameRes> HandleAsync(
+    public ValueTask HandleAsync(
         PlayEntrySpot entrySpot,
         PlayActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         JoinGameReq message,
         CancellationToken cancellationToken)
     {
@@ -23,25 +22,15 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
             actor.ActorId,
             message.RoomId);
 
-        var spotRid = RoutingId.From(message.RoomId);
-        var joined = await actor.Context.JoinSpot(
-                spotRid,
+        actor.TrackDeferredJoin(message.RoomId);
+        actor.Context.JoinSpot(
+                message.RoomId,
                 new TicTacToeGameJoinReq(message.RoomId, actor.RequirePlayer()))
-            .Async(cancellationToken);
-
-        var joinMessage = joined switch
-        {
-            ZLinkActorJoinResult.Accepted accepted => accepted.Reply,
-            ZLinkActorJoinResult.Rejected rejected => rejected.Reply,
-            _ => throw new InvalidOperationException("Unknown actor join result.")
-        };
-        var joinReply = joinMessage.Decode<TicTacToeGameJoinRes>();
-        var reply = new JoinGameRes(joinReply.State);
+            .Defer();
         logger.LogInformation(
-            "actor -> client: JoinGameRes returned. actor={ActorId}, roomId={RoomId}, mark={Mark}",
+            "actor: room join scheduled. actor={ActorId}, roomId={RoomId}",
             actor.ActorId,
-            reply.State.RoomId,
-            reply.State.XActorId == actor.ActorId ? TicTacToeMarks.X : TicTacToeMarks.O);
-        return reply;
+            message.RoomId);
+        return ValueTask.CompletedTask;
     }
 }

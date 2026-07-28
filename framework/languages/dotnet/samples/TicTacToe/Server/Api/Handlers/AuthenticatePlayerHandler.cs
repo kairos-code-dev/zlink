@@ -9,7 +9,7 @@ internal sealed class AuthenticatePlayerHandler(ILogger<AuthenticatePlayerHandle
 {
     public ValueTask<AuthenticatePlayerRes> HandleAsync(
         AuthenticatePlayerReq request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
 

@@ -39,13 +39,9 @@ internal static class MultiNodeHostFactory
         {
             if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
             {
-                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                    .SetConnectionString(options.RedisEndpoint)
-                    .SetKeyPrefix(options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
-                framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => redis
-                    .SetConnectionString(options.RedisEndpoint)
-                    .SetKeyPrefix($"{options.RedisKeyPrefix}:relocation")));
+                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix
+                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."); }));
+                framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = $"{options.RedisKeyPrefix}:relocation"; }));
                 // Crash-recovery scenarios re-claim actors from a killed
                 // node; a short owner lease keeps that takeover window
                 // within the scenario's patience.

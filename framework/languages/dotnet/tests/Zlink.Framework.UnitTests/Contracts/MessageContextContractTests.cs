@@ -11,8 +11,6 @@ public sealed class MessageContextContractTests
         "ZLinkRequestContext",
         "ZLinkSendContext",
         "ZLinkPublishContext",
-        "ZLinkRouteRequestContext",
-        "ZLinkRouteSendContext",
         "ZLinkSpotActorRequestContext",
         "ZLinkSpotActorSendContext"
     ];

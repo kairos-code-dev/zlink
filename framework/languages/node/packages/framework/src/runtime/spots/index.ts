@@ -55,7 +55,6 @@ import type {
 import { ZLinkDispatchErrorReporter } from '../channels';
 import { ZLinkWorkerRuntime } from '../workers';
 import {
-  createActorMembership,
   type ZLinkDeferredJoinAcceptedRoot,
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
@@ -171,7 +170,8 @@ export interface ZLinkSpotManagerOptions {
     parts: readonly Message[],
     returnResponse?: boolean,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
+    fallbackActorRef?: ActorRef,
+    requestTerminal?: (response: unknown) => Promise<void> | void
   ) => Promise<unknown>;
   readonly actorCountProvider?: (spotId: RoutingId) => number;
   readonly userSpotExecutionMode?: (
@@ -924,14 +924,18 @@ export class DefaultZLinkSpotManager {
           bindingGeneration: record.sourceBindingGeneration
         } as ActorRef
       : resolvedActorRef;
-    const resolvedSpotId = resolvedOwner?.spotId ?? spotId ?? undefined;
-    const ownerActorRef = resolvedSpotId === undefined
-      ? responseActorRef
-      : {
-        ...responseActorRef,
-        handoffMessageFollowed: true,
-        handoffTargetSpotId: String(resolvedSpotId)
-      } as ActorRef;
+    const ownerActorRef = responseActorRef;
+    let requestTerminalSubmitted = false;
+    const requestTerminal = request
+      ? (response: unknown) => {
+          requireMeshSpotReply(record.reply(this.encodeMeshActorReply(
+            record.parts[0],
+            ZLinkStreamMessageKind.Response,
+            response
+          )));
+          requestTerminalSubmitted = true;
+        }
+      : undefined;
     try {
       if (this.formalRemoteTransfers.has(actor.actorId)) {
         throw new Error(
@@ -944,7 +948,8 @@ export class DefaultZLinkSpotManager {
           record.parts,
           request,
           undefined,
-          ownerActorRef
+          ownerActorRef,
+          requestTerminal
         )
         : await this.dispatchMeshActorPacket(
           meshName,
@@ -952,12 +957,13 @@ export class DefaultZLinkSpotManager {
           actor.actorId,
           record.parts,
           request,
-          ownerActorRef
+          ownerActorRef,
+          requestTerminal
         );
       if (targetsEntrySpot && this.options.dispatchEntryActorPacket === undefined) {
         throw new ZLinkConfigurationException('MeshNode Entry Spot Actor dispatch is not configured.');
       }
-      if (request) {
+      if (request && !requestTerminalSubmitted) {
         requireMeshSpotReply(record.reply(this.encodeMeshActorReply(
           record.parts[0],
           ZLinkStreamMessageKind.Response,
@@ -966,6 +972,9 @@ export class DefaultZLinkSpotManager {
       }
     } catch (error) {
       if (!request) {
+        throw error;
+      }
+      if (requestTerminalSubmitted) {
         throw error;
       }
       requireMeshSpotReply(record.reply(this.encodeMeshActorReply(
@@ -1163,11 +1172,7 @@ export class DefaultZLinkSpotManager {
           );
         }
         this.options.actorTransferRuntime?.commitRoutedActor(actor, spotId, activation.spot);
-        await activation.spot.onJoinedActor(createActorMembership(
-          actor,
-          control.currentActor as unknown as ActorRef,
-          control.currentMembershipEpoch
-        ));
+        await activation.spot.onJoinedActor(actor);
         const completeTargetCommit = async (sourceLeaveSucceeded: boolean): Promise<void> => {
           if (sourceLeaveSucceeded && pendingTransfer !== undefined) {
             await replayActorHandoffBacklog(
@@ -1246,30 +1251,18 @@ export class DefaultZLinkSpotManager {
       }
       if (control.lifecycleKind === ActorLifecycleKind.Left) {
         if (this.options.actorTransferRuntime === undefined) {
-          await activation.spot.onLeaveActor(createActorMembership(
-            actor,
-            control.previousActor as unknown as ActorRef,
-            control.previousMembershipEpoch
-          ));
+          await activation.spot.onLeaveActor(actor);
         } else {
           await this.options.actorTransferRuntime.notifyCoreSourceLeave(
             actor,
-            () => activation.spot.onLeaveActor(createActorMembership(
-              actor,
-              control.previousActor as unknown as ActorRef,
-              control.previousMembershipEpoch
-            ))
+            () => activation.spot.onLeaveActor(actor)
           );
         }
         activation.commitActorDeparture(actor.context.actorId);
         return;
       }
       if (control.lifecycleKind === ActorLifecycleKind.Disconnected) {
-        await activation.spot.onDisconnectActor(createActorMembership(
-          actor,
-          control.currentActor as unknown as ActorRef,
-          control.currentMembershipEpoch
-        ));
+        await activation.spot.onDisconnectActor?.(actor);
       }
     });
   }
@@ -1343,7 +1336,8 @@ export class DefaultZLinkSpotManager {
     parts: readonly Message[],
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
+    fallbackActorRef?: ActorRef,
+    requestTerminal?: (response: unknown) => Promise<void> | void
   ): Promise<unknown> {
     return await this.activationLifecycle.dispatchActorPacket(
       activation,
@@ -1351,7 +1345,8 @@ export class DefaultZLinkSpotManager {
       parts,
       returnResponse,
       remoteBoundSessionTarget,
-      fallbackActorRef
+      fallbackActorRef,
+      requestTerminal
     );
   }
 
@@ -1361,7 +1356,8 @@ export class DefaultZLinkSpotManager {
     actorId: string,
     parts: readonly Message[],
     returnResponse: boolean,
-    fallbackActorRef?: ActorRef
+    fallbackActorRef?: ActorRef,
+    requestTerminal?: (response: unknown) => Promise<void> | void
   ): Promise<unknown> {
     const activation = this.activations.resolve(meshName, spotId);
     if (activation === undefined) {
@@ -1375,7 +1371,8 @@ export class DefaultZLinkSpotManager {
       parts,
       returnResponse,
       undefined,
-      fallbackActorRef
+      fallbackActorRef,
+      requestTerminal
     );
   }
 

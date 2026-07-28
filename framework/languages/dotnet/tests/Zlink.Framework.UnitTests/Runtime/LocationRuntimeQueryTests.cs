@@ -294,13 +294,6 @@ public sealed class LocationRuntimeQueryTests
             CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("store unavailable");
 
-        public ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>>
-            ListMeshNodeDescriptorsAsync(
-            string meshName,
-            ZLinkPageRequest page = default,
-            CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("store unavailable");
-
         public ValueTask<ZLinkLocationPage<ZLinkLocationTopologyEntry>> ListTopologyAsync(
             ZLinkLocationTopologyFilter filter,
             ZLinkPageRequest page = default,

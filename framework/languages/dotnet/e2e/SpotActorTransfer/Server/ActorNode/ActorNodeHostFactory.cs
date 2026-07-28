@@ -21,21 +21,25 @@ internal static class ActorNodeHostFactory
         builder.Configuration.Sources.Clear();
         builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
+        var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
         builder.Logging.AddSimpleConsole(console =>
         {
             console.SingleLine = true;
             console.TimestampFormat = "HH:mm:ss.fff ";
         });
         var runtimeEvidence = new RuntimeEvidenceStore();
-        builder.Logging.AddProvider(new ActorHandoffEvidenceLoggerProvider(runtimeEvidence));
+        var interruptionEvidence =
+            new RelocationInterruptionEvidenceStore();
+        builder.Logging.AddProvider(
+            new ActorHandoffEvidenceLoggerProvider(runtimeEvidence, evidence));
         builder.WebHost.UseUrls(options.HttpUrl);
-        var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
         var cleanupGates = new ActorCleanupGateStore(evidence);
         var relocationBlobs = new RelocationBlobObserver();
         var relocationMessageFlows =
-            new RelocationMessageFlowEvidenceStore();
+            new RelocationMessageFlowEvidenceStore(options.Rid);
         builder.Services.AddSingleton(evidence);
         builder.Services.AddSingleton(runtimeEvidence);
+        builder.Services.AddSingleton(interruptionEvidence);
         builder.Services.AddSingleton(relocationBlobs);
         builder.Services.AddSingleton(relocationMessageFlows);
         builder.Services.AddSingleton(new DomainStateStore(options.LogDir));
@@ -49,22 +53,28 @@ internal static class ActorNodeHostFactory
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.DefaultRequestTimeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMilliseconds);
-            framework.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .SetRuntimeMessageFlowObserver(relocationMessageFlows);
+            // Normal diagnostics emits the received/replied Activity pairs used
+            // by the relocation workload's public correlation assertion.
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             // The common ST-F4/F5 contract permits a short controller duration so
             // the E2E verifies cutoff semantics without coupling the scenario to
             // the independently tested owner-lease TTL.
-            var redisStore = new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint)
-                .SetKeyPrefix(options.RedisKeyPrefix));
+            var redisStore = new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = options.RedisEndpoint;
+                redis.KeyPrefix = options.RedisKeyPrefix;
+            });
             framework.AddLocationStore(new CleanupGatedLocationStore(
                 redisStore,
                 cleanupGates));
             framework.AddRelocationStore(new ObservedRelocationStore(
-                new ZLinkRedisRelocationStore(redis => redis
-                    .SetConnectionString(options.RedisEndpoint)
-                    .SetKeyPrefix($"{options.RedisKeyPrefix}:relocation")),
+                new ZLinkRedisRelocationStore(redis =>
+                {
+                    redis.ConnectionString = options.RedisEndpoint;
+                    redis.KeyPrefix =
+                        $"{options.RedisKeyPrefix}:relocation";
+                }),
                 relocationBlobs));
             var locations = framework.ConfigureLocations();
             // A third node keeps a bounded stale owner route so ST-I4 can
@@ -124,12 +134,27 @@ internal static class ActorNodeHostFactory
                     },
                     ZLinkRelocationPolicy<RelocationPayloadUserSpot>
                         .Snapshot<RelocationPayloadUserSpotAdapter>())
+                .AddSpotFactory<RelocationPayloadPerActorUserSpot>(
+                    SpotActorTransferNames
+                        .RelocationPayloadPerActorUserSpotType,
+                    new ZLinkUserSpotFactoryOptions
+                    {
+                        ExecutionMode = ZLinkUserSpotExecutionMode.PerActor
+                    },
+                    ZLinkRelocationPolicy<RelocationPayloadPerActorUserSpot>
+                        .Snapshot<
+                            RelocationPayloadPerActorUserSpotAdapter>())
                 .AddInstanceSpotFactory<RelocationPayloadInstanceSpot>(
                     SpotActorTransferNames.RelocationPayloadInstanceSpotType,
                     null,
                     ZLinkRelocationPolicy<RelocationPayloadInstanceSpot>
                         .Snapshot<RelocationPayloadInstanceSpotAdapter>());
         });
-        return (builder.Build(), options);
+        var app = builder.Build();
+        app.Lifetime.ApplicationStopped.Register(
+            relocationMessageFlows.Dispose);
+        app.Lifetime.ApplicationStopped.Register(
+            interruptionEvidence.Dispose);
+        return (app, options);
     }
 }

@@ -6,7 +6,6 @@ public static class SampleNames
 {
     public const string MeshName = "supportchat";
     public const string ApiChannel = "supportchat.api";
-    public const string SupportChannel = "supportchat.support";
     public const string SupportActorType = "supportchat.user";
     public const string ConversationSpotType = "supportchat.conversation";
     public const string SupportSpotNode = "supportchat.support.node";

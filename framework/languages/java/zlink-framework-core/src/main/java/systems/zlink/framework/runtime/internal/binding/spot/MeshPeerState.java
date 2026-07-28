@@ -9,7 +9,8 @@ public enum MeshPeerState {
     ADMITTED(3),
     DRAINING(4),
     CLOSED(5),
-    ERROR(6);
+    ERROR(6),
+    NOT_REQUIRED(7);
 
     private final int value;
 

@@ -23,7 +23,7 @@ internal sealed class ProjectionSpot(
     {
         cancellationToken.ThrowIfCancellationRequested();
         _ = request.Decode<CreateWorkflowReq>();
-        evidence.Add($"workflow-created|rid={Context.SpotRid}|kind=subscriber|version=0|node={Context.NodeRid}");
+        evidence.Add($"workflow-created|rid={Context.SpotId}|kind=subscriber|version=0|node={Context.NodeRid}");
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 }

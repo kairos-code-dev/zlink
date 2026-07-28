@@ -77,11 +77,11 @@
         <Compile Include="Runtime/EndpointConnectionsTests.cs"/>
         <Compile Include="Runtime/ExactMessageFlowRuntimeTests.cs"/>
         <Compile Include="Runtime/FlowCorrelationTests.cs"/>
+        <Compile Include="Runtime/GeneratedNodeIdentityTests.cs"/>
         <Compile Include="Runtime/HandlerResultAwaiterTests.cs"/>
         <Compile Include="Runtime/HttpExecutionSchedulerTests.cs"/>
         <Compile Include="Runtime/InMemoryLocationStoreTests.cs"/>
         <Compile Include="Runtime/LocationLifecycleTests.cs"/>
-        <Compile Include="Runtime/LocationRuntimePollingDiffTests.cs"/>
         <Compile Include="Runtime/LocationResolverTests.cs"/>
         <Compile Include="Runtime/LocationRuntimeQueryTests.cs"/>
         <Compile Include="Runtime/InstanceSpotActivationJournalTests.cs"/>
@@ -92,6 +92,7 @@
         <Compile Include="Runtime/SubmitAdmissionRuntimeTests.cs"/>
         <Compile Include="Runtime/OwnerLeaseTrackerTests.cs"/>
         <Compile Include="Runtime/ProviderLocationRepositoryAuthorityTests.cs"/>
+        <Compile Include="Runtime/ProviderRelocationRepositoryTests.cs"/>
         <Compile Include="Runtime/MessageFlowTracerTests.cs"/>
         <Compile Include="Runtime/MeshNodeRouteDispatcherTests.cs"/>
         <Compile Include="Runtime/PublicContractSnapshotTests.cs"/>
@@ -106,6 +107,7 @@
         <Compile Include="Runtime/StreamFlowEndToEndTests.cs"/>
         <Compile Include="Runtime/TimerLifecycleTests.cs"/>
         <Compile Include="Runtime/SpotHandlerInvokerTests.cs"/>
+        <Compile Include="Runtime/SpotMessageFollowSubmitTests.cs"/>
         <Compile Include="Runtime/SpotRouteDispatcherTests.cs"/>
         <Compile Include="Runtime/SpotPeerConnectorTests.cs"/>
         <Compile Include="Runtime/SpotAutoRegistrationScannerTests.cs"/>
@@ -113,12 +115,14 @@
         <Compile Include="Runtime/RemoteRelayFrameAssemblerTests.cs"/>
         <Compile Include="Runtime/ReconciliationRunnerTests.cs"/>
         <Compile Include="Runtime/RelocationRuntimeTests.cs"/>
+        <Compile Include="Runtime/RelocationTreeParallelIoTests.cs"/>
         <Compile Include="Runtime/StandaloneActorRelocationRuntimeTests.cs"/>
         <Compile Include="Runtime/StandaloneActorRelocationPrecommitTests.cs"/>
         <Compile Include="Runtime/CanonicalActorAcceptedJournalTests.cs"/>
         <Compile Include="Runtime/CanonicalRelocationReservationOwnerTests.cs"/>
         <Compile Include="Runtime/RelocationStartupRecoveryTests.cs"/>
         <Compile Include="Runtime/RouteCodecTests.cs"/>
+        <Compile Include="Runtime/RouteMeshRuntimeServiceTests.cs"/>
         <Compile Include="Runtime/RuntimeConcurrencyBoundaryTests.cs"/>
         <Compile Include="Runtime/RuntimeMetricsTests.cs"/>
         <Compile Include="Runtime/UnhandledDispatchPolicyTests.cs"/>

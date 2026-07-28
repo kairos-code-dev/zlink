@@ -132,6 +132,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             foreach (var node in ActorNodes())
                 await SetPlacementWeightAsync(node, 0);
             await SetPlacementWeightAsync(placementNode, 100);
+            await WaitForExclusivePlacementAsync(placementNode);
             return await action();
         }
         finally
@@ -169,12 +170,86 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             await SetPlacementWeightAsync(
                 node,
                 ReferenceEquals(node, placementNode) ? 100 : 0);
+        await WaitForExclusivePlacementAsync(placementNode);
     }
 
-    public async Task RestoreDefaultPlacementAsync()
+    private async Task WaitForExclusivePlacementAsync(
+        ZLinkHttpClient placementNode)
+    {
+        const int requiredConsecutiveMatches = 4;
+        var expectedPrefix = NodePrefix(placementNode);
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        var consecutiveMatches = 0;
+        var observed = new List<string>();
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var probeId =
+                $"placement-probe-{Guid.NewGuid():N}";
+            RelocationBulkSpotCreateRes created;
+            try
+            {
+                created = await CreateBulkSpotsAsync(
+                    NodeA,
+                    new RelocationBulkSpotCreateReq(
+                        "PLACEMENT-PROPAGATION-PROBE",
+                        probeId,
+                        Count: 1,
+                        ApplicationStateBytes: 0,
+                        InstanceSpot: false,
+                        MaxConcurrency: 1),
+                    TimeSpan.FromSeconds(5));
+            }
+            catch (ZLinkFrameworkException exception)
+            {
+                observed.Add($"transient:{exception.Kind}");
+                consecutiveMatches = 0;
+                await Task.Delay(50);
+                continue;
+            }
+            var spotId = AssertSingle(created.SpotIds, "Spot ID");
+            var nodeRid = AssertSingle(created.NodeRids, "owner");
+            observed.Add(nodeRid);
+            try
+            {
+                consecutiveMatches = IsNode(nodeRid, expectedPrefix)
+                    ? consecutiveMatches + 1
+                    : 0;
+                if (consecutiveMatches >= requiredConsecutiveMatches)
+                    return;
+            }
+            finally
+            {
+                _ = await NodeA
+                    .Post($"/payload-spots/{spotId}/close")
+                    .Timeout(TimeSpan.FromSeconds(5))
+                    .Async<bool>();
+            }
+            await Task.Delay(20);
+        }
+
+        throw new TimeoutException(
+            $"Placement did not converge on {expectedPrefix}; "
+            + $"observed owners: {string.Join(',', observed)}.");
+
+        static string AssertSingle(
+            IReadOnlyList<string> values,
+            string valueName) =>
+            values.Count == 1
+                ? values[0]
+                : throw new InvalidOperationException(
+                    $"Placement probe returned {values.Count} {valueName} values.");
+    }
+
+    public async Task RestoreDefaultPlacementAsync(
+        params ZLinkHttpClient[] excludedNodes)
     {
         foreach (var node in ActorNodes())
+        {
+            if (excludedNodes.Any(excluded =>
+                    ReferenceEquals(excluded, node)))
+                continue;
             await SetPlacementWeightAsync(node, 100);
+        }
     }
 
     public async Task<RelocationBulkActorCreateRes> CreateBulkActorsAsync(
@@ -190,10 +265,11 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
 
     public async Task<RelocationBulkSpotCreateRes> CreateBulkSpotsAsync(
         ZLinkHttpClient coordinator,
-        RelocationBulkSpotCreateReq request) =>
+        RelocationBulkSpotCreateReq request,
+        TimeSpan? timeout = null) =>
         (await coordinator.Post("/workload/spots/create-bulk")
                 .Body(request)
-                .Timeout(TimeSpan.FromMinutes(5))
+                .Timeout(timeout ?? TimeSpan.FromMinutes(5))
                 .Async<RelocationBulkSpotCreateRes>())
             .Body
         ?? throw new InvalidOperationException(
@@ -204,7 +280,14 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         string actualNodeRid,
         string objectKind)
     {
-        var expectedPrefix = ReferenceEquals(placementNode, NodeA)
+        var expectedPrefix = NodePrefix(placementNode);
+        ZlinkStreamAssert.Ensure(
+            IsNode(actualNodeRid, expectedPrefix),
+            $"{objectKind} placement expected {expectedPrefix}, got {actualNodeRid}.");
+    }
+
+    private string NodePrefix(ZLinkHttpClient placementNode) =>
+        ReferenceEquals(placementNode, NodeA)
             ? "actor-a"
             : ReferenceEquals(placementNode, NodeB)
                 ? "actor-b"
@@ -212,10 +295,6 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                     ? "actor-c"
                     : throw new InvalidOperationException(
                         "Placement node must be one of the scenario Actor nodes.");
-        ZlinkStreamAssert.Ensure(
-            IsNode(actualNodeRid, expectedPrefix),
-            $"{objectKind} placement expected {expectedPrefix}, got {actualNodeRid}.");
-    }
 
     private IEnumerable<ZLinkHttpClient> ActorNodes()
     {
@@ -296,13 +375,13 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             $"{scenario} cleanup attempt for actor '{actorId}' was already allowed.");
     }
 
-    public async Task<ActorRefSnapshotRes> GetActorRefAsync(ZLinkHttpClient client, string actorId)
+    public async Task<ActorRefRes> GetActorRefAsync(ZLinkHttpClient client, string actorId)
     {
-        return (await client.Get($"/actors/{actorId}/ref").Async<ActorRefSnapshotRes>()).Body
+        return (await client.Get($"/actors/{actorId}/ref").Async<ActorRefRes>()).Body
                ?? throw new InvalidOperationException("Actor ref response was null.");
     }
 
-    public async Task<ActorRefSnapshotRes> WaitActorOwnerAsync(
+    public async Task<ActorRefRes> WaitActorOwnerAsync(
         ZLinkHttpClient client,
         string actorId,
         string expectedNodeRid,
@@ -310,7 +389,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
     {
         var deadline = DateTimeOffset.UtcNow
                        + (timeout ?? TimeSpan.FromSeconds(5));
-        ActorRefSnapshotRes? current = null;
+        ActorRefRes? current = null;
         do
         {
             try
@@ -345,14 +424,14 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                ?? throw new InvalidOperationException("Actor destroy response was null.");
     }
 
-    public async Task<ActorRefSnapshotRes> GetActorRefWithEvidenceAsync(
+    public async Task<ActorRefRes> GetActorRefWithEvidenceAsync(
         ZLinkHttpClient client,
         string actorId,
         string scenario,
         string marker)
     {
         return (await client.Get($"/actors/{actorId}/ref-evidence/{scenario}/{marker}")
-                   .Async<ActorRefSnapshotRes>()).Body
+                   .Async<ActorRefRes>()).Body
                ?? throw new InvalidOperationException("Actor ref evidence response was null.");
     }
 
@@ -533,14 +612,14 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                 return;
             }
             catch (ZLinkFrameworkException error) when (
-                error.Kind == ZLinkFrameworkErrorKind.RequestFailed
+                error.Kind == ZLinkFrameworkErrorKind.InternalFailure
                 && HasConnectionFailure(error))
             {
                 return;
             }
             catch (Exception error) when (
                 error is TaskCanceledException or TimeoutException
-                || error is ZLinkFrameworkException { Kind: ZLinkFrameworkErrorKind.RequestFailed })
+                || error is ZLinkFrameworkException { Kind: ZLinkFrameworkErrorKind.InternalFailure })
             {
                 // A slow probe does not prove process exit; keep observing.
             }
@@ -685,6 +764,46 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         ?? throw new InvalidOperationException(
             "Transport delivery snapshot response was null.");
 
+    public async Task<ReplyAdmissionGateRes> ArmReplyAdmissionAsync(
+        ZLinkHttpClient client,
+        string actorId) =>
+        (await client
+                .Post($"/reply-admission/{actorId}/arm")
+                .Async<ReplyAdmissionGateRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Reply admission arm response was null.");
+
+    public async Task<ReplyAdmissionGateRes> WaitReplyAdmissionAsync(
+        ZLinkHttpClient client,
+        string actorId) =>
+        (await client
+                .Post($"/reply-admission/{actorId}/wait")
+                .Async<ReplyAdmissionGateRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Reply admission wait response was null.");
+
+    public async Task<ReplyAdmissionGateRes> ReleaseReplyAdmissionAsync(
+        ZLinkHttpClient client,
+        string actorId) =>
+        (await client
+                .Post($"/reply-admission/{actorId}/release")
+                .Async<ReplyAdmissionGateRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Reply admission release response was null.");
+
+    public async Task<ReplyAdmissionGateRes> GetReplyAdmissionAsync(
+        ZLinkHttpClient client,
+        string actorId) =>
+        (await client
+                .Get($"/reply-admission/{actorId}")
+                .Async<ReplyAdmissionGateRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Reply admission snapshot response was null.");
+
     public async Task<BoundPushRes> BoundPushAsync(
         ZLinkHttpClient client,
         string actorId,
@@ -698,7 +817,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
     public async Task<IZlinkStreamConnector> ConnectAndBindAsync(
         string endpoint,
         string scenario,
-        ActorRefSnapshotRes actor)
+        ActorRefRes actor)
     {
         var stream = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
@@ -720,7 +839,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
     public static async Task<BindActorSessionRes> BindAsync(
         IZlinkStreamConnector stream,
         string scenario,
-        ActorRefSnapshotRes actor)
+        ActorRefRes actor)
     {
         var bound = await stream.Request(new BindActorSessionReq(
                 scenario,
@@ -774,6 +893,25 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             ZlinkStreamAssert.Ensure(evidence.Any(item => item.Contains(expected, StringComparison.Ordinal)),
                 $"Expected runtime evidence marker was not observed: {expected}");
     }
+
+    public async Task<IReadOnlyList<RelocationInterruptionEvidence>>
+        WaitRelocationInterruptionAsync(
+            ZLinkHttpClient client,
+            string unitKind,
+            int minimumCount,
+            int timeoutMilliseconds = 10000,
+            string? executionMode = null) =>
+        (await client.Post("/relocation-interruption/wait")
+                .Body(new RelocationInterruptionWaitReq(
+                    unitKind,
+                    executionMode,
+                    minimumCount,
+                    timeoutMilliseconds))
+                .Timeout(TimeSpan.FromMilliseconds(timeoutMilliseconds + 1000))
+                .Async<RelocationInterruptionEvidence[]>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Relocation interruption evidence response was null.");
 
     public async Task AssertEvidenceOrderAsync(
         ZLinkHttpClient client,

@@ -33,11 +33,10 @@
 - `SPOT`[^spot]을 `ASP.NET Core` 애플리케이션에서 다루는 방법
 - location store[^location-store] 를 등록해 peer, spot, actor 위치를 공유하고 운영 상태를 조회하는 방법
 
-지금 단계의 목표는 새 runtime 을 만드는 것이 아니다. 기존 `.NET` 바인딩은 이미
-`DealerSocket`, `RouterSocket`, `SpotNode`, `Spot` 같은 기본 전송 기능을 제공한다.
-framework 는 이 기능을 그대로 활용하되, 사용자에게는 익숙한 DI,
-hosted service[^hosted-service], handler 모델, location store 기반 자동 연결로
-감싸서 노출한다.
+Framework는 Channel, Spot, Actor와 STREAM service runtime을 직접 구현한다. `.NET` 바인딩에서는
+`DealerSocket`, `RouterSocket` 같은 public raw socket API만 사용한다. 사용자에게는 DI,
+hosted service[^hosted-service], handler 모델과 Location Store 기반 자동 연결을 노출하며 raw socket
+배선은 Framework 내부에서 처리한다.
 
 현재 구현 backend 는 `bindings/dotnet` 을 그대로 쓴다. 다만 framework 가
 사용자에게 보여 주는 public contract 는 backend 구현체와 분리해서 유지하는 것을
@@ -93,7 +92,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
 - `Zlink` 와 `ZLink` 의 casing 의도는 다음과 같이 본다.
   - native binding 패키지(`bindings/dotnet/src/Zlink/...`)와 그 안에서
     export 하는 raw transport[^raw-transport] 타입(예: `DealerSocket`,
-    `RouterSocket`, `SpotNode`, `Spot`)은 `Zlink` namespace 아래에 둔다. 즉
+    `RouterSocket`)은 `Zlink` namespace 아래에 둔다. 즉
     wire/transport[^wire-transport] 레벨이다.
   - framework adapter 표면 타입은 `ZLink` prefix로 통일한다. 예를 들어
     `IZLinkSession`, `IZLinkActorContext`, `IZLinkBoundSession` 같은 형태다.
@@ -119,13 +118,12 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
   cancel 처럼 현재 구현이 즉시 완료되거나 자체 종료 토큰으로 정리되는 API 는
   token 을 받지 않는다. token 을 받는다면 시작 전 검사만 하지 말고 실제 대기
   지점에 이어 주어야 한다.
-- `SPOT` 을 다루는 문서는 Spot 타입 기준 factory 등록, `RoutingId` 기준 생성과 조회,
+- `SPOT` 을 다루는 문서는 stable type 기준 factory 등록, 전역 `SpotId` 기준 생성과 조회,
   lifecycle timer, 외부 spot publish 표면을 공통
   정책과 맞춰 설명해야 한다.
-- 현재 framework core 문서에는 `targetRid + spotId` 형태의 direct routed public
-  호출은 두지 않는다. 반면 actor join, actor factory 등록,
-  stream-to-actor bridge[^stream-actor-bridge]는 현재 draft 구현 범위에 포함하므로
-  공용 계약과 샘플 문서에 함께 반영한다.
+- Spot·Actor 메시지는 global ID로 보낸다. 현재 owner의 NodeRid와 generation은 Framework가
+  Location Store에서 조회한다. Actor join, actor factory 등록과 stream-to-actor
+  bridge[^stream-actor-bridge]도 같은 위치 계약을 따른다.
 - session actor dispatch[^session-actor-dispatch] 는 단일 gateway feature switch
   하나를 켜고 끄는 형태가 아니다. 대신
   `AddStreamNode` 뒤의 `AddSession<TSession>()`, actor factory, actor
@@ -224,23 +222,24 @@ guide가 맡고, sample 문서는 공통 정본 시나리오의 실제 등록·�
 
 - `ASP.NET Core` 의 DI 와 hosted service 모델을 따른다.
 - handler, client, filter 의 생성도 동일한 `.NET DI` 컨테이너를 기준으로 맞춘다.
-- 기본 호출 모델은 `(MeshName, ChannelName)` 기준의 select-one과
-  `(MeshName, target RID)` 기준의 node direct 호출이다.
+- 업무 메시지는 ChannelName, SpotId 또는 ActorId로 대상을 지정한다. Framework가 현재 위치와
+  전송 경로를 결정하므로 application은 특정 NodeRid를 선택하지 않는다.
+- `(MeshName, target NodeRid)`를 받는 node direct 호출은 Admin·Ops처럼 물리 node 자체가 대상인
+  작업에만 사용한다. Actor·Spot 생성과 업무 메시지에는 사용하지 않는다.
 - 별도의 gateway나 전용 load balancer를 두지 않고, MeshNode descriptor를 사용하는
   location store 자동 연결로 직접 호출한다.
-- ChannelName messaging handler는 해당 membership의 builder에 typed handler로
-  등록한다. Node direct handler는 MeshNode builder에 등록하므로 두 namespace가 섞이지 않는다.
+- ChannelName messaging handler는 해당 membership의 builder에 typed handler로 등록한다. Admin·Ops
+  node direct handler는 MeshNode builder에 등록하므로 두 namespace가 섞이지 않는다.
 - `[ZLinkRequest]`, `[ZLinkSend]`, `[ZLinkPublish]` 는 channel 이름을 인자로 받지
   않는다. channel 이름은 배포 환경과 topology 의 값이므로, handler attribute 가
   소유하지 않고 channel registration 이 소유한다.
 - `SPOT` 도 별도의 low-level runtime 으로 떼어 두지 않고, framework lifecycle
   안에서 다룰 수 있어야 한다.
-- 일반 channel messaging은 `IZLinkRouteClient`가 MeshName과 ChannelName을 함께 받아
-  준비 상태이고 weight가 양수인 member 하나를 선택한다. Node direct 호출은 같은
-  client가 MeshName과 target RID를 받는다.
-- `SPOT`의 high-level 표면은 Logical Multicast publish, `SpotHandle` 기반
-  send/request와 actor 메시징을 다룬다. 호출자가 별도 egress channel이나 target
-  ingress channel을 조합하지 않는다.
+- 일반 channel messaging은 `IZLinkRouteClient`가 ChannelName에 등록된 process-local 송신 경로를
+  사용한다. Ready 상태이고 weight가 양수인 server 중 하나를 선택한다. Admin·Ops node direct
+  호출은 같은 client에 MeshName과 target NodeRid를 지정한다.
+- `SPOT`의 high-level 표면은 Logical Multicast publish, 전역 `SpotId` 기반 send/request와 actor
+  메시징을 다룬다. 호출자가 현재 owner의 NodeRid나 별도 ingress channel을 조합하지 않는다.
 - `IZLinkRouteClient`와 `IZLinkSpotOutbound`는 모두 typed payload를 받으며, 주소 해석과
   wire 구성은 framework가 내부에서 처리한다. 호출자는 raw frame이나 transport 종류를
   선택하지 않는다.
@@ -262,7 +261,7 @@ guide가 맡고, sample 문서는 공통 정본 시나리오의 실제 등록·�
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^channel-messaging]: channel messaging 은 채널 이름을 키로 삼아 메시지를 주고받는 방식이다. request / send 는 요청-응답과 단방향 전달, event messaging 은 publish / subscribe 형태의 이벤트 전달을 가리킨다.
-[^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
+[^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 실행 단위다. room, stage와 zone이 대표 예다.
 [^topology]: topology 는 어떤 노드(channel, spot, location row 등)가 어디에 있는지, 그리고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
 [^location-store]: location store 는 서버가 자기 endpoint, routing id와 ChannelName membership을 descriptor row로 적고, 다른 서버가 그 row를 읽어 연결 대상을 찾는 공유 저장소다. Production 구성은 공식 Redis extension이나 `IZLinkLocationStore` 구현체를 명시적으로 등록한다.
 [^hosted-service]: hosted service 는 `ASP.NET Core` 호스트가 시작·종료될 때 함께 시작·종료되는 백그라운드 컴포넌트를 뜻한다(`IHostedService`).

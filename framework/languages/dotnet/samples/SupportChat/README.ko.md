@@ -35,5 +35,5 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
 
 클라이언트 시나리오는 대화 열기, 상담원 참여, 메시지 송수신, session push를 검증한다.
 `run_sample.sh`와 `run_sample.ps1`은 client log에서 `supportchat=completed`를 확인하고,
-서버 evidence와 message-flow evidence 확인이 끝나면 `supportchat-server-evidence=completed`를
-출력한다.
+서버의 업무 evidence 확인이 끝나면 `supportchat-server-evidence=completed`를 출력한다.
+Framework 관측이 필요하면 표준 .NET diagnostics인 `ActivitySource`와 `Meter`를 사용한다.

@@ -2,13 +2,14 @@ using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Spots;
 
 namespace Bingo.Server.Api.Handlers;
 
 [ZLinkHandlerGroup("api")]
 internal sealed class MatchBingoHandler(
-    IZLinkRouteClient routes,
+    IZLinkSpotClient spotClient,
+    IZLinkSpotManager spots,
     ILogger<MatchBingoHandler> logger)
     : IZLinkRequestHandler<MatchBingoApiReq, MatchBingoApiRes>
 {
@@ -19,17 +20,30 @@ internal sealed class MatchBingoHandler(
     {
         logger.LogInformation("api match: request. actor={ActorId}, mode={Mode}",
             request.ActorId, request.Mode);
-        var allocated = await routes.RequestToChannel(
-                    SampleNames.PlayChannel,
-                    new AllocateBingoRoomReq
-                    {
-                        Mode = request.Mode,
-                        ActorId = request.ActorId
-                    })
-                .Async<AllocateBingoRoomRes>(cancellationToken)
-            ;
+        const string levelBucket = "1-10";
+        var allocated = await spotClient
+            .RequestToSpot(
+                $"match:{levelBucket}",
+                new ReserveBingoRoomReq
+                {
+                    Mode = request.Mode,
+                    ActorId = request.ActorId,
+                    LevelBucket = levelBucket
+                })
+            .InstanceSpot(SampleNames.MatchmakerSpotType)
+            .InMesh(SampleNames.MatchmakingMeshName)
+            .Async<ReserveBingoRoomRes>(cancellationToken);
         logger.LogInformation("api match: allocated. actor={ActorId}, room={RoomId}",
             request.ActorId, allocated.RoomId);
+        var created = await spots
+            .GetOrCreate(allocated.RoomId, SampleNames.RoomSpotType)
+            .InMesh(SampleNames.PlayMeshName)
+            .Request(allocated.Settings)
+            .Async(cancellationToken);
+        logger.LogInformation(
+            "api match: room Spot ready. room={RoomId}, state={State}",
+            created.Spot.SpotId,
+            created.State);
 
         return new MatchBingoApiRes
         {

@@ -2,10 +2,7 @@ using Microsoft.Extensions.Configuration;
 
 using Systems.Zlink;
 using TicTacToe.Server.Configuration;
-using TicTacToe.Server.Play.Application.GameCreation;
-using TicTacToe.Server.Play.Infrastructure.ZLink;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
-using TicTacToe.Server.Play.Infrastructure.ZLink.Handlers;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Sessions;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot;
@@ -28,9 +25,6 @@ internal sealed class PlayServer(SampleSettings settings)
         SampleLogging.Configure(builder.Logging, settings.LogDirectory, "play");
 
         builder.Services.AddSingleton(settings);
-        builder.Services.AddSingleton<ITicTacToeGameRoomProvisioner, TicTacToeGameRoomProvisioner>();
-        builder.Services.AddSingleton<TicTacToeGameCreator>();
-
         builder.Services.AddZLinkFramework(options =>
         {
             options.DisableImplicitHandlerAutoRegistration();
@@ -38,17 +32,24 @@ internal sealed class PlayServer(SampleSettings settings)
             var locations = options.ConfigureLocations();
             locations.RouteCacheMaxAge = TimeSpan.Zero;
             locations.MessageFollowDuration = TimeSpan.FromSeconds(5);
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(settings.RedisEndpoint)
-                .SetKeyPrefix(settings.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = settings.RedisEndpoint;
+                redis.KeyPrefix = settings.RedisKeyPrefix;
+            }));
+            options.AddRelocationStore(new ZLinkRedisRelocationStore(redis =>
+            {
+                redis.ConnectionString = settings.RedisEndpoint;
+                redis.KeyPrefix = $"{settings.RedisKeyPrefix}relocation:";
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(settings.LogDirectory, settings.InstanceName))
-                .TraceLabel(settings.InstanceName);
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddStreamNode(SampleNodes.ClientStream)
                 .Bind(settings.PlayEndpoint)
                 .EnableActorDispatch()
                 .AddSession<PlaySession>();
+            options.AddClientServerChannel(SampleChannels.Api)
+                .Client();
 
             var mesh = options.AddRouteMesh(SampleNodes.Mesh)
                 .Listen(settings.MeshEndpoint)
@@ -64,10 +65,7 @@ internal sealed class PlayServer(SampleSettings settings)
                     SampleTypes.GameSpot,
                     null,
                     ZLinkRelocationPolicy<TicTacToeGame>.Disabled);
-            mesh.ChannelName(SampleChannels.Api).SetWeight(0);
-            mesh.ChannelName(SampleChannels.Play)
-                .AddRequestHandler<CreateGameHandler, CreateGameReq, CreateGameRes>();
-            mesh.ChannelName(SampleTopics.PlayerMilestoneChannel);
+            mesh.Channel(SampleTopics.PlayerMilestoneChannel).Server();
             foreach (var endpoint in settings.PeerMeshEndpoints)
                 mesh.PeerConnections.Connect(endpoint);
         });

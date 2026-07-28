@@ -175,7 +175,7 @@ internal sealed class ZLinkActorCreationCoordinator(
         {
             var location = outcome.ExistingLocation;
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorCreateFailed,
+                ZLinkFrameworkErrorKind.InternalFailure,
                 location is null
                     ? $"Actor '{actorId}' relocation claim was rejected and no live location row was found."
                     : $"Actor '{actorId}' is already active on node '{location.OwnerNodeRid}' (relocation claim conflict).");
@@ -286,7 +286,7 @@ internal sealed class ZLinkActorCreationCoordinator(
         {
             var location = outcome.ExistingLocation;
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorCreateFailed,
+                ZLinkFrameworkErrorKind.InternalFailure,
                 location is null
                     ? $"Actor '{actorId}' location claim was rejected and no live location row was found."
                     : $"Actor '{actorId}' is already active on node '{location.OwnerNodeRid}' (location claim conflict).");

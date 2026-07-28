@@ -27,19 +27,12 @@ public sealed record CreateGameHttpReq(string? GameName);
 
 public sealed record CreateGameHttpRes(
     string RoomId,
-    string OwnerPlayEndpoint,
     IReadOnlyList<string> PlayEndpoints,
     IReadOnlyList<PlayNodeInfo> PlayNodes,
     string GameName,
     int RequiredLevel);
 
-public sealed record CreateGameReq(string GameName);
-
-public sealed record CreateGameRes(
-    string RoomId,
-    string OwnerPlayEndpoint,
-    IReadOnlyList<string> PlayEndpoints,
-    IReadOnlyList<PlayNodeInfo> PlayNodes,
+public sealed record TicTacToeGameCreateReq(
     string GameName,
     int RequiredLevel);
 
@@ -60,6 +53,11 @@ public sealed record TicTacToeGameJoinRes(GameState State);
 public sealed record JoinGameReq(string RoomId);
 
 public sealed record JoinGameRes(GameState State);
+
+public sealed record JoinGameFailedNotify(
+    string RoomId,
+    string Error,
+    bool IsRetriable);
 
 public sealed record ObserveMilestoneReq;
 

@@ -20,6 +20,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
     private ZLinkExecutionBarrierState? _relocationBarrier;
     private ulong _nextBarrierGeneration = 1;
     private int _activeApplicationClaims;
+    private int _activeActorClaims;
     private int _stopping;
 
     public ZLinkSpotSerialExecutor(
@@ -90,7 +91,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
     {
         if (_isDisposed()) return;
 
-        var claim = AcquireApplicationClaim();
+        var claim = AcquireApplicationClaim(actorLane: false);
         await RunClaimedAsync(
                 _queue,
                 ct => ExecuteOperationAsync(operation, null, ct),
@@ -108,7 +109,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
         if (Volatile.Read(ref _stopping) != 0 || _isDisposed())
             return ValueTask.CompletedTask;
-        var claim = AcquireApplicationClaim();
+        var claim = AcquireApplicationClaim(actorLane: true);
         var lane = GetLane(_actorLanes, actorId);
         return RunClaimedAsync(
             lane,
@@ -125,6 +126,75 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             cancellationToken);
     }
 
+    internal ValueTask ExecuteRelocationActorAsync<TState>(
+        ZLinkSpotExecutionRelocationSeal seal,
+        string actorId,
+        Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
+        TState state,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(seal);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
+        if (Volatile.Read(ref _stopping) != 0 || _isDisposed())
+            return ValueTask.CompletedTask;
+        var claim = AcquireRelocationReplayClaim(seal);
+        var lane = GetLane(_actorLanes, actorId);
+        return RunClaimedAsync(
+            lane,
+            ct => _executionMode == ZLinkUserSpotExecutionMode.SpotWide
+                ? _queue.RunAsync(
+                    innerCt => ExecuteActorOperationAsync(
+                        actorId,
+                        operation,
+                        state,
+                        innerCt),
+                    ct)
+                : ExecuteActorOperationAsync(actorId, operation, state, ct),
+            claim,
+            cancellationToken);
+    }
+
+    internal ZLinkSpotRelocationActorQueueReservation
+        ReserveRelocationActorQueue(
+            ZLinkSpotExecutionRelocationSeal seal,
+            string actorId)
+    {
+        ArgumentNullException.ThrowIfNull(seal);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
+        if (Volatile.Read(ref _stopping) != 0 || _isDisposed())
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ShuttingDown,
+                "SPOT relocation replay cannot reserve a stopped execution queue.");
+
+        var claim = AcquireRelocationReplayClaim(seal);
+        var reservation =
+            new ZLinkSpotRelocationActorQueueReservation(actorId);
+        try
+        {
+            // SpotWide ordering is owned by the shared queue. Reserving that
+            // queue now prevents Message Follow or direct ingress from
+            // overtaking a target-captured Actor frame while its mailbox turn
+            // is still pending.
+            var lane = _executionMode == ZLinkUserSpotExecutionMode.SpotWide
+                ? _queue
+                : GetLane(_actorLanes, actorId);
+            var execution = RunClaimedAsync(
+                    lane,
+                    reservation.RunAsync,
+                    claim,
+                    CancellationToken.None)
+                .AsTask();
+            reservation.BindExecution(execution);
+            return reservation;
+        }
+        catch
+        {
+            reservation.Discard();
+            claim.Release();
+            throw;
+        }
+    }
+
     public ValueTask ExecuteTimerAsync<TState>(
         string timerName,
         Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
@@ -134,7 +204,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(timerName);
         if (Volatile.Read(ref _stopping) != 0 || _isDisposed())
             return ValueTask.CompletedTask;
-        var claim = AcquireApplicationClaim();
+        var claim = AcquireApplicationClaim(actorLane: false);
         if (_executionMode == ZLinkUserSpotExecutionMode.SpotWide)
             return RunClaimedAsync(
                 _queue,
@@ -178,6 +248,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
     {
         if (!TryBeginRelocationBarrier(
                 holdAcceptedIngress: false,
+                allowActorClaims: false,
                 out var barrier))
             throw new InvalidOperationException(
                 "SPOT execution lanes are already sealed.");
@@ -237,7 +308,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
     {
         if (_isDisposed()) return;
 
-        var claim = AcquireApplicationClaim();
+        var claim = AcquireApplicationClaim(actorLane: false);
         await RunClaimedAsync(
                 _queue,
                 ct => ExecuteOperationAsync(operation, state, ct),
@@ -250,7 +321,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
         Action? onSkipped = null)
     {
-        var claim = TryAcquireApplicationClaim();
+        var claim = TryAcquireApplicationClaim(actorLane: false);
         if (claim is null) return false;
         if (_queue.TryPost(
                 async ct =>
@@ -276,6 +347,19 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         ReadOnlyMemory<byte> acceptedJournalRecord,
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
         Action relocationRelease,
+        out Task completion) =>
+        QueueAccepted(
+            acceptedJournalRecord,
+            operation,
+            relocationRelease,
+            previousOwnerMessageFollow: false,
+            out completion);
+
+    public ZLinkAcceptedWorkAdmission QueueAccepted(
+        ReadOnlyMemory<byte> acceptedJournalRecord,
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        Action relocationRelease,
+        bool previousOwnerMessageFollow,
         out Task completion)
     {
         lock (_barrierGate)
@@ -304,6 +388,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
                         }
                     },
                     relocationRelease,
+                    previousOwnerMessageFollow,
                     out var item);
             if (admission == ZLinkAcceptedWorkAdmission.Accepted)
             {
@@ -319,6 +404,40 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
     {
         if (!TryBeginRelocationBarrier(
                 holdAcceptedIngress: true,
+                allowActorClaims: false,
+                out var barrier))
+        {
+            seal = null!;
+            return false;
+        }
+        if (!_queue.TrySealRelocation(out var queueSeal))
+        {
+            AbortBarrier(barrier.Generation);
+            seal = null!;
+            return false;
+        }
+        MarkBarrierBoundary(barrier.Generation);
+        if (!barrier.Quiescent.Task.IsCompleted)
+        {
+            _queue.TryAbortRelocation(queueSeal);
+            AbortBarrier(barrier.Generation);
+            seal = null!;
+            return false;
+        }
+
+        seal = new ZLinkSpotExecutionRelocationSeal(
+            barrier.Generation,
+            queueSeal);
+        return true;
+    }
+
+    internal bool TrySealPerActorShellRelocation(
+        out ZLinkSpotExecutionRelocationSeal seal)
+    {
+        if (_executionMode != ZLinkUserSpotExecutionMode.PerActor
+            || !TryBeginRelocationBarrier(
+                holdAcceptedIngress: true,
+                allowActorClaims: true,
                 out var barrier))
         {
             seal = null!;
@@ -354,11 +473,44 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         int reservedAcceptedSequences,
         Func<IReadOnlyList<ZLinkAcceptedWorkRecord>, bool> admit,
         out ZLinkSpotExecutionRelocationSeal seal,
+        out ulong firstReservedSequence) =>
+        TrySealRelocation(
+            reservedAcceptedSequences,
+            admit,
+            allowActorClaims: false,
+            out seal,
+            out firstReservedSequence);
+
+    internal bool TrySealPerActorShellRelocation(
+        int reservedAcceptedSequences,
+        Func<IReadOnlyList<ZLinkAcceptedWorkRecord>, bool> admit,
+        out ZLinkSpotExecutionRelocationSeal seal,
+        out ulong firstReservedSequence) =>
+        TrySealRelocation(
+            reservedAcceptedSequences,
+            admit,
+            allowActorClaims: true,
+            out seal,
+            out firstReservedSequence);
+
+    private bool TrySealRelocation(
+        int reservedAcceptedSequences,
+        Func<IReadOnlyList<ZLinkAcceptedWorkRecord>, bool> admit,
+        bool allowActorClaims,
+        out ZLinkSpotExecutionRelocationSeal seal,
         out ulong firstReservedSequence)
     {
         ArgumentNullException.ThrowIfNull(admit);
+        if (allowActorClaims
+            && _executionMode != ZLinkUserSpotExecutionMode.PerActor)
+        {
+            seal = null!;
+            firstReservedSequence = 0;
+            return false;
+        }
         if (!TryBeginRelocationBarrier(
                 holdAcceptedIngress: true,
+                allowActorClaims,
                 out var barrier))
         {
             seal = null!;
@@ -401,11 +553,23 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         }
     }
 
+    internal bool IsPerActorShellRelocationReady
+    {
+        get
+        {
+            lock (_barrierGate)
+                return _executionMode == ZLinkUserSpotExecutionMode.PerActor
+                       && _relocationBarrier is null
+                       && _activeApplicationClaims - _activeActorClaims == 0;
+        }
+    }
+
     internal async ValueTask<ZLinkSpotExecutionRelocationSeal> SealRelocationAsync(
         CancellationToken cancellationToken)
     {
         if (!TryBeginRelocationBarrier(
                 holdAcceptedIngress: true,
+                allowActorClaims: false,
                 out var barrier))
             throw new InvalidOperationException(
                 "SPOT execution lanes are already sealed for relocation.");
@@ -441,6 +605,22 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             if (_relocationBarrier?.Generation != seal.Generation)
                 return false;
             if (!_queue.TryAbortRelocation(seal.QueueSeal))
+                return false;
+            _relocationBarrier = null;
+            return true;
+        }
+    }
+
+    internal bool TryOpenRelocationAfterMessageFollow(
+        ZLinkSpotExecutionRelocationSeal seal)
+    {
+        ArgumentNullException.ThrowIfNull(seal);
+        lock (_barrierGate)
+        {
+            if (_relocationBarrier?.Generation != seal.Generation)
+                return false;
+            if (!_queue.TryOpenRelocationAfterMessageFollow(
+                    seal.QueueSeal))
                 return false;
             _relocationBarrier = null;
             return true;
@@ -639,22 +819,24 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         await item.Completion.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private ZLinkExecutionClaim AcquireApplicationClaim()
+    private ZLinkExecutionClaim AcquireApplicationClaim(bool actorLane)
     {
-        return TryAcquireApplicationClaim()
+        return TryAcquireApplicationClaim(actorLane)
                ?? throw new ZLinkFrameworkException(
-                   ZLinkFrameworkErrorKind.RequestRejected,
+                   ZLinkFrameworkErrorKind.Rejected,
                    "SPOT application admission is sealed for relocation.");
     }
 
-    private ZLinkExecutionClaim? TryAcquireApplicationClaim()
+    private ZLinkExecutionClaim? TryAcquireApplicationClaim(bool actorLane)
     {
         lock (_barrierGate)
         {
-            if (_relocationBarrier is not null)
+            if (_relocationBarrier is { } barrier
+                && (!actorLane || !barrier.AllowActorClaims))
                 return null;
             _activeApplicationClaims++;
-            return new ZLinkExecutionClaim(this);
+            if (actorLane) _activeActorClaims++;
+            return new ZLinkExecutionClaim(this, actorLane);
         }
     }
 
@@ -665,11 +847,31 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             _activeApplicationClaims++;
             if (_relocationBarrier is { } barrier)
                 barrier.ActiveClaims++;
-            return new ZLinkExecutionClaim(this);
+            return new ZLinkExecutionClaim(this, actorLane: false);
         }
     }
 
-    private void ReleaseApplicationClaim()
+    private ZLinkExecutionClaim AcquireRelocationReplayClaim(
+        ZLinkSpotExecutionRelocationSeal seal)
+    {
+        lock (_barrierGate)
+        {
+            var barrier = _relocationBarrier
+                          ?? throw new InvalidOperationException(
+                              "SPOT relocation replay requires an active relocation seal.");
+            if (barrier.Generation != seal.Generation
+                || !barrier.BoundaryReached
+                || !barrier.Quiescent.Task.IsCompleted)
+                throw new InvalidOperationException(
+                    "SPOT relocation replay requires the current quiescent seal.");
+            _activeApplicationClaims++;
+            _activeActorClaims++;
+            barrier.ActiveClaims++;
+            return new ZLinkExecutionClaim(this, actorLane: true);
+        }
+    }
+
+    private void ReleaseApplicationClaim(bool actorLane)
     {
         lock (_barrierGate)
         {
@@ -677,7 +879,15 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
                 throw new InvalidOperationException(
                     "SPOT execution claim count is inconsistent.");
             _activeApplicationClaims--;
+            if (actorLane)
+            {
+                if (_activeActorClaims <= 0)
+                    throw new InvalidOperationException(
+                        "SPOT Actor execution claim count is inconsistent.");
+                _activeActorClaims--;
+            }
             if (_relocationBarrier is { } barrier
+                && (!actorLane || !barrier.AllowActorClaims)
                 && --barrier.ActiveClaims == 0
                 && barrier.BoundaryReached)
                 barrier.Quiescent.TrySetResult();
@@ -686,6 +896,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
 
     private bool TryBeginRelocationBarrier(
         bool holdAcceptedIngress,
+        bool allowActorClaims,
         out ZLinkExecutionBarrierState barrier)
     {
         lock (_barrierGate)
@@ -699,8 +910,11 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
 
             barrier = new ZLinkExecutionBarrierState(
                 _nextBarrierGeneration++,
-                _activeApplicationClaims,
-                holdAcceptedIngress);
+                allowActorClaims
+                    ? _activeApplicationClaims - _activeActorClaims
+                    : _activeApplicationClaims,
+                holdAcceptedIngress,
+                allowActorClaims);
             _relocationBarrier = barrier;
             return true;
         }
@@ -728,27 +942,32 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         }
     }
 
-    private sealed class ZLinkExecutionClaim(ZLinkSpotSerialExecutor owner)
+    private sealed class ZLinkExecutionClaim(
+        ZLinkSpotSerialExecutor owner,
+        bool actorLane)
     {
         private int _released;
 
         public void Release()
         {
             if (Interlocked.Exchange(ref _released, 1) == 0)
-                owner.ReleaseApplicationClaim();
+                owner.ReleaseApplicationClaim(actorLane);
         }
     }
 
     private sealed class ZLinkExecutionBarrierState(
         ulong generation,
         int activeClaims,
-        bool holdAcceptedIngress)
+        bool holdAcceptedIngress,
+        bool allowActorClaims)
     {
         public ulong Generation { get; } = generation;
 
         public int ActiveClaims { get; set; } = activeClaims;
 
         public bool HoldAcceptedIngress { get; } = holdAcceptedIngress;
+
+        public bool AllowActorClaims { get; } = allowActorClaims;
 
         public bool BoundaryReached { get; set; }
 

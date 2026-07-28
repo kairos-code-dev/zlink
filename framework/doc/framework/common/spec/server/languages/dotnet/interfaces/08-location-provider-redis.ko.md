@@ -71,8 +71,13 @@ Framework 등록 뒤 Store 수명은 Framework가 소유한다. Dispose가 시�
 `ObjectDisposedException`으로 실패하고 이미 시작한 operation이 끝난 뒤 Store가 획득한 connection lease를
 해제한다.
 
-두 Store는 같은 Redis connection 또는 multiplexer를 공유할 수 있다. 이때 reference ownership과 마지막
-lease 해제는 provider 구현이 처리하며 각 Store의 `DisposeAsync()`는 자신이 획득한 lease만 해제한다.
+`ConnectionString`을 사용하고 Redis 설정이 같으면 두 Store는 내부 pool에서 같은 multiplexer를 공유한다.
+각 Store의 `DisposeAsync()`는 자신이 획득한 lease만 해제하며 마지막 lease를 해제할 때 multiplexer를
+dispose한다. Password를 포함한 normalized connection 설정은 hash로 바꿔 pool key로 사용하며 public
+API나 log에 노출하지 않는다.
+
+`ConfigurationOptions`는 callback과 사용자 지정 connection object를 포함할 수 있다. 두 options instance의
+문자열이 같아도 같은 동작이라고 판단할 수 없으므로 이 경우 Store마다 multiplexer를 소유한다.
 
 Location과 Relocation Store는 같은 Redis deployment를 사용할 때 서로 다른 key prefix를 사용한다.
 물리적으로 분리된 Redis도 지원한다. Public correctness는 connection 공유나 cross-store Redis transaction에

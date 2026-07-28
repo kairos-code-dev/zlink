@@ -28,7 +28,7 @@ internal static class SmB6ActorDisconnectCallbackScenario
         }))
         {
             await client.Connect.Async();
-            await client.Request(new UserSpotAuthReq(spotRid, leaveActorId, leaveActorId, "play-a"))
+        await client.Request(new UserSpotAuthReq(spotRid, leaveActorId, leaveActorId))
                 .PacketName("UserSpotAuthReq")
                 .Async<AuthRes>();
             await playA.Post("/spot/create")
@@ -73,7 +73,7 @@ internal static class SmB6ActorDisconnectCallbackScenario
         }))
         {
             await disconnectClient.Connect.Async();
-            await disconnectClient.Request(new UserSpotAuthReq(spotRid, disconnectActorId, disconnectActorId, "play-a"))
+        await disconnectClient.Request(new UserSpotAuthReq(spotRid, disconnectActorId, disconnectActorId))
                 .PacketName("UserSpotAuthReq")
                 .Async<AuthRes>();
             await playA.Post("/spot/create")

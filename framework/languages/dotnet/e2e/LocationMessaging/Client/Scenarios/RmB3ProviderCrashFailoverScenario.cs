@@ -65,12 +65,12 @@ internal static class RmB3ProviderCrashFailoverScenario
         var transition = await Task.WhenAll(inFlight.Select(request => request.Task));
         ZlinkStreamAssert.Ensure(
             transition.All(result => result.Outcome is "api-a" or "api-b"
-                or nameof(ZLinkFrameworkErrorKind.RouteNotConnected)
+                or nameof(ZLinkFrameworkErrorKind.Unavailable)
                 or "Timeout"),
             "RM-B3 in-flight request did not finish with a reply or bounded public request error.");
         var crashedRequest = transition.Single(result => result.Value == startedValue);
         ZlinkStreamAssert.Ensure(
-            crashedRequest.Outcome is nameof(ZLinkFrameworkErrorKind.RouteNotConnected) or "Timeout",
+            crashedRequest.Outcome is nameof(ZLinkFrameworkErrorKind.Unavailable) or "Timeout",
             $"RM-B3 request started on crashed api-a completed as '{crashedRequest.Outcome}'.");
 
         var continuingOutcomes = await Task.WhenAll(continuingTraffic);
@@ -80,7 +80,7 @@ internal static class RmB3ProviderCrashFailoverScenario
         await WaitForPeerAsync(requester, "api-a", present: true);
         ZlinkStreamAssert.Ensure(
             continuingOutcomes.All(result => result.Outcome is "api-b"
-                or nameof(ZLinkFrameworkErrorKind.RouteNotConnected)
+                or nameof(ZLinkFrameworkErrorKind.Unavailable)
                 or "Timeout"),
             "RM-B3 continuing request completed with an outcome outside the public failover contract.");
 
@@ -100,15 +100,15 @@ internal static class RmB3ProviderCrashFailoverScenario
             apiARouteRid,
             "rm-b3-target-expired");
         ZlinkStreamAssert.Ensure(
-            targeted.ErrorKind == nameof(ZLinkFrameworkErrorKind.RequestTargetNotFound),
+            targeted.ErrorKind == nameof(ZLinkFrameworkErrorKind.NotFound),
             $"RM-B3 expired automatic member completed with unexpected '{targeted.ErrorKind}'.");
         var missing = await RequestTargetAsync(
             providerBClient,
             "api-missing",
             "rm-b3-target-missing");
         ZlinkStreamAssert.Ensure(
-            missing.ErrorKind == nameof(ZLinkFrameworkErrorKind.RequestTargetNotFound),
-            "RM-B3 unknown route target did not report RequestTargetNotFound.");
+            missing.ErrorKind == nameof(ZLinkFrameworkErrorKind.NotFound),
+            "RM-B3 unknown route target did not report NotFound.");
     }
 
     private static async Task ProveBothProvidersAsync(

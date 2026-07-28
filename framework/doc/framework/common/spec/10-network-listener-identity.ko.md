@@ -248,7 +248,7 @@ stable host 이름으로 해석하지 않는다.
 MeshNode descriptor를 게시할 때 Location Store는 같은 `(MeshName, RID)`가 이미 사용 중인지 확인한다.
 UUID 충돌은 정상적인 운영 상황으로 간주하지 않는다. Active conflict가 확인되면 Framework는 기존
 descriptor를 변경하지 않고 새 UUID claim을 시도하지 않으며
-[`RoutingIdConflict`](01-glossary.ko.md#routingidconflict)로 startup을 즉시 끝낸다.
+startup configuration error로 즉시 끝낸다.
 
 Replacement MeshNode는 endpoint가 같아도 새 lifecycle과 새 UUID RID를 사용한다. UUID는
 [lifecycle generation](01-glossary.ko.md#lifecycle-generation)을 대체하지 않는다. Generation은 stale
@@ -273,13 +273,13 @@ prefix를 생략하면 MeshNode automatic RID에 사용한 기본 diagnostic pre
 lifecycle에서는 같은 Entry Spot ID를 유지하고 replacement lifecycle에서는 새 UUID 기반 Spot ID를 발급한다.
 
 Location Store에서 global Spot ID authority의 active conflict가 확인되면 새 UUID를 만들거나 reservation을
-다시 시도하지 않고 startup을 `SpotIdConflict`로 즉시 끝낸다. MeshNode descriptor는 lifecycle
+다시 시도하지 않고 startup configuration error로 즉시 끝낸다. MeshNode descriptor는 lifecycle
 generation과 exact Entry Spot ID의 mapping을 게시한다. Actor placement, Entry Spot join과 relocation은
 이 mapping을 사용하며 Spot ID 문자열을 parsing하지 않는다.
 
 `<prefix>-entry-<lowercase-canonical-uuid-v4>`는 Framework가 발급하는 Entry Spot identity를 위해 예약한다.
 Caller가 User·Instance Spot ID로 이 형식을 지정하면 Location Store나 factory를 실행하기 전에
-`InvalidConfiguration`으로 거부한다. Prefix와 `entry` marker는 진단 정보이며 stable host identity, shard나
+`InvalidOperation`으로 거부한다. Prefix와 `entry` marker는 진단 정보이며 stable host identity, shard나
 application domain identifier가 아니다.
 
 ClientServer와 classic fanout identity의 namespace와 descriptor key는 각 topology 계약을 따른다.
@@ -308,7 +308,7 @@ Pod endpoint를 별도로 발견하고 연결할 수 있어야 한다.
 - Advertised endpoint가 바뀐 재시작에서는 새 generation만 [ready](01-glossary.ko.md#ready) 상태가 된다.
 - Core raw socket의 automatic RID가 16-byte binary UUID v4를 사용한다.
 - Framework automatic MeshNode RID가 prefix와 lowercase canonical UUID v4 형식을 사용한다.
-- Active RID 충돌이 발생하면 기존 descriptor를 유지하고 두 번째 claim 없이 `RoutingIdConflict`로 끝난다.
+- Active RID 충돌이 발생하면 기존 descriptor를 유지하고 두 번째 claim 없이 startup configuration error로 끝난다.
 - Replacement MeshNode는 새 RID를 사용한다.
 - Entry Spot ID가 같은 diagnostic prefix와 별도로 생성한 UUID v4를 사용한다.
 - Replacement MeshNode lifecycle이 새 Entry Spot ID를 발급하고 descriptor가 exact mapping을 게시한다.

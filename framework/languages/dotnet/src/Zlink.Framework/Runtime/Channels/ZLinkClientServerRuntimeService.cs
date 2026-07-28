@@ -14,7 +14,7 @@ internal sealed class ZLinkClientServerRuntimeService(
     private readonly Dictionary<string, SequenceState> _sequences =
         new(StringComparer.Ordinal);
 
-    public ZLinkClientServerChannelSnapshot Snapshot(string channelName)
+    private ZLinkClientServerChannelSnapshot SnapshotInternal(string channelName)
     {
         ArgumentException.ThrowIfNullOrEmpty(channelName);
         var state = runtime.ClientServerMonitoringState(channelName);
@@ -101,21 +101,41 @@ internal sealed class ZLinkClientServerRuntimeService(
             location);
     }
 
-    public bool IsReady(string channelName)
+    public ZLinkClientServerStatus GetStatus(string channelName)
     {
-        var snapshot = Snapshot(channelName);
-        return runtime.IsStarted
-               && snapshot.Servers.Any(static server => server.Ready);
+        var snapshot = SnapshotInternal(channelName);
+        var targets = snapshot.Servers
+            .Select(static server => new ZLinkClientServerTargetStatus(
+                server.ServerRid,
+                server.Weight,
+                MapPeerState(server.State),
+                MapUnavailableReason(server.State)))
+            .ToArray();
+        var isReady = runtime.IsStarted && snapshot.Selectable;
+        var topologyState = isReady
+            ? ZLinkTopologyState.Ready
+            : runtime.IsStarted
+                ? ZLinkTopologyState.Degraded
+                : ZLinkTopologyState.Starting;
+        return new ZLinkClientServerStatus(
+            snapshot.ChannelName,
+            snapshot.LocalRole,
+            topologyState,
+            isReady,
+            targets.Count(static target =>
+                target.Weight > 0
+                && target.State == ZLinkPeerState.Ready),
+            targets,
+            snapshot.Sequence,
+            snapshot.ObservedAt);
     }
 
-    public async IAsyncEnumerable<ZLinkClientServerRuntimeEvent> ObserveAsync(
+    public async IAsyncEnumerable<ZLinkClientServerStatus> ObserveAsync(
         string channelName,
-        int capacity = 1024,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (capacity <= 0)
-            throw new ArgumentOutOfRangeException(nameof(capacity));
-        _ = Snapshot(channelName);
+        const int capacity = 1024;
+        _ = SnapshotInternal(channelName);
 
         var queue = Channel.CreateBounded<ZLinkClientServerRuntimeEvent>(
             new BoundedChannelOptions(capacity)
@@ -134,7 +154,7 @@ internal sealed class ZLinkClientServerRuntimeService(
             while (await queue.Reader.WaitToReadAsync(cancellationToken)
                        .ConfigureAwait(false))
                 while (queue.Reader.TryRead(out var change))
-                    yield return change;
+                    yield return GetStatus(channelName);
         }
         finally
         {
@@ -158,14 +178,14 @@ internal sealed class ZLinkClientServerRuntimeService(
         ChannelWriter<ZLinkClientServerRuntimeEvent> writer,
         CancellationToken cancellationToken)
     {
-        var previous = Snapshot(channelName);
+        var previous = SnapshotInternal(channelName);
         try
         {
             using var timer = new PeriodicTimer(PollInterval);
             while (await timer.WaitForNextTickAsync(cancellationToken)
                        .ConfigureAwait(false))
             {
-                var current = Snapshot(channelName);
+                var current = SnapshotInternal(channelName);
                 if (current.Sequence == previous.Sequence) continue;
                 foreach (var change in Changes(previous, current))
                     if (!writer.TryWrite(change))
@@ -285,6 +305,28 @@ internal sealed class ZLinkClientServerRuntimeService(
             ZLinkFrameworkRuntimeState.Error =>
                 ZLinkClientServerServerState.Rejected,
             _ => ZLinkClientServerServerState.Configured
+        };
+
+    private static ZLinkPeerState MapPeerState(
+        ZLinkClientServerServerState state) =>
+        state switch
+        {
+            ZLinkClientServerServerState.Ready => ZLinkPeerState.Ready,
+            ZLinkClientServerServerState.Draining => ZLinkPeerState.Draining,
+            ZLinkClientServerServerState.Configured
+                or ZLinkClientServerServerState.Connecting =>
+                ZLinkPeerState.Connecting,
+            _ => ZLinkPeerState.NotConnected
+        };
+
+    private static ZLinkTopologyReason? MapUnavailableReason(
+        ZLinkClientServerServerState state) =>
+        MapPeerState(state) switch
+        {
+            ZLinkPeerState.Ready => null,
+            ZLinkPeerState.Draining => ZLinkTopologyReason.Draining,
+            ZLinkPeerState.Connecting => ZLinkTopologyReason.NoReadyTarget,
+            _ => ZLinkTopologyReason.InternalFailure
         };
 
     private sealed record Fingerprint(

@@ -74,8 +74,8 @@ One-way call의 `Async()`는 정상 완료 값을 만들지 않는다. 정상 �
 source-local queue가 message를 수락했다는 뜻이다. Remote handler 실행, subscriber 수신, remote Spot queue
 수락과 application callback 완료는 기다리지 않는다. Queue capacity가 부족하면 해당 family의 send timeout까지
 capacity signal을 기다리고, deadline 안에 공간이 생기면 message를 정확히 한 번 제출한다. Timeout은
-`DeadlineExceeded`, route 단절은 `RouteNotConnected`, runtime 종료는 `RuntimeShutdown`으로 exceptional
-completion한다. Actor·Spot·Mesh·session target 부재는 operation family가 정의한 기존 오류 kind를 사용한다.
+`DeadlineExceeded`, route 단절은 `Unavailable`, runtime 종료는 `ShuttingDown`으로 exceptional
+completion한다. Actor·Spot·Mesh·session target 부재는 `NotFound`를 사용한다.
 `CancellationToken`이 먼저 확정되면 cancelled `ValueTask`로 완료한다.
 
 각 one-way call은 해당 public configuration에 설정한 send timeout을 사용한다. 공개 설정이 없을 때의
@@ -107,7 +107,7 @@ Actor·Spot create·get-or-create call에만 존재한다. Actor join, Node dire
 close와 destroy에는 제공하지 않는다. 공통 request·worker·create call이더라도 Runtime은
 operation submit 전에 current execution context를 확인한다. `SpotWide` User Spot 또는 Instance Spot
 application handler가 아니면 outbound admission, queue 변경과 gate 반환 없이
-`InvalidConfiguration`으로 완료한다.
+`InvalidOperation`으로 완료한다.
 
 `SpotWide` member Actor가 `Yield`하면 Actor queue claim은 유지하고 User Spot gate만 반환한다. Terminal
 continuation은 같은 gate를 다시 얻어 현재 Actor job을 끝낸 뒤 Actor claim을 해제한다. 같은 Actor의 다음
@@ -177,9 +177,6 @@ public sealed class ZLinkSpotSubscriptionAttribute : Attribute
 {
     public ZLinkSpotSubscriptionAttribute(
         string spotNodeName,
-        string topic);
-    public ZLinkSpotSubscriptionAttribute(
-        string spotNodeName,
         string channelName,
         string topic);
     public string SpotNodeName { get; }
@@ -190,7 +187,6 @@ public sealed class ZLinkSpotSubscriptionAttribute : Attribute
 [AttributeUsage(AttributeTargets.Class)]
 public sealed class ZLinkSpotSubscriptionHandlerAttribute : Attribute
 {
-    public ZLinkSpotSubscriptionHandlerAttribute(string topic);
     public ZLinkSpotSubscriptionHandlerAttribute(
         string channelName,
         string topic);

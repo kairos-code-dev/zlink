@@ -22,7 +22,7 @@ public sealed class ActorContracts
             static property => property.Name == "Generation");
         Assert.Null(
             typeof(IZLinkActor).Assembly.GetType(
-                "Zlink.Framework.Contracts.Actors.ActorRefSnapshot",
+                "Zlink.Framework.Contracts.Actors.ActorRef",
                 throwOnError: false));
 
         var actorClientMethods = typeof(IZLinkActorClient)
@@ -277,6 +277,10 @@ public sealed class ActorContracts
             }
 
             public ValueTask<ZLinkActorCreateResult> Async(
+                CancellationToken cancellationToken = default) =>
+                manager.SubmitAsync(actorId, actorType, getOrCreate, cancellationToken);
+
+            public ValueTask<ZLinkActorCreateResult> Yield(
                 CancellationToken cancellationToken = default) =>
                 manager.SubmitAsync(actorId, actorType, getOrCreate, cancellationToken);
         }

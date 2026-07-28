@@ -194,8 +194,9 @@ graph TD
 응답이 오가는 모양이 웹 방식과 비슷해 보이지만 이유가 다르다는 게 차이다. 주문 시작 명령이 owner
 spot으로 라우팅되면(②) 그 spot은 `Created`까지만 만들고 그 상태를 즉시 돌려주며(③),
 `CommerceApi`는 그 결과를 그대로 응답한다(④). 결제 승인처럼 지연이 예측 안 되는 단계를 HTTP
-응답 시간에 묶지 않기 위해서다. owner spot은 `Created`를 만든 뒤 재개 명령을 스스로, 응답을
-기다리지 않고 예약한다(§9.3) — 그 재개가 예약 → 승인 → 확정을 배경에서 진행하는 시점은 응답
+응답 시간에 묶지 않기 위해서다. owner spot의 application service는 `Created`를 만든 뒤
+background continuation을 예약하고 완료·실패를 관찰한다(§9.3). 그 작업이 예약 → 승인 → 확정을
+진행하는 시점은 응답
 반환과 엄격한 순서가 없다. 클라이언트는 그 진행 결과를
 `GetOrderStateReq` 폴링으로 확인한다. 웹 방식도 "접수됨"만 돌려주고 폴링을 강제했다는 점은
 같지만(§3), 그 이유는 상태를 소유하지 않기 때문이었다. ZLink는 owner Spot이 상태를 소유하면서도
@@ -207,8 +208,8 @@ spot으로 라우팅되면(②) 그 spot은 `Created`까지만 만들고 그 상
 라우팅한다. owner spot이 아직 없으면 첫 명령에서 만들어진다. 그 spot이 상태 전이·이벤트 기록·모듈
 호출·조회 모델 갱신을 전부 소유한다(구현 방식은 spot 자신의 handler가 직접 처리할 수도, spot
 활성화를 보장한 뒤 같은 owner 보장 위에서 동작하는 서비스가 처리할 수도 있다 — 어느 쪽이든
-per-order 직렬화는 owner routing이 보장한다). `CommerceApi`는 Order ID로
-global SpotRid를 만들고 Spot direct call에 `InstanceSpot("shoppingmall.order-workflow")` marker를 명시하며
+per-order 직렬화는 owner routing이 보장한다). `CommerceApi`는 `OrderId` 문자열을 전역
+`SpotId`로 사용하고 Spot direct call에 `InstanceSpot("shoppingmall.order-workflow")` marker를 명시하며
 owner node나 endpoint를 고르지 않는다. Framework는 같은 RouteMesh에서 `OrderWorkflowSpot` type을 제공하는
 serving node를 찾고, Location Store의 generic reservation으로 owner 하나와 pending capacity를 함께 확보한다.
 
@@ -270,20 +271,28 @@ CommerceApi는 호출 전용 membership 0개 MeshNode이고, 두 OrderWorkflow n
 `shoppingmall.order-workflow`의 actor-free Instance factory를 등록한다. 주문 command 전달을 위한
 ClientServer shard Channel이나 wildcard ChannelName은 사용하지 않는다.
 
-모든 OrderWorkflow instance는 일반 workflow ChannelName 하나를 제공한다. `CommerceApi`는 `OrderId`를
-업무 식별자로 포함한 command를 이 channel로 보내며, instance 이름이나 owner node를 channel 선택 입력으로
-사용하지 않는다. Framework가 channel admission과 Location Store authority를 사용해 현재 owner를 결정한다.
-`InstanceId`는 process 설정과 log label에만 사용한다.
+`CommerceApi`는 `OrderId` 문자열을 전역 `SpotId`로 사용해 명시적인 Spot message를 보낸다.
+첫 send/request에는 `InstanceSpot("shoppingmall.order-workflow")` marker를 붙인다. Framework는
+해당 `SpotId`가 없을 때 target node를 선택한다. Target runtime은 Location Store의 current
+authority와 local Spot을 함께 확인하고 owner reservation을 시도한다. 같은 `SpotId`의 concurrent
+첫 message가 여러 target에 도착해도 reservation을 얻은 target 하나만 factory와 초기화를
+실행한다. 다른 target은 local Spot을 만들지 않고 최초 operation identity를 유지해 winner에게
+전달한다. Winner는 같은 첫 message를 Ready Spot의 queue 선두에 제출한다. 이미 Ready인 Spot이면 Location
+Store의 현재 위치로 전달한다. Caller는 local Spot 생성, 별도 위치 조회, owner `NodeRid`나
+endpoint 선택을 수행하지 않는다.
 
-CommerceApi는 Order ID를 Spot RID로 변환해
-`(shoppingmall.workflow, shoppingmall.order-workflow, OrderId RID)` 주소로 명시적인 업무 message를 보낸다.
-Framework는 같은 type을 제공하는 serving node 가운데 owner 후보를 선택하고 target-side location claim으로
-하나를 확정한다. Caller는 local Spot 생성, SpotHandle resolve, owner RID나 endpoint 선택을 수행하지 않는다.
+`InMesh`는 Instance intent를 명시한 call에서만 설정할 수 있고, 아직 존재하지 않는 Instance
+Spot의 최초 배치 Mesh를 선택할 때만 사용한다. 이미 Ready인 주문 Spot에서는 저장된 현재 Mesh와
+위치를 사용하며 `InMesh`가 placement를 바꾸지 않는다. `ContinueOrderWorkflowReq`는
+request/reply다. Caller는 terminal state를 담은 `ContinueOrderWorkflowRes`를 기다리고,
+timeout·cancellation·shutdown은 request terminal 오류로 받는다.
 
-Order command의 one-way 호출은 public async submit만 사용한다. Framework는 row가 없을 때만 cold placement를
-실행하고, `Ready` owner command는 node RID, Spot RID와 Spot generation으로 고정한 기존 exact Spot direct route로
-전달한다. `OrderWorkflowSpot`은 message 없는 actor-free initialize lifecycle에서 event stream 상태를 복구하며
-기존 Spot create callback에 빈 message를 전달하지 않는다.
+`OrderWorkflowSpot`은 message 없는 actor-free initialize lifecycle에서 event stream 상태를
+복구한다. 기존 Spot create callback에 빈 message를 전달하지 않는다. terminal 또는 idle 조건으로
+종료할 때는 외부 코드가 Spot manager의 `CloseAsync`를 호출하지 않는다. 주문을 `Confirmed` 또는
+`Failed`로 만든 command handler는 response를 확정한 뒤 local close를 예약한다. Idle timer handler도
+같은 domain 종료 조건을 확인한다. 두 경로 모두 현재 Instance Spot의
+`Context.CloseAsync()`를 호출하며, CommerceApi나 복구 훑기는 Spot을 직접 닫지 않는다.
 
 클라이언트가 마주하는 창구는 `CommerceApi` 하나뿐이다. 클라이언트는 `OrderWorkflow`나 재고·결제
 서버를 직접 알지 못한다. `CommerceApi`는 요청 검증·멱등 키 조회·상태 조회를 맡고, 주문 상태 전이는
@@ -452,10 +461,14 @@ owner spot을 무엇에 매칭할지는 "가장 자연스러운 엔티티"가 �
 
 - `CommerceApi`는 `OrderWorkflowSpot`을 호스팅하지 않는다.
 - `CommerceApi`는 `OrderAggregate`나 `OrderEventStore` 기록, 조회 모델 재생성을 직접 호출하지 않는다.
-- `CommerceApi`는 `StartOrderReq`를 검증한 뒤 Order ID의 global SpotRid로
+- `CommerceApi`는 `StartOrderReq`를 검증한 뒤 `OrderId` 문자열을 전역 `SpotId`로 사용해
   `StartOrderWorkflowReq` direct call을 시작하고 `InstanceSpot("shoppingmall.order-workflow")` marker를 명시한다.
-- 주문 시작·재개·조회 모델 재생성은 `OrderWorkflowSpot`으로 보내는 명시적 명령 메시지로 처리한다.
-- Caller는 `GetOrCreate`, SpotHandle resolve나 owner node 선택을 수행하지 않는다. 첫 업무 message는 activation
+- 주문 시작·재개·조회 모델 재생성은 `OrderWorkflowSpot`으로 보내는 명시적 request/reply로
+  처리한다. `StartOrderWorkflowReq`, `ContinueOrderWorkflowReq`와
+  `RebuildOrderProjectionReq`는 모두 Instance intent를 포함한다. 따라서 terminal·idle close나
+  process failure 뒤 runtime Instance가 없어도 유효한 command가 같은 `SpotId`를 새 generation으로
+  활성화할 수 있다.
+- Caller는 `GetOrCreate`, 별도 위치 조회나 owner node 선택을 수행하지 않는다. 첫 업무 message는 activation
   payload로 소비하지 않고 Ready 뒤 일반 handler에서 처리한다.
 - `OrderWorkflowSpot.OnCreate`는 업무 상태 전이를 실행하지 않는다. 전이는 명령 handler에서 시작한다.
 - `GetOrderStateReq`는 `OrderReadModelStore` 조회 모델만 읽는다. 조회가 주문을 진행시키거나 이벤트를 기록하면 안 된다.
@@ -583,18 +596,22 @@ on WorkflowCommand(orderId, stopAfterFirstStep):        # §9.1 그 루프 (Star
 
 `StartOrderWorkflowReq` handler는 위 루프를 **`Created`까지만 돌리고 그 상태를 즉시 응답으로
 돌려준다.** 결제 승인처럼 지연을 예측할 수 없는 단계를 HTTP 응답 시간에 묶지 않기 위해서다.
-handler는 `Created`를 만든 뒤 같은 흐름 안에서 스스로 `ContinueOrderWorkflowReq` 호출을
-**기다리지 않고 예약**한다. 그 재개 호출은 응답을 반환하는 것과 별개로(응답보다 먼저 시작될 수도,
+handler는 `Created`를 만든 뒤 같은 application service의 background continuation을
+**기다리지 않고 예약**한다. Background 작업은 완료 결과와 실패를 반드시 관찰한다. 그 재개는
+응답을 반환하는 것과 별개로(응답보다 먼저 시작될 수도,
 동시에 진행될 수도 있다) 배경에서 나머지 단계(예약 → 승인 → 확정/보상)를 진행하며, 클라이언트가
 그 결과를 실제로 보는 시점은 항상 응답 이후의 `GetOrderStateReq` 폴링이다.
 
-이 "시작이 스스로 재개를 예약"하는 동작은 §9.5의 crash 뒤 재개와 **같은 메커니즘**이다. 다음
-단계가 fold 결과로 정해지므로, 재개 호출이 시작 쪽에서 예약되든, 외부 훑기가 나중에 걸든
+이 background continuation과 §9.5의 `ContinueOrderWorkflowReq` handler는 **같은 workflow loop**를
+호출한다. 외부 request는 `ContinueOrderWorkflowRes`까지 기다리지만, 정상 시작 뒤 background
+작업은 application service가 결과와 실패를 내부에서 관찰한다. 다음 단계가 fold 결과로 정해지므로,
+재개가 시작 쪽에서 예약되든 외부 훑기가 나중에 request를 보내든
 루프 코드는 다르지 않다 — 차이는 그 재개를 "누가, 언제" 부르느냐뿐이다. 그래서 이 설계는 동기/
-비동기 두 갈래 코드를 갖는 게 아니라, "시작은 항상 `Created`까지 + 재개 호출 하나"로 통일된다.
+비동기 두 갈래 코드를 갖는 게 아니라, "시작은 항상 `Created`까지 + 같은 workflow loop를 실행하는
+background continuation 하나"로 통일된다.
 
-응답까지 terminal 상태를 기다리는 완전 동기 변형도 만들 수는 있다 — handler가 자기 재개 호출을
-기다렸다가 최종 `OrderState`를 돌려주면 된다. 다만 그러면 결제 지연이 그대로 HTTP 응답 지연이
+응답까지 terminal 상태를 기다리는 완전 동기 변형도 만들 수는 있다. 시작 handler가 같은 workflow
+loop를 끝까지 실행하고 최종 `OrderState`를 돌려주면 된다. 다만 그러면 결제 지연이 그대로 HTTP 응답 지연이
 되므로, 이 샘플은 그 변형을 기본으로 두지 않는다.
 
 ### 9.4 무손실을 떠받치는 규칙
@@ -644,10 +661,10 @@ PSP를 다시 호출하면 PSP가 최초 결과(승인/거절)를 그대로 돌�
 재개 경로는 하나의 메커니즘(`ContinueOrderWorkflowReq(OrderId)`가 §9.1 workflow loop를 다시 실행한다)을
 "누가, 언제" 부르느냐로 나눠 쓴다.
 
-- **정상 진행**: §9.3에서 본 것처럼, `Created`를 응답한 owner spot이 같은 흐름에서 스스로
-  재개를 호출한다. 이게 이 샘플의 기본 경로이며, 대부분의 진행은 crash 없이 이 자기 호출만으로
-  완료된다.
-- **crash 뒤 복구 시작 조건**: 자기 호출을 처리하는 프로세스가 중간에 비정상 종료되면(위 세 가지 경우)
+- **정상 진행**: §9.3에서 본 것처럼, `Created`를 응답한 owner spot의 application service가
+  background continuation을 실행하고 완료·실패를 관찰한다. 이게 이 샘플의 기본 경로이며,
+  대부분의 진행은 crash 없이 완료된다.
+- **crash 뒤 복구 시작 조건**: background continuation을 처리하는 프로세스가 중간에 비정상 종료되면(위 세 가지 경우)
   해당 주문은 외부에서 재개 요청을 보내기 전까지 진행되지 않는다. 기본 샘플은 클라이언트 재시도(같은 `IdempotencyKey`의
   `StartOrderReq`, 또는 `GetOrderState` 뒤 사용자 재시도)가 이 복구 재개를 부른다.
   production에서는 아직 종료가 아닌 주문을 주기적으로 훑어 `ContinueOrderWorkflowReq`를 보내는
@@ -774,10 +791,12 @@ RebuildOrderProjectionRes { State: OrderState }
 ```
 
 `CommerceApi`는 `OrderId`의 Instance address로 message를 보내고, Framework가 owner claim과 activation 뒤
-일반 Spot handler에 전달한다. `CommerceApi`는 SpotHandle, owner node RID나 endpoint를 조립하지 않는다.
+일반 Spot handler에 전달한다. `CommerceApi`는 별도 위치 정보, owner `NodeRid`나 endpoint를 조립하지 않는다.
 `StartOrderWorkflowReq`는 activation payload가 아니라 Ready 뒤 처리되는 명시적인 업무 명령이다.
 `ContinueOrderWorkflowReq`는 대기 매핑 복구나 비정상 종료 후 재개처럼 기존 주문을 다시 진행할 때
-쓴다. `RebuildOrderProjectionReq`는 조회 모델 재생성 검증용이다.
+쓴다. `RebuildOrderProjectionReq`는 조회 모델 재생성 검증용이다. 세 request는 모두
+`InstanceSpot("shoppingmall.order-workflow")`를 명시한다. `InMesh`는 authority가 Missing일 때만
+최초 배치 Mesh를 고르며 Existing owner의 placement는 바꾸지 않는다.
 
 모듈 호출 메시지 (`OrderWorkflowSpot` → 재고/결제 모듈, 언어 중립 계약):
 
@@ -862,7 +881,7 @@ sequenceDiagram
     O->>ES: OrderStarted 기록 (기대 Version)
     O->>RS: 조회 모델 Created
     O->>CS: 매핑 확정(started)
-    O->>O: ContinueOrderWorkflowReq 예약 (기다리지 않음, fire-and-forget)
+    O->>O: Background continuation 예약 (완료·실패 관찰)
     O-->>API: StartOrderWorkflowRes(Created)
     API-->>C: StartOrderRes(OrderId, Created)
 
@@ -887,9 +906,10 @@ sequenceDiagram
     API-->>C: GetOrderStateRes(Confirmed)
 ```
 
-`StartOrderRes`는 `Created`만 담아 즉시 반환된다. owner spot은 `Created`를 만든 시점에 재개
-호출을 기다리지 않고 예약하며(§9.3), 예약부터 확정까지는 그 재개가 응답 반환과 별개로 배경에서
-진행한다 — 재개가 응답보다 먼저 일부 진행되거나 나중에 진행될 수 있고, 이 순서는 보장하지 않는다.
+`StartOrderRes`는 `Created`만 담아 즉시 반환된다. owner spot의 application service는 `Created`를
+만든 시점에 background continuation을 예약하고 완료·실패를 관찰한다(§9.3). 예약부터 확정까지는
+그 작업이 응답 반환과 별개로 진행한다. 응답보다 먼저 일부 진행되거나 나중에 진행될 수 있고, 이
+순서는 보장하지 않는다.
 클라이언트는 `GetOrderStateReq` 폴링으로 진행을 확인한다. 재고/결제 실패 분기는 §13의 이벤트
 순서를 따른다. 배경 재개를 처리하는 프로세스가 중간에 비정상 종료되면 §9.5의 복구 재개가 같은 `ContinueOrderWorkflowReq`로
 같은 workflow loop를 다시 실행한다.
@@ -1016,7 +1036,8 @@ gate와 같은 조건을 사용한다.
   `ContinueOrderWorkflowReq`와 `RebuildOrderProjectionReq` 호출 → domain not-found로 끝나며 빈 workflow나
   `OrderStartedEvent`를 만들지 않는지 검증.
 - **passivation 뒤 재활성화**: terminal 또는 idle 조건으로 runtime Instance를 passivation → 그 뒤의 유효한
-  command만 같은 `OrderId`를 새 generation으로 활성화 → 기존 event stream에서 상태를 복구하는지 검증.
+  command가 Instance intent와 같은 `OrderId`를 사용해 새 generation을 활성화 → 기존 event stream에서
+  상태를 복구하는지 검증.
 - **조회 지연**: 시작 후 즉시 조회하지 않고 종료까지 둔 뒤 조회 → 반복 조회해도 같은 최종 상태,
   조회 때문에 추가 이벤트가 생기지 않음.
 - **수평 확장**: `CommerceApi x2`·`OrderWorkflow x2`에서 주문 A/주문 B가 다른 owner에서 동시
@@ -1030,7 +1051,7 @@ gate와 같은 조건을 사용한다.
 - `CommerceApi`와 Workflow A/B는 `shoppingmall.workflow` RouteMesh를 공유하고, Workflow node만
   `shoppingmall.order-workflow` Instance factory를 등록한다.
 - 업무 처리는 `StartOrderWorkflowReq`·`ContinueOrderWorkflowReq`·`RebuildOrderProjectionReq` 명시적 handler로 진입한다.
-- Caller에 `GetOrCreate`·SpotHandle resolve·owner 선택 코드가 없으며 activation callback에서 주문 처리를
+- Caller에 `GetOrCreate`·별도 위치 조회·owner 선택 코드가 없으며 activation callback에서 주문 처리를
   실행하지 않는다.
 - `GetOrderStateReq`는 조회 모델 조회만 하고 주문 진행·이벤트 기록을 일으키지 않는다.
 - 같은 `OrderId`의 이벤트는 같은 owner 흐름에서 기록되고 기대 버전 차단을 받는다.

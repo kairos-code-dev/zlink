@@ -21,8 +21,8 @@ actor의 현재 bind 상태와 무관하게 같은 의미로 처리되는지 본
 - 여기서 다루지 않는다: actor 생성·join 자체의 기본 동작(Config 2), 비동기 handler와 actor mailbox 격리(Config 8),
   일반 channel location resolve(Config 1), store 장애·복구(Config 6), actor client API 설계.
 - 계약 근거: send-to-actor/request-to-actor는 global `ActorId`만 받고, send 완료는 source의 local outbound
-  admission 성공을 뜻한다. Missing Actor와 route 미연결 실패는 각각 `ActorRouteNotFound`,
-  `RouteNotConnected`로 분류한다. Resolve 뒤 generation이 바뀐 operation은 새 incarnation으로 retarget하지 않는다.
+  admission 성공을 뜻한다. Missing Actor와 route 미연결 실패는 각각 `NotFound`,
+  `Unavailable`로 분류한다. Resolve 뒤 generation이 바뀐 operation은 새 incarnation으로 retarget하지 않는다.
 - 계약 근거: Actor direct 메시징은 session binding을 만들거나 바꾸지 않으며, request reply는 bound
   session이 아니라 caller에게 반환된다. Actor queue 인계와 request completion은
   [Actor 모델 §5](../spec/14-actor-model.ko.md#5-메시징)의 공개 계약을 따른다.
@@ -113,7 +113,7 @@ actor 제거 후에는 actor 부재 실패로 분류되는가.
   제거한 뒤 같은 ID로 request를 다시 보낸다.
 - 검증: disconnect 뒤 actor가 유지되는 동안 send/request는 actor handler evidence와 caller 서버
   reply로 성공한다. bound-session snapshot은 비어 있거나 해제된 session을 유효 대상으로 사용하지
-  않는 상태로 관측된다. actor destroy 뒤 같은 ID 호출은 `ActorRouteNotFound`로 분류된다.
+  않는 상태로 관측된다. actor destroy 뒤 같은 ID 호출은 `NotFound`로 분류된다.
 - 세부 동작: session 생명주기와 actor 생명주기 분리 + actor 부재 실패 분류.
 
 ### Track B — 실패 분류
@@ -122,10 +122,10 @@ actor 제거 후에는 actor 부재 실패로 분류되는가.
 
 우선순위: `P0`
 
-**검증 질문:** 존재하지 않는 global `ActorId`로 호출하면 actor가 자동 생성되거나 메시지가 보관되지 않고 `ActorRouteNotFound`로 실패하는가.
+**검증 질문:** 존재하지 않는 global `ActorId`로 호출하면 actor가 자동 생성되거나 메시지가 보관되지 않고 `NotFound`로 실패하는가.
 
 - 절차: live actor authority가 없는 global `ActorId`로 외부 caller 서버가 request와 send를 시도한다.
-- 검증: request는 caller 서버에서 `ActorRouteNotFound`로 실패한다. reply가 없는 send의 submit은 로컬 전송 접수까지만 나타내며 원격 Actor의 존재 여부를 확인하는 수단으로 사용하지 않는다. send 뒤 Actor 노드에는 해당 Actor ID의 handler evidence가 없고 Actor authority도 새로 만들어지지 않는다. Auto-create나 메시지 파킹이 없어야 하며, 호출자가 Actor 부재를 확인해야 하는 흐름은 request를 사용한다.
+- 검증: request는 caller 서버에서 `NotFound`로 실패한다. reply가 없는 send의 submit은 로컬 전송 접수까지만 나타내며 원격 Actor의 존재 여부를 확인하는 수단으로 사용하지 않는다. send 뒤 Actor 노드에는 해당 Actor ID의 handler evidence가 없고 Actor authority도 새로 만들어지지 않는다. Auto-create나 메시지 파킹이 없어야 하며, 호출자가 Actor 부재를 확인해야 하는 흐름은 request를 사용한다.
 - 세부 동작: Actor authority 없음 실패 분류.
 
 #### TA-B2 resolve 뒤 generation 교체
@@ -148,10 +148,10 @@ actor 제거 후에는 actor 부재 실패로 분류되는가.
 
 우선순위: `P0`
 
-**검증 질문:** 대상 actor node rid는 알려졌지만 routed plane으로 보낼 수 없으면 `RouteNotConnected`로 분류되고 재시도 가능한 실패로 남는가.
+**검증 질문:** 대상 actor node rid는 알려졌지만 routed plane으로 보낼 수 없으면 `Unavailable`로 분류되고 `RetryAfterBackoff`가 제공되는가.
 
 - 절차: actor를 만든 뒤 caller 서버에서 current actor owner node로 가는 route 연결을 끊는다. 외부 caller 서버가 global `ActorId`로 request를 보낸다. 연결 복구 뒤 같은 ID로 새 request를 보낸다.
-- 검증: 단절 구간의 실패는 `RouteNotConnected`로 분류되고, actor handler evidence는 남지 않는다. 복구 뒤 follow-up request는 같은 actor handler에서 처리되고 reply가 caller 서버로 돌아온다. 이 시나리오는 actor row 없음이나 stale location으로 판정하면 안 된다.
+- 검증: 단절 구간의 실패는 `Unavailable`과 `RetryAfterBackoff`로 분류되고, actor handler evidence는 남지 않는다. 복구 뒤 follow-up request는 같은 actor handler에서 처리되고 reply가 caller 서버로 돌아온다. 이 시나리오는 actor row 없음이나 stale location으로 판정하면 안 된다.
 - 세부 동작: route 미연결 실패 분류와 복구 뒤 성공.
 
 ## 5. 완료 기준
@@ -163,6 +163,6 @@ actor 제거 후에는 actor 부재 실패로 분류되는가.
 - bind 비오염은 client connector가 받은 push payload, actor bound-session snapshot, session gateway
   evidence를 함께 대조한다.
 - 실패 분류는 caller 서버가 받은 public error kind와 역할 서버 evidence를 함께 확인한다. Missing Actor와
-  route 미연결은 `ActorRouteNotFound`, `RouteNotConnected`를 사용한다. `ActorLocationStale`은 `ActorRef`를
+  route 미연결은 각각 `NotFound`, `Unavailable`을 사용한다. Exact `ActorRef`의 stale location도 `Unavailable`이지만
   사용하는 lifecycle·binding operation의 계약이며 global `ActorId` messaging target으로 만들지 않는다.
 - actor client가 있는 모든 언어는 이 시나리오를 skip 없이 구현한다.

@@ -1,6 +1,6 @@
 using TicTacToe.Server.Configuration;
 using TicTacToe.Shared.Contracts;
-using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Api.Handlers;
 
@@ -8,7 +8,7 @@ internal static class CreateGameHttpHandler
 {
     public static async Task<IResult> HandleAsync(
         CreateGameHttpReq request,
-        IZLinkRouteClient client,
+        IZLinkSpotManager spots,
         SampleSettings settings,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -18,32 +18,25 @@ internal static class CreateGameHttpHandler
             ? request.GameName
             : SampleDefaults.GameName;
         logger.LogInformation("client -> api: create game requested. game={GameName}", gameName);
+        var created = await spots
+            .Create(SampleTypes.GameSpot)
+            .InMesh(SampleNodes.Mesh)
+            .Request(new TicTacToeGameCreateReq(
+                gameName,
+                SampleDefaults.RequiredLevel))
+            .Async(cancellationToken);
+
         logger.LogInformation(
-            "api -> play: requesting CreateGameReq. game={GameName}",
+            "api: game Spot ready. roomId={RoomId}, state={State}, game={GameName}",
+            created.Spot.SpotId,
+            created.State,
             gameName);
 
-        var reply = await client.RequestToChannel(
-                SampleNodes.Mesh,
-                SampleChannels.Play,
-                new CreateGameReq(gameName))
-            .Async<CreateGameRes>(cancellationToken);
-
-        logger.LogInformation(
-            "play -> api: game created. roomId={RoomId}, endpoint={Endpoint}, game={GameName}",
-            reply.RoomId,
-            reply.OwnerPlayEndpoint,
-            reply.GameName);
-        logger.LogInformation(
-            "api -> client: returning game info. roomId={RoomId}, endpoint={Endpoint}",
-            reply.RoomId,
-            reply.OwnerPlayEndpoint);
-
         return Results.Ok(new CreateGameHttpRes(
-            reply.RoomId,
-            reply.OwnerPlayEndpoint,
-            reply.PlayEndpoints,
-            reply.PlayNodes,
-            reply.GameName,
-            reply.RequiredLevel));
+            created.Spot.SpotId,
+            settings.PlayEndpoints,
+            settings.PlayNodes,
+            gameName,
+            SampleDefaults.RequiredLevel));
     }
 }

@@ -23,6 +23,7 @@ internal sealed class ZLinkSpotActivationDispatcher
         ZLinkFrameworkRuntime runtime,
         IZLinkBackendSpot nativeSpot,
         string channelName,
+        string spotId,
         ZLinkSpotPacketRegistry packets,
         ZLinkSpotActorJoinRegistry actorJoins,
         ZLinkSpotActorMembership actors,
@@ -66,7 +67,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             _dispatchErrors);
         _routeDispatcher = new ZLinkSpotRouteDispatcher(
             channelName,
-            nativeSpot.RoutingId.ToString(),
+            spotId,
             packets,
             handlerInvoker,
             runtime.Registration.Codecs,
@@ -173,7 +174,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                 received,
                 header,
                 new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                    ZLinkFrameworkErrorKind.ProtocolError,
                     "Remote actor join request body part is missing."));
             return true;
         }
@@ -206,9 +207,12 @@ internal sealed class ZLinkSpotActivationDispatcher
                 var abortRequest =
                     ZLinkRemoteActorJoinPackets.DecodeAdmissionAbortRequest(
                         received.Parts);
-                runtime.AbortRoutedActorJoinAdmission(
-                    ZLinkSpotId.FromNativeRoutingId(nativeSpot.RoutingId),
-                    abortRequest);
+                await runtime.AbortRoutedActorJoinAdmissionAsync(
+                        ZLinkSpotId.FromNativeRoutingId(
+                            nativeSpot.RoutingId),
+                        abortRequest,
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 var abortReplyParts = ZLinkSpotReplyEnvelope.EncodeResponseParts(
                     channelName,
                     header.MessageName,
@@ -332,7 +336,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                     header.MessageName,
                     header.CorrelationId,
                     new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.RequestRejected,
+                        ZLinkFrameworkErrorKind.Rejected,
                         "SPOT application admission is sealed for drain."));
                 ZLinkSpotReplySubmitter.SubmitAndDispose(received, reply);
             }
@@ -357,9 +361,9 @@ internal sealed class ZLinkSpotActivationDispatcher
                     header.MessageName,
                     header.CorrelationId,
                     new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.SpotMoving,
+                        ZLinkFrameworkErrorKind.Unavailable,
                         "SPOT relocation ingress hold is full or sealed.",
-                        true));
+                        ZLinkRetryAdvice.RetryAfterBackoff));
                 ZLinkSpotReplySubmitter.SubmitAndDispose(received, reply);
             }
             catch
@@ -383,7 +387,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                     header.MessageName,
                     header.CorrelationId,
                     new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.SpotGenerationStale,
+                        ZLinkFrameworkErrorKind.InvalidOperation,
                         "The Spot Message Follow route is stale."));
                 ZLinkSpotReplySubmitter.SubmitAndDispose(received, reply);
             }

@@ -18,11 +18,6 @@ internal sealed class ZLinkBackendPublisherSocketWrapper(IPubSocket nativeSocket
         ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
     }
 
-    public void SetRoutingId(RoutingId routingId)
-    {
-        nativeSocket.SetRoutingId(routingId);
-    }
-
     public void SetMaxMessageSize(long value)
     {
         nativeSocket.Options.MaxMessageSize = value;

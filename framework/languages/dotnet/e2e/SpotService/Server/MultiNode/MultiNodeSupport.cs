@@ -1,27 +1,8 @@
 using System.Collections.Concurrent;
-using Zlink.Framework.Contracts.Dispatch;
 
 namespace SpotService.Server.MultiNode;
 
 using Zlink.Framework.E2E.Configuration;
-
-internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
-    : IZLinkRuntimeMessageFlowObserver
-{
-    public ValueTask OnMessageFlowAsync(
-        ZLinkRuntimeMessageFlowEvent flow,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add(
-            "dispatch-error"
-            + $"|surface={flow.Surface}"
-            + $"|reason={flow.Reason}"
-            + $"|action={flow.Action}"
-            + $"|packet={flow.PacketName ?? "<null>"}");
-        return ValueTask.CompletedTask;
-    }
-}
 
 internal sealed class EvidenceStore
 {

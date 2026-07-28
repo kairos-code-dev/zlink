@@ -1,6 +1,6 @@
 using System.Diagnostics.Metrics;
 using ObservabilityOps.Shared;
-using Zlink.Framework.Contracts.Eventing;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace ObservabilityOps.Server.Support;
 
@@ -17,7 +17,8 @@ public sealed class MetricEvidenceCollector : IDisposable
     {
         _listener.InstrumentPublished = static (instrument, listener) =>
         {
-            if (instrument.Meter.Name == ZLinkMeters.Framework) listener.EnableMeasurementEvents(instrument);
+            if (instrument.Meter.Name == E2eMessageFlowListener.MeterName)
+                listener.EnableMeasurementEvents(instrument);
         };
         _listener.SetMeasurementEventCallback<long>(Record);
         _listener.SetMeasurementEventCallback<double>(Record);

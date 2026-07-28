@@ -20,7 +20,7 @@ internal static class TaB1MissingActorScenario
         await context.AssertFailureAsync(
             "TA-B1-missing-request",
             actorId,
-            "ActorRouteNotFound",
+            "NotFound",
             send: false,
             targetNodeRid: "actor-a",
             targetGeneration: 1);

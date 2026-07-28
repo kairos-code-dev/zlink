@@ -9,7 +9,6 @@ namespace DeliveryDispatch.Server.CustomerGateway.Spots.EntrySpot;
 internal sealed class CustomerEntrySpot(
     IZLinkEntrySpotContext context,
     CustomerActorDirectory actors,
-    IZLinkActorManager actorManager,
     ILogger<CustomerEntrySpot> logger) : IZLinkEntrySpot<CustomerActor>
 {
     public IZLinkEntrySpotContext Context { get; } = context;
@@ -21,19 +20,17 @@ internal sealed class CustomerEntrySpot(
         await actors.PushAsync(status, cancellationToken);
     }
 
-    public async ValueTask OnCreateActorAsync(
+    public ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
         CustomerActor actor,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
     {
-        var actorRef = await actorManager.FindAsync(actor.ActorId, cancellationToken)
-                       ?? throw new InvalidOperationException(
-                           $"Customer actor ref is not available. actor={actor.ActorId}");
-        actors.Register(actor, actorRef);
+        cancellationToken.ThrowIfCancellationRequested();
+        actors.Register(actor);
         logger.LogInformation(
-            "deliverydispatch customer-entry: actor created customer={ActorId} node={NodeRid}",
-            actor.ActorId,
-            actorRef.NodeRid);
+            "deliverydispatch customer-entry: actor created customer={ActorId}",
+            actor.ActorId);
+        return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(

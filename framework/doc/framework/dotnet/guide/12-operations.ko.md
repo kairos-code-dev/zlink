@@ -6,7 +6,9 @@
 
 > 정식 계약은 공통 스펙 [런타임 메트릭](../../common/spec/25-runtime-metrics.ko.md)과
 > [Graceful Drain & Handoff](../../common/spec/28-graceful-drain-handoff.ko.md)가 다룬다.
-> `.NET` 표면의 정식 정의는 [spec/aspnet-core-monitoring §10·§12](../../common/spec/server/languages/dotnet/01-system-structure.ko.md)다.
+> `.NET` 표면의 정식 정의는
+> [Topology와 host monitoring exact interface](../../common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md)가
+> 소유한다.
 > 이 챕터는 운영 환경에서 실제로 무엇을 붙이고 무엇을 선언하는지 사용법 중심으로 다룬다.
 
 ## 0. 무엇을 해주는가
@@ -27,7 +29,7 @@ framework는 메트릭 계기와 host 종료 시의 drain 절차를 제공한다
 |---|---|
 | Meter / 계기(instrument) | .NET 표준 메트릭 방출 단위. counter·gauge·histogram이 계기다 |
 | OpenTelemetry(OTel) | 메트릭·트레이스 수집 표준. Prometheus 등 exporter로 내보낸다 |
-| Retire | continuity를 target으로 relocation한 뒤 host를 종료하는 operation |
+| Relocate | stateful object를 compatible target으로 이전하고 host를 `Relocated` 상태로 만드는 operation |
 | Shutdown | 새 relocation 없이 local resource를 bounded cleanup하는 operation |
 | readiness probe | "새 요청을 받아도 되는가"를 묻는 배포 인프라의 상태 확인 |
 
@@ -93,14 +95,14 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 | `zlink.host.shutdown.duration` | Host `Shutdown` 시작부터 terminal result까지의 시간 |
 | `zlink.host.shutdown.forced` | Bounded teardown으로 끝난 host `Shutdown` 수 |
 
-## 2. Retire — continuity를 유지하는 host 종료
+## 2. Relocate — continuity를 다른 host로 이전
 
-라이브 User Spot, Actor와 활성 STREAM session이 있는 host는 `Retire`로 다른 Serving node에 continuity를
-이전한 뒤 종료한다. `Retire`는 host 전체 operation이며 MeshName별 종료 정책을 받지 않는다.
+라이브 User Spot과 Actor가 있는 host는 `RelocateAsync(...)`로 stateful object를 다른 Serving node에
+이전한다. Relocate는 host 전체 operation이며 host를 종료하지 않는다.
 
 1. Preflight에서 모든 stateful object, target capability·capacity와 Relocation Store를 확인한다. Eligible
    target이 없으면 source admission을 바꾸지 않고 `Blocked`로 끝난다.
-2. Host를 `Retiring`으로 게시하고 standalone Actor, Instance Spot과 User Spot aggregate execution queue에
+2. Host를 `Relocating`으로 게시하고 standalone Actor, Instance Spot과 User Spot aggregate execution queue에
    infrastructure notification을 예약한다.
 3. Notification이 turn boundary에 도달했을 때 현재 실행 중인 turn만 source에서 완료한다. Outbound·inbound,
    `Capture`·`Restore`와 encoded payload permit을 모두 얻은 ready unit만 queue를 seal한다. Permit을 얻지
@@ -113,7 +115,8 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
    join·leave callback을 호출하지 않는다.
 6. Frozen queue·timer를 target에 복원하고 seal 뒤 source hold를 target으로 relay한다. Source cleanup,
    `Completed`, bound STREAM route ACK와 steady normalization을 끝낸 뒤 target admission을 연다.
-7. 모든 unit이 source dispatch에서 분리되면 `Draining`으로 전환하고 topology resource를 bounded cleanup한다.
+7. 모든 unit이 source dispatch에서 분리되면 host를 `Relocated`로 전환한다. 연결과 infrastructure는
+   `ShutdownAsync(...)`를 호출할 때까지 유지한다.
 
 첫 relocation commit 전 failure는 source queue와 admission을 복원할 수 있다. 첫 commit 뒤에는 source로
 rollback하지 않고 target recovery를 계속하며 deadline을 넘기면 `ForceStopped`로 끝낸다.
@@ -123,11 +126,11 @@ rollback하지 않고 target recovery를 계속하며 deadline을 넘기면 `For
 Hosting stop은 `ShutdownAsync(...)`를 호출한다. `Shutdown`은 새 relocation을 시작하지 않고 진행 중인 work를
 deadline 안에서 terminal 상태로 만든 뒤 Entry·User·Instance Spot에 `OnClosingAsync`를
 `HostShutdown` reason으로 알린다. Callback 완료 뒤 scope, authority, session과 topology resource를 정리한다.
-Continuity가 필요한 배포 자동화는 hosting stop 전에 `RetireAsync(...)`를 명시적으로 호출해야 한다.
+Continuity가 필요한 배포 자동화는 hosting stop 전에 `RelocateAsync(...)` 결과를 확인해야 한다.
 
-일반 request가 끝났다는 이유만으로 User·Instance Spot을 닫지 않는다. `Retire`에서는 User Spot aggregate와
+일반 request가 끝났다는 이유만으로 User·Instance Spot을 닫지 않는다. `Relocate`에서는 User Spot aggregate와
 Instance Spot을 target으로 relocation하며 logical ID와 `ObjectGeneration`을 유지한다. Missing Instance Spot의
-cold activation은 별도 address나 manager create가 아니라 global SpotRid direct fluent call의 explicit
+cold activation은 별도 address나 manager create가 아니라 global SpotId direct fluent call의 explicit
 Instance marker만 시작한다.
 
 ## 4. 명시 제어와 readiness
@@ -136,24 +139,33 @@ Instance marker만 시작한다.
 
 ```csharp
 var runtime = app.Services.GetRequiredService<IZLinkFrameworkRuntime>();
-var result = await runtime.RetireAsync(
-    TimeSpan.FromSeconds(25),           // host 전체 continuity 이전 deadline
+var result = await runtime.RelocateAsync(
+    new ZLinkFrameworkRelocationOptions
+    {
+        Mode = ZLinkFrameworkRelocationMode.RollingUpdate,
+        TargetApplicationVersion = 12,      // 지정한 새 버전의 eligible node만 사용한다.
+        Deadline = TimeSpan.FromSeconds(25)
+    },
     cancellationToken: ct);
 
-if (result.Outcome == ZLinkFrameworkTerminationOutcome.ForceStopped)
-    Console.Error.WriteLine($"host retire force-stopped: {result.Reason}");
+if (result.Outcome == ZLinkFrameworkRelocationOutcome.Relocated)
+    await runtime.ShutdownAsync(TimeSpan.FromSeconds(10), ct);
+else
+    Console.Error.WriteLine($"host relocation blocked: {result.Reason}");
 ```
 
-`RetireAsync(...)`와 `ShutdownAsync(...)`의 `deadline == null`은 30초다. 먼저 확정된 operation의 deadline과
-effective intent를 공유하며, cancellation은 해당 waiter만 끝낸다. `Retire` preflight의 `Blocked`는 host
-terminal state로 저장하지 않는다.
+`PlannedMaintenance`는 source와 같은 application version의 target만 사용한다.
+`RollingUpdate`는 source보다 큰 `TargetApplicationVersion`을 요구하고 그 version과 정확히 같은 target만
+사용한다. Eligible target이 없으면 deadline까지 기다린 뒤 `Blocked/TargetUnavailable`을 반환한다.
+`ShutdownAsync(...)`의 `deadline == null`은 30초다. Cancellation은 해당 waiter만 끝내며 이미 시작한
+shared lifecycle operation은 계속 실행된다.
 
 Readiness는 host `IZLinkFrameworkRuntime.IsReady`와 업무에 필요한 component runtime의 readiness를 함께
 확인해 기존 HTTP endpoint에 연결한다.
 
 ```csharp
 app.MapGet("/healthz/ready", (IZLinkFrameworkRuntime runtime) =>
-    runtime.IsReady
+    runtime.Status.IsReady
         ? Results.Ok()
         : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
 ```
@@ -175,13 +187,13 @@ Kubernetes 배포에 연결하면 다음 개념이 된다.
 
 ```csharp
 var meshOptions = app.Services.GetRequiredService<IZLinkRouteMeshRuntimeOptions>();
-meshOptions.MeshNode("game.room").MaxMessageSize = 8 * 1024 * 1024;  // 0 = 무제한
-meshOptions.Channel("game.room").Weight = 0;                          // 신규 select-one 대상에서 제외
+meshOptions.Mesh("game.room").PlacementWeight = 0; // 새 object 배치 대상에서 제외
+meshOptions.Channel("game.room").Weight = 0;       // 새 channel select-one 대상에서 제외
 ```
 
-`Weight`는 0~100이고 즉시 반영된다. 0은 그 membership을 새 select-one과 Logical
-Multicast 원격 대상에서 빼는 값이라, 재배포 전 트래픽을 빼는 용도로 쓴다. 등록되지
-않은 mesh나 membership을 조회하면 `ZLinkConfigurationException`이다.
+두 weight는 독립적이며 실행 중 새 선택에 반영된다. Placement weight는 Actor·Spot create와 relocation
+target 선택에만 사용한다. Channel weight는 해당 server membership의 새 select-one 대상 선택에만
+사용한다. 등록되지 않은 mesh나 membership을 조회하면 `ZLinkConfigurationException`이다.
 
 **상태 조회 — `IZLinkRouteMeshRuntime`.** Mesh 하나에 대해 일관된 snapshot 한 장과
 순서 있는 component 이벤트 스트림을 제공한다. Host termination은 `IZLinkFrameworkRuntime`이 소유한다.
@@ -189,8 +201,8 @@ Multicast 원격 대상에서 빼는 값이라, 재배포 전 트래픽을 빼�
 ```csharp
 var meshRuntime = app.Services.GetRequiredService<IZLinkRouteMeshRuntime>();
 
-var snapshot = meshRuntime.Snapshot("game.room");   // 노드 상태·peer·channel 일관 스냅샷
-var ready = meshRuntime.IsReady("game.room");
+var status = meshRuntime.GetStatus("game.room"); // 노드·peer·channel의 immutable 현재 상태
+var ready = status.IsReady;
 
 await foreach (var meshEvent in meshRuntime.ObserveAsync("game.room", cancellationToken: ct))
 {
@@ -199,9 +211,9 @@ await foreach (var meshEvent in meshRuntime.ObserveAsync("game.room", cancellati
 }
 ```
 
-## 6. Host termination 상태 관측
+## 6. Host lifecycle 상태 관측
 
-Host `Retire`·`Shutdown` 상태 전이는 `IZLinkFrameworkRuntime`의 bounded event stream에서 관측한다. MeshName별
+Host `Relocate`·`Shutdown` 상태 전이는 `IZLinkFrameworkRuntime`의 bounded status stream에서 관측한다. MeshName별
 runtime은 component snapshot을 제공하지만 별도 termination authority나 partial drain operation을 만들지 않는다.
 
 ```csharp
@@ -210,16 +222,16 @@ var runtime = app.Services.GetRequiredService<IZLinkFrameworkRuntime>();
 await foreach (var hostEvent in runtime.ObserveAsync(cancellationToken: ct))
 {
     // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
-    logger.LogInformation("host termination: {State} {Intent} {Outcome} {Reason}",
+    logger.LogInformation(
+        "host lifecycle: {State} {Relocation} {Termination}",
         hostEvent.State,
-        hostEvent.EffectiveIntent,
-        hostEvent.Outcome,
-        hostEvent.Reason);
+        hostEvent.RelocationResult,
+        hostEvent.TerminationResult);
 }
 ```
 
-`ZLinkFrameworkRuntimeState`의 `Preparing`·`Serving`·`Retiring`·`Draining`·`Stopped`·`Error`를 그대로
-관측한다. Terminal event의 intent·outcome·reason은 `RetireAsync` 또는 `ShutdownAsync` 결과와 같아야 한다.
+`ZLinkFrameworkRuntimeState`의 `Preparing`·`Serving`·`Relocating`·`Relocated`·`Draining`·`Stopped`·`Error`를
+그대로 관측한다. Status의 relocation·termination 결과는 해당 operation의 terminal 결과와 같아야 한다.
 수치로 보려면 §1의 `zlink.host.*` 계기를 사용한다.
 
 ---

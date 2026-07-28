@@ -10,9 +10,9 @@ namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
 
 internal sealed class MatchBingoActorHandler(
     ILogger<MatchBingoActorHandler> logger)
-    : IZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActor, MatchBingoReq, MatchBingoRes>
+    : IZLinkEntrySpotActorSendHandler<BingoEntrySpot, PlayerActor, MatchBingoReq>
 {
-    public async ValueTask<MatchBingoRes> HandleAsync(
+    public async ValueTask HandleAsync(
         BingoEntrySpot entrySpot,
         PlayerActor actor,
         IZLinkMessageContext context,
@@ -32,7 +32,8 @@ internal sealed class MatchBingoActorHandler(
             .Async<MatchBingoApiRes>(cancellationToken);
         logger.LogInformation("match: room allocated. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
 
-        var joined = await actor.Context.JoinSpot(
+        actor.TrackDeferredJoin(matched.RoomId, observeOnly: false);
+        actor.Context.JoinSpot(
                 matched.RoomId,
                 new BingoRoomJoinReq
                 {
@@ -41,22 +42,8 @@ internal sealed class MatchBingoActorHandler(
                     DisplayName = actor.DisplayName,
                     ObserveOnly = false
                 })
-            .Async<BingoRoomJoinRes>(cancellationToken);
-        logger.LogInformation("match: actor joined room. actor={ActorId}, room={RoomId}", actor.ActorId,
+            .Defer();
+        logger.LogInformation("match: actor join scheduled. actor={ActorId}, room={RoomId}", actor.ActorId,
             matched.RoomId);
-        var joinedState = joined switch
-        {
-            ZLinkActorJoinResult<BingoRoomJoinRes>.Accepted accepted => accepted.Reply.State,
-            ZLinkActorJoinResult<BingoRoomJoinRes>.Rejected rejected => rejected.Reply.State,
-            _ => throw new InvalidOperationException("Unknown actor join result.")
-        };
-        // The actor may have moved to a remote room, so this source handler does
-        // not access the actor again after JoinSpot completes.
-
-        return new MatchBingoRes
-        {
-            RoomId = matched.RoomId,
-            State = joinedState
-        };
     }
 }

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Contracts.Configuration;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -52,6 +53,11 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         _frameworkRegistration = frameworkRegistration;
         Registration = registration;
         Node = node;
+        if (node is IZLinkBackendActorMessageFollowIngress
+            messageFollowIngress)
+            messageFollowIngress.SetActorMessageFollowIngressHandler(
+                parts => ZLinkActorHandoffIngress
+                    .TryCaptureOrFollowStaleManagedIngress(runtime, parts));
         if (locationLifecycle is not null)
         {
             if (node is not IZLinkBackendAuthorityObserver authorityObserver)
@@ -135,7 +141,11 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                         services.GetRequiredService<
                             ZLinkSpotRetireTargetRuntime>(),
                     standaloneActorRuntime:
-                        runtime.StandaloneActorRelocationRuntime);
+                        runtime.StandaloneActorRelocationRuntime,
+                    targetReady: () => services
+                        .GetRequiredService<IZLinkRouteMeshRuntime>()
+                        .GetStatus(spotChannelName)
+                        .IsReady);
             canonicalBackend.SetCanonicalRelocationReservationTarget(
                 _canonicalRelocationReservationOwner);
         }
@@ -187,14 +197,17 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         ulong targetAttemptGeneration,
         long actualPayloadBytes,
         out IDisposable permit,
-        out ZLinkPreparedAggregateRelocation? preparedAggregate)
+        out ZLinkPreparedAggregateRelocation? preparedAggregate,
+        out ulong targetAuthorityOwnerGeneration)
     {
         if (_canonicalRelocationReservationOwner is not null)
             return _canonicalRelocationReservationOwner.TryTakeStagingPermit(
                 relocationId, targetAttemptGeneration, actualPayloadBytes,
-                out permit, out preparedAggregate);
+                out permit, out preparedAggregate,
+                out targetAuthorityOwnerGeneration);
         permit = null!;
         preparedAggregate = null!;
+        targetAuthorityOwnerGeneration = 0;
         return false;
     }
 
@@ -233,7 +246,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     {
         var target = _userSpotOperationTarget
                      ?? throw new ZLinkFrameworkException(
-                         ZLinkFrameworkErrorKind.InvalidConfiguration,
+                         ZLinkFrameworkErrorKind.InvalidOperation,
                          $"MeshNode '{Name}' does not host User Spot factories.");
         var remaining = checked((long)deadlineUnixMs)
                         - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -262,7 +275,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         if (terminal.Result != RequestResult.Ok
             || terminal.Completion is not UserSpotCreateCompletion completion)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotCreateFailed,
+                ZLinkFrameworkErrorKind.InternalFailure,
                 "Local User Spot create failed.");
 
         var reply = terminal.ReplyParts is null
@@ -285,7 +298,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     {
         var activationTarget = _instanceSpotActivationTarget
                                ?? throw new ZLinkFrameworkException(
-                                   ZLinkFrameworkErrorKind.InvalidConfiguration,
+                                   ZLinkFrameworkErrorKind.InvalidOperation,
                                    $"MeshNode '{Name}' does not host Instance Spot factories.");
         return activationTarget.ActivateAsync(
             new InstanceSpotActivationOperation(
@@ -313,7 +326,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     {
         var target = _actorCreateOperationTarget
                      ?? throw new ZLinkFrameworkException(
-                         ZLinkFrameworkErrorKind.InvalidConfiguration,
+                         ZLinkFrameworkErrorKind.InvalidOperation,
                          $"MeshNode '{Name}' does not host Actor factories.");
         var remaining = checked((long)deadlineUnixMs)
                         - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -341,7 +354,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             .ConfigureAwait(false);
         if (terminal.Result != RequestResult.Ok || terminal.Completion is null)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorCreateFailed,
+                ZLinkFrameworkErrorKind.InternalFailure,
                 $"Local Actor create failed with '{terminal.Result}'/"
                 + $"'{terminal.FailureCode}'.");
 
@@ -357,7 +370,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     {
         var target = _actorDestroyOperationTarget
                      ?? throw new ZLinkFrameworkException(
-                         ZLinkFrameworkErrorKind.InvalidConfiguration,
+                         ZLinkFrameworkErrorKind.InvalidOperation,
                          $"MeshNode '{Name}' does not host Actor factories.");
         return target.DestroyAsync(operation, cancellationToken);
     }
@@ -383,16 +396,24 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         return targetEndpoints.All(endpoint => !configuredEndpoints.Contains(endpoint, StringComparer.Ordinal));
     }
 
-    internal bool TryClassifyManualRouterTarget(
-        RoutingId targetNodeRid,
-        out bool connected)
+    internal ZLinkRouteMeshTargetClassification ClassifyManualRouterTarget(
+        RoutingId targetNodeRid)
     {
-        connected = false;
         if (Registration.Router is not
             {
                 AcquisitionMode: ZLinkPeerAcquisitionMode.Manual
             } router)
-            return false;
+            return ZLinkRouteMeshTargetClassification.Unknown;
+
+        var peer = Node.MeshPeers().FirstOrDefault(candidate =>
+            candidate.RoutingId == targetNodeRid);
+        if (peer is not null)
+        {
+            if (peer.ObjectRole == ZLinkMeshNodeObjectRole.Client)
+                return ZLinkRouteMeshTargetClassification.ObjectClientTarget;
+            if (peer.State == MeshPeerState.Admitted)
+                return ZLinkRouteMeshTargetClassification.ReadyEligible;
+        }
 
         var matchingEndpoints = router.PeerRoutingIds
             .Where(pair => pair.Value == targetNodeRid)
@@ -400,18 +421,15 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             .ToArray();
         if (matchingEndpoints.Length == 0)
         {
-            if (_peerConnections.HasRetainedManualPeer(targetNodeRid)) return true;
-            var peer = Node.MeshPeers().FirstOrDefault(candidate =>
-                candidate.RoutingId == targetNodeRid);
-            if (peer is null) return false;
-            connected = peer.State == MeshPeerState.Admitted;
-            return true;
+            return _peerConnections.HasRetainedManualPeer(targetNodeRid)
+                ? ZLinkRouteMeshTargetClassification.RequiredNotConnected
+                : ZLinkRouteMeshTargetClassification.Unknown;
         }
 
-        var configuredEndpoints = router.ManualConnections.ListConnections();
-        connected = matchingEndpoints.Any(endpoint =>
-            configuredEndpoints.Contains(endpoint, StringComparer.Ordinal));
-        return true;
+        return router.ManualConnections.ListConnections().Any(endpoint =>
+            matchingEndpoints.Contains(endpoint, StringComparer.Ordinal))
+                ? ZLinkRouteMeshTargetClassification.RequiredNotConnected
+                : ZLinkRouteMeshTargetClassification.Unknown;
     }
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Spots;
@@ -826,14 +844,26 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         return await _spots.CloseAsync(spotId, cancellationToken);
     }
 
+    internal ValueTask<ZLinkSpotDrainResult> TryDrainSpotsAsync(
+        bool relocate,
+        ZLinkRelocationTargetSelection selection,
+        CancellationToken cancellationToken) =>
+        TryDrainSpotsAsync(
+            relocate,
+            selection,
+            ZLinkSpotRelocationPhase.Aggregates,
+            cancellationToken);
+
     internal async ValueTask<ZLinkSpotDrainResult> TryDrainSpotsAsync(
         bool relocate,
         ZLinkRelocationTargetSelection selection,
+        ZLinkSpotRelocationPhase phase,
         CancellationToken cancellationToken)
     {
         if (relocate)
             return await _spots.TryRelocateForRetireAsync(
                     selection,
+                    phase,
                     cancellationToken)
                 .ConfigureAwait(false);
         return new ZLinkSpotDrainResult(

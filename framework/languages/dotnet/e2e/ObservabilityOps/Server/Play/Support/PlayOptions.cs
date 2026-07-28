@@ -11,6 +11,10 @@ internal sealed record PlayOptions(
     string PubEndpoint,
     string LogDir,
     bool MetricsEnabled = true,
+    long ApplicationVersion = 0,
+    string? MaintenanceWave = null,
+    int PlacementWeight = 100,
+    string? ManualPeerEndpoint = null,
     int LocationHeartbeatMs = 1000,
     int LocationLeaseTtlMs = 3000)
 {

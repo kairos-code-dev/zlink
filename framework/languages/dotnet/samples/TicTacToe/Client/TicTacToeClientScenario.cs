@@ -26,23 +26,19 @@ public sealed class TicTacToeClientScenario(ILogger logger)
             .Async<CreateGameHttpRes>(cancellationToken)).Body;
 
         ZlinkStreamAssert.Ensure(!string.IsNullOrWhiteSpace(room.RoomId), "Assertion failed: !string.IsNullOrWhiteSpace(room.RoomId)");
-        ZlinkStreamAssert.Ensure(!string.IsNullOrWhiteSpace(room.OwnerPlayEndpoint), "Assertion failed: !string.IsNullOrWhiteSpace(room.OwnerPlayEndpoint)");
         ZlinkStreamAssert.Ensure(room.PlayEndpoints.Count >= 2, "Assertion failed: room.PlayEndpoints.Count >= 2");
-        ZlinkStreamAssert.Ensure(room.PlayEndpoints.Contains(room.OwnerPlayEndpoint, StringComparer.Ordinal), "Assertion failed: room.PlayEndpoints.Contains(room.OwnerPlayEndpoint, StringComparer.Ordinal)");
         ZlinkStreamAssert.Ensure(room.PlayNodes.Count == room.PlayEndpoints.Count, "Assertion failed: room.PlayNodes.Count == room.PlayEndpoints.Count");
-        ZlinkStreamAssert.Ensure(room.PlayNodes.Any(node =>
-            string.Equals(node.StreamEndpoint, room.OwnerPlayEndpoint, StringComparison.Ordinal)), "Assertion failed: room.PlayNodes.Any(node => string.Equals(node.StreamEndpoint, room.OwnerPlayEndpoint, StringComparison.Ordinal))");
         ZlinkStreamAssert.Ensure(room.RequiredLevel == 3, "Assertion failed: room.RequiredLevel == 3");
         ZlinkStreamAssert.Ensure(room.GameName == options.GameName, "Assertion failed: room.GameName == options.GameName");
 
-        var guestPlayEndpoint = room.PlayEndpoints.First(endpoint =>
-            !string.Equals(endpoint, room.OwnerPlayEndpoint, StringComparison.Ordinal));
+        var hostPlayEndpoint = room.PlayEndpoints[0];
+        var guestPlayEndpoint = room.PlayEndpoints[1];
         var observerPlayEndpoint = guestPlayEndpoint;
         var observerPlayNode = room.PlayNodes.Single(node =>
             string.Equals(node.StreamEndpoint, observerPlayEndpoint, StringComparison.Ordinal));
 
         await using var client1 =
-            TicTacToeClientConnections.CreateStreamClient(room.OwnerPlayEndpoint, options, "host", logger);
+            TicTacToeClientConnections.CreateStreamClient(hostPlayEndpoint, options, "host", logger);
         await using var client2 =
             TicTacToeClientConnections.CreateStreamClient(guestPlayEndpoint, options, "guest", logger);
         await using var observer =
@@ -65,7 +61,7 @@ public sealed class TicTacToeClientScenario(ILogger logger)
             await observer.Request(new ObserveMilestoneReq()).Async<ObserveMilestoneRes>(cancellationToken);
         ZlinkStreamAssert.Ensure(observerSubscription.Subscribed, "Assertion failed: observerSubscription.Subscribed");
 
-        var client1Join = await client1.Request(new JoinGameReq(room.RoomId)).Async<JoinGameRes>(cancellationToken);
+        var client1Join = await JoinGameAsync(client1, room.RoomId, cancellationToken);
         ZlinkStreamAssert.Ensure(client1Join.State.RoomId == room.RoomId, "Assertion failed: client1Join.State.RoomId == room.RoomId");
         ZlinkStreamAssert.Ensure(client1Join.State.Status == TicTacToeGameStatuses.WaitingForPlayers, "Assertion failed: client1Join.State.Status == TicTacToeGameStatuses.WaitingForPlayers");
         ZlinkStreamAssert.Ensure(client1Join.State.XActorId == options.XActorId, "Assertion failed: client1Join.State.XActorId == options.XActorId");
@@ -82,7 +78,7 @@ public sealed class TicTacToeClientScenario(ILogger logger)
         ZlinkStreamAssert.Ensure(client2Authentication.Player.Level >= room.RequiredLevel, "Assertion failed: client2Authentication.Player.Level >= room.RequiredLevel");
         ZlinkStreamAssert.Ensure(client2Authentication.Player.ActorId != client1Authentication.Player.ActorId, "Assertion failed: client2Authentication.Player.ActorId != client1Authentication.Player.ActorId");
 
-        var client2Join = await client2.Request(new JoinGameReq(room.RoomId)).Async<JoinGameRes>(cancellationToken);
+        var client2Join = await JoinGameAsync(client2, room.RoomId, cancellationToken);
         ZlinkStreamAssert.Ensure(client2Join.State.RoomId == room.RoomId, "Assertion failed: client2Join.State.RoomId == room.RoomId");
         ZlinkStreamAssert.Ensure(client2Join.State.Status == TicTacToeGameStatuses.InProgress, "Assertion failed: client2Join.State.Status == TicTacToeGameStatuses.InProgress");
         ZlinkStreamAssert.Ensure(client2Join.State.OActorId == options.OActorId, "Assertion failed: client2Join.State.OActorId == options.OActorId");
@@ -195,5 +191,17 @@ public sealed class TicTacToeClientScenario(ILogger logger)
 
         await client1.Send(new LeaveGameReq(room.RoomId)).Async(cancellationToken);
         await client2.Send(new LeaveGameReq(room.RoomId)).Async(cancellationToken);
+    }
+
+    private static async ValueTask<JoinGameRes> JoinGameAsync(
+        IZlinkStreamConnector connector,
+        string roomId,
+        CancellationToken cancellationToken)
+    {
+        var completion = connector.WaitFor<JoinGameRes>()
+            .Async(cancellationToken);
+        await connector.Send(new JoinGameReq(roomId))
+            .Async(cancellationToken);
+        return (await completion).Payload;
     }
 }

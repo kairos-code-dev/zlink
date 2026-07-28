@@ -7,6 +7,7 @@
 #include <zlink/framework/contracts/detail/handler_invocation.hpp>
 #include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
+#include <zlink/framework/contracts/locations/values.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 
 #include <chrono>
@@ -117,6 +118,7 @@ class mesh_node_builder_t
     mesh_channel_builder_t channel_name (std::string channel_name);
     mesh_node_builder_t &listen (std::string endpoint);
     mesh_node_builder_t &set_routing_id (zlink::routing_id_t routing_id);
+    mesh_node_builder_t &set_object_role (object_role_t role);
     mesh_node_builder_t &set_placement_weight (int weight);
     mesh_node_builder_t &set_actor_limit (std::int32_t limit);
     mesh_node_builder_t &set_spot_limit (std::int32_t limit);
@@ -209,6 +211,7 @@ class mesh_node_builder_t
     mesh_node_builder_t &add_handler (bool request, std::string packet_name);
     template <typename THandler, typename TRequest, typename TReply>
     mesh_node_builder_t &add_handler (bool request, std::string packet_name);
+    void mark_node_direct_handler ();
     spot_node_builder_t &spot_builder ();
     std::string route_dispatch_name () const;
     std::shared_ptr<detail::mesh_node_builder_state_t> _state;
@@ -308,6 +311,7 @@ template <typename THandler, typename TMessage>
 mesh_node_builder_t &
 mesh_node_builder_t::add_handler (bool request, std::string packet_name)
 {
+    mark_node_direct_handler ();
     mesh_channel_builder_t route (_state, route_dispatch_name ());
     route.add_handler<THandler, TMessage> (request, std::move (packet_name));
     return *this;
@@ -317,6 +321,7 @@ template <typename THandler, typename TRequest, typename TReply>
 mesh_node_builder_t &
 mesh_node_builder_t::add_handler (bool request, std::string packet_name)
 {
+    mark_node_direct_handler ();
     mesh_channel_builder_t route (_state, route_dispatch_name ());
     route.add_handler<THandler, TRequest, TReply> (request, std::move (packet_name));
     return *this;

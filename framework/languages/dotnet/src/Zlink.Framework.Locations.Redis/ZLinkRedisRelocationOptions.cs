@@ -14,26 +14,7 @@ public sealed class ZLinkRedisRelocationOptions
 
     public string KeyPrefix { get; set; } = string.Empty;
 
-    public ZLinkRedisRelocationOptions SetConnectionString(string connectionString)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(connectionString);
-        ConnectionString = connectionString;
-        return this;
-    }
-
-    public ZLinkRedisRelocationOptions SetConfiguration(ConfigurationOptions configuration)
-    {
-        ArgumentNullException.ThrowIfNull(configuration);
-        ConfigurationOptions = configuration;
-        return this;
-    }
-
-    public ZLinkRedisRelocationOptions SetKeyPrefix(string keyPrefix)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(keyPrefix);
-        KeyPrefix = keyPrefix;
-        return this;
-    }
+    public TimeSpan OperationTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
     internal ConfigurationOptions BuildConfiguration()
     {
@@ -59,5 +40,10 @@ public sealed class ZLinkRedisRelocationOptions
                 "ZLinkRedisRelocationOptions requires ConnectionString or ConfigurationOptions.",
                 nameof(ConnectionString));
         }
+
+        if (OperationTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(
+                nameof(OperationTimeout),
+                "OperationTimeout must be greater than zero.");
     }
 }

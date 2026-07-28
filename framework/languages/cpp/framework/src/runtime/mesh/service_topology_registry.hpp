@@ -68,6 +68,7 @@ struct service_node_descriptor_t
 enum class peer_admission_result_t
 {
     admitted,
+    not_required,
     mesh_mismatch,
     invalid_descriptor,
     stale_descriptor
@@ -78,6 +79,10 @@ struct admitted_peer_t
     service_node_descriptor_t descriptor;
     std::vector<std::uint8_t> connection_id;
 };
+
+bool route_mesh_connection_not_required (
+  const service_node_descriptor_t &local,
+  const service_node_descriptor_t &remote) noexcept;
 
 class service_topology_registry_t
 {
@@ -94,6 +99,7 @@ class service_topology_registry_t
                      const std::vector<std::uint8_t> &connection_id);
 
     std::vector<admitted_peer_t> peers () const;
+    std::vector<service_node_descriptor_t> not_required_peers () const;
     std::optional<admitted_peer_t>
     peer (const std::vector<std::uint8_t> &node_routing_id) const;
     std::optional<admitted_peer_t> select (const std::string &channel_name);
@@ -114,6 +120,10 @@ class service_topology_registry_t
     mutable std::mutex _mutex;
     service_node_descriptor_t _local;
     std::map<std::vector<std::uint8_t>, admitted_peer_t, byte_vector_less_t> _peers;
+    std::map<std::vector<std::uint8_t>,
+             service_node_descriptor_t,
+             byte_vector_less_t>
+      _not_required_peers;
     std::map<std::string, std::uint64_t> _selection_cursor;
 };
 

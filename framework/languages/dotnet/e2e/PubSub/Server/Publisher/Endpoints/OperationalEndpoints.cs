@@ -15,16 +15,11 @@ public static class OperationalEndpoints
             return Results.Ok(new { status = "cleared" });
         });
         app.MapPost("/admin/drain", async (
-            IZLinkDrainControl drain,
+            IZLinkFrameworkRuntime runtime,
             CancellationToken cancellationToken) =>
         {
-            var result = await drain.DrainAsync(TimeSpan.FromSeconds(30), cancellationToken);
-            return Results.Ok(result switch
-            {
-                Drained => new DrainResultRes(nameof(Drained)),
-                ForceStopped forced => new DrainResultRes(nameof(ForceStopped), forced.Reason.ToString()),
-                _ => throw new InvalidOperationException($"Unknown drain result '{result.GetType().Name}'.")
-            });
+            var result = await runtime.ShutdownAsync(TimeSpan.FromSeconds(30), cancellationToken);
+            return Results.Ok(new DrainResultRes(result.Outcome.ToString(), result.Reason.ToString()));
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {

@@ -95,6 +95,12 @@ global Actor·Spot operation을 시작할 수 있지만 factory와 placement tar
 Client capability를 포함하며 factory와 placement target을 제공한다. `Client`와 `Server`는 [location store](01-glossary.ko.md#location-store)가
 필수다. Factory는 Object Server builder에만 등록하며 같은 stable type을 중복 등록하면 startup이 실패한다.
 
+Object Client는 object 기능에서만 outbound-only다. 같은 MeshNode에 RouteMesh Channel
+Server를 등록할 수 있지만 application Node direct handler는 등록할 수 없다. 두
+MeshNode가 모두 Object Client이고 양쪽 모두 RouteMesh Channel Server membership이
+없을 때만 peer connection을 생략한다. Server membership은 weight가 `0`이어도 연결
+필요성을 만든다.
+
 Object Server는 Channel weight와 독립된 node-wide placement weight를 사용한다. 범위는 0부터 10000까지이고
 기본값은 100이다. 0인 node는 새 placement와 relocation target에서 제외하지만 Ready object와 이미 reservation을
 확보한 attempt는 유지한다. 비용이 다른 Actor와 Spot을 합산하는 node 전체 active object 제한은 두지 않는다.
@@ -105,7 +111,7 @@ Entry Spot은 Object Server node마다 하나로 고정하며 configurable Spot 
 
 상한 판정은 Active count와 factory가 완료되기 전에 확보한 reserved slot을 함께 계산한다. Location Store가
 reservation과 authority를 같은 transaction에서 확정하며 descriptor count는 후보 선택용 projection이다.
-Capacity를 만족하는 후보가 없으면 `PlacementCapacityExhausted`로 완료한다. 기존 pending activation `128`
+Capacity를 만족하는 후보가 없으면 `CapacityExceeded`로 완료한다. 기존 pending activation `128`
 제한은 object population limit이 아니라 동시에 진행되는 activation을 보호하는 별도 admission 제한이다.
 Activation concurrency 기본값은 node당 `128`이고 양수만 허용한다. Permit은 factory와 initialization이
 끝나면 반환하며 active·reserved population count를 바꾸지 않는다.
@@ -165,9 +171,9 @@ Node direct와 channel operation은 target selection과 submit을 한 호출로 
 `selectOne`, `selectMany` 단계는 제공하지 않는다.
 
 Channel client는 ChannelName을 process-local route index에서 찾아 RouteMesh MeshNode 또는 ClientServer
-client 하나를 선택한다. Index에 없는 이름은 `RequestTargetNotFound`로 끝내고 다른 MeshNode나
+client 하나를 선택한다. Index에 없는 이름은 `NotFound`로 끝내고 다른 MeshNode나
 ClientServer client를 검색하거나 relay하지 않는다. 등록된 송신 경로에 ready target pipe가 없으면
-`RouteNotConnected`, [ready target](01-glossary.ko.md#ready-target) snapshot 자체가 없으면 `RequestTargetNotFound`를 사용한다.
+`Unavailable`, [ready target](01-glossary.ko.md#ready-target) snapshot 자체가 없으면 `NotFound`를 사용한다.
 
 Logical Multicast도 ChannelName을 같은 process-local route index에서 찾아 [owner](01-glossary.ko.md#owner) RouteMesh MeshNode를
 선택한다. 호출자는 MeshName이나 endpoint를 제공하지 않는다. 선택된 owner MeshName과 물리
@@ -206,7 +212,7 @@ metadata를 자동 복사하지 않는다.
 
 MeshNode와 Spot publish API는 publish 전용 전달 정책 option을 제공하지 않는다. Framework의 bounded I/O
 executor는 publish operation을 send timeout까지 admission한다. Timeout 전에 시작하지 못하면
-`DeadlineExceeded`, cancellation 또는 `RuntimeShutdown` 중 먼저 확정된 예외로 완료한다. 시작한 뒤에는
+`DeadlineExceeded`, cancellation 또는 `ShuttingDown` 중 먼저 확정된 예외로 완료한다. 시작한 뒤에는
 확정한 target snapshot을 정확히 한 번 처리하며 cancellation이나 shutdown으로 나머지 target 제출을
 중단하지 않는다.
 
@@ -266,7 +272,7 @@ JSON은 typed message의 기본 codec이다. JSON만 사용하는 application은
 
 송신할 업무 타입과 일치하는 extension이 없으면 JSON codec을 선택한다. 반면 수신 envelope가 명시한
 non-JSON content-type과 일치하는 codec이 registry에 없으면 payload를 JSON으로 다시 해석하지 않고
-`PayloadDecodeFailed`로 완료한다. 송신 타입 선택의 기본값과 수신 wire content-type 검증은 서로 다른
+`ProtocolError`로 완료한다. 송신 타입 선택의 기본값과 수신 wire content-type 검증은 서로 다른
 경계이므로 같은 fallback 규칙을 적용하지 않는다.
 
 Codec은 업무 객체와 payload bytes 사이의 변환만 담당한다. Packet name, routing, correlation과 handler
@@ -389,20 +395,20 @@ Spot ID와 lifecycle generation의 관계를 게시하며 Actor placement와 Ent
 사용한다. Spot ID 문자열을 parsing하여 node 관계를 추론하지 않는다.
 
 Entry Spot ID가 global Spot ID authority와 충돌하면 새 UUID나 reservation을 만들지 않고 startup을 즉시
-`SpotIdConflict`로 끝낸다. Caller가 User·Instance Spot ID로
+`AlreadyExists`로 끝낸다. Caller가 User·Instance Spot ID로
 `<prefix>-entry-<lowercase-canonical-uuid-v4>` 예약 형식을 지정하면 Store operation이나 factory를 시작하기
-전에 `InvalidConfiguration`으로 거부한다. Instance Spot은 actor-free lifecycle을 사용하며 Actor handler,
+전에 startup configuration error로 거부한다. Instance Spot은 actor-free lifecycle을 사용하며 Actor handler,
 Actor membership과 Logical Multicast subscription을 등록할 수 없다.
 
 Actor manager와 User Spot manager는 global ID를 받는 `Create`, `GetOrCreate`, `Find` family를 제공한다. Actor
 `Create`·`GetOrCreate`는 Actor ID와 stable type을, User Spot `GetOrCreate`는 caller가 정한 [Spot ID](01-glossary.ko.md#spot-id)와 stable
 type을 필수로 받는다. User Spot `Create`는 Framework가 global Spot ID를 생성한다. Optional fluent 설정은 initial Mesh,
 최대 1 MiB로 encode되는 creation request와 deadline이다. 같은 option을 두 번
-설정하면 `InvalidConfiguration`, terminal submit을 두 번 실행하면 `AlreadySubmitted`다.
+설정하면 startup configuration error, terminal submit을 두 번 실행하면 `InvalidOperation`이다.
 
 Initial Mesh를 명시하면 해당 Mesh를 사용한다. 생략했을 때 object role Mesh가 하나면 자동으로 선택하고,
-없으면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`다. 존재하지 않는 Mesh를 명시하면
-`MeshNotFound`다. Instance Spot은 manager create family를 제공하지 않는다. Spot direct fluent call에서
+없으면 `NotConfigured`, 둘 이상인데 Mesh를 선택하지 않으면 `InvalidOperation`이다. 존재하지 않는 Mesh를 명시하면
+`NotFound`다. Instance Spot은 manager create family를 제공하지 않는다. Spot direct fluent call에서
 Instance intent를 명시한 경우에만 Missing authority의 cold activation을 시작한다. Stable type을 생략하면
 선택한 Mesh의 serving descriptor에 등록된 distinct Instance type이 하나일 때만 자동 선택한다. 여러 type이면
 caller가 stable type을 명시해야 한다.
@@ -473,7 +479,7 @@ Actor join, Actor·Spot create·get-or-create, send, publish, timer 등록, clos
 `Yield`는 `SpotWide` User Spot 또는 Instance Spot의 shared execution gate를 잠시 반납할 수 있는 문맥에서만
 유효하다. Entry Spot, `PerActor` User Spot, Node·Channel handler와 owner turn 밖의 client에서 호출할 수 있는
 공통 call type을 사용하는 언어는 operation 제출 전에 문맥을 검사하고, 지원하지 않는 문맥이면 outbound
-admission·queue 변경·turn 반납 없이 `InvalidConfiguration`으로 완료한다.
+admission·queue 변경·turn 반납 없이 `InvalidOperation`으로 완료한다.
 
 `SpotWide` User Spot의 member Actor가 request나 worker call을 `Yield`하면 User Spot execution gate만
 반납하고 현재 Actor queue head를 실행할 권한은 유지한다. 따라서 다른 Actor·Spot handler·timer·lifecycle
@@ -494,66 +500,36 @@ Actor egress는 bound session FIFO를 사용한다. Actor dispatch capability를
 
 ## 13. 오류 kind
 
-언어별 exception과 error object는 다음 공통 kind와 숫자 값을 보존한다. 값 0도 유효한 kind다.
+언어별 exception과 error object는 실패한 내부 단계가 아니라 application이 선택할 수 있는 대응을
+기준으로 다음 kind와 숫자 값을 보존한다. 값 0도 유효한 kind다.
 
-| 값 | kind | 기본 재시도 |
+| 값 | kind | 의미 |
 |---:|---|---|
-| 0 | `ActorRouteNotFound` | no |
-| 1 | `ActorCreateFailed` | no |
-| 2 | `ActorAlreadyExists` | no |
-| 3 | `ActorTypeMismatch` | no |
-| 4 | `SpotCreateFailed` | no |
-| 5 | `SpotRouteNotFound` | no |
-| 6 | `SpotTypeMismatch` | no |
-| 7 | `ActorSessionNotBound` | no |
-| 8 | `HandlerNotFound` | no |
-| 9 | `RouteHandlerNotFound` | no |
-| 10 | `ActorDispatchHandlerNotFound` | no |
-| 11 | `PayloadDecodeFailed` | no |
-| 12 | `RouteNotConnected` | yes |
-| 13 | `RequestTargetNotFound` | no |
-| 14 | `RequestRejected` | no |
-| 15 | `RequestProtocolError` | no |
-| 16 | `RequestFailed` | no |
-| 17 | `WorkerQueueFull` | no |
-| 18 | `WorkerTimedOut` | no |
-| 19 | `WorkerFailed` | no |
-| 20 | `ActorLocationStale` | yes |
-| 21 | `ActorCreateRejected` | no |
-| 22 | `ObjectClientNotConfigured` | no |
-| 23 | `MeshSelectionRequired` | no |
-| 24 | `MeshNotFound` | no |
-| 25 | `InvalidConfiguration` | no |
-| 26 | `AlreadySubmitted` | no |
-| 27 | `ActorGenerationStale` | no |
-| 28 | `ActorMoving` | yes |
-| 29 | `DeadlineExceeded` | yes |
-| 30 | `PlacementCapacityExhausted` | yes |
-| 31 | `RoutingIdConflict` | no |
-| 32 | `SpotGenerationStale` | no |
-| 33 | `SpotMoving` | yes |
-| 34 | `RelocationDataLost` | no |
-| 35 | `SpotIdConflict` | no |
-| 36 | `RuntimeShutdown` | no |
-| 37 | `RelocationDisabled` | no |
-| 38 | `RelocationTargetUnavailable` | yes |
-| 39 | `RelocationFailed` | yes |
+| 0 | `NotFound` | Actor, Spot, handler, route 또는 target이 존재하지 않는다. |
+| 1 | `AlreadyExists` | 같은 identity나 registration이 이미 존재한다. |
+| 2 | `TypeMismatch` | stable type과 요청한 application type이 다르다. |
+| 3 | `NotConfigured` | 필요한 role, handler 또는 Store가 등록되지 않았다. |
+| 4 | `Rejected` | application callback이나 현재 policy가 operation을 거부했다. |
+| 5 | `Unavailable` | target, route, Store 또는 worker를 현재 사용할 수 없다. |
+| 6 | `CapacityExceeded` | placement, queue 또는 bounded resource에 여유가 없다. |
+| 7 | `DeadlineExceeded` | operation이 deadline 안에 완료되지 않았다. |
+| 8 | `ShuttingDown` | Runtime이 신규 operation admission을 받지 않는다. |
+| 9 | `ProtocolError` | wire, payload 또는 reply 계약을 처리할 수 없다. |
+| 10 | `InvalidOperation` | 현재 object·session·runtime 상태에서 operation을 실행할 수 없다. |
+| 11 | `DataLost` | 공개된 Relocation payload가 없거나 검증에 실패했다. |
+| 12 | `InternalFailure` | 위 분류로 표현할 수 없는 Framework 실패다. |
 
-`RouteNotConnected`는 알려진 target의 pipe가 준비되지 않은 상태이고, `RequestTargetNotFound`는 등록한
-송신 경로에 현재 선택 가능한 target snapshot이 없거나 ChannelName 송신 경로 자체가 없는 상태다.
-`ActorLocationStale`은 cached route와 Message Follow route로 current owner에 도달할 수 없는 상태다.
-Generation stale은 exact ref가 current incarnation과 다른 상태이고 moving은 pre-commit seal이 새 application
-admission을 거부한 상태다. `RelocationDataLost`는 Location authority가 publish한 immutable Relocation root를 영구적으로
-읽을 수 없거나 checksum·inventory digest가 일치하지 않는 상태다. 이미 commit된 owner·membership을 source로
-rollback하지 않으며 같은 reference를 다시 시도해 복구 가능한 오류로 분류하지 않는다.
-`RoutingIdConflict`는 MeshNode transport RID owner claim 충돌이고, `SpotIdConflict`는 global Spot ID
-namespace의 Entry·User·Instance Spot identity claim 충돌이다. `RuntimeShutdown`은 host shutdown으로
-새 operation admission이 닫힌 상태다.
+Generation, owner fence, moving phase, worker queue 상태와 Relocation 처리 단계는 Framework가
+retry·recovery를 판단할 때 사용하는 내부 원인이다. Application이 다른 대응을 선택할 수 없다면
+별도 public kind로 노출하지 않는다.
 
-`RelocationDisabled`는 object에 설정한 policy가 다른 node로의 relocation을 허용하지 않는 상태다.
-`RelocationTargetUnavailable`은 stable type과 capacity 조건을 만족하는 target을 찾거나 reservation을
-확보하지 못한 상태다. `RelocationFailed`는 target을 정한 뒤 capture, restore 또는 commit 전에
-relocation 처리가 실패한 상태다.
+오류에는 현재 실패 조건에 대한 retry advice를 함께 제공한다.
+
+| Retry advice | 의미 |
+|---|---|
+| `DoNotRetry` | 같은 입력과 상태로 다시 실행하지 않는다. |
+| `RetryAfterBackoff` | operation이 idempotent일 때만 간격을 두고 다시 실행할 수 있다. |
+| `RetryAfterStateChange` | configuration, topology 또는 대상 상태가 바뀐 뒤 다시 실행할 수 있다. |
 
 ### 13.1 Operation 결과 변환
 
@@ -568,10 +544,10 @@ RouteMesh·ClientServer select-one ChannelName은 성공한 admission 전까지 
 | 해당 operation family의 source outbound admission이 operation을 수락함 | one-way send·publish는 결과값 없이 정상 완료하고 request는 pending completion으로 전환 |
 | 일반 one-way의 첫 submit이 backpressured임 | send timeout까지 send-ready를 기다린다. Timeout 전 capacity가 생기면 한 번 제출하고, deadline이 먼저 끝나면 `DeadlineExceeded` exception으로 완료 |
 | Logical Multicast를 시작한 뒤 일부 target에 제출하지 못함 | 이미 수락한 target은 유지한다. Target별 실패를 public 결과나 publish 전용 monitoring으로 만들지 않으며 전체 operation을 rollback하거나 자동 retry하지 않음 |
-| 알려진 direct target의 route가 준비되지 않음 | `RouteNotConnected` |
-| Actor·Spot authority 또는 Node·Channel 송신 경로가 없음 | operation별 기존 route-not-found·`MeshNotFound`·`RequestTargetNotFound` exception |
-| target admission seal 또는 application policy가 거부함 | `RequestRejected` 또는 해당 one-way rejection 결과 |
-| host [shutdown](01-glossary.ko.md#shutdown)으로 신규 admission이 닫힘 | `RuntimeShutdown` exception |
+| 알려진 direct target의 route가 준비되지 않음 | `Unavailable` |
+| Actor·Spot authority 또는 Node·Channel 송신 경로가 없음 | `NotFound` |
+| target admission seal 또는 application policy가 거부함 | `Rejected` |
+| host [shutdown](01-glossary.ko.md#shutdown)으로 신규 admission이 닫힘 | `ShuttingDown` |
 | invalid argument·state, 지원하지 않는 operation 또는 내부 불변 조건 위반 | 언어별 local call 오류. remote error reply로 바꾸지 않음 |
 
 `DeadlineExceeded`는 일반 one-way admission waiter가 family별 send timeout까지 수락되지 않았을 때
@@ -582,7 +558,7 @@ Backpressure, timeout 또는 cancellation으로 완료되어도 해당 token을 
 token의 두 call이 경쟁하면 하나만 transport admission을 시작한다.
 Direct pending one-way operation은 Node RID, global Spot·Actor ID 또는 session [binding token](01-glossary.ko.md#binding-token)을 유지한다.
 Send-ready 또는 lifecycle signal 뒤의 재시도는 그 identity의 현재 route만 사용한다. 재시도 시점에
-해당 route가 없으면 `RouteNotConnected`로 완료하고 다른 논리 target으로 이전하지 않는다.
+해당 route가 없으면 `Unavailable`로 완료하고 다른 논리 target으로 이전하지 않는다.
 [Select-one](01-glossary.ko.md#select-one) ChannelName은 성공한 admission 전까지 eligible member를 다시 선택할 수 있지만, 이미
 수락된 뒤에는 다른 target으로 replay하지 않는다.
 
@@ -590,18 +566,18 @@ Global object message의 missing·route·exact-incarnation 결과는 다음처�
 
 | Operation | missing authority | route unavailable | exact ref generation mismatch | pre-commit seal |
 |---|---|---|---|---|
-| Actor one-way | `ActorRouteNotFound` | `RouteNotConnected` | 해당 없음 | 해당 없음 |
-| Actor request | `ActorRouteNotFound` | `RouteNotConnected` | 해당 없음 | 해당 없음 |
-| Spot one-way | `SpotRouteNotFound` | `RouteNotConnected` | 해당 없음 | 해당 없음 |
-| Spot request | `SpotRouteNotFound` | `RouteNotConnected` | 해당 없음 | 해당 없음 |
-| exact ActorRef session bind | `ActorRouteNotFound` | `RouteNotConnected` | `ActorGenerationStale` | `ActorMoving` |
-| exact ActorRef destroy | idempotent `false` | `RouteNotConnected` | `ActorGenerationStale` | `ActorMoving` |
-| exact SpotRef close | idempotent `false` | `RouteNotConnected` | `SpotGenerationStale` | `SpotMoving` |
+| Actor one-way | `NotFound` | `Unavailable` | 해당 없음 | 해당 없음 |
+| Actor request | `NotFound` | `Unavailable` | 해당 없음 | 해당 없음 |
+| Spot one-way | `NotFound` | `Unavailable` | 해당 없음 | 해당 없음 |
+| Spot request | `NotFound` | `Unavailable` | 해당 없음 | 해당 없음 |
+| exact ActorRef session bind | `NotFound` | `Unavailable` | `InvalidOperation` | `Unavailable` |
+| exact ActorRef destroy | idempotent `false` | `Unavailable` | `InvalidOperation` | `Unavailable` |
+| exact SpotRef close | idempotent `false` | `Unavailable` | `InvalidOperation` | `Unavailable` |
 
-Create·GetOrCreate에서 eligible node가 없거나 capacity가 부족하면 `PlacementCapacityExhausted`, reservation을
-확보한 owner route가 준비되지 않았으면 `RouteNotConnected`다. Store resolve·reservation·commit과 activation
-infrastructure 실패는 `RequestFailed`, object kind·stable type 충돌은 Actor 또는 Spot type-mismatch 오류,
-stale authority fence와 application admission 거부는 `RequestRejected`로 완료한다. 다른 owner로 자동
+Create·GetOrCreate에서 eligible node가 없거나 capacity가 부족하면 `CapacityExceeded`, reservation을
+확보한 owner route가 준비되지 않았으면 `Unavailable`이다. Store resolve·reservation·commit과 activation
+infrastructure 실패는 `InternalFailure`, object kind·stable type 충돌은 `TypeMismatch`,
+stale authority fence와 application admission 거부는 각각 `Unavailable`과 `Rejected`로 완료한다. 다른 owner로 자동
 재제출하지 않는다.
 
 이 request 실패는 확인 시점과 관계없이 해당 error kind로 한 번만 완료한다. One-way send는 source의 local
@@ -631,6 +607,7 @@ Framework는 host가 message를 받기 전에 최소한 다음 설정을 검증�
 - MeshNode routing ID와 bind endpoint. Channel handler를 제공하는 MeshNode는 Server membership이 하나
   이상이어야 하지만 호출 또는 Node direct 전용 MeshNode는 membership 0개를 허용한다
 - RouteMesh Channel의 Client·Server 역할 중복, Server가 아닌 역할의 weight·handler 설정
+- Object Client와 application Node direct handler의 잘못된 조합
 - [ClientServer Channel](01-glossary.ko.md#clientserver-channel)의 Client·Server 역할, automatic discovery 사용 시 location store 등록
 - process-local ChannelName 송신 경로 중복과 빈 ChannelName 등록
 - handler key 중복과 필요한 handler 누락

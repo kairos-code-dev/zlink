@@ -1348,6 +1348,11 @@ static_assert (std::is_same_v<
                zlink::framework::mesh_node_builder_t &>);
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
+                           .set_object_role (
+                             zlink::framework::object_role_t::client)),
+               zlink::framework::mesh_node_builder_t &>);
+static_assert (std::is_same_v<
+               decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
                            .add_actor_transfer_adapter<contract_actor_t,
                                                        contract_actor_transfer_t> ("contract")),
                zlink::framework::mesh_node_builder_t &>);

@@ -1,8 +1,8 @@
+using Zlink.Framework.Contracts.Handlers;
 using Microsoft.Extensions.Logging;
 using SupportChat.Server.Configuration;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 using SupportChat.Shared.Contracts;
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Spots;
 
@@ -15,7 +15,7 @@ internal sealed class OpenConversationActorHandler(
     public async ValueTask<OpenConversationRes> HandleAsync(
         SupportEntrySpot entrySpot,
         SupportUserActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         OpenConversationReq message,
         CancellationToken cancellationToken)
     {
@@ -38,22 +38,16 @@ internal sealed class OpenConversationActorHandler(
                     message.Subject))
             .Async<OpenConversationApiRes>(cancellationToken);
 
-        var joined = await actor.Context.JoinSpot(
-                RoutingId.From(opened.ConversationId),
+        actor.TrackDeferredJoin(opened.State.ConversationId, notifyBoundSession: false);
+        actor.Context.JoinSpot(
+                opened.State.ConversationId,
                 new JoinConversationReq(actor.ParticipantId, actor.Role, actor.DisplayName))
-            .Async(cancellationToken);
-        var reply = joined switch
-        {
-            ZLinkActorJoinResult.Accepted accepted => accepted.Reply,
-            ZLinkActorJoinResult.Rejected rejected => rejected.Reply,
-            _ => throw new InvalidOperationException("Unknown actor join result.")
-        };
-        var state = reply.Decode<JoinConversationRes>().State;
+            .Defer();
 
         logger.LogInformation(
             "support entry open: completed conversation={ConversationId} status={Status}",
-            opened.ConversationId,
-            state.Status);
-        return new OpenConversationRes(opened.ConversationId, state);
+            opened.State.ConversationId,
+            opened.State.Status);
+        return new OpenConversationRes(opened.State.ConversationId, opened.State);
     }
 }

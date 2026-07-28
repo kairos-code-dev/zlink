@@ -1,5 +1,4 @@
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Contracts.Configuration;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.ZoneNode.Application.Node;
@@ -12,41 +11,11 @@ namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Monitoring;
 /// <summary>
 /// Reports provider-neutral spot timer failures to Ops when they occur.
 /// </summary>
-internal sealed class LocalSpotEventHandler(IOpsReportPort ops)
-    : IZLinkRuntimeEventHandler<ZLinkSpotEvent>
-{
-    public async ValueTask HandleAsync(ZLinkSpotEvent @event, CancellationToken cancellationToken)
-    {
-        switch (@event)
-        {
-            case ZLinkSpotEvent.TimerHandlerFailed failed:
-                await ops.ReportSpotEventAsync(
-                    NodeAlertKinds.TimerHandlerFailed,
-                    $"timer={failed.Diagnostic.TimerName} spot={failed.Diagnostic.SpotId}",
-                    failed.Timestamp,
-                    cancellationToken);
-                break;
-
-        }
-
-    }
-}
-
 /// <summary>Sends this node's reports to Ops over <c>zoneworld.report</c>.</summary>
 internal sealed class OpsReportAdapter(
     IZLinkRouteClient channels,
     NodeMaintenancePolicy maintenance) : IOpsReportPort
 {
-    public async ValueTask ReportSpotEventAsync(
-        string kind,
-        string detail,
-        DateTimeOffset occurredAt,
-        CancellationToken cancellationToken) =>
-        await channels
-            .SendToChannel(ZoneWorldNames.ReportChannel,
-                new ReportSpotEventMsg(maintenance.OwnNodeId, kind, detail, occurredAt.ToString("O")))
-            .Async(cancellationToken);
-
     public async ValueTask ReportNodeStatusAsync(
         IReadOnlyList<string> zones,
         int playerCount,
@@ -65,7 +34,6 @@ internal sealed class OpsReportAdapter(
 /// <summary>Reports this node's status every second so Ops can fill in PlayerCount (§8.1).</summary>
 internal sealed class NodeStatusReporter(
     IOpsReportPort ops,
-    IZLinkRouteMeshRuntime routeMesh,
     NodeMaintenancePolicy maintenance,
     NodePlayerCensus census,
     ILogger<NodeStatusReporter> logger) : BackgroundService
@@ -73,11 +41,10 @@ internal sealed class NodeStatusReporter(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         stoppingToken.ThrowIfCancellationRequested();
-        var nodeRid = routeMesh.Snapshot(ZoneWorldNames.MeshName).Rid.ToString();
         logger.LogInformation(
-            "zone node mesh identity ready. node={NodeId} meshRid={MeshRid}",
+            "zone node status reporter ready. node={NodeId} mesh={MeshName}",
             maintenance.OwnNodeId,
-            nodeRid);
+            ZoneWorldNames.MeshName);
         using var timer = new PeriodicTimer(
             TimeSpan.FromMilliseconds(ZoneWorldSpec.NodeStatusReportPeriodMs));
         var firstReport = true;

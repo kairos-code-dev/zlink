@@ -36,7 +36,8 @@ internal sealed class ZLinkAutoConnectReconciler
     private IDisposable? _peerMetricRegistration;
     private readonly Dictionary<string, ZLinkAutoConnectTarget> _active = new(StringComparer.Ordinal);
     private Dictionary<string, ZLinkAutoConnectTarget> _lastDesired = new(StringComparer.Ordinal);
-    private volatile HashSet<string>? _meshMemberRids;
+    private volatile Dictionary<string, ZLinkRouteMeshTargetClassification>?
+        _meshTargets;
     private volatile ZLinkRouteMeshPeerIdentity[]? _meshPeers;
     private volatile HashSet<string> _retainedMemberRids = new(StringComparer.Ordinal);
     private readonly bool _retainRemovedMembers;
@@ -87,15 +88,19 @@ internal sealed class ZLinkAutoConnectReconciler
     internal IReadOnlyCollection<ZLinkAutoConnectTarget> ActiveTargets => _active.Values;
 
     /// <summary>
-    /// True when the last reconcile saw this node rid as a mesh member
-    /// (any live descriptor of the mesh, whichever side dials). Null before
-    /// the first successful tick — no judgment possible yet.
+    /// Classifies a Node-direct target from the last complete descriptor
+    /// snapshot. Object role is retained because an Object Client can still
+    /// have a required physical connection while remaining ineligible as an
+    /// application Node-direct target.
     /// </summary>
-    internal bool? KnowsPeer(RoutingId nodeRid)
+    internal ZLinkRouteMeshTargetClassification ClassifyTarget(
+        RoutingId nodeRid)
     {
-        if (_meshMemberRids is not { } members) return null;
-
-        return members.Contains(nodeRid.ToHex());
+        if (_meshTargets is not { } targets)
+            return ZLinkRouteMeshTargetClassification.Unknown;
+        return targets.GetValueOrDefault(
+            nodeRid.ToHex(),
+            ZLinkRouteMeshTargetClassification.Unknown);
     }
 
     internal IReadOnlyList<ZLinkRouteMeshPeerIdentity>? CompleteMeshPeers()
@@ -341,8 +346,7 @@ internal sealed class ZLinkAutoConnectReconciler
             throw;
         }
         catch (ZLinkFrameworkException error)
-            when (error.Kind == ZLinkFrameworkErrorKind.RoutingIdConflict
-                  || error.Kind == ZLinkFrameworkErrorKind.SpotIdConflict)
+            when (error.Kind == ZLinkFrameworkErrorKind.AlreadyExists)
         {
             // A conflicting local identity is a deterministic startup
             // configuration failure, not a transient store outage.
@@ -382,12 +386,24 @@ internal sealed class ZLinkAutoConnectReconciler
         // rid-addressed targets. Fail-static: a store outage keeps the
         // last snapshot because the tick returns before this point.
         var members = new HashSet<string>(StringComparer.Ordinal);
+        var targets =
+            new Dictionary<string, ZLinkRouteMeshTargetClassification>(
+                StringComparer.Ordinal);
         foreach (var row in rows)
         {
-            if (row.Rid is { Size: > 0 } rowRid) members.Add(rowRid.ToHex());
+            if (row.Rid is not { Size: > 0 } rowRid)
+                continue;
+            var key = rowRid.ToHex();
+            members.Add(key);
+            if (_local.NodeRid is { } localRid && rowRid == localRid)
+                continue;
+            targets[key] =
+                row.ObjectRole == ZLinkMeshNodeObjectRole.Client
+                    ? ZLinkRouteMeshTargetClassification.ObjectClientTarget
+                    : ZLinkRouteMeshTargetClassification.RequiredNotConnected;
         }
 
-        _meshMemberRids = members;
+        _meshTargets = targets;
         _meshPeers = rows
             .Where(row => row.Rid is { Size: > 0 } rowRid
                           && (_local.NodeRid is not { } localRid
@@ -533,7 +549,9 @@ internal sealed class ZLinkAutoConnectReconciler
     {
         if (_localRow is not null && _localGeneration > 0)
         {
-            await _runtime.RemoveDescriptorAsync(LocalKey(), cancellationToken)
+            await _runtime.RemoveDescriptorForShutdownAsync(
+                    LocalKey(),
+                    cancellationToken)
                 .ConfigureAwait(false);
             _localPublished = false;
             _localGeneration = 0;
@@ -579,7 +597,7 @@ internal sealed class ZLinkAutoConnectReconciler
 
         if (claim.Status == ZLinkLocationWriteStatus.RejectedConflict)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RoutingIdConflict,
+                ZLinkFrameworkErrorKind.AlreadyExists,
                 $"MeshNode RID '{_localRow.Rid}' is already claimed in mesh "
                 + $"'{_localRow.MeshName}'.");
     }

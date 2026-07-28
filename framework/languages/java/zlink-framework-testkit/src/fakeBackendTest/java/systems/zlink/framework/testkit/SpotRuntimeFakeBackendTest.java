@@ -48,7 +48,6 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
@@ -1531,7 +1530,7 @@ final class SpotRuntimeFakeBackendTest {
 
     private static ZLinkMessageSerializer serializerWith(
         systems.zlink.framework.configuration.ZLinkCodecExtension extension) {
-        ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
+        PublicCodecTestRegistry registration = new PublicCodecTestRegistry();
         registration.use(extension);
         return registration.serializerWithFallback(new ZLinkJsonMessageSerializer());
     }

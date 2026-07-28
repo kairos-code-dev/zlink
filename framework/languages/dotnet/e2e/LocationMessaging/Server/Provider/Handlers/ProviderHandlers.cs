@@ -3,7 +3,7 @@ using System.Text;
 using LocationMessaging.Server.Provider.Infrastructure;
 using LocationMessaging.Shared;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Contracts.Handlers;
 
@@ -77,71 +77,51 @@ internal sealed class RoutePingHandler(EvidenceStore evidence)
     }
 }
 
-internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
-    : IZLinkRuntimeMessageFlowObserver
-{
-    public ValueTask OnMessageFlowAsync(
-        ZLinkRuntimeMessageFlowEvent flow,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (flow.Outcome != "failed" && flow.Phase != "dropped")
-            return ValueTask.CompletedTask;
-
-        evidence.Add(
-            "dispatch-error"
-            + $"|surface={flow.Surface}"
-            + $"|kind={flow.MessageKind}"
-            + $"|reason={flow.Reason}"
-            + $"|action={flow.Action}"
-            + $"|packet={flow.PacketName ?? "<null>"}"
-            + $"|channel={flow.ChannelName ?? "<null>"}");
-        return ValueTask.CompletedTask;
-    }
-}
-
 internal sealed class ProfileMeshEventObserver(
     EvidenceStore evidence,
-    Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshRuntime meshRuntime)
-    : IZLinkRuntimeEventHandler<Zlink.Framework.Contracts.Configuration.ZLinkMeshRuntimeEvent>
+    IZLinkRouteMeshRuntime meshRuntime,
+    IHostApplicationLifetime applicationLifetime)
+    : BackgroundService
 {
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string>
-        LastKnownEndpoints = new(StringComparer.Ordinal);
-
-    public ValueTask HandleAsync(
-        Zlink.Framework.Contracts.Configuration.ZLinkMeshRuntimeEvent @event,
-        CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var peer = @event.PeerRid?.ToString() ?? string.Empty;
-        var endpoint = string.Empty;
-        if (peer.Length > 0)
+        // Hosted services may start before the framework runtime service.
+        // Subscribe only after the host has completed its startup sequence.
+        if (!applicationLifetime.ApplicationStarted.IsCancellationRequested)
         {
-            try
-            {
-                endpoint = meshRuntime.Snapshot(@event.MeshName).Peers
-                    .FirstOrDefault(candidate => candidate.Rid.ToString() == peer)?.Endpoint
-                    ?? string.Empty;
-            }
-            catch (Exception)
-            {
-                // A final event can race mesh shutdown; keep the last endpoint
-                // observed while this peer was ready.
-            }
-
-            if (endpoint.Length > 0) LastKnownEndpoints[peer] = endpoint;
-            else LastKnownEndpoints.TryGetValue(peer, out endpoint!);
+            var started = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            using var startedRegistration =
+                applicationLifetime.ApplicationStarted.Register(
+                    static state =>
+                        ((TaskCompletionSource)state!).TrySetResult(),
+                    started);
+            using var stoppingRegistration = stoppingToken.Register(
+                static state =>
+                    ((TaskCompletionSource)state!).TrySetCanceled(),
+                started);
+            await started.Task.ConfigureAwait(false);
         }
 
-        var kind = @event.Reason switch
+        var previous = new HashSet<string>(StringComparer.Ordinal);
+        await foreach (var status in meshRuntime
+                           .ObserveAsync("profile", stoppingToken)
+                           .ConfigureAwait(false))
         {
-            "ready" => "ConnectionReady",
-            "disconnected" => "Disconnected",
-            _ => @event.Reason ?? @event.Identifier
-        };
-        evidence.Add(
-            $"monitor-mesh|source={@event.MeshName}|kind={kind}"
-            + $"|remote={endpoint}|routing={peer}|sequence={@event.Sequence}");
-        return ValueTask.CompletedTask;
+            var current = status.Peers
+                .Where(static peer => peer.State == ZLinkPeerState.Ready)
+                .Select(static peer => peer.NodeRid.ToString())
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var peer in current.Except(previous))
+                Add("ConnectionReady", peer, status.Sequence);
+            foreach (var peer in previous.Except(current))
+                Add("Disconnected", peer, status.Sequence);
+            previous = current;
+        }
     }
+
+    private void Add(string kind, string peer, ulong sequence) =>
+        evidence.Add(
+            $"monitor-mesh|source=profile|kind={kind}"
+            + $"|remote=|routing={peer}|sequence={sequence}");
 }

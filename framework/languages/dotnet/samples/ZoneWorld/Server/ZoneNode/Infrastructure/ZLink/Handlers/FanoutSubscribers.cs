@@ -11,10 +11,9 @@ namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Handlers;
 /// The world announcement (§8.2). Ops publishes it to a fanout channel without holding a
 /// node list, so adding a node changes nothing on the publishing side.
 ///
-/// The announcement is then handed to this node's own zone spots with a send, not a spot
-/// publish: a publish reaches the whole mesh, so every zone spot would receive the
-/// announcement once per node. The node knows its own zones from configuration, so it
-/// addresses exactly those, through the spot bridge.
+/// The announcement is then handed to configured zone Spot IDs with direct sends. Publish
+/// completion does not report subscriber delivery, and each direct send waits only for
+/// source-local outbound admission.
 /// </summary>
 [ZLinkHandlerGroup(HandlerGroups.ZoneBroadcast)]
 internal sealed class WorldAnnounceSubscriber(
@@ -45,7 +44,6 @@ internal sealed class WorldAnnounceSubscriber(
                 // it keeps an admission failure visible without extending the remote handler turn.
                 await routes
                     .SendToSpot(zoneId, new DeliverAnnounceMsg(message.AnnouncementId, message.Text))
-                    .InMesh(ZoneWorldNames.MeshName)
                     .Async(cancellationToken);
             }
             catch (Exception error)

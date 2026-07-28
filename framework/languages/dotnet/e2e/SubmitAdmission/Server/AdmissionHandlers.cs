@@ -13,7 +13,7 @@ internal sealed class NodeAdmissionHandler(
 {
     public async ValueTask HandleAsync(
         AdmissionMessage message,
-        ZLinkRouteSendContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         if (!context.Metadata.Values.TryGetValue("scenario", out var operationId)
@@ -33,7 +33,7 @@ internal sealed class ChannelAdmissionHandler(
 {
     public async ValueTask HandleAsync(
         AdmissionMessage message,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         evidence.HandlerEntered(message.OperationId, "channel", options.Rid);
@@ -47,7 +47,7 @@ internal sealed class NodeReadyHandler(ServerOptions options)
 {
     public ValueTask<RouteReadyReply> HandleAsync(
         RouteReadyRequest request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(new RouteReadyReply(options.Rid, request.Marker));
 }
@@ -57,7 +57,7 @@ internal sealed class ChannelReadyHandler(ServerOptions options)
 {
     public ValueTask<RouteReadyReply> HandleAsync(
         RouteReadyRequest request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(new RouteReadyReply(options.Rid, request.Marker));
 }

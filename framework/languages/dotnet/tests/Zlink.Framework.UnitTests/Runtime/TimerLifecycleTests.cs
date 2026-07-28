@@ -233,6 +233,187 @@ public sealed class TimerLifecycleTests
     }
 
     [Fact]
+    public async Task Admission_seal_freeze_preserves_one_pending_tick_without_retry_spin()
+    {
+        var registry = new ZLinkSpotTimerRegistry(static () => false);
+        var firstTick = new TaskCompletionSource<ZLinkTimerTick>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var resumedTick = new TaskCompletionSource<ZLinkTimerTick>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var attempts = 0;
+        var failureReports = 0;
+        var admissionOpen = 0;
+        _ = await registry.AddAsync(
+            "admission-seal",
+            TimeSpan.FromMilliseconds(1),
+            null,
+            typeof(TestTimerHandler),
+            typeof(TestTimerSpot),
+            CancellationToken.None,
+            (_, tick, _) =>
+            {
+                var attempt = Interlocked.Increment(ref attempts);
+                if (Volatile.Read(ref admissionOpen) == 0)
+                {
+                    registry.FreezeForApplicationAdmissionSeal();
+                    firstTick.TrySetResult(tick);
+                    return ValueTask.FromResult(false);
+                }
+                registry.FreezeForApplicationAdmissionSeal();
+                resumedTick.TrySetResult(tick);
+                return ValueTask.FromResult(true);
+            },
+            (_, _, _, _, _) =>
+            {
+                Interlocked.Increment(ref failureReports);
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None);
+
+        var pending = await firstTick.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(50);
+        var frozen = ZLinkSpotTimerRelocationCodec.Decode(
+            Assert.Single(registry.FreezeRelocation()));
+
+        Assert.Equal(1, Volatile.Read(ref attempts));
+        Assert.Equal(0, Volatile.Read(ref failureReports));
+        Assert.Equal(pending, frozen.Timer.PendingTick);
+        Assert.Equal<ulong>(0, frozen.Timer.DeliveryIndex);
+
+        Volatile.Write(ref admissionOpen, 1);
+        registry.Resume();
+        var delivered = await resumedTick.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(pending, delivered);
+        Assert.Equal(2, Volatile.Read(ref attempts));
+        await registry.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Admission_sealed_pending_tick_is_restored_once_on_the_target()
+    {
+        var source = new ZLinkSpotTimerRegistry(static () => false);
+        var sourceTick = new TaskCompletionSource<ZLinkTimerTick>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = await source.AddAsync(
+            "admission-seal-target",
+            TimeSpan.FromMilliseconds(1),
+            null,
+            typeof(TestTimerHandler),
+            typeof(TestTimerSpot),
+            CancellationToken.None,
+            (_, tick, _) =>
+            {
+                source.FreezeForApplicationAdmissionSeal();
+                sourceTick.TrySetResult(tick);
+                return ValueTask.FromResult(false);
+            },
+            static (_, _, _, _, _) => ValueTask.CompletedTask,
+            CancellationToken.None);
+
+        var pending = await sourceTick.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var relocation = source.FreezeRelocation();
+        var captured = ZLinkSpotTimerRelocationCodec.Decode(
+            Assert.Single(relocation));
+        Assert.Equal(pending, captured.Timer.PendingTick);
+
+        var targetTick = new TaskCompletionSource<ZLinkTimerTick>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var targetDeliveries = 0;
+        var targetFailures = 0;
+        var target = new ZLinkSpotTimerRegistry(static () => false);
+        target.RestoreRelocation(
+            relocation,
+            CancellationToken.None,
+            (_, tick, _) =>
+            {
+                Interlocked.Increment(ref targetDeliveries);
+                target.FreezeForApplicationAdmissionSeal();
+                targetTick.TrySetResult(tick);
+                return ValueTask.FromResult(true);
+            },
+            (_, _, _, _, _) =>
+            {
+                Interlocked.Increment(ref targetFailures);
+                return ValueTask.CompletedTask;
+            });
+
+        target.Resume();
+        var restored = await targetTick.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(pending, restored);
+        await WaitUntilAsync(
+            () => ZLinkSpotTimerRelocationCodec
+                .Decode(Assert.Single(target.FreezeRelocation()))
+                .Timer.PendingTick is null);
+        Assert.Equal(1, Volatile.Read(ref targetDeliveries));
+        Assert.Equal(0, Volatile.Read(ref targetFailures));
+
+        await source.DisposeAsync();
+        await target.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Relocation_target_restores_configured_timer_in_place_and_keeps_it_frozen()
+    {
+        var source = new ZLinkSpotTimerRegistry(static () => false);
+        await AddTimerAsync(source, "configured");
+        await AddTimerAsync(source, "dynamic-source-only");
+        var relocation = source.FreezeRelocation();
+
+        var deliveries = 0;
+        var target = new ZLinkSpotTimerRegistry(
+            static () => false,
+            restorePending: true);
+        var configured = await target.AddAsync(
+            "configured",
+            TimeSpan.FromHours(1),
+            null,
+            typeof(TestTimerHandler),
+            typeof(TestTimerSpot),
+            CancellationToken.None,
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref deliveries);
+                return ValueTask.FromResult(true);
+            },
+            static (_, _, _, _, _) => ValueTask.CompletedTask,
+            CancellationToken.None);
+
+        target.RestoreRelocation(
+            relocation,
+            typeof(TestTimerSpot),
+            CancellationToken.None,
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref deliveries);
+                return ValueTask.FromResult(true);
+            },
+            static (_, _, _, _, _) => ValueTask.CompletedTask);
+
+        Assert.False(configured.IsDisposed);
+        Assert.Equal(0, Volatile.Read(ref deliveries));
+        var restored = target.FreezeRelocation()
+            .Select(static timer =>
+                ZLinkSpotTimerRelocationCodec.Decode(timer))
+            .ToDictionary(static snapshot => snapshot.Timer.Name);
+        var expected = relocation
+            .Select(static timer =>
+                ZLinkSpotTimerRelocationCodec.Decode(timer))
+            .ToDictionary(static snapshot => snapshot.Timer.Name);
+        Assert.Equal(expected.Keys.Order(), restored.Keys.Order());
+        Assert.Equal(
+            expected["configured"].Timer,
+            restored["configured"].Timer);
+        Assert.Equal(
+            expected["dynamic-source-only"].Timer,
+            restored["dynamic-source-only"].Timer);
+
+        source.Resume();
+        target.Resume();
+        await source.DisposeAsync();
+        await target.DisposeAsync();
+    }
+
+    [Fact]
     public async Task Add_timer_racing_registry_dispose_is_either_rejected_or_fully_finalized()
     {
         for (var iteration = 0; iteration < 100; iteration++)

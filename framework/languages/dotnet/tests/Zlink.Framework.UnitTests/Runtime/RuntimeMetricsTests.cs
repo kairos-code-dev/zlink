@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using Microsoft.Extensions.Logging;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -40,6 +41,8 @@ public sealed class RuntimeMetricsTests
             ["zlink.relocation.recovered"] = (typeof(Counter<>), "{relocation}"),
             ["zlink.relocation.journal.messages"] = (typeof(Histogram<>), "{message}"),
             ["zlink.relocation.bytes"] = (typeof(Histogram<>), "By"),
+            ["zlink.relocation.interruption"] =
+                (typeof(Histogram<>), "s"),
             ["zlink.channel.request.duration"] = (typeof(Histogram<>), "s"),
             ["zlink.channel.request.inflight"] = (typeof(UpDownCounter<>), "{request}"),
             ["zlink.channel.request.timeouts"] = (typeof(Counter<>), "{request}"),
@@ -109,6 +112,160 @@ public sealed class RuntimeMetricsTests
     public void Inactive_Histogram_Does_Not_Capture_A_Timestamp()
     {
         Assert.Equal(0, ZLinkRuntimeMetrics.StartStreamSessionBind());
+    }
+
+    [Fact]
+    public void Relocation_Interruption_Start_Matches_Observation_State()
+    {
+        var observer = new ZLinkRelocationInterruptionObserver(
+            loggerFactory: null);
+
+        var operation = observer.Start(
+            ZLinkRelocationUnitKind.Actor,
+            "entry");
+
+        Assert.Equal(
+            ZLinkRuntimeMetrics.RelocationInterruptionEnabled,
+            operation.Enabled);
+        operation.Complete();
+    }
+
+    [Fact]
+    public void Relocation_Interruption_Records_Unit_And_Execution_Mode()
+    {
+        var measurements =
+            new List<(double Value, KeyValuePair<string, object?>[] Tags)>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, owner) =>
+            {
+                if (instrument.Meter.Name == ZLinkMeters.Framework
+                    && instrument.Name
+                    == "zlink.relocation.interruption")
+                    owner.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<double>(
+            (_, value, tags, _) =>
+                measurements.Add((value, tags.ToArray())));
+        listener.Start();
+        var time = new ManualTimeProvider();
+        var observer = new ZLinkRelocationInterruptionObserver(
+            loggerFactory: null,
+            time);
+
+        var operation = observer.Start(
+            ZLinkRelocationUnitKind.Actor,
+            "entry");
+        time.Advance(TimeSpan.FromMilliseconds(750));
+        operation.Complete();
+        operation.Complete();
+
+        var measurement = Assert.Single(measurements);
+        Assert.Equal(0.75, measurement.Value, precision: 3);
+        Assert.Contains(
+            measurement.Tags,
+            tag => tag.Key == "unit_kind"
+                   && Equals(tag.Value, "actor"));
+        Assert.Contains(
+            measurement.Tags,
+            tag => tag.Key == "execution_mode"
+                   && Equals(tag.Value, "entry"));
+    }
+
+    [Fact]
+    public void Interruption_Target_Warning_Does_Not_Include_Object_Identifiers()
+    {
+        var logs = new RecordingLoggerProvider();
+        using var loggerFactory = LoggerFactory.Create(builder =>
+            builder.SetMinimumLevel(LogLevel.Warning).AddProvider(logs));
+        var time = new ManualTimeProvider();
+        var observer = new ZLinkRelocationInterruptionObserver(
+            loggerFactory,
+            time);
+
+        var operation = observer.Start(
+            ZLinkRelocationUnitKind.UserSpot,
+            "per_actor");
+        time.Advance(TimeSpan.FromMilliseconds(1_250));
+        operation.Complete();
+
+        var log = Assert.Single(logs.Entries);
+        Assert.Equal(LogLevel.Warning, log.Level);
+        Assert.Equal("zlink.runtime.relocation.changed", log.EventId.Name);
+        Assert.Equal(
+            "user_spot",
+            log.State["UnitKind"]);
+        Assert.Equal(
+            "per_actor",
+            log.State["ExecutionMode"]);
+        Assert.Equal(true, log.State["InterruptionTargetExceeded"]);
+        Assert.Equal(
+            1.25,
+            Assert.IsType<double>(log.State["DurationSeconds"]),
+            precision: 3);
+        Assert.DoesNotContain(
+            log.State.Keys,
+            key => key.Contains("ActorId", StringComparison.Ordinal)
+                   || key.Contains("SpotId", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Interruption_Warning_Provider_Failure_Does_Not_Escape()
+    {
+        using var loggerFactory = LoggerFactory.Create(builder =>
+            builder.SetMinimumLevel(LogLevel.Warning)
+                .AddProvider(new ThrowingLoggerProvider(
+                    throwFromIsEnabled: false)));
+        var time = new ManualTimeProvider();
+        var observer = new ZLinkRelocationInterruptionObserver(
+            loggerFactory,
+            time);
+        var operation = observer.Start(
+            ZLinkRelocationUnitKind.Actor,
+            "entry");
+        time.Advance(TimeSpan.FromMilliseconds(1_250));
+
+        var exception = Record.Exception(operation.Complete);
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void Interruption_Warning_IsEnabled_Failure_Does_Not_Escape()
+    {
+        using var loggerFactory = LoggerFactory.Create(builder =>
+            builder.SetMinimumLevel(LogLevel.Warning)
+                .AddProvider(new ThrowingLoggerProvider(
+                    throwFromIsEnabled: true)));
+        var observer = new ZLinkRelocationInterruptionObserver(
+            loggerFactory);
+
+        var exception = Record.Exception(() =>
+        {
+            var operation = observer.Start(
+                ZLinkRelocationUnitKind.Actor,
+                "entry");
+            operation.Complete();
+        });
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void Interruption_Logger_Creation_Failure_Does_Not_Escape()
+    {
+        var exception = Record.Exception(() =>
+        {
+            var observer = new ZLinkRelocationInterruptionObserver(
+                new ThrowingLoggerFactory());
+            observer.Start(
+                    ZLinkRelocationUnitKind.Actor,
+                    "entry")
+                .Complete();
+        });
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -500,6 +657,95 @@ public sealed class RuntimeMetricsTests
         listener.Start();
         return listener;
     }
+
+    private sealed class RecordingLoggerProvider : ILoggerProvider
+    {
+        internal List<LogEntry> Entries { get; } = [];
+
+        public ILogger CreateLogger(string categoryName) =>
+            new RecordingLogger(Entries);
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class ThrowingLoggerProvider(bool throwFromIsEnabled)
+        : ILoggerProvider
+    {
+        public ILogger CreateLogger(string categoryName) =>
+            new ThrowingLogger(throwFromIsEnabled);
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class ThrowingLoggerFactory : ILoggerFactory
+    {
+        public void AddProvider(ILoggerProvider provider)
+        {
+        }
+
+        public ILogger CreateLogger(string categoryName) =>
+            throw new InvalidOperationException(
+                "injected CreateLogger failure");
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class ThrowingLogger(bool throwFromIsEnabled) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) =>
+            throwFromIsEnabled
+                ? throw new InvalidOperationException(
+                    "injected IsEnabled failure")
+                : true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            throw new InvalidOperationException("injected logger failure");
+    }
+
+    private sealed class RecordingLogger(List<LogEntry> entries) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) =>
+            logLevel >= LogLevel.Warning;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            var values = state is IEnumerable<KeyValuePair<string, object?>>
+                structured
+                ? structured.ToDictionary(
+                    static pair => pair.Key,
+                    static pair => pair.Value,
+                    StringComparer.Ordinal)
+                : [];
+            entries.Add(new LogEntry(logLevel, eventId, values));
+        }
+    }
+
+    private sealed record LogEntry(
+        LogLevel Level,
+        EventId EventId,
+        IReadOnlyDictionary<string, object?> State);
 
     private delegate void MetricRecorder<T>(
         Instrument instrument,

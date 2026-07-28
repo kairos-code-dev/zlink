@@ -102,7 +102,7 @@ terminator는 계약 위반이다([04 §2](../05-async-execution-policy.ko.md)).
 - client는 서비스당 하나를 만들어 재사용한다(pool/keep-alive 이득).
 - builder verb 단축(one-shot)은 제출 시 client를 lazy build하고 완료 후 닫는 **편의 경로**다.
   요청마다 전송 스택 초기화 비용을 내므로 반복/고부하 호출에 쓰지 않는다. one-shot 요청 객체는
-  재제출할 수 없다(재제출 시 `requestProtocolError`).
+  재제출할 수 없다(재제출 시 `InvalidOperation`).
 
 ## 5.6 취소
 

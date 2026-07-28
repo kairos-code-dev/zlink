@@ -119,11 +119,11 @@ internal sealed class ZLinkFrameworkActorFacade(
         var meshName = actorState.Context?.MeshName
                        ?? ZLinkActorDrainCoordinator.ResolveMeshName(registration, actorType)
                        ?? throw new ZLinkFrameworkException(
-                           ZLinkFrameworkErrorKind.MeshNotFound,
+                           ZLinkFrameworkErrorKind.NotFound,
                            $"Actor '{actor.Context.ActorId}' does not have an owner Mesh.");
         var store = registration.Locations.ResolveStore()
                     ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.InvalidConfiguration,
+                        ZLinkFrameworkErrorKind.InvalidOperation,
                         "Actor Entry Spot Join requires a Location Store.");
         var descriptors = await store.ListAllMeshNodesAsync(meshName, cancellationToken)
             .ConfigureAwait(false);
@@ -138,13 +138,13 @@ internal sealed class ZLinkFrameworkActorFacade(
                          static candidate => candidate.PlacementWeight,
                          ref _nextEntrySpotSelection)
                      ?? throw new ZLinkFrameworkException(
-                         ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
+                         ZLinkFrameworkErrorKind.CapacityExceeded,
                          $"No Ready Entry Spot target is available for '{actorType}'.",
-                         true);
+                         ZLinkRetryAdvice.RetryAfterBackoff);
 
         var sourceNodeRid = actorState.NativeActorRef?.NodeRid
                             ?? throw new ZLinkFrameworkException(
-                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                                ZLinkFrameworkErrorKind.NotFound,
                                 $"Actor '{actor.Context.ActorId}' does not have a current node identity.");
         if (target.Rid == sourceNodeRid)
             return await _entrySpotJoin.JoinAsync(
@@ -156,7 +156,7 @@ internal sealed class ZLinkFrameworkActorFacade(
 
         var actorRef = actorState.NativeActorRef
                        ?? throw new ZLinkFrameworkException(
-                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           ZLinkFrameworkErrorKind.NotFound,
                            $"Actor '{actor.Context.ActorId}' does not have a current native reference.");
         return await _remoteJoiner.JoinEntrySpotAsync(
                 target,
@@ -182,12 +182,12 @@ internal sealed class ZLinkFrameworkActorFacade(
     {
         var actorRef = actorState.NativeActorRef
                        ?? throw new ZLinkFrameworkException(
-                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           ZLinkFrameworkErrorKind.NotFound,
                            $"Actor '{actorState.ActorId}' does not have a native Actor ref.");
         var meshName = actorState.Activation?.MeshName
                        ?? actorState.Context?.MeshName
                        ?? throw new ZLinkFrameworkException(
-                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           ZLinkFrameworkErrorKind.NotFound,
                            $"Actor '{actorState.ActorId}' does not have an owner Mesh.");
         return actorRef.ToNative(meshName);
     }

@@ -3,8 +3,8 @@ namespace Zlink.Framework.Runtime.Execution;
 internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 {
     private const int DefaultCapacity = 4096;
-    private const int RelocationHoldMessageLimit = 1_024;
-    private const long RelocationHoldByteLimit = 16L * 1024 * 1024;
+    internal const int RelocationHoldMessageLimit = 1_024;
+    internal const long RelocationHoldByteLimit = 16L * 1024 * 1024;
     private const int RelocationJournalRecordHeaderBytes =
         sizeof(ulong) + sizeof(int);
     private readonly int _capacity;
@@ -134,6 +134,19 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         ReadOnlyMemory<byte> payload,
         Func<CancellationToken, ValueTask> callback,
         Action relocationRelease,
+        out ZLinkSerialWorkItem item) =>
+        TryPostAccepted(
+            payload,
+            callback,
+            relocationRelease,
+            previousOwnerMessageFollow: false,
+            out item);
+
+    public ZLinkAcceptedWorkAdmission TryPostAccepted(
+        ReadOnlyMemory<byte> payload,
+        Func<CancellationToken, ValueTask> callback,
+        Action relocationRelease,
+        bool previousOwnerMessageFollow,
         out ZLinkSerialWorkItem item)
     {
         ArgumentNullException.ThrowIfNull(callback);
@@ -176,7 +189,8 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             item = new ZLinkSerialWorkItem(
                 callback,
                 record,
-                relocationRelease);
+                relocationRelease,
+                previousOwnerMessageFollow);
             if (_relocation is null)
             {
                 _queue.Enqueue(item);
@@ -331,6 +345,33 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         {
             if (!Matches(seal)) return false;
             AbortRelocationUnderLock();
+            ScheduleDrain();
+            return true;
+        }
+    }
+
+    public bool TryOpenRelocationAfterMessageFollow(
+        ZLinkSerialRelocationSeal seal)
+    {
+        ArgumentNullException.ThrowIfNull(seal);
+        lock (_admissionGate)
+        {
+            if (!Matches(seal))
+                return false;
+            var relocation = _relocation!;
+            while (relocation.Captured.TryDequeue(out var item))
+                _queue.Enqueue(item);
+            var direct = new Queue<ZLinkSerialWorkItem>();
+            while (relocation.Held.TryDequeue(out var item))
+            {
+                if (item.PreviousOwnerMessageFollow)
+                    _queue.Enqueue(item);
+                else
+                    direct.Enqueue(item);
+            }
+            while (direct.TryDequeue(out var item))
+                _queue.Enqueue(item);
+            _relocation = null;
             ScheduleDrain();
             return true;
         }

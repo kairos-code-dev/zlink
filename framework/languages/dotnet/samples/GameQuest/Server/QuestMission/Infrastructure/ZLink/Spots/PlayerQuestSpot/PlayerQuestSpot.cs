@@ -2,35 +2,34 @@ using GameQuest.QuestMission.Application;
 using GameQuest.QuestMission.Infrastructure.Store;
 using GameQuest.Server.Configuration;
 using GameQuest.Shared;
-using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
 namespace GameQuest.QuestMission.Infrastructure.ZLink.Spots.PlayerQuestSpot;
 
+internal sealed record ClosePlayerQuestMsg;
+
 internal sealed class PlayerQuestSpot(
-    IZLinkSpotContext context,
+    IZLinkInstanceSpotContext context,
     QuestEventProcessor processor,
     QuestStore store,
-    ILogger<PlayerQuestSpot> logger) : IZLinkSpot
+    ILogger<PlayerQuestSpot> logger) : IZLinkInstanceSpot
 {
     public string PlayerId { get; private set; } = string.Empty;
-    public IZLinkSpotContext Context { get; } = context;
+    public IZLinkInstanceSpotContext Context { get; } = context;
 
     public void Configure()
     {
     }
 
-    public async ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        ZLinkMessage request,
+    public async ValueTask OnInitializeAsync(
         CancellationToken cancellationToken)
     {
-        PlayerId = request.Decode<PlayerQuestSpotCreateReq>().PlayerId;
+        PlayerId = Context.SpotId;
         await store.RecordOwnerRehydratedAsync(PlayerId, cancellationToken);
         logger.LogInformation(
-            "gamequest player quest spot ready player={PlayerId} spot={SpotRid}",
+            "gamequest player quest spot ready player={PlayerId} spot={SpotId}",
             PlayerId,
-            Context.SpotRid.ToString());
-        return ZLinkSpotCreateResponse.Accept();
+            Context.SpotId);
     }
 
     public ValueTask OnClosingAsync(
@@ -61,7 +60,18 @@ internal sealed class PlayerQuestSpot(
     }
 }
 
-internal sealed record PlayerQuestSpotCreateReq(string PlayerId);
+internal sealed class ClosePlayerQuestHandler :
+    IZLinkSpotPacketHandler<PlayerQuestSpot, ClosePlayerQuestMsg>
+{
+    public async ValueTask HandleAsync(
+        PlayerQuestSpot spot,
+        ClosePlayerQuestMsg message,
+        CancellationToken cancellationToken)
+    {
+        _ = message;
+        await spot.Context.CloseAsync(cancellationToken);
+    }
+}
 
 internal sealed class ApplyGameplayEventHandler :
     IZLinkSpotPacketHandler<PlayerQuestSpot, GameplayMsg>

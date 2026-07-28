@@ -1166,6 +1166,7 @@ export class ZLinkHostServiceRelocationRuntime {
       relocation: relay.relocation,
       coordinator: relay.coordinator,
       operation: relay.operation,
+      replyRouteId: relay.replyRouteId,
       requestSource,
       status: accepted.status
     };
@@ -1261,6 +1262,7 @@ export class ZLinkHostServiceRelocationRuntime {
       );
       if (!sameWireId(ack.relocation, pending.request.relocation)
         || !sameWireId(ack.operation, pending.request.operation)
+        || ack.replyRouteId !== pending.request.replyRouteId
         || !sameCoordinator(ack.coordinator, pending.request.coordinator)
         || !sameRequestSource(ack.requestSource, pending.expectedRequestSource)) {
         throw new Error('Relocation reply relay ACK does not match its durable source fence.');
@@ -1329,7 +1331,7 @@ export class ZLinkHostServiceRelocationRuntime {
       }
       const packet = hidden.replayPackets.find(value => value.index === completion.index);
       if (packet === undefined || !packet.returnResponse || packet.source === undefined
-        || packet.operationId !== completion.operationId
+        || packet.messageFollowContext.operationId !== completion.operationId
         || !sameHandoffSource(packet.source, completion.source)) {
         throw new Error('Durable relocation terminal completion changed after replay.');
       }
@@ -2440,7 +2442,8 @@ function localSuccessorProgress(stage: LocalStage): ServiceRelocationSuccessorPr
       for (let index = 0; index < hidden.replayPackets.length; index++) {
         const packet = hidden.replayPackets[index]!;
         if (!packet.returnResponse || packet.source === undefined) continue;
-        completions.push({ index: packet.index, operationId: packet.operationId,
+        completions.push({ index: packet.index,
+          operationId: packet.messageFollowContext.operationId,
           source: packet.source, result: hidden.replayResults[index]!,
           delivery: hidden.terminalDeliveries.get(packet.index) ?? 'pending' });
       }
@@ -2693,7 +2696,9 @@ function canonicalQueuedFrozenRecord(
         nodeRid: packet.source.nodeRid,
         nodeGeneration: BigInt(packet.source.nodeGeneration)
       };
-  const operationId = parseHandoffOperationId(packet.operationId);
+  const operationId = parseHandoffOperationId(
+    packet.messageFollowContext.operationId
+  );
   if (packet.returnResponse && packet.source === undefined) {
     throw new Error('Captured Actor request has no exact request-source fence.');
   }
@@ -2880,10 +2885,12 @@ function replyRelayIdentityKey(value: {
   readonly relocation: { readonly high: bigint; readonly low: bigint };
   readonly coordinator: ServiceWireRelocationCoordinatorFence;
   readonly operation: { readonly high: bigint; readonly low: bigint };
+  readonly replyRouteId: bigint;
 }): string {
   return JSON.stringify([
     value.operation.high.toString(),
     value.operation.low.toString(),
+    value.replyRouteId.toString(),
     value.relocation.high.toString(),
     value.relocation.low.toString(),
     value.coordinator.ownerId,

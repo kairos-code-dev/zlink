@@ -2,28 +2,26 @@ using ShoppingMall.Server.Configuration;
 using ShoppingMall.Server.OrderWorkflow.Application.OrderWorkflow;
 using ShoppingMall.Server.OrderWorkflow.Application.SelfCheck;
 using ShoppingMall.Shared.Contracts;
-using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
 namespace ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots.OrderWorkflowSpot;
 
 internal sealed class OrderWorkflowSpot(
-    IZLinkSpotContext context,
+    IZLinkInstanceSpotContext context,
     OrderWorkflowService workflow,
     OrderWorkflowSelfCheckService selfChecks,
-    ILogger<OrderWorkflowSpot> logger) : IZLinkSpot
+    ILogger<OrderWorkflowSpot> logger) : IZLinkInstanceSpot
 {
-    public IZLinkSpotContext Context { get; } = context;
+    public IZLinkInstanceSpotContext Context { get; } = context;
 
-    public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        ZLinkMessage request,
-        CancellationToken cancellationToken)
+    public ValueTask OnInitializeAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
-            "shoppingmall order spot: ready. order={OrderId}, spot={SpotRid}",
-            Context.SpotRid.ToString(),
-            Context.SpotRid.ToString());
-        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
+            "shoppingmall order spot: ready. order={OrderId}, spot={SpotId}",
+            Context.SpotId,
+            Context.SpotId);
+        return ValueTask.CompletedTask;
     }
 
     public ValueTask OnClosingAsync(
@@ -44,6 +42,7 @@ internal sealed class OrderWorkflowSpot(
             "shoppingmall order: started. order={OrderId}, status={Status}",
             state.OrderId,
             state.Status);
+        await CloseIfTerminalAsync(state, cancellationToken);
         return new StartOrderWorkflowRes(state);
     }
 
@@ -56,6 +55,7 @@ internal sealed class OrderWorkflowSpot(
             "shoppingmall order: continued. order={OrderId}, status={Status}",
             state.OrderId,
             state.Status);
+        await CloseIfTerminalAsync(state, cancellationToken);
         return new ContinueOrderWorkflowRes(state);
     }
 
@@ -87,9 +87,15 @@ internal sealed class OrderWorkflowSpot(
             "shoppingmall order: projection rebuilt. order={OrderId}, status={Status}",
             state.OrderId,
             state.Status);
+        await CloseIfTerminalAsync(state, cancellationToken);
         return new RebuildOrderProjectionRes(state);
     }
 
+    private async ValueTask CloseIfTerminalAsync(
+        OrderState state,
+        CancellationToken cancellationToken)
+    {
+        if (state.Status is OrderStatuses.Confirmed or OrderStatuses.Failed)
+            await Context.CloseAsync(cancellationToken);
+    }
 }
-
-internal sealed record OrderWorkflowSpotCreateReq(string OrderId);

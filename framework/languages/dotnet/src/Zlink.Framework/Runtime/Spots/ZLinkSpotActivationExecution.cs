@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Diagnostics;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed record ZLinkSpotRelocationSeal(
@@ -10,7 +12,15 @@ internal sealed record ZLinkSpotRelocationApplicationState(
 
 internal sealed partial class ZLinkSpotActivation
 {
+    private const int MaxConcurrentRelocationAdapterCallbacks = 8;
+    private readonly object _relocationReadyGate = new();
+    private readonly object _messageFollowPendingGate = new();
+    private readonly Queue<PendingMessageFollowRoute> _messageFollowPending = new();
     private ZLinkSpotMessageFollow? _messageFollow;
+    private long _messageFollowPendingBytes;
+    private bool _holdIngressForMessageFollow;
+    private TaskCompletionSource? _relocationReadySignal;
+    private bool _relocationReadyCompletionPending;
 
     internal object RuntimeExecutionOwner => _runtime.ExecutionOwner;
 
@@ -60,6 +70,7 @@ internal sealed partial class ZLinkSpotActivation
     {
         var failures = new List<Exception>();
         Capture(RequestStop);
+        Capture(DisposePendingMessageFollowRoutes);
         await CaptureAsync(_timers.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(_serial.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(_outbound.DisposeAsync).ConfigureAwait(false);
@@ -143,6 +154,101 @@ internal sealed partial class ZLinkSpotActivation
             _runtime.ErrorSink);
     }
 
+    internal Task WaitForRelocationReadyTurnAsync(
+        CancellationToken cancellationToken)
+    {
+        if (RelocationReadiness
+            != ZLinkSpotRelocationReadinessMode.ApplicationSignaled)
+            return Task.CompletedTask;
+
+        Task signal;
+        lock (_relocationReadyGate)
+        {
+            if (_relocationReadySignal is not null)
+                throw new InvalidOperationException(
+                    "A relocation-ready turn is already pending.");
+            _relocationReadySignal = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            signal = _relocationReadySignal.Task;
+        }
+        return signal.WaitAsync(cancellationToken);
+    }
+
+    internal void CompleteRelocationReadyTurn()
+    {
+        TaskCompletionSource? pending;
+        lock (_relocationReadyGate)
+        {
+            pending = _relocationReadySignal;
+            if (pending is not null)
+            {
+                _relocationReadyCompletionPending = true;
+                _relocationReadySignal = null;
+            }
+        }
+
+        if (pending is not null)
+        {
+            pending.TrySetResult();
+            return;
+        }
+
+        _ = QueueApplicationSerialized(
+            static (activation, ct) =>
+                activation.InvokeRelocationReadyCompletedAsync(
+                    ZLinkSpotRelocationReadyOutcome.Continued,
+                    ct),
+            countAsRequest: false);
+    }
+
+    internal async ValueTask CompleteRelocationReadyAsync(
+        ZLinkSpotRelocationReadyOutcome outcome,
+        CancellationToken cancellationToken)
+    {
+        lock (_relocationReadyGate)
+        {
+            if (!_relocationReadyCompletionPending)
+                return;
+            _relocationReadyCompletionPending = false;
+        }
+        await InvokeRelocationReadyCompletedAsync(outcome, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask InvokeTargetRelocationReadyCompletedAsync(
+        ZLinkSpotRelocationSeal admissionSeal,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(admissionSeal);
+        if (RelocationReadiness
+            != ZLinkSpotRelocationReadinessMode.ApplicationSignaled)
+            return;
+        await _serial.ExecuteSealedRelocationAsync(
+                admissionSeal.QueueSeal,
+                static (activation, ct) =>
+                    activation.InvokeRelocationReadyCompletedAsync(
+                        ZLinkSpotRelocationReadyOutcome.Relocated,
+                        ct),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal void CancelRelocationReadyWait()
+    {
+        lock (_relocationReadyGate)
+        {
+            _relocationReadySignal = null;
+            _relocationReadyCompletionPending = false;
+        }
+    }
+
+    private ValueTask InvokeRelocationReadyCompletedAsync(
+        ZLinkSpotRelocationReadyOutcome outcome,
+        CancellationToken cancellationToken) =>
+        UserSpot.OnRelocationReadyCompletedAsync(
+            new ZLinkSpotRelocationReadyCompletion(outcome),
+            cancellationToken);
+
     ValueTask<bool> IZLinkSpotContext.CloseAsync(CancellationToken cancellationToken)
     {
         EnsureContextOperationAllowed();
@@ -155,10 +261,14 @@ internal sealed partial class ZLinkSpotActivation
         return _runtime.CloseCurrentSpotAsync(SpotId, cancellationToken);
     }
 
-    public async ValueTask<ZLinkSpotCreateResponse> InitializeAsync(
-        ZLinkMessage request,
-        CancellationToken cancellationToken)
+    internal void AttachNativeDispatch()
     {
+        if (Interlocked.CompareExchange(
+                ref _nativeDispatchAttached,
+                1,
+                0) != 0)
+            return;
+
         RegisterWithoutSynchronizationContext(() =>
         {
             ZLinkSpotNativeDispatchRouter.Attach(
@@ -167,45 +277,12 @@ internal sealed partial class ZLinkSpotActivation
                 {
                     if (receivedMessages.Count == 0)
                     {
-                        QueueSerialized(static (activation, ct) => activation._dispatcher.DispatchRouteDrainAsync(ct));
+                        DrainNativeRoutes();
                         return;
                     }
 
                     foreach (var received in receivedMessages)
-                    {
-                        if (ZLinkSpotActivationDispatcher.IsInfrastructureRoute(received))
-                        {
-                            QueueSerialized(
-                                static (activation, state, ct) => activation._dispatcher.DispatchRouteAsync(state, ct),
-                                received,
-                                received.Dispose);
-                            continue;
-                        }
-
-                        switch (TryMessageFollow(received))
-                        {
-                            case ZLinkSpotMessageFollowResult.Followed:
-                                continue;
-                            case ZLinkSpotMessageFollowResult.StaleRejected:
-                                ZLinkSpotActivationDispatcher
-                                    .RejectApplicationRouteForStaleMessageFollow(
-                                        received,
-                                        ChannelName);
-                                continue;
-                            case ZLinkSpotMessageFollowResult.Full:
-                                ZLinkSpotActivationDispatcher
-                                    .RejectApplicationRouteForRelocation(
-                                        received,
-                                        ChannelName);
-                                continue;
-                            case ZLinkSpotMessageFollowResult.NotApplicable:
-                                QueueApplicationRouteSerialized(received);
-                                break;
-                            default:
-                                throw new InvalidOperationException(
-                                    "Unknown Spot Message Follow result.");
-                        }
-                    }
+                        AdmitNativeRoute(received);
                 },
                 drain => drain?.Invoke(),
                 () => QueueApplicationSerialized(
@@ -232,7 +309,56 @@ internal sealed partial class ZLinkSpotActivation
 
             return 0;
         });
+    }
 
+    private void DrainNativeRoutes()
+    {
+        while (NativeSpot.RecvRoute(RecvFlags.DontWait) is { } received)
+            AdmitNativeRoute(received);
+    }
+
+    private void AdmitNativeRoute(ZLinkBackendRouteReceived received)
+    {
+        if (ZLinkSpotActivationDispatcher.IsInfrastructureRoute(received))
+        {
+            QueueSerialized(
+                static (activation, state, ct) =>
+                    activation._dispatcher.DispatchRouteAsync(state, ct),
+                received,
+                received.Dispose);
+            return;
+        }
+
+        switch (TryMessageFollow(received))
+        {
+            case ZLinkSpotMessageFollowResult.Followed:
+                return;
+            case ZLinkSpotMessageFollowResult.StaleRejected:
+                ZLinkSpotActivationDispatcher
+                    .RejectApplicationRouteForStaleMessageFollow(
+                        received,
+                        ChannelName);
+                return;
+            case ZLinkSpotMessageFollowResult.Full:
+                ZLinkSpotActivationDispatcher
+                    .RejectApplicationRouteForRelocation(
+                        received,
+                        ChannelName);
+                return;
+            case ZLinkSpotMessageFollowResult.NotApplicable:
+                QueueApplicationRouteSerialized(received);
+                return;
+            default:
+                throw new InvalidOperationException(
+                    "Unknown Spot Message Follow result.");
+        }
+    }
+
+    public async ValueTask<ZLinkSpotCreateResponse> InitializeAsync(
+        ZLinkMessage request,
+        CancellationToken cancellationToken)
+    {
+        AttachNativeDispatch();
         var create = new SpotCreateCallState(request);
         await ExecuteSerializedAsync(
             static async (activation, state, ct) =>
@@ -251,6 +377,7 @@ internal sealed partial class ZLinkSpotActivation
     {
         if (Spot is not IZLinkInstanceSpot instance)
             throw new InvalidOperationException("The current activation is not an Instance Spot.");
+        AttachNativeDispatch();
         return ExecuteSerializedAsync(
             static (activation, state, ct) => state.OnInitializeAsync(ct),
             instance,
@@ -356,21 +483,22 @@ internal sealed partial class ZLinkSpotActivation
             },
             new DurableActivationDispatch(received, completion, request),
             accepted,
+            false,
             request,
             () =>
             {
                 received.Dispose();
                 completion.TrySetException(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RuntimeShutdown,
+                    ZLinkFrameworkErrorKind.ShuttingDown,
                     "The Instance Spot activation queue stopped before admission."));
             },
             () =>
             {
                 received.Dispose();
                 completion.TrySetException(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     "The Instance Spot activation queue is relocating.",
-                    true));
+                    ZLinkRetryAdvice.RetryAfterBackoff));
             },
             received.Dispose);
         if (!queued)
@@ -385,9 +513,20 @@ internal sealed partial class ZLinkSpotActivation
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
         Message body,
+        ZLinkSpotRelocationReplayAdmission? replayAdmission,
         CancellationToken cancellationToken)
     {
-        return _actorDispatchSubmitter.Async(actor, runtimeState, header, body, cancellationToken);
+        var validatedReplay = ValidateRelocationReplayAdmission(
+            runtimeState,
+            replayAdmission);
+        return _actorDispatchSubmitter.Async(
+            actor,
+            runtimeState,
+            header,
+            body,
+            validatedReplay?.Seal.QueueSeal,
+            validatedReplay?.QueueReservation,
+            cancellationToken);
     }
 
     private sealed record DurableActivationDispatch(
@@ -400,14 +539,46 @@ internal sealed partial class ZLinkSpotActivation
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
         Message body,
+        ZLinkSpotRelocationReplayAdmission? replayAdmission,
         CancellationToken cancellationToken)
     {
+        var validatedReplay = ValidateRelocationReplayAdmission(
+            runtimeState,
+            replayAdmission);
         return _actorDispatchSubmitter.SubmitForReplyAsync(
             actor,
             runtimeState,
             header,
             body,
+            validatedReplay?.Seal.QueueSeal,
+            validatedReplay?.QueueReservation,
             cancellationToken);
+    }
+
+    internal ZLinkSpotRelocationActorQueueReservation
+        ReserveRelocationActorReplay(
+            ZLinkSpotRelocationSeal seal,
+            string actorId)
+    {
+        ArgumentNullException.ThrowIfNull(seal);
+        return _serial.ReserveRelocationActorQueue(
+            seal.QueueSeal,
+            actorId);
+    }
+
+    private ZLinkSpotRelocationReplayAdmission?
+        ValidateRelocationReplayAdmission(
+            ZLinkActorRuntimeState runtimeState,
+            ZLinkSpotRelocationReplayAdmission? replayAdmission)
+    {
+        if (replayAdmission is null)
+            return null;
+        if (!ReferenceEquals(replayAdmission.Activation, this)
+            || !runtimeState.Handoff.IsAuthorityCommitted(
+                replayAdmission.HandoffId))
+            throw new InvalidOperationException(
+                "SPOT relocation replay admission does not match the target activation and Actor handoff.");
+        return replayAdmission;
     }
 
     public async ValueTask CloseAsync(CancellationToken cancellationToken)
@@ -506,7 +677,7 @@ internal sealed partial class ZLinkSpotActivation
     {
         if (!_runtime.TryEnterInboundOperation(countAsRequest: false, out var lease))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestRejected,
+                ZLinkFrameworkErrorKind.Rejected,
                 "SPOT application admission is sealed for drain.");
         using (lease)
             await _serial.ExecuteAsync(operation, state, cancellationToken).ConfigureAwait(false);
@@ -587,6 +758,7 @@ internal sealed partial class ZLinkSpotActivation
         Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
         TState state,
         ReadOnlyMemory<byte> acceptedJournalRecord,
+        bool previousOwnerMessageFollow,
         bool countAsRequest,
         Action onRejected,
         Action onMoving,
@@ -616,6 +788,7 @@ internal sealed partial class ZLinkSpotActivation
                     await capturedOperation(activation, capturedState, ct).ConfigureAwait(false);
             },
             ReleaseForRelocation,
+            previousOwnerMessageFollow,
             out _);
         if (admission == ZLinkAcceptedWorkAdmission.Accepted)
             return true;
@@ -641,7 +814,7 @@ internal sealed partial class ZLinkSpotActivation
             {
                 received.Dispose();
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestRejected,
+                    ZLinkFrameworkErrorKind.Rejected,
                     "A Spot request has no source-owned reply correlation.");
             }
             replyRouteId = correlation;
@@ -651,10 +824,11 @@ internal sealed partial class ZLinkSpotActivation
             replyRouteId);
 
         return QueueApplicationSerialized(
-            static (activation, state, ct) => activation._dispatcher
-                .DispatchRouteAsync(state, ct),
+            static (activation, state, ct) =>
+                activation.DispatchQueuedApplicationRouteAsync(state, ct),
             received,
             acceptedJournalRecord,
+            received.MessageFollowHopCount != 0,
             received.CanReply,
             () =>
             {
@@ -664,12 +838,48 @@ internal sealed partial class ZLinkSpotActivation
             },
             () =>
             {
+                if (!TryHoldForMessageFollow(
+                        received,
+                        acceptedJournalRecord.LongLength))
+                    ZLinkSpotActivationDispatcher
+                        .RejectApplicationRouteForRelocation(
+                            received,
+                            ChannelName);
+            },
+            received.Dispose);
+    }
+
+    private ValueTask DispatchQueuedApplicationRouteAsync(
+        ZLinkBackendRouteReceived received,
+        CancellationToken cancellationToken)
+    {
+        // A route can enter the serial queue immediately before relocation
+        // seals the Spot. Re-evaluate Message Follow at execution time so
+        // that queued work cannot run on the source after authority moved.
+        switch (TryMessageFollow(received))
+        {
+            case ZLinkSpotMessageFollowResult.Followed:
+                return ValueTask.CompletedTask;
+            case ZLinkSpotMessageFollowResult.StaleRejected:
+                ZLinkSpotActivationDispatcher
+                    .RejectApplicationRouteForStaleMessageFollow(
+                        received,
+                        ChannelName);
+                return ValueTask.CompletedTask;
+            case ZLinkSpotMessageFollowResult.Full:
                 ZLinkSpotActivationDispatcher
                     .RejectApplicationRouteForRelocation(
                         received,
                         ChannelName);
-            },
-            received.Dispose);
+                return ValueTask.CompletedTask;
+            case ZLinkSpotMessageFollowResult.NotApplicable:
+                return _dispatcher.DispatchRouteAsync(
+                    received,
+                    cancellationToken);
+            default:
+                throw new InvalidOperationException(
+                    "Unknown Spot Message Follow result.");
+        }
     }
 
     private bool QueueActorFrames(ZLinkSpotActorFrameBatch frames)
@@ -753,6 +963,21 @@ internal sealed partial class ZLinkSpotActivation
 
     internal bool IsRelocationReady => _serial.IsRelocationReady;
 
+    internal bool IsPerActorShellRelocationReady =>
+        _serial.IsPerActorShellRelocationReady;
+
+    internal ZLinkRelocationInterruptionOperation
+        StartRelocationInterruption(bool instanceSpot) =>
+        _runtime.RelocationInterruption.Start(
+            instanceSpot
+                ? ZLinkRelocationUnitKind.InstanceSpot
+                : ZLinkRelocationUnitKind.UserSpot,
+            instanceSpot
+                ? null
+                : ExecutionMode == ZLinkUserSpotExecutionMode.PerActor
+                    ? "per_actor"
+                    : "spot_wide");
+
     internal ulong SourceNodeLifecycleGeneration =>
         _runtime.GetSpotNodeRuntime(NodeRid).Node.MeshStatus()
             .LifecycleGeneration;
@@ -819,8 +1044,8 @@ internal sealed partial class ZLinkSpotActivation
         }
         else
         {
-            var reply = await _runtime.RouteClient
-                .RequestToNode(
+            var reply = await _runtime
+                .RequestSessionRouteSealAsync(
                     route.MeshName!,
                     routeNodeRid,
                     new ZLinkSessionRouteSealRequest(
@@ -833,9 +1058,8 @@ internal sealed partial class ZLinkSpotActivation
                         route.TargetNodeGeneration,
                         route.OwnerLeaseGeneration,
                         route.SessionOwnerNodeGeneration,
-                        handoffId))
-                .Timeout(DefaultRequestTimeout)
-                .Async<ZLinkSessionRouteSealReply>(cancellationToken)
+                        handoffId),
+                    cancellationToken)
                 .ConfigureAwait(false);
             result = new ZLinkSessionRouteSealResult(
                 reply.Acknowledged,
@@ -843,7 +1067,7 @@ internal sealed partial class ZLinkSpotActivation
         }
         if (!result.Acknowledged)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor '{actorId}' session ingress seal was fenced.");
         return route with { AcceptedHighWater = result.AcceptedHighWater };
     }
@@ -878,8 +1102,8 @@ internal sealed partial class ZLinkSpotActivation
         }
         else
         {
-            var reply = await _runtime.RouteClient
-                .RequestToNode(
+            var reply = await _runtime
+                .RequestSessionRouteAbortAsync(
                     route.MeshName!,
                     routeNodeRid,
                     new ZLinkSessionRouteAbortRequest(
@@ -892,9 +1116,8 @@ internal sealed partial class ZLinkSpotActivation
                         route.TargetNodeGeneration,
                         route.OwnerLeaseGeneration,
                         route.SessionOwnerNodeGeneration,
-                        handoffId))
-                .Timeout(DefaultRequestTimeout)
-                .Async<ZLinkSessionRouteSealReply>(cancellationToken)
+                        handoffId),
+                    cancellationToken)
                 .ConfigureAwait(false);
             acknowledged = reply.Acknowledged;
         }
@@ -913,10 +1136,11 @@ internal sealed partial class ZLinkSpotActivation
         var duration = _runtime.Registration.Locations.Options
             .MessageFollowDuration;
         if (duration <= TimeSpan.Zero)
+        {
+            RejectPendingMessageFollowRoutes();
             return;
-        Volatile.Write(
-            ref _messageFollow,
-            new ZLinkSpotMessageFollow(
+        }
+        var messageFollow = new ZLinkSpotMessageFollow(
                 targetNodeRid,
                 ObjectGeneration,
                 SourceNodeLifecycleGeneration,
@@ -925,9 +1149,11 @@ internal sealed partial class ZLinkSpotActivation
                 targetAuthorityOwnerGeneration,
                 SourceOwnerToken,
                 targetOwner,
-                DateTimeOffset.UtcNow + duration));
+                DateTimeOffset.UtcNow + duration);
+        Volatile.Write(ref _messageFollow, messageFollow);
         ZLinkFrameworkDebugLog.SpotDiscovery(
             $"message_follow_registered target_rid={targetNodeRid}");
+        RelayPendingMessageFollowRoutes();
     }
 
     internal TimeSpan MessageFollowRemaining
@@ -956,12 +1182,18 @@ internal sealed partial class ZLinkSpotActivation
                 currentSourceOwner,
                 now))
         {
-            _ = Interlocked.CompareExchange(
-                ref _messageFollow,
-                null,
-                messageFollow);
+            // A mismatched frame is stale by itself. It must not revoke the
+            // bounded Message Follow route for later frames that still carry
+            // the exact source authority generations.
+            var removeRoute =
+                messageFollow.ShouldRemoveAfterRejectedFrame(now);
+            if (removeRoute)
+                _ = Interlocked.CompareExchange(
+                    ref _messageFollow,
+                    null,
+                    messageFollow);
             ZLinkFrameworkDebugLog.SpotDiscovery(
-                messageFollow.ExpiresAt <= now
+                removeRoute
                     ? "message_follow_expired"
                     : "message_follow_rejected");
             return ZLinkSpotMessageFollowResult.StaleRejected;
@@ -997,30 +1229,18 @@ internal sealed partial class ZLinkSpotActivation
                     "Spot Message Follow admission did not return a lease.");
         if (!received.CanReply)
         {
-            try
-            {
-                if (NativeSpot is not IZLinkBackendSpotMessageFollower relay)
-                    throw new InvalidOperationException(
-                        "The Spot backend does not support Message Follow.");
-                _ = relay.MessageFollowSendToSpot(
-                    messageFollow.TargetNodeRid,
-                    SpotId,
-                    ObjectGeneration,
-                    received.OperationId,
-                    messageFollow.TargetNodeGeneration,
-                    messageFollow.TargetAuthorityOwnerGeneration,
-                    checked((ulong)messageFollow.TargetOwner.LeaseGeneration),
-                    checked((byte)(received.MessageFollowHopCount + 1)),
-                    received.Parts,
-                    SendFlags.DontWait,
-                    metadata);
-                received.Dispose();
-                ZLinkFrameworkDebugLog.SpotDiscovery("message_follow_relay");
-            }
-            finally
-            {
-                lease.Dispose();
-            }
+            var retained = received.Parts.Select(Message.From).ToArray();
+            var operationId = received.OperationId;
+            var messageFollowHopCount =
+                checked((byte)(received.MessageFollowHopCount + 1));
+            received.Dispose();
+            _ = CompleteOneWayMessageFollowAsync(
+                messageFollow,
+                operationId,
+                messageFollowHopCount,
+                retained,
+                metadata,
+                lease);
             return ZLinkSpotMessageFollowResult.Followed;
         }
 
@@ -1059,6 +1279,169 @@ internal sealed partial class ZLinkSpotActivation
         if (followed == ZLinkSpotMessageFollowResult.Followed)
             ZLinkFrameworkDebugLog.SpotDiscovery("message_follow_relay");
         return followed;
+    }
+
+    private async Task CompleteOneWayMessageFollowAsync(
+        ZLinkSpotMessageFollow messageFollow,
+        MeshOperationId operationId,
+        byte messageFollowHopCount,
+        IReadOnlyList<Message> retained,
+        ReadOnlyMemory<byte> metadata,
+        ZLinkSpotMessageFollow.AdmissionLease admission)
+    {
+        try
+        {
+            var result = await _outbound.SendMessageFollowToSpotAsync(
+                    messageFollow.TargetNodeRid,
+                    SpotId,
+                    ObjectGeneration,
+                    operationId,
+                    messageFollow.TargetNodeGeneration,
+                    messageFollow.TargetAuthorityOwnerGeneration,
+                    checked((ulong)messageFollow.TargetOwner.LeaseGeneration),
+                    messageFollowHopCount,
+                    retained,
+                    StopToken,
+                    metadata)
+                .ConfigureAwait(false);
+            if (result.Status == ZLinkOneWaySubmitStatus.Submitted)
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery("message_follow_relay");
+                return;
+            }
+
+            _runtime.ErrorSink.ReportRuntimeTaskException(
+                "spot-message-follow",
+                new ZLinkRelocationDataLostException(
+                    $"Message Follow for Spot '{SpotId}' ended with '{result.Status}'."));
+        }
+        catch (Exception exception)
+        {
+            _runtime.ErrorSink.ReportRuntimeTaskException(
+                "spot-message-follow",
+                exception);
+        }
+        finally
+        {
+            admission.Dispose();
+        }
+    }
+
+    private bool TryHoldForMessageFollow(
+        ZLinkBackendRouteReceived received,
+        long encodedBytes)
+    {
+        lock (_messageFollowPendingGate)
+        {
+            if (Volatile.Read(ref _messageFollow) is null)
+            {
+                if (!_holdIngressForMessageFollow
+                    || _messageFollowPending.Count
+                    >= ZLinkSerialExecutionQueue.RelocationHoldMessageLimit
+                    || encodedBytes
+                       > ZLinkSerialExecutionQueue.RelocationHoldByteLimit
+                                      - _messageFollowPendingBytes)
+                    return false;
+                _messageFollowPending.Enqueue(
+                    new PendingMessageFollowRoute(received, encodedBytes));
+                _messageFollowPendingBytes = checked(
+                    _messageFollowPendingBytes + encodedBytes);
+                return true;
+            }
+        }
+
+        return HandleMessageFollow(received);
+    }
+
+    private bool HandleMessageFollow(ZLinkBackendRouteReceived received)
+    {
+        switch (TryMessageFollow(received))
+        {
+            case ZLinkSpotMessageFollowResult.Followed:
+                return true;
+            case ZLinkSpotMessageFollowResult.StaleRejected:
+                ZLinkSpotActivationDispatcher
+                    .RejectApplicationRouteForStaleMessageFollow(
+                        received,
+                        ChannelName);
+                return true;
+            case ZLinkSpotMessageFollowResult.Full:
+                ZLinkSpotActivationDispatcher
+                    .RejectApplicationRouteForRelocation(
+                        received,
+                        ChannelName);
+                return true;
+            case ZLinkSpotMessageFollowResult.NotApplicable:
+                return false;
+            default:
+                throw new InvalidOperationException(
+                    "Unknown Spot Message Follow result.");
+        }
+    }
+
+    private void RelayPendingMessageFollowRoutes()
+    {
+        PendingMessageFollowRoute[] pending;
+        lock (_messageFollowPendingGate)
+        {
+            _holdIngressForMessageFollow = false;
+            pending = _messageFollowPending.ToArray();
+            _messageFollowPending.Clear();
+            _messageFollowPendingBytes = 0;
+        }
+
+        foreach (var route in pending)
+            if (!HandleMessageFollow(route.Received))
+                ZLinkSpotActivationDispatcher
+                    .RejectApplicationRouteForRelocation(
+                        route.Received,
+                        ChannelName);
+    }
+
+    private void ResumePendingMessageFollowRoutes()
+    {
+        PendingMessageFollowRoute[] pending;
+        lock (_messageFollowPendingGate)
+        {
+            _holdIngressForMessageFollow = false;
+            pending = _messageFollowPending.ToArray();
+            _messageFollowPending.Clear();
+            _messageFollowPendingBytes = 0;
+        }
+
+        foreach (var route in pending)
+            AdmitNativeRoute(route.Received);
+    }
+
+    private void RejectPendingMessageFollowRoutes()
+    {
+        PendingMessageFollowRoute[] pending;
+        lock (_messageFollowPendingGate)
+        {
+            _holdIngressForMessageFollow = false;
+            pending = _messageFollowPending.ToArray();
+            _messageFollowPending.Clear();
+            _messageFollowPendingBytes = 0;
+        }
+
+        foreach (var route in pending)
+            ZLinkSpotActivationDispatcher.RejectApplicationRouteForRelocation(
+                route.Received,
+                ChannelName);
+    }
+
+    private void DisposePendingMessageFollowRoutes()
+    {
+        PendingMessageFollowRoute[] pending;
+        lock (_messageFollowPendingGate)
+        {
+            _holdIngressForMessageFollow = false;
+            pending = _messageFollowPending.ToArray();
+            _messageFollowPending.Clear();
+            _messageFollowPendingBytes = 0;
+        }
+        foreach (var route in pending)
+            route.Received.Dispose();
     }
 
     internal static bool SubmitSpotMessageFollowRequest(
@@ -1127,6 +1510,53 @@ internal sealed partial class ZLinkSpotActivation
         return false;
     }
 
+    internal bool TrySealPerActorShellRelocation(
+        out ZLinkSpotRelocationSeal seal)
+    {
+        if (ExecutionMode != ZLinkUserSpotExecutionMode.PerActor)
+        {
+            seal = null!;
+            return false;
+        }
+        var logicalTimers = _timers.FreezeRelocation();
+        if (_serial.TrySealPerActorShellRelocation(out var queueSeal))
+        {
+            seal = new ZLinkSpotRelocationSeal(queueSeal, logicalTimers);
+            return true;
+        }
+        _timers.Resume();
+        seal = null!;
+        return false;
+    }
+
+    internal bool TrySealPerActorShellRelocation(
+        Func<
+            IReadOnlyList<ZLinkAcceptedWorkRecord>,
+            IReadOnlyList<ZLinkRelocationLogicalTimer>,
+            bool> admit,
+        out ZLinkSpotRelocationSeal seal)
+    {
+        ArgumentNullException.ThrowIfNull(admit);
+        if (ExecutionMode != ZLinkUserSpotExecutionMode.PerActor)
+        {
+            seal = null!;
+            return false;
+        }
+        var logicalTimers = _timers.FreezeRelocation();
+        if (_serial.TrySealPerActorShellRelocation(
+                reservedAcceptedSequences: 0,
+                captured => admit(captured, logicalTimers),
+                out var queueSeal,
+                out _))
+        {
+            seal = new ZLinkSpotRelocationSeal(queueSeal, logicalTimers);
+            return true;
+        }
+        _timers.Resume();
+        seal = null!;
+        return false;
+    }
+
     internal bool TrySealRelocation(
         Func<
             IReadOnlyList<ZLinkAcceptedWorkRecord>,
@@ -1168,6 +1598,19 @@ internal sealed partial class ZLinkSpotActivation
         ArgumentNullException.ThrowIfNull(seal);
         if (!_serial.TryAbortRelocation(seal.QueueSeal))
             return false;
+        ResumePendingMessageFollowRoutes();
+        _timers.Resume();
+        return true;
+    }
+
+    internal bool OpenRelocationTargetAdmission(
+        ZLinkSpotRelocationSeal seal)
+    {
+        ArgumentNullException.ThrowIfNull(seal);
+        if (!_serial.TryOpenRelocationAfterMessageFollow(
+                seal.QueueSeal))
+            return false;
+        ResumePendingMessageFollowRoutes();
         _timers.Resume();
         return true;
     }
@@ -1185,9 +1628,15 @@ internal sealed partial class ZLinkSpotActivation
         out IReadOnlyList<ZLinkAcceptedWorkRecord> held)
     {
         ArgumentNullException.ThrowIfNull(seal);
-        return _serial.TryFreezeRelocationIngress(
-            seal.QueueSeal,
-            out held);
+        lock (_messageFollowPendingGate)
+            _holdIngressForMessageFollow = true;
+        if (_serial.TryFreezeRelocationIngress(
+                seal.QueueSeal,
+                out held))
+            return true;
+        lock (_messageFollowPendingGate)
+            _holdIngressForMessageFollow = false;
+        return false;
     }
 
     internal void RestoreLogicalTimers(
@@ -1327,11 +1776,18 @@ internal sealed partial class ZLinkSpotActivation
         ZLinkTimerTick tick,
         CancellationToken cancellationToken)
     {
+        if (_timers.IsFrozen)
+            return false;
         var state = new TimerDispatchState(descriptor, tick);
         if (!_runtime.TryEnterInboundOperation(countAsRequest: false, out var lease))
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestRejected,
-                "SPOT application admission is sealed for drain.");
+        {
+            // Host admission or the owner fence can close before this Spot
+            // reaches its relocation turn. Keep the exact tick pending for
+            // the Spot snapshot instead of reporting an application handler
+            // failure.
+            _timers.FreezeForApplicationAdmissionSeal();
+            return false;
+        }
         using (lease)
             await _serial.ExecuteTimerAsync(
                 descriptor.Name,
@@ -1363,20 +1819,11 @@ internal sealed partial class ZLinkSpotActivation
                             activation.Spot,
                             ct)
                         .ConfigureAwait(false);
-                    var actorStates =
-                        new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
-                    foreach (var actor in activation._actors.Snapshot())
-                    {
-                        var actorRegistration =
-                            activation.ResolveActorRelocationRegistration(actor);
-                        actorStates.Add(
-                            actor.Context.ActorId,
-                            await activation.CaptureInstanceAsync(
-                                    actorRegistration,
-                                    actor,
-                                    ct)
-                                .ConfigureAwait(false));
-                    }
+                    var actorStates = await activation.CaptureActorStatesAsync(
+                            activation._actors.Snapshot(),
+                            includedActorIds: null,
+                            ct)
+                        .ConfigureAwait(false);
                     captured = new ZLinkSpotRelocationApplicationState(
                         spotState,
                         actorStates);
@@ -1391,6 +1838,7 @@ internal sealed partial class ZLinkSpotActivation
     internal async ValueTask<ZLinkSpotRelocationApplicationState>
         CaptureSealedRelocationApplicationStateAsync(
             ZLinkSpotRelocationSeal seal,
+            IReadOnlySet<string>? includedActorIds,
             CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(seal);
@@ -1406,20 +1854,11 @@ internal sealed partial class ZLinkSpotActivation
                             activation.Spot,
                             ct)
                         .ConfigureAwait(false);
-                    var actorStates =
-                        new Dictionary<string, ReadOnlyMemory<byte>>(
-                            StringComparer.Ordinal);
-                    foreach (var actor in activation._actors.Snapshot())
-                    {
-                        actorStates.Add(
-                            actor.Context.ActorId,
-                            await activation.CaptureInstanceAsync(
-                                    activation.ResolveActorRelocationRegistration(
-                                        actor),
-                                    actor,
-                                    ct)
-                                .ConfigureAwait(false));
-                    }
+                    var actorStates = await activation.CaptureActorStatesAsync(
+                            activation._actors.Snapshot(),
+                            includedActorIds,
+                            ct)
+                        .ConfigureAwait(false);
                     captured = new ZLinkSpotRelocationApplicationState(
                         spotState,
                         actorStates);
@@ -1445,23 +1884,70 @@ internal sealed partial class ZLinkSpotActivation
                             state.SpotState,
                             ct)
                         .ConfigureAwait(false);
-                    foreach (var actor in activation._actors.Snapshot())
+                    var actors = activation._actors.Snapshot();
+                    for (var first = 0;
+                         first < actors.Count;
+                         first += MaxConcurrentRelocationAdapterCallbacks)
                     {
-                        if (!state.ActorStates.TryGetValue(
-                                actor.Context.ActorId,
-                                out var actorState))
-                            throw new InvalidDataException(
-                                $"Relocation state for Actor '{actor.Context.ActorId}' is missing.");
-                        await activation.RestoreInstanceAsync(
-                                activation.ResolveActorRelocationRegistration(actor),
-                                actor,
-                                actorState,
-                                ct)
+                        var count = Math.Min(
+                            MaxConcurrentRelocationAdapterCallbacks,
+                            actors.Count - first);
+                        await Task.WhenAll(
+                                actors.Skip(first).Take(count).Select(
+                                    async actor =>
+                                    {
+                                        if (!state.ActorStates.TryGetValue(
+                                                actor.Context.ActorId,
+                                                out var actorState))
+                                            throw new InvalidDataException(
+                                                $"Relocation state for Actor '{actor.Context.ActorId}' is missing.");
+                                        await activation.RestoreInstanceAsync(
+                                                activation.ResolveActorRelocationRegistration(actor),
+                                                actor,
+                                                actorState,
+                                                ct)
+                                            .ConfigureAwait(false);
+                                    }))
                             .ConfigureAwait(false);
                     }
                 },
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private async ValueTask<IReadOnlyDictionary<string, ReadOnlyMemory<byte>>>
+        CaptureActorStatesAsync(
+            IReadOnlyList<IZLinkActor> actors,
+            IReadOnlySet<string>? includedActorIds,
+            CancellationToken cancellationToken)
+    {
+        var selected = actors
+            .Where(actor => includedActorIds is null
+                            || includedActorIds.Contains(actor.Context.ActorId))
+            .ToArray();
+        var captured =
+            new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
+        for (var first = 0;
+             first < selected.Length;
+             first += MaxConcurrentRelocationAdapterCallbacks)
+        {
+            var count = Math.Min(
+                MaxConcurrentRelocationAdapterCallbacks,
+                selected.Length - first);
+            var batch = await Task.WhenAll(
+                    selected.Skip(first).Take(count).Select(
+                        async actor => new KeyValuePair<string, ReadOnlyMemory<byte>>(
+                            actor.Context.ActorId,
+                            await CaptureInstanceAsync(
+                                    ResolveActorRelocationRegistration(actor),
+                                    actor,
+                                    cancellationToken)
+                                .ConfigureAwait(false))))
+                .ConfigureAwait(false);
+            foreach (var state in batch)
+                captured.Add(state.Key, state.Value);
+        }
+        return captured;
     }
 
     internal ValueTask RestoreSpotRelocationStateAsync(
@@ -1519,7 +2005,8 @@ internal sealed partial class ZLinkSpotActivation
             .ToArray();
 
     internal IReadOnlyList<ZLinkObjectCapability> ResolveRetireCapabilities(
-        bool instanceSpot)
+        bool instanceSpot,
+        bool includeActors = true)
     {
         var capabilities = new List<ZLinkObjectCapability>();
         var spot = ResolveSpotRelocationRegistration();
@@ -1529,6 +2016,8 @@ internal sealed partial class ZLinkSpotActivation
                 : ZLinkPlacementObjectKind.UserSpot,
             ResolveStableTypeForRetire(),
             spot));
+        if (!includeActors)
+            return capabilities;
         foreach (var actor in _actors.Snapshot())
         {
             var actorType = _runtime.GetOrCreateActorState(
@@ -1567,7 +2056,7 @@ internal sealed partial class ZLinkSpotActivation
     {
         if (!_actors.TryGetActor(actorId, out var actor) || actor is null)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                ZLinkFrameworkErrorKind.NotFound,
                 $"Actor '{actorId}' left SPOT '{SpotId}' before relocation sealed.");
         return ResolveActorRelocationRegistration(actor);
     }
@@ -1602,7 +2091,7 @@ internal sealed partial class ZLinkSpotActivation
         return registration.PolicyKind switch
         {
             0 => throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestRejected,
+                ZLinkFrameworkErrorKind.Rejected,
                 $"Relocation is disabled for '{registration.InstanceType}'."),
             1 => [],
             2 when registration.AdapterInvoker is { } invoker =>
@@ -1639,7 +2128,7 @@ internal sealed partial class ZLinkSpotActivation
                 return;
             case 0:
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestRejected,
+                    ZLinkFrameworkErrorKind.Rejected,
                     $"Relocation is disabled for '{registration.InstanceType}'.");
             default:
                 throw new ZLinkConfigurationException(
@@ -1654,16 +2143,17 @@ internal sealed partial class ZLinkSpotActivation
         bool stopped,
         CancellationToken cancellationToken)
     {
-        return _runtime.PublishRuntimeEventAsync(
-            ZLinkSpotTimerFailureEventFactory.Create(
-                SpotNodeName,
-                SpotId,
-                false,
-                descriptor,
-                tick,
-                exception,
-                stopped),
-            cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        _runtime.ReportTimerFailure(
+            SpotNodeName,
+            SpotId,
+            false,
+            descriptor.Name,
+            descriptor.HandlerType,
+            tick,
+            exception,
+            stopped);
+        return ValueTask.CompletedTask;
     }
 
     private static T RegisterWithoutSynchronizationContext<T>(Func<T> action)
@@ -1697,4 +2187,8 @@ internal sealed partial class ZLinkSpotActivation
 
         public bool Delivered { get; set; }
     }
+
+    private sealed record PendingMessageFollowRoute(
+        ZLinkBackendRouteReceived Received,
+        long EncodedBytes);
 }

@@ -111,7 +111,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       node,
       actor,
       state,
-      actorRef as never,
+      actorRef,
       spotId,
       target,
       request,
@@ -139,7 +139,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       node,
       actor,
       state,
-      actorRef as never,
+      actorRef,
       selectedNodeRid,
       request,
       timeoutMs ?? this.options.actorTransferTimeoutMs

@@ -19,6 +19,8 @@ export interface ZLinkSpotRouteTarget {
   readonly targetNodeGeneration?: bigint;
   /** Authority fence used to reject a superseded Spot owner. */
   readonly authorityOwnerGeneration?: bigint;
+  /** Internal owner identity paired with ownerLeaseGeneration. */
+  readonly targetOwnerId?: string;
   /** Exact owner lease generation paired with the authority route. */
   readonly ownerLeaseGeneration?: bigint;
   /** Store version paired with the authority fence. */

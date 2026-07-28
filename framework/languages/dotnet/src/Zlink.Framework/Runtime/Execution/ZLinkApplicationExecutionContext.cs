@@ -25,7 +25,7 @@ internal static class ZLinkApplicationExecutionContext
         if (CurrentScope.Value is not { YieldAllowed: true }
             || ZLinkSerialTurn.Current is not { } turn)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"{operation} Yield is only valid in a SpotWide User Spot or Instance Spot application callback.");
 
         return turn;
@@ -38,7 +38,7 @@ internal static class ZLinkApplicationExecutionContext
         var current = RequireYieldTurn(operation);
         if (!ReferenceEquals(current, capturedTurn))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"{operation} Yield must execute in the callback turn that created the call.");
         return current;
     }
@@ -89,7 +89,7 @@ internal static class ZLinkApplicationExecutionContext
     private static ZLinkFrameworkException SameGate(string operation)
     {
         return new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.InvalidConfiguration,
+            ZLinkFrameworkErrorKind.InvalidOperation,
             $"{operation} would wait for the execution gate held by the current callback.");
     }
 

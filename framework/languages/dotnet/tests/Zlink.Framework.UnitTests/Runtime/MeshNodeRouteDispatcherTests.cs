@@ -62,6 +62,25 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task MeshNode_Rid_Request_Context_Uses_Registered_Mesh_Name()
+    {
+        var routeHandler = new ZLinkRouteHandlerRegistration(
+            typeof(MeshRouteRequestHandler),
+            typeof(MeshRequest),
+            typeof(MeshReply),
+            "ExactRequest");
+
+        var result = await DispatchMeshRequestAsync(
+            membership: null,
+            routeHandler,
+            channelName: null,
+            expectedSurface: ZLinkDispatchErrorSurface.RouteMeshChannel,
+            expectedRouteMeshName: "mesh");
+
+        Assert.Equal("ROUTE", result);
+    }
+
+    [Fact]
     public async Task MeshNode_Channel_Request_Handler_Failure_Logs_Wire_Flow_And_Correlation()
     {
         var membership = new ZLinkMeshChannelMembership { ChannelName = "play" };
@@ -99,7 +118,7 @@ public sealed partial class EntrySpotActorDispatchTests
             expectedSurface: ZLinkDispatchErrorSurface.Channel,
             sealAdmission: true);
 
-        Assert.Equal(nameof(ZLinkFrameworkErrorKind.RequestRejected), result);
+        Assert.Equal(nameof(ZLinkFrameworkErrorKind.Rejected), result);
     }
 
     private static async Task<string> DispatchMeshRequestAsync(
@@ -109,11 +128,14 @@ public sealed partial class EntrySpotActorDispatchTests
         ZLinkDispatchErrorSurface expectedSurface,
         string packetName = "ExactRequest",
         bool expectHandlerError = false,
-        bool sealAdmission = false)
+        bool sealAdmission = false,
+        string? expectedRouteMeshName = null)
     {
         var loggerFactory = new MeshFlowLoggerFactory();
+        var routeContextCapture = new MeshRouteContextCapture();
         await using var services = new ServiceCollection()
             .AddSingleton<ILoggerFactory>(loggerFactory)
+            .AddSingleton(routeContextCapture)
             .AddTransient<MeshChannelRequestHandler>()
             .AddTransient<MeshAutoRequestHandler>()
             .AddTransient<FailingMeshChannelRequestHandler>()
@@ -125,7 +147,7 @@ public sealed partial class EntrySpotActorDispatchTests
         };
         registration.HandlerAssemblies.Add(typeof(MeshAutoRequestHandler).Assembly);
         registration.FreezeScannedHandlerCatalog();
-        registration.DispatchOptions.MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions);
+        registration.DispatchOptions.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
         var spotNode = new ZLinkSpotNodeRegistration
         {
             SpotNodeName = "mesh",
@@ -226,6 +248,8 @@ public sealed partial class EntrySpotActorDispatchTests
             Assert.Contains($"flow={MeshFlowId}", line, StringComparison.Ordinal);
             Assert.Contains($"corr={MeshCorrelationId}", line, StringComparison.Ordinal);
         });
+        if (expectedRouteMeshName is not null)
+            Assert.Equal(expectedRouteMeshName, routeContextCapture.MeshName);
         return result;
     }
 
@@ -271,15 +295,27 @@ public sealed partial class EntrySpotActorDispatchTests
     private sealed class MeshRouteRequestHandler
         : IZLinkRouteRequestHandler<MeshRequest, MeshReply>
     {
+        private readonly MeshRouteContextCapture _capture;
+
+        public MeshRouteRequestHandler(MeshRouteContextCapture capture)
+        {
+            _capture = capture;
+        }
+
         public ValueTask<MeshReply> HandleAsync(
             MeshRequest request,
             ZLinkRouteMessageContext context,
             CancellationToken cancellationToken)
         {
-            _ = context;
+            _capture.MeshName = context.MeshName;
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(new MeshReply(request.Value.ToUpperInvariant()));
         }
+    }
+
+    private sealed class MeshRouteContextCapture
+    {
+        public string? MeshName { get; set; }
     }
 
     private sealed class FailingMeshChannelRequestHandler

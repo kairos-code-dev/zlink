@@ -1,6 +1,7 @@
 using Systems.Zlink.Framework.Runtime.Protocol;
 using System.Text.Json;
 using Zlink.Framework.Runtime.Locations;
+using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -132,6 +133,81 @@ public sealed class ServiceWireRelocationCodecTests
     }
 
     [Fact]
+    public void Instance_spot_command40_uses_the_schema_normalized_object_shape()
+    {
+        var instance =
+            ZLinkSpotRetireTargetRuntime.CreateCanonicalRelocationObject(
+                ZLinkPlacementObjectKind.InstanceSpot,
+                "Game.Instance",
+                "instance-1",
+                9,
+                10);
+        Assert.Equal(0UL, instance.ExpectedAuthorityOwnerGeneration);
+        var prepare = new ZLinkServiceWireCodec.RelocationPrepareRecord(
+            new ZLinkServiceWireCodec.RelocationWireId(4, 5),
+            6,
+            1,
+            Coordinator(),
+            Candidate(),
+            1,
+            instance,
+            RoutingId.From("node-a"),
+            11,
+            0,
+            64,
+            Participants(),
+            new ZLinkServiceWireCodec.RelocationRootRecord(
+                "relocation-root", 0x12345678),
+            1);
+
+        var encoded = ZLinkServiceWireCodec.EncodeRelocationPrepare(prepare);
+        Assert.True(ZLinkServiceWireCodec.TryDecodeRelocationPrepare(
+            encoded, out var decoded, out var error));
+        Assert.Equal(ZLinkServiceWireCodec.DecodeError.None, error);
+        Assert.Equal(instance, decoded.Object);
+        var offer = new ZLinkServiceWireCodec.RelocationReadyRecord(
+            prepare.RelocationId,
+            prepare.TargetAttemptGeneration,
+            prepare.RoundKind,
+            prepare.Coordinator,
+            prepare.Candidate,
+            instance,
+            2,
+            64,
+            1024,
+            [],
+            prepare.SourceNodeGeneration,
+            prepare.Candidate.NodeGeneration,
+            1,
+            prepare.Root,
+            prepare.ApplicationVersion,
+            prepare.Participants.Select(static participant =>
+                    new ZLinkServiceWireCodec.RelocationParticipantProgressRecord(
+                        participant.ParticipantId,
+                        0,
+                        0))
+                .ToArray());
+        var encodedOffer = ZLinkServiceWireCodec.EncodeRelocationReady(offer);
+        Assert.True(ZLinkServiceWireCodec.TryDecodeRelocationReady(
+            encodedOffer, out var decodedOffer, out error));
+        Assert.Equal(ZLinkServiceWireCodec.DecodeError.None, error);
+        Assert.Equal(offer.Object, decodedOffer.Object);
+        Assert.Equal(offer.RelocationId, decodedOffer.RelocationId);
+        Assert.Equal(
+            offer.ParticipantProgress,
+            decodedOffer.ParticipantProgress);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ZLinkServiceWireCodec.EncodeRelocationPrepare(
+                prepare with
+                {
+                    Object = instance with
+                    {
+                        ExpectedAuthorityOwnerGeneration = 10
+                    }
+                }));
+    }
+
+    [Fact]
     public void Relocation_data_accepts_every_closed_phase_and_rejects_unknown_phase()
     {
         for (byte phase = 0; phase <= 9; phase++)
@@ -238,6 +314,7 @@ public sealed class ServiceWireRelocationCodecTests
             new ZLinkServiceWireCodec.RelocationWireId(4, 5),
             coordinator,
             new MeshOperationId(1, 2),
+            3,
             new ZLinkServiceWireCodec.RequestSourceFence(
                 "source", 13, RoutingId.From("node-s"), 17),
             2);
@@ -259,6 +336,9 @@ public sealed class ServiceWireRelocationCodecTests
         Assert.Equal(ZLinkServiceWireCodec.DecodeError.InvalidField, invalidStatus);
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             ZLinkServiceWireCodec.EncodeReplyRelayAck(expected with { Status = 0 }));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ZLinkServiceWireCodec.EncodeReplyRelayAck(
+                expected with { ReplyRouteId = 0 }));
     }
 
     private static byte[] ReadGolden(string name)

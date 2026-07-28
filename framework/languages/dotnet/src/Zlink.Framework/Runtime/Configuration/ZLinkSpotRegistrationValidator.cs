@@ -34,6 +34,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 + "but no location store is registered. Register the production store via AddLocationStore(...) "
                 + "(spec 05-route-mesh §7).");
 
+        ValidateObjectClientBoundary(spotNode);
+
         if (spotNode.Router is { } router)
         {
             router.AcquisitionMode = ZLinkPeerAcquisitionPolicy.Resolve(
@@ -60,6 +62,18 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         ValidateUniqueSpotFactories(spotNode, globalSpotFactories);
         ValidateUniqueEntrySpot(spotNode, globalEntrySpots);
         handlerExposure.ValidateMeshNode(spotNode);
+    }
+
+    private static void ValidateObjectClientBoundary(
+        ZLinkSpotNodeRegistration spotNode)
+    {
+        if (spotNode.ObjectRole != ZLinkMeshNodeObjectRole.Client)
+            return;
+        if (spotNode.RouteSendHandlers.Count != 0
+            || spotNode.RouteRequestHandlers.Count != 0)
+            throw new ZLinkConfigurationException(
+                $"MeshNode '{spotNode.SpotNodeName}' is an Object Client and cannot "
+                + "register application Node-direct handlers.");
     }
 
     private static bool SpotNodeUsesDistributedLookup(ZLinkSpotNodeRegistration spotNode)

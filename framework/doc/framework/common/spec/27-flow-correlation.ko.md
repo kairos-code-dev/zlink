@@ -63,7 +63,7 @@ flow 정보는 protocol error다.
 
 | 잘못된 값이 들어온 위치 | Framework가 완료하는 방법 |
 |---|---|
-| Framework message envelope | 해당 operation을 `RequestProtocolError`로 완료한다. |
+| Framework message envelope | 해당 operation을 `ProtocolError`로 완료한다. |
 | STREAM frame | Connection을 `ProtocolError`로 종료한다. |
 
 ## 4. Flow를 만드는 시점

@@ -90,6 +90,8 @@ export interface ZLinkResolvedActorRoute {
   readonly ownerLeaseGeneration: bigint;
   readonly authorityOwnerGeneration: bigint;
   readonly authorityStoreVersion: string;
+  readonly spotId?: string;
+  readonly spotGeneration?: bigint;
 }
 
 export class ZLinkStoreLocationResolvers implements
@@ -290,25 +292,32 @@ export class ZLinkStoreLocationResolvers implements
     if (
       decoded === undefined
       || decoded.actor.actorId !== actorId
-      || decoded.owner.ownerId !== current.ownerId
-      || decoded.owner.leaseGeneration !== current.ownerLeaseGeneration
       || decoded.actor.objectGeneration !== current.objectGeneration
-      || decoded.ownerNodeGeneration !== current.allocation.descriptorLifecycleGeneration
     ) return undefined;
+    const currentOwner = {
+      ownerId: current.ownerId,
+      leaseGeneration: current.ownerLeaseGeneration
+    };
     const remainingLeaseMs = await this.options.leaseTracker.remainingOwnerTokenLeaseMs(
-      decoded.owner,
+      currentOwner,
       signal
     );
     if (remainingLeaseMs <= 0) return undefined;
     const route: ZLinkResolvedActorRoute = {
-      meshName: decoded.meshName,
-      actorRef: decoded.actor,
+      meshName: current.allocation.descriptor.meshName,
+      actorRef: {
+        ...decoded.actor,
+        meshName: current.allocation.descriptor.meshName,
+        nodeRid: current.allocation.descriptor.rid
+      },
       actorType: decoded.actorType,
-      ownerNodeGeneration: decoded.ownerNodeGeneration,
-      ownerId: decoded.owner.ownerId,
-      ownerLeaseGeneration: decoded.owner.leaseGeneration,
+      ownerNodeGeneration: current.allocation.descriptorLifecycleGeneration,
+      ownerId: currentOwner.ownerId,
+      ownerLeaseGeneration: currentOwner.leaseGeneration,
       authorityOwnerGeneration: current.authorityOwnerGeneration,
-      authorityStoreVersion: current.storeVersion.value
+      authorityStoreVersion: current.storeVersion.value,
+      spotId: decoded.spotId,
+      spotGeneration: decoded.spotGeneration
     };
     const maxAgeMs = this.options.routeCacheMaxAgeMs ?? 15000;
     if (maxAgeMs > 0) {
@@ -625,6 +634,7 @@ export class ZLinkAuthoritySpotRouteResolver implements ZLinkSpotRouteResolver {
           targetSpotGeneration: current.objectGeneration,
           targetNodeGeneration: current.allocation.descriptorLifecycleGeneration,
           authorityOwnerGeneration: current.authorityOwnerGeneration,
+          targetOwnerId: current.ownerId,
           ownerLeaseGeneration: current.ownerLeaseGeneration,
           authorityStoreVersion: current.storeVersion.value
         };

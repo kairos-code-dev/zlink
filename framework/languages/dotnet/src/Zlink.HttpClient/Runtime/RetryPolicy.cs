@@ -6,8 +6,9 @@ namespace Zlink.HttpClient.Runtime;
 ///     Applies the wrapper's retry policy around a single request attempt: streaming requests are never
 ///     retried (they cannot be rewound), each attempt is bounded by the effective timeout, and only
 ///     retriable transport failures (timeout, connection errors) are retried with full-jitter exponential backoff. Timeouts
-///     surface as a retriable <see cref="ZLinkFrameworkException" /> (RequestFailed) with a
-///     <see cref="TimeoutException" /> inner exception, matching the node/java mapping. Separated from
+///     surface as <see cref="ZLinkFrameworkErrorKind.DeadlineExceeded" /> and connection failures as
+///     <see cref="ZLinkFrameworkErrorKind.Unavailable" />. Both retain the transport exception as their inner exception.
+///     Separated from
 ///     <see cref="HttpClientRuntime" /> so the retry/timeout policy is independent of handler construction.
 /// </summary>
 internal sealed class RetryPolicy(HttpClientOptions options)
@@ -44,12 +45,14 @@ internal sealed class RetryPolicy(HttpClientOptions options)
             catch (OperationCanceledException ex)
             {
                 failure = new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestFailed, "HTTP request exceeded timeout", true,
+                    ZLinkFrameworkErrorKind.DeadlineExceeded,
+                    "HTTP request exceeded timeout",
+                    ZLinkRetryAdvice.RetryAfterBackoff,
                     new TimeoutException("HTTP request exceeded timeout", ex));
             }
             catch (ZLinkFrameworkException ex)
             {
-                if (ex.IsRetriable && attempt < maxRetries)
+                if (ex.RetryAdvice != ZLinkRetryAdvice.DoNotRetry && attempt < maxRetries)
                     failure = ex;
                 else
                     throw;
@@ -57,12 +60,26 @@ internal sealed class RetryPolicy(HttpClientOptions options)
             catch (HttpRequestException ex)
             {
                 failure = new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestFailed, ex.Message, true, ex);
+                    ZLinkFrameworkErrorKind.Unavailable,
+                    ex.Message,
+                    ZLinkRetryAdvice.RetryAfterBackoff,
+                    ex);
+            }
+            catch (System.Net.Sockets.SocketException ex)
+            {
+                failure = new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.Unavailable,
+                    ex.Message,
+                    ZLinkRetryAdvice.RetryAfterBackoff,
+                    ex);
             }
             catch (IOException ex)
             {
                 failure = new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestFailed, ex.Message, true, ex);
+                    ZLinkFrameworkErrorKind.Unavailable,
+                    ex.Message,
+                    ZLinkRetryAdvice.RetryAfterBackoff,
+                    ex);
             }
 
             if (attempt < maxRetries)

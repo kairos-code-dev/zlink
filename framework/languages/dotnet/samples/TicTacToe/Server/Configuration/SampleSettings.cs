@@ -29,8 +29,8 @@ internal sealed record SampleSettings(
             RequireList(section, nameof(PeerMeshEndpoints), 2),
             string.Empty,
             playEndpoints,
-            string.Empty,
-            string.Empty,
+            RequireString(section, nameof(RedisEndpoint)),
+            RequireString(section, nameof(RedisKeyPrefix)),
             RequireString(section, nameof(LogDirectory)));
     }
 

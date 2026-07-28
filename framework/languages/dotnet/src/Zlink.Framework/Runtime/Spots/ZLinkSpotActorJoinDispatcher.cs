@@ -215,23 +215,25 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             "handler-exception" or "join-commit-failed" => ZLinkDispatchErrorReason.HandlerException,
             _ => ZLinkDispatchErrorReason.HandlerMissing
         };
-        ZLinkMessageFlowLogger.Rejected(
-            _logger,
-            level,
-            new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowOutcome.Error,
-                ZLinkDispatchErrorSurface.SpotActor,
-                ZLinkDispatchMessageKind.Request,
-                messageName,
-                channelName,
-                ActorId: joinRequest.TargetActor.ActorId,
-                SpotId: joinRequest.TargetSpotId),
-            reason,
-            "EntrySpot",
-            "Request",
-            exception,
-            actorType?.Name,
-            writeLog: dispatchErrors is null);
+        if (dispatchErrors is null
+            || dispatchErrors.Flow.Enabled(ZLinkMessageFlowOutcome.Error))
+            ZLinkMessageFlowLogger.Rejected(
+                _logger,
+                level,
+                new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowOutcome.Error,
+                    ZLinkDispatchErrorSurface.SpotActor,
+                    ZLinkDispatchMessageKind.Request,
+                    messageName,
+                    channelName,
+                    ActorId: joinRequest.TargetActor.ActorId,
+                    SpotId: joinRequest.TargetSpotId),
+                reason,
+                "EntrySpot",
+                "Request",
+                exception,
+                actorType?.Name,
+                writeLog: dispatchErrors is null);
         dispatchErrors?.Report(new ZLinkDispatchFailure(
             ZLinkDispatchErrorSurface.SpotActor,
             ZLinkDispatchMessageKind.Request,

@@ -79,7 +79,7 @@ internal static class ZLinkSpotReplyEnvelope
             request.CorrelationId,
             null,
             null,
-            nameof(ZLinkFrameworkErrorKind.RequestProtocolError),
+            nameof(ZLinkFrameworkErrorKind.ProtocolError),
             message)
         {
             FlowId = validFlow.FlowId,

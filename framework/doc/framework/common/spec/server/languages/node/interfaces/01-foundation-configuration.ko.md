@@ -273,6 +273,11 @@ connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 �
 양쪽 연결이나 automatic discovery 경합·오래된 snapshot으로 중복 후보가 생기면 handshake와 admission이
 같은 RID와 lifecycle generation을 확인해 하나만 ready 상태로 유지한다.
 
+두 MeshNode가 모두 Object Client이고 양쪽 모두 RouteMesh Channel Server membership이 없을 때만 peer
+connection이 필요하지 않다. Channel Client membership만 등록한 경우도 같다. 어느 한쪽에라도 weight
+`0`을 포함한 Channel Server membership이 있으면 연결을 만들고 liveness를 유지한다. ClientServer와
+classic fanout registration은 별도 물리 topology이므로 이 판정에 포함하지 않는다.
+
 Client는 manual endpoint와 location store [automatic discovery](../../../../01-glossary.ko.md#automatic-discovery)를 함께 사용할 수 있다. 두 source가 같은
 Server RID와 [lifecycle generation](../../../../01-glossary.ko.md#lifecycle-generation)을 가리키면 connection intent와 ready target을 하나로 합친다. Automatic과
 manual 모두 Client만 server로 connect하며 Server는 client endpoint를 찾거나 outbound connect를 시작하지
@@ -292,7 +297,7 @@ operation별 adapter는 제공하지 않는다.
 
 `ZLinkUserSpotExecutionMode.PerActor`는 `Recreate` Spot policy만 허용한다.
 `Disabled`나 `Snapshot`을 함께 등록하면 socket bind 전에
-`InvalidConfiguration`이다. PerActor Spot은 stateless execution shell이며 Actor
+startup configuration error다. PerActor Spot은 stateless execution shell이며 Actor
 policy와 adapter가 Actor state를 각각 처리한다. 유지해야 하는 shared state와
 Spot-level schedule은 application의 Redis·database·service 같은 외부 저장소에 둔다.
 Target runtime-private shell은 같은 public Spot ID와 object generation을 사용하며
@@ -304,7 +309,7 @@ relocation을 취소하거나 rollback하지 않는다.
 
 `relocationReadiness`를 생략하면 `AnyTurnBoundary`다. `ApplicationSignaled`는
 `SpotWide`에서만 허용하며 `PerActor`와 함께 등록하면 socket bind 전에
-`InvalidConfiguration`이다. Spot callback은 optional이며 없으면 no-op으로 처리한다.
+startup configuration error다. Spot callback은 optional이며 없으면 no-op으로 처리한다.
 
 Adapter는 application state를 `Uint8Array` opaque bytes로만 주고받으며 typed state, 별도 contract identifier와
 message wrapper를 사용하지 않는다. Framework는 Snapshot policy의 cross-node materialization에서만 adapter를
@@ -377,14 +382,17 @@ Automatic discovery listener의 port를 생략하거나 listener 호출을 생�
 
 MeshNode의 기본 object role은 `ZLinkObjectRole.None`이다. `objects().client()`는 global Actor·Spot client와
 manager를 제공하고 `objects().server()`는 그 기능과 factory·Entry Spot hosting을 함께 제공한다. Role을 두 번
-선택하거나 factory를 Server builder 밖에서 등록하면 `InvalidConfiguration`이다. Client 또는 Server role은
+선택하거나 factory를 Server builder 밖에서 등록하면 startup configuration error다. Client 또는 Server role은
 [Location Store](../../../../01-glossary.ko.md#location-store)가 필요하다.
+
+Object Client에도 RouteMesh Channel Server를 등록할 수 있다. Application Node direct handler는 등록할 수
+없으며 Object Client RID를 Node direct target으로 지정하면 다른 RID로 바꾸지 않고 `NotFound`로 끝낸다.
 
 모든 User·Instance Spot과 Actor factory는 relocation policy를 명시해야 한다. 생략을 Disabled로 해석하지 않는다.
 Factory별 capacity가 없으면 MeshNode의 object capacity를 사용한다.
 Placement [weight](../../../../01-glossary.ko.md#weight)는 정수 `0..10000`이고 기본값은 `100`이다. RouteMesh
 Channel Server와 ClientServer Server weight도 같은 범위와 기본값을 사용한다. 범위 밖 값은 startup 설정과
-runtime 변경에서 `InvalidConfiguration`이다. Weighted selection은 후보 weight 합계를 최소 64-bit 정수로
+runtime 변경에서 `InvalidOperation`이다. Weighted selection은 후보 weight 합계를 최소 64-bit 정수로
 계산한다. Active limit은 양수이고 pending limit은 0 이상이다.
 
 ## 3. Handler decorator와 dispatch option

@@ -842,7 +842,8 @@ export class ZLinkSpotNodeRuntimeManager {
     parts: readonly Message[],
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
+    fallbackActorRef?: ActorRef,
+    requestTerminal?: (response: unknown) => Promise<void> | void
   ): Promise<unknown> {
     let activation = this.primaryEntryActivation();
     if (activation === undefined) {
@@ -873,7 +874,8 @@ export class ZLinkSpotNodeRuntimeManager {
       parts,
       returnResponse,
       remoteBoundSessionTarget,
-      fallbackActorRef
+      fallbackActorRef,
+      requestTerminal
     );
   }
 

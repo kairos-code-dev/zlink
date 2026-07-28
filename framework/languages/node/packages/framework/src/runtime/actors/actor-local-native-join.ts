@@ -67,7 +67,7 @@ export class ZLinkLocalNativeActorJoin {
     node: ZLinkBackendMeshNode,
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
-    actorRef: ActorRef,
+    actorRef: ZLinkBackendActorRef,
     spotId: RoutingId,
     spotRouteTarget: ZLinkSpotRouteTarget | undefined,
     request: Message,
@@ -94,11 +94,12 @@ export class ZLinkLocalNativeActorJoin {
         );
       }
       prepared = await this.options.sourceTransfer.prepareSource(actor, state, signal, 'core');
+      await prepared.reserveTarget(target, signal);
       transferId = randomUUID();
       requestPayload = Buffer.from(JSON.stringify(buildRemoteActorJoinRequestPayload({
         actorId: actor.context.actorId,
         actorType,
-        actorRef: actorRef as never,
+        actorRef,
         expectedMembershipEpoch: state.spotMembershipEpoch,
         actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
         actorCreateRequest: state.createRequestPayload,
@@ -121,7 +122,7 @@ export class ZLinkLocalNativeActorJoin {
     try {
       const operationId = await submitJoinWhenConnected(
         () => node.joinActorSpot(
-          normalizeNativeActorRef(actorRef),
+          actorRef,
           toBindingRoutingId(target.targetNodeRid),
           toBindingRoutingId(target.spotId),
           target.targetSpotGeneration,
@@ -177,8 +178,13 @@ export class ZLinkLocalNativeActorJoin {
     );
     state.setRemoteActorPacketTarget(undefined);
     if (remote) {
+      const nativeTargetActorRef = toFrameworkActorRef(
+        control.actor as never,
+        actor.context.meshName
+      );
       try {
         await prepared?.sourceLeaveCompletion;
+        await prepared?.commitAuthority(target, nativeTargetActorRef, signal);
       } catch (error) {
         await this.publishSourceLeaveTerminal(
           node,
@@ -206,10 +212,6 @@ export class ZLinkLocalNativeActorJoin {
         true,
         timeoutMs,
         signal
-      );
-      const nativeTargetActorRef = toFrameworkActorRef(
-        control.actor as never,
-        actor.context.meshName
       );
       prepared?.commit(target, nativeTargetActorRef, []);
       try {
@@ -258,7 +260,7 @@ export class ZLinkLocalNativeActorJoin {
     node: ZLinkBackendMeshNode,
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
-    actorRef: ActorRef,
+    actorRef: ZLinkBackendActorRef,
     nodeRid: RoutingId,
     request: Message,
     timeoutMs: number | undefined
@@ -266,7 +268,7 @@ export class ZLinkLocalNativeActorJoin {
     const completions = this.requireCompletions();
     if (state.spotId !== undefined) {
       const leaveOperationId = node.leaveActor(
-        normalizeNativeActorRef(actorRef),
+        actorRef,
         state.spotMembershipEpoch,
         timeoutMs
       );
@@ -281,7 +283,7 @@ export class ZLinkLocalNativeActorJoin {
       closeMeshCompletion(leaveCompletion);
     }
     const operationId = node.joinActorEntrySpot(
-      normalizeNativeActorRef(actorRef),
+      actorRef,
       toBindingRoutingId(nodeRid),
       Buffer.from(request.data()),
       timeoutMs
@@ -407,14 +409,6 @@ function isRetryableTerminalRouteFailure(error: unknown): boolean {
     error.message.includes('target route is not connected')
     || error.message.includes('Transport endpoint is not connected')
   );
-}
-
-function normalizeNativeActorRef(actor: ActorRef): ZLinkBackendActorRef {
-  return {
-    nodeRid: actor.nodeRid,
-    actorId: actor.actorId,
-    generation: actor.objectGeneration
-  };
 }
 
 function requireTransferId(transferId: string | undefined): string {

@@ -7,19 +7,15 @@ namespace Zlink.Framework.UnitTests;
 public sealed class AutoConnectLifecycleCoordinatorTests
 {
     [Fact]
-    public async Task WithoutSocketMonitoring_FrameworkPhaseOwnsExactlyOneGeneration()
+    public async Task FrameworkPhaseOwnsExactlyOneGeneration()
     {
         var starts = 0;
         var stops = 0;
-        var coordinator = CreateCoordinator(
-            requiresSocketMonitoring: false,
-            () => starts++,
-            () => stops++);
+        var coordinator = CreateCoordinator(() => starts++, () => stops++);
         var state = UninitializedState();
 
         await coordinator.FrameworkReadyAsync(state, CancellationToken.None);
         await coordinator.FrameworkReadyAsync(state, CancellationToken.None);
-        await coordinator.SocketMonitoringReadyAsync(CancellationToken.None);
         await coordinator.StopAsync(CancellationToken.None);
         await coordinator.StopAsync(CancellationToken.None);
 
@@ -27,34 +23,7 @@ public sealed class AutoConnectLifecycleCoordinatorTests
         Assert.Equal(1, stops);
     }
 
-    [Fact]
-    public async Task WithSocketMonitoring_MonitorPhasePrecedesExactlyOneGeneration()
-    {
-        var phases = new List<string>();
-        var stops = 0;
-        var coordinator = CreateCoordinator(
-            requiresSocketMonitoring: true,
-            () => phases.Add("auto-connect-started"),
-            () => stops++);
-        var state = UninitializedState();
-
-        await coordinator.FrameworkReadyAsync(state, CancellationToken.None);
-        Assert.Empty(phases);
-
-        phases.Add("socket-monitor-attached");
-        await coordinator.SocketMonitoringReadyAsync(CancellationToken.None);
-        await coordinator.SocketMonitoringReadyAsync(CancellationToken.None);
-        await coordinator.FrameworkReadyAsync(state, CancellationToken.None);
-        await coordinator.StopAsync(CancellationToken.None);
-
-        Assert.Equal(
-            ["socket-monitor-attached", "auto-connect-started"],
-            phases);
-        Assert.Equal(1, stops);
-    }
-
     private static ZLinkAutoConnectLifecycleCoordinator CreateCoordinator(
-        bool requiresSocketMonitoring,
         Action started,
         Action stopped)
     {
@@ -68,8 +37,7 @@ public sealed class AutoConnectLifecycleCoordinatorTests
             {
                 stopped();
                 return ValueTask.CompletedTask;
-            },
-            requiresSocketMonitoring);
+            });
     }
 
     private static ZLinkFrameworkComponentState UninitializedState() =>

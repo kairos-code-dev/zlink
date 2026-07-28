@@ -113,9 +113,9 @@ internal static class ZLinkActorRelocationRoot
                                       or NotSupportedException)
         {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RelocationDataLost,
+                ZLinkFrameworkErrorKind.DataLost,
                 $"Actor '{wire.ActorId}' relocation recovery payload is malformed.",
-                isRetriable: false,
+                retryAdvice: ZLinkRetryAdvice.DoNotRetry,
                 error);
         }
         var expectedInventoryDigest = ComputeInventoryDigest(
@@ -293,7 +293,7 @@ internal static class ZLinkActorRelocationRoot
 
     private static ZLinkFrameworkException DataLost(string message) =>
         new(
-            ZLinkFrameworkErrorKind.RelocationDataLost,
+            ZLinkFrameworkErrorKind.DataLost,
             message,
-            isRetriable: false);
+            retryAdvice: ZLinkRetryAdvice.DoNotRetry);
 }

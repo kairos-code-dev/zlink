@@ -23,7 +23,7 @@ internal static class SmD10BoundedSessionBackpressureScenario
                 MaxReceivedMessages = 1
             });
             await congested.Connect.Async();
-            await congested.Request(new AuthReq("actor-sm-d10-congested", "stream backpressure", "play-a"))
+        await congested.Request(new AuthReq("actor-sm-d10-congested", "stream backpressure"))
                 .PacketName("AuthReq")
                 .Async<AuthRes>();
 
@@ -37,7 +37,7 @@ internal static class SmD10BoundedSessionBackpressureScenario
                 MaxReceivedMessages = 1024
             });
             await isolated.Connect.Async();
-            await isolated.Request(new AuthReq("actor-sm-d10-isolated", "stream backpressure peer", "play-b"))
+        await isolated.Request(new AuthReq("actor-sm-d10-isolated", "stream backpressure peer"))
                 .PacketName("AuthReq")
                 .Async<AuthRes>();
 

@@ -14,14 +14,14 @@ internal static class HttpClientText
 
     public static void RequireNonBlank(string value, string message)
     {
-        if (IsBlank(value)) throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.RequestProtocolError, message);
+        if (IsBlank(value)) throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.ProtocolError, message);
     }
 
     public static void RequirePositiveTimeout(TimeSpan value)
     {
         if (value <= TimeSpan.Zero)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "HTTP client timeout must be greater than zero");
     }
 

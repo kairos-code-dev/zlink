@@ -28,21 +28,21 @@ public static class TrackingServerHostFactory
         builder.Services.AddSingleton<EvidenceStore>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(configuration.FlowLogPath)
-                .TraceLabel("tracking");
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(DeliveryStatusChangedHandler));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
                 .SetRoutingIdPrefix("delivery-tracking");
-            mesh.ChannelName(SampleNames.TrackingRouteChannel)
+            mesh.Objects().Client();
+            options.AddClientServerChannel(SampleNames.TrackingRouteChannel).Server()
+                .Listen()
                 .AddHandlerGroup(SampleNames.TrackingRouteChannel);
-            mesh.ChannelName(SampleNames.DispatchChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
         });
 
         return builder.Build();

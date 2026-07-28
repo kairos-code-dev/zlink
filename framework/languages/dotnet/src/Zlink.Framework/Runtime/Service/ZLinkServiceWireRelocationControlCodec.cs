@@ -506,7 +506,9 @@ internal static partial class ZLinkServiceWireCodec
         if (value.Kind is < 1 or > 3 || value.ObjectGeneration == 0
             || string.IsNullOrEmpty(value.ObjectId)
             || value.Kind != 3 && value.ExpectedAuthorityOwnerGeneration == 0
-            || value.Kind == 3 && string.IsNullOrEmpty(value.StableType))
+            || value.Kind == 3
+            && (string.IsNullOrEmpty(value.StableType)
+                || value.ExpectedAuthorityOwnerGeneration != 0))
             throw new ArgumentOutOfRangeException(nameof(value));
         var body = new WireWriter();
         if (value.Kind == 3)

@@ -14,8 +14,17 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="../Zlink.Framework/Zlink.Framework.csproj"/>
         <ProjectReference Include="../Zlink.Framework.Provider.Abstractions/Zlink.Framework.Provider.Abstractions.csproj"/>
     </ItemGroup>
 
+    <Target Name="PinProviderAbstractionsPackageDependency"
+            AfterTargets="_GetProjectReferenceVersions">
+        <ItemGroup>
+            <_ProjectReferencesWithVersions
+                Update="@(_ProjectReferencesWithVersions)"
+                Condition="'%(_ProjectReferencesWithVersions.Filename)' == 'Zlink.Framework.Provider.Abstractions'">
+                <ProjectVersion>[%(_ProjectReferencesWithVersions.ProjectVersion)]</ProjectVersion>
+            </_ProjectReferencesWithVersions>
+        </ItemGroup>
+    </Target>
 </Project>

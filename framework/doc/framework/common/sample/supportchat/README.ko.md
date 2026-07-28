@@ -13,7 +13,7 @@ SupportChat은 고객 상담 채팅 흐름으로 framework가 실제 서비스�
 자기 client로 Session 서버 stream endpoint에 연결한다. 실제 상담처럼 **한 상담원은
 동시에 여러 고객 대화를 처리하며**, 하나의 stream session 위에 방마다 conversation
 actor를 두어 나눠 응대한다. Support 서버는 customer actor, 상담원 roster·conversation
-actor, conversation Spot을 소유하고, API 서버는 상담 티켓 생성(conversation allocation)을 맡고,
+actor, conversation Spot을 소유하고, API 서버는 상담 티켓 생성 orchestration을 맡고,
 공유 location store는 서버 간 endpoint 발견을 맡는다.
 
 샘플로 구현할 때 확인할 핵심은 아래와 같다.
@@ -24,7 +24,9 @@ actor, conversation Spot을 소유하고, API 서버는 상담 티켓 생성(con
 - 한 상담원은 용량 한도까지 여러 conversation에 동시에 배정될 수 있다.
 - Session 서버는 conversation packet을 `ConversationId` 기준으로 해당 conversation actor에 relay한다.
 - API 서버는 token 검증과 상담 생성 orchestration을 처리한다.
-- Support 서버는 conversation Spot을 만들고 customer actor와 상담원 conversation actor를 join시킨다.
+- API 서버는 `IZLinkSpotManager.Create`로 새 conversation Spot 생성을 Framework에 요청한다.
+- Session 서버는 `IZLinkActorManager.GetOrCreate`로 customer·상담원 actor를 직접 준비한다.
+- Support 서버는 생성된 conversation Spot에 customer actor와 상담원 conversation actor를 join시킨다.
 - conversation Spot은 참여자, 메시지 순서, typing 상태, idle timeout, close 상태를 소유한다.
 - customer와 agent가 보낸 채팅 메시지는 conversation Spot에서 순서를 부여받고 상대방에게 push된다.
 - reconnect가 발생하면 같은 actor에 새 stream session이 bind되고 conversation 상태는 유지된다.
@@ -44,10 +46,10 @@ wait interface를 직접 사용한다. notification 수집용 inbox나 로그 qu
 ## 2. 서버 구성
 
 SupportChat의 Channel 역할과 물리 연결은 [공통 topology 기준](../README.ko.md#channel-역할과-물리-topology-기준)을
-따른다. Session·Api·Support는 `supportchat` RouteMesh 하나를 공유한다. Api와 Support의 양방향 업무
-request 및 Session·Support의 Actor/session route 때문에 ClientServer Channel을 추가하지 않는다.
-Session과 Support는 `supportchat.api` Client이고 Api는 그 Channel의 Server다. Session과 Api는
-`supportchat.support` Client이고 Support는 그 Channel의 Server다.
+따른다. Session·Api·Support는 `supportchat` RouteMesh 하나를 공유한다. Actor·Spot 생성과 메시징은
+RouteMesh의 public manager와 logical object route를 사용한다. API 인증처럼 object route가 아닌
+업무 request만 독립 ClientServer Channel을 사용한다. conversation 생성이나 actor 준비를 전달하기
+위한 Channel wrapper는 두지 않는다.
 
 ```mermaid
 graph LR
@@ -62,8 +64,8 @@ graph LR
     A -->|STREAM packets| S
     S -->|API channel| API
     S -->|Actor gateway| SUP
-    SUP -->|API channel| API
-    API -->|Support channel| SUP
+    API -->|SpotManager.Create| SUP
+    S -->|ActorManager.GetOrCreate| SUP
     SUP -->|Bound session Notify| S
     S -->|STREAM Notify| C
     S -->|STREAM Notify| A
@@ -86,8 +88,8 @@ SupportChat은 공유 location store 기반 자동 연결을 사용한다.
 |------|-----------|------|
 | Session -> `supportchat.api` | location store 기반 자동 연결 | Session 서버가 인증 요청을 처리할 때 API 서버 주소를 직접 보관하지 않게 한다. |
 | Support -> `supportchat.api` | location store 기반 자동 연결 | Support actor가 상담 시작 orchestration을 API 서버에 요청한다. |
-| API -> `supportchat.support` | location store 기반 자동 연결 | API 서버가 conversation 생성(allocation) 요청을 Support 서버로 보낸다. |
-| Session -> Support session relay | location store 기반 actor locator | Session 서버가 Support 서버 actor의 위치를 직접 관리하지 않게 한다. |
+| API -> conversation Spot | location store 기반 Spot placement | API 서버가 새 conversation의 `SpotId`와 owner node를 직접 정하지 않게 한다. |
+| Session -> Support actor | location store 기반 actor locator | Session 서버가 `ActorId`만 사용해 actor를 만들거나 기존 actor를 찾는다. |
 | Support -> Session bound push | location store 기반 session route | Support 서버가 현재 client session 위치를 framework route로 찾는다. |
 
 이 샘플은 자동 연결, actor binding, bound session push를 함께 보여 주는 역할을 맡는다.
@@ -100,7 +102,7 @@ SupportChat은 client 요청을 세 서버가 나눠 처리하는 session gatewa
 |------|------|
 | Session 서버 | `AuthenticateReq`만 session lifecycle packet으로 처리하고, 인증 이후 conversation packet은 `ConversationId`로 대상 actor를 골라 relay한다(상담원은 conversation actor, 고객은 신원 actor — §9.1). |
 | Support actor | `OpenConversationReq`를 처리해 API 서버에 `OpenConversationApiReq`로 상담 시작을 요청한다. |
-| API 서버 | token 검증과 상담 시작 orchestration을 맡고, `AllocateConversationReq`로 conversation 생성을 Support 서버에 요청한다. 상담원 배정은 Support 서버가 in-process로 처리한다. |
+| API 서버 | token 검증과 상담 시작 orchestration을 맡고, `IZLinkSpotManager.Create`로 새 conversation Spot 생성을 요청한다. 상담원 배정은 Support 서버가 in-process로 처리한다. |
 | Support 서버 | `SupportEntrySpot`을 actor admission 지점으로 두고, `ConversationSpot`이 대화 상태·메시지 순서·typing·idle timer·close 상태를 소유한다. |
 | Notification | conversation domain event를 notification publisher가 bound session push로 바꿔 customer와 상담원에게 보낸다. |
 
@@ -109,15 +111,13 @@ SupportChat은 client 요청을 세 서버가 나눠 처리하는 session gatewa
 | 프로세스 | 구성 요소 | 책임 |
 |----------|-----------|------|
 | `SupportChat.Api` | `supportchat.api` ChannelName handler | Session 서버의 token 검증과 Support actor의 상담 시작 orchestration 요청을 처리한다. |
-| `SupportChat.Api` | `supportchat.support` ChannelName client | Support 서버에 conversation 생성(allocation)을 요청한다. |
 | `SupportChat.Session` | stream server | client 연결, 인증 packet, actor binding, actor relay를 처리한다. |
-| `SupportChat.Session` | `supportchat.api`·`supportchat.support` ChannelName client | token 검증과 상담원 actor 준비 요청을 각 ready server에 전달한다. |
+| `SupportChat.Session` | `supportchat.api` ChannelName client | token 검증을 ready API 서버에 요청한다. |
+| `SupportChat.Session` | actor manager | 인증된 `ActorId`로 customer·상담원 actor를 만들거나 기존 actor를 찾는다. |
 | `SupportChat.Session` | session gateway MeshNode | session relay와 bound session push 수신을 담당한다. |
 | `SupportChat.Support` | actor runtime | customer actor와 상담원 actor(roster·conversation)를 만들어 해당 Spot에 join시킨다. |
-| `SupportChat.Support` | session relay endpoint | Session 서버의 `EnsureSupportUserActorReq`를 받아 actor를 만들거나 기존 actor를 반환한다. |
 | `SupportChat.Support` | `SupportEntrySpot` | actor가 conversation에 들어가기 전 admission 지점을 맡는다. |
 | `SupportChat.Support` | `ConversationSpot` | 참여자, 메시지 순서, typing 상태, idle timer, close 상태를 소유한다. |
-| `SupportChat.Support` | `supportchat.support` ChannelName handler | API 서버의 conversation 생성 요청과 Session 서버의 상담원 conversation actor 준비 요청을 받는다. |
 | `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | Session·API·Support peer discovery(자동 연결)와 actor/session 위치 조회를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
 
 ## 6. Support 서버 디렉토리 구조
@@ -136,7 +136,6 @@ Server/Support/
       ConversationEvents
   Application/
     ConversationAssignment/
-      ConversationAllocator
       AgentAssignmentService
       AgentAvailabilityDirectory
   Infrastructure/
@@ -144,11 +143,6 @@ Server/Support/
       Actors/
         SupportUserActor
         SupportUserActorFactory
-      SessionRelay/
-        EnsureSupportUserActorHandler
-      Handlers/
-        AllocateConversationHandler
-        EnsureAgentConversationHandler
       Notifications/
         SupportNotificationPublisher
         ConversationEventMapper
@@ -172,13 +166,11 @@ Server/Support/
 | `Domain/SupportChat/Conversation` | 참여자, 메시지 sequence, status, typing, close 상태 전이를 소유한다. |
 | `Domain/SupportChat/ConversationPolicy` | 최대 참여자 수, idle timeout, close 가능 조건 같은 규칙을 소유한다. |
 | `Domain/SupportChat/ConversationEvents` | message received, participant joined, typing changed, idle timeout, closed event를 정의한다. |
-| `Application/ConversationAssignment/ConversationAllocator` | 새 상담 티켓에 conversation id를 만들고 conversation Spot 생성을 요청한다. |
 | `Application/ConversationAssignment/AgentAvailabilityDirectory` | 상담 가능 상태로 등록된 상담원 roster actor id와 용량을 관리한다. |
 | `Application/ConversationAssignment/AgentAssignmentService` | 용량이 남은 상담원 roster actor를 선택해 conversation에 배정한다. |
 | `Infrastructure/ZLink/Spots/ConversationSpot/ConversationSpot` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, notification publish 연결을 맡는다. |
 | `Infrastructure/ZLink/Spots/ConversationSpot/Notifications/*` | domain event를 bound session push message로 바꾸고 전송한다. |
-| `Infrastructure/ZLink/Handlers/*` | channel request를 application adapter로 연결한다. |
-| `Infrastructure/ZLink/Spots/EntrySpot/Handlers/*` | Entry Spot actor request를 conversation 생성·agent availability 흐름으로 연결한다. |
+| `Infrastructure/ZLink/Spots/EntrySpot/Handlers/*` | Entry Spot에 처음 배치된 actor의 identity·agent availability 흐름을 연결한다. Conversation membership은 Actor handler의 deferred Join이 처리한다. |
 | `Infrastructure/ZLink/Spots/ConversationSpot/Handlers/*` | conversation actor request와 timer callback을 domain operation으로 연결한다. |
 
 Domain 객체는 ZLink framework 타입을 직접 참조하지 않는다.
@@ -221,7 +213,7 @@ Application 계층은 domain 객체를 이용해 샘플 use case를 표현한다
 
 | Application use case | 책임 |
 |----------------------|------|
-| `ConversationAllocator` | `Subject`와 customer identity로 `ConversationId`를 만들고 conversation Spot 생성을 요청한다. |
+| `OpenConversation` | `Subject`와 customer identity를 생성 요청에 담고 Framework에 새 conversation Spot 생성을 요청한다. Framework가 전역 `SpotId`를 발급한다. |
 | `AgentAvailabilityDirectory` | 상담 가능 상태인 상담원 roster actor id와 용량을 등록, 조회, 갱신한다. |
 | `AgentAssignmentService` | 용량이 남은 상담원 roster를 선택하고 배정 결과를 반환한다. |
 | `ConversationLookup` | reconnect나 explicit join에서 `ConversationId`로 현재 conversation state를 찾는다. |
@@ -238,7 +230,7 @@ SupportChat의 port는 domain/application이 외부에 기대는 최소 계약�
 
 | Port | 방향 | Adapter 예 |
 |------|------|------------|
-| `ConversationSpotFactory` | outbound | ZLink Spot manager가 `ConversationId`에서 Spot routing id를 만들고 Spot을 생성한다. |
+| `ConversationSpotFactory` | outbound | ZLink Spot manager가 새 conversation Spot을 만들고 Framework가 발급한 `SpotId`를 반환한다. |
 | `SupportActorDirectory` | outbound | ZLink actor runtime이 customer actor와 상담원 actor(roster·conversation)를 생성하거나 기존 actor를 반환한다. |
 | `NotificationPort` | outbound | `ConversationEventMapper`와 `SupportNotificationPublisher`가 event를 bound session push로 보낸다. |
 | `Clock` 또는 time provider | outbound | timer handler가 현재 시각을 domain에 전달한다. |
@@ -296,8 +288,8 @@ SupportChat은 한 conversation을 1:1(customer 1명 + agent 1명)로 유지하�
 |------|------|
 | conversation 참여자 | 한 conversation은 customer 1명 + agent 1명이다. |
 | 상담원 동시 처리 | 한 상담원은 용량(capacity) 한도까지 여러 conversation에 동시에 배정된다. 샘플 기본 용량은 3으로 둔다. |
-| conversation 생성 | customer가 상담 시작을 요청하면 API 서버가 받고 Support 서버가 conversation Spot을 생성한다. |
-| conversation id | `ConversationId`는 client와 server가 함께 쓰는 명시적 식별자다. Spot routing id는 `ConversationId` 문자열에서 만든다. |
+| conversation 생성 | customer가 상담 시작을 요청하면 API 서버가 `IZLinkSpotManager.Create`로 새 conversation Spot 생성을 요청한다. Support 서버는 등록된 stable type factory로 Spot을 초기화한다. |
+| conversation id | Framework가 새 User Spot에 발급한 전역 문자열 `SpotId`를 `ConversationId`로 사용한다. client와 server는 이 값만 논리 주소로 사용한다. |
 | agent 대기 | agent client가 인증 후 상담 가능 상태를 등록한다. |
 | agent 배정 | customer가 conversation에 join하면 Support 서버(`ConversationSpot`)가 in-process로 용량이 남은 상담원을 선택해 `ConversationAssignedNotify`로 통지한다. |
 | agent join | 상담원 client가 `ConversationAssignedNotify`를 받으면 `JoinConversationReq`로 그 conversation에 join하고, 이때 conversation이 `Active`가 된다. |
@@ -376,7 +368,7 @@ AuthenticateRes {
 }
 ```
 
-API 인증과 actor 준비 메시지:
+API 인증 메시지:
 
 ```text
 AuthenticateUserReq {
@@ -390,46 +382,32 @@ AuthenticateUserRes {
   Role: string?
   Reason: string?
 }
+```
 
-EnsureSupportUserActorReq {
-  ActorId: string
+인증 성공 뒤 actor 준비는 샘플 wire message가 아니다. Session 서버가 actor manager의
+`GetOrCreate`를 호출한다. customer와 상담원 roster처럼 application이 소유하는 stable
+`ActorId`와 stable actor type을 지정하고 아래 생성 request를 `Request(...)`로 전달한다.
+상담원 conversation actor도 같은 방식으로 준비한다.
+
+```text
+SupportActorCreateRequest {
   DisplayName: string
   Role: string
-  ParticipantId: string   // 도메인 참여자 id (고객=ActorId, 상담원 conversation actor=roster id)
-}
-
-EnsureSupportUserActorRes {
-  Actor: ActorRefSnapshot
-}
-
-// framework 제공 wire 모델(ActorRefSnapshot) — 샘플이 정의하지 않는다.
-ActorRefSnapshot {
-  NodeRid: bytes
-  ActorId: string
-  Generation: uint64
-}
-
-// 상담원이 배정된 conversation에 join할 때 Session 서버가 Support 서버에 보낸다.
-// Support 서버는 방별 상담원 conversation actor(ParticipantId=roster id)를 만들어
-// ConversationSpot에 join시키고 ref와 현재 state를 반환한다 (§9.1).
-EnsureAgentConversationReq {
-  RosterActorId: string
-  DisplayName: string
-  ConversationId: string
-}
-
-EnsureAgentConversationRes {
-  Actor: ActorRefSnapshot
-  State: ConversationState
+  ParticipantId: string
 }
 ```
+
+Framework는 Location Store에서 현재 owner를 확인한다. `Existing`이면 생성 request를
+다시 실행하지 않고 기존 `ActorRef`를 반환한다. `Created`이면 새 `ActorRef`와 optional
+creation reply를 반환한다. `Rejected`이면 Session 서버는 actor를 bind하지 않고 인증 또는
+conversation join을 실패로 끝낸다.
 
 상담원 stream session이 끊기면 별도 메시지 없이 framework의 actor disconnect 생명주기로
 정리한다: Session 서버가 bound roster actor에 `NotifyDisconnectedAsync`를 보내면 Support
 서버의 `SupportEntrySpot.OnDisconnectActorAsync`가 발화해 roster를 배정 가능 목록에서
 제거한다(§9). 재접속 시 `SetAgentAvailableReq(true)`로 다시 등록한다.
 
-API orchestration과 Support allocation 메시지:
+API orchestration 메시지:
 
 ```text
 OpenConversationApiReq {
@@ -442,22 +420,12 @@ OpenConversationApiRes {
   ConversationId: string
   Status: string
 }
-
-AllocateConversationReq {
-  CustomerActorId: string
-  CustomerDisplayName: string
-  Subject: string
-}
-
-AllocateConversationRes {
-  ConversationId: string
-  Status: string
-}
 ```
 
-배정은 별도 채널 request가 아니라 customer가 conversation에 join할 때 Support 서버
-(ConversationSpot)가 in-process로 처리한다(§12). API 서버는 `AllocateConversationReq`까지만
-보낸다.
+API 서버는 이 요청을 받으면 새 User Spot의 임의 식별자를 만들지 않는다. Spot manager의
+`Create("supportchat.conversation")`에 customer와 subject를 생성 요청으로 전달한다. Framework가
+전역 `SpotId`를 발급하고, API 서버는 그 값을 `ConversationId`로 반환한다. 배정은 별도 channel
+request가 아니라 customer가 conversation에 join할 때 `ConversationSpot`이 in-process로 처리한다(§12).
 
 client stream request/response (conversation 범위 request는 `ConversationId`를 payload가
 아니라 metadata로 실어 보낸다 — §9.2):
@@ -489,6 +457,7 @@ JoinConversationReq {
 }
 
 JoinConversationRes {
+  Scheduled: bool          // true면 handler 종료 뒤 deferred Join을 실행한다.
   State: ConversationState
 }
 
@@ -510,7 +479,12 @@ CloseConversationRes {
 }
 ```
 
-client stream one-way send (fire-and-forget, 응답 없음. `ConversationId`는 metadata — §9.2):
+`Scheduled = true`는 membership commit 완료가 아니다. Client는
+`ParticipantJoinedNotify(..., Active)`로 Join 완료를 확인한다. Reconnect처럼 actor가 이미
+같은 conversation Spot에 속하면 새 Join을 예약하지 않고 `Scheduled = false`와 현재 state를
+반환한다.
+
+client stream one-way send (결과 payload 없음. `ConversationId`는 metadata — §9.2):
 
 ```text
 SetTypingReq {
@@ -518,8 +492,11 @@ SetTypingReq {
 }
 ```
 
-typing은 순간 상태이므로 요청/응답이 아니라 one-way send로 보낸다. 보낸 사람은 응답을
-받지 않고, 서버는 typing 상태를 저장한 뒤 상대방에게만 `TypingChangedNotify`를 push한다.
+typing은 순간 상태이므로 요청/응답이 아니라 one-way send로 보낸다. async terminal은
+source runtime의 local outbound admission까지만 기다린다. terminal이 정상 완료되어도 target
+queue 수락, handler 실행, 상대방 수신을 보장하지 않으며 결과 payload도 반환하지 않는다.
+source-local admission 전에 timeout·cancellation·shutdown이 발생하면 typed exception으로
+완료한다. 서버가 typing 상태를 처리하면 상대방에게만 `TypingChangedNotify`를 push한다.
 닫힌 대화로 보낸 typing은 오류 응답 대신 서버에서 조용히 무시된다. 반대로 채팅은
 서버 부여 순번과 접수·검증 ack가 필요해 request/response로 둔다(이유는 §13.1).
 
@@ -589,9 +566,9 @@ ChatMessage {
 `Active`, `WaitingForClose`, `Closed`를 사용한다. 언어별 샘플에서 enum으로 표현할 수
 있지만 wire field 값은 위 문자열을 유지한다.
 
-`ConversationId`는 도메인 식별자이며 core routing id 문자열이 아니다. Support 서버가
-conversation Spot을 만들 때 각 언어의 routing id 생성 API로 `ConversationId` 문자열에서
-Spot routing id를 만든다. client DTO에는 routing id hex 문자열을 노출하지 않는다.
+`ConversationId`는 Framework가 User Spot에 발급한 전역 `SpotId`다. UTF-8 문자열을
+대소문자 구분 그대로 비교한다. Node transport에 쓰는 `NodeRid`로 변환하거나 routing id
+hex 문자열을 client DTO에 노출하지 않는다.
 
 conversation 범위 packet(`JoinConversationReq`, `SendChatMessageReq`, `SetTypingReq`,
 `CloseConversationReq`)은 `ConversationId`를 payload가 아니라 stream message metadata로
@@ -647,7 +624,6 @@ sequenceDiagram
     end
 
     box Support server
-        participant SUP as SessionRelay module
         participant A as SupportUserActor module
     end
 
@@ -655,11 +631,15 @@ sequenceDiagram
     C->>S: AuthenticateReq
     S->>API: AuthenticateUserReq
     API-->>S: AuthenticateUserRes
-    S->>SUP: EnsureSupportUserActorReq
-    SUP->>A: Create or get actor
-    SUP-->>S: EnsureSupportUserActorRes(ActorRef)
-    S->>S: Bind current stream session to actor
-    S-->>C: AuthenticateRes
+    S->>A: ActorManager.GetOrCreate(ActorId, stable type).Request(create request)
+    alt Existing or Created
+        A-->>S: ActorRef
+        S->>S: Bind current stream session to actor
+        S-->>C: AuthenticateRes
+    else Rejected
+        A-->>S: Rejected(optional reply)
+        S-->>C: Authentication error
+    end
 ```
 
 인증 성공 후 Session 서버는 현재 stream session을 Support 서버 actor에 bind한다.
@@ -687,8 +667,6 @@ sequenceDiagram
     end
 
     box Support server
-        participant SUP as Support channel module
-        participant E as SupportEntrySpot module
         participant R as ConversationSpot module
         participant CA as CustomerActor module
         participant AR as AgentRoster actor module
@@ -709,44 +687,56 @@ sequenceDiagram
     C->>S: OpenConversationReq(subject)
     S->>CA: Relay OpenConversationReq
     CA->>API: OpenConversationApiReq
-    API->>SUP: AllocateConversationReq
-    SUP->>R: Create conversation Spot
-    SUP-->>API: AllocateConversationRes(WaitingForAgent)
+    API->>R: SpotManager.Create(conversation stable type, create request)
+    R-->>API: SpotRef(Framework-issued SpotId)
     API-->>CA: OpenConversationApiRes(WaitingForAgent)
-    CA->>E: Join customer actor
-    E->>R: Join customer
+    CA->>CA: Context.JoinSpot(ConversationId, join request).Defer()
+    CA-->>S: OpenConversationRes(WaitingForAgent)
+    S-->>C: OpenConversationRes(WaitingForAgent)
+    Note over CA,R: CustomerActor handler가 정상 종료된 뒤 deferred Join 실행
+    CA->>R: Framework executes deferred Join
+    R-->>CA: OnJoinCompleted(Accepted)
     R->>R: Pick available agent, 용량 예약 (in-process)
     R->>AR: ConversationAssignedNotify(convId)
     AR-->>S: Bound push (roster)
     S-->>A: ConversationAssignedNotify(convId)
-    R-->>CA: JoinConversationRes
-    CA-->>S: OpenConversationRes(WaitingForAgent)
-    S-->>C: OpenConversationRes(WaitingForAgent)
-
     A->>S: JoinConversationReq(convId)
-    S->>S: Ensure agent conversation actor, bind to session
+    S->>S: ActorManager.GetOrCreate(actorId, stable type).Request(create request)
+    S->>S: Existing/Created ActorRef를 session에 bind; Rejected면 join 실패
     S->>AConv: Relay JoinConversationReq
-    AConv->>R: Join agent
-    R-->>AConv: JoinConversationRes(Active)
-    AConv-->>S: JoinConversationRes
-    S-->>A: JoinConversationRes(Active)
-    R-->>CA: ParticipantJoinedNotify(agent)
+    AConv->>AConv: Context.JoinSpot(convId, join request).Defer()
+    AConv-->>S: JoinConversationRes(Scheduled = true, WaitingForAgent)
+    S-->>A: JoinConversationRes(Scheduled = true, WaitingForAgent)
+    Note over AConv,R: AgentConversationActor handler가 정상 종료된 뒤 deferred Join 실행
+    AConv->>R: Framework executes deferred Join
+    R-->>AConv: OnJoinCompleted(Accepted)
+    R-->>CA: ParticipantJoinedNotify(agent, Active)
+    R-->>AConv: ParticipantJoinedNotify(agent, Active)
     CA-->>S: Bound push
     S-->>C: ParticipantJoinedNotify(agent, Active)
+    AConv-->>S: Bound push
+    S-->>A: ParticipantJoinedNotify(agent, Active)
 ```
 
 customer가 상담을 시작하면 conversation은 `WaitingForAgent`로 만들어진다. customer actor가
-`ConversationSpot`에 join하면 Support 서버(`ConversationSpot`)가 in-process로 용량이 남은
-상담원을 골라 그 상담원의 roster actor에 `ConversationAssignedNotify`를 보낸다(API 서버는
-`AllocateConversationReq`까지만 보낸다). 배정은 상담원을 availability에서 곧바로 빼지
+현재 handler에서 `Context.JoinSpot(...).Defer()`를 등록한다. Handler가 정상 종료된 뒤 Framework가
+deferred Join을 실행해 customer actor를 `ConversationSpot`에 commit한다. 이 Spot은 in-process로 용량이 남은
+상담원을 골라 그 상담원의 roster actor에 `ConversationAssignedNotify`를 보낸다. API 서버는
+Spot manager의 생성 결과만 받고 Support 전용 생성 channel은 호출하지 않는다. 배정은 상담원을 availability에서 곧바로 빼지
 않으며(용량이 찰 때만 뺀다), 이 시점에도
 conversation은 아직 `WaitingForAgent`다. 상담원 client는 이 notify를 받고
-`JoinConversationReq(ConversationId)`로 그 conversation에 join한다. 이때 Session 서버가
-상담원 conversation actor를 같은 session에 bind하고 `ConversationSpot`에 join시키면
-conversation은 `Active`가 되고 customer에게 `ParticipantJoinedNotify`가 전달된다. 한
+`JoinConversationReq(ConversationId)`를 보낸다. Session 서버는 actor manager로 상담원 conversation
+actor를 준비해 같은 session에 bind한다. Actor handler는 `Context.JoinSpot(...).Defer()`를
+등록하고 join 예약 결과를 반환한다. Handler 종료 뒤 Join이 commit되면 conversation은 `Active`가
+되고 customer와 상담원에게 `ParticipantJoinedNotify`가 전달된다. 한
 상담원이 여러 conversation에 배정되면 이 conversation actor가 방마다 하나씩 생기고, 이후
 상담원은 그 conversation actor를 통해, customer는 자기 신원 actor를 통해(§9.1) 메시지를
 주고받는다.
+
+Actor의 `OnJoinCompleted`는 `Accepted`, `Rejected`, `Failed`를 모두 처리한다. `Accepted`에서만
+conversation 참여 완료 notification을 보낸다. `Rejected`와 `Failed`에서는 해당 actor를
+conversation participant로 사용하지 않으며 retry 가능 여부를 client 오류에 반영한다. Callback
+재실행이 notification을 중복 생성하지 않도록 join operation ID를 기록해 중복을 제거한다.
 
 이 문서의 시퀀스·시나리오에서 conversation packet에 포함한 `(convId, …)`·`(conv-1, …)`
 표기 중 `convId`/`conv-*`는 payload 필드가 아니라 metadata `ConversationId`를 뜻한다(§9.2).
@@ -813,7 +803,8 @@ sequenceDiagram
 읽었다는 보장은 아니다. 상대 수신 여부(읽음 확인)는 §9.2에서 범위 밖으로 둔다.
 
 반대로 `SetTypingReq`는 one-way send다. typing은 순간 상태라 유실돼도 무해하고 별도 ack가
-필요 없어, 보낸 사람은 응답을 받지 않고 상대방만 `TypingChangedNotify`를 받는다. 이렇게
+필요 없다. submit 완료는 source-local admission만 뜻하며 상대방 수신을 뜻하지 않는다.
+상대방은 실제 전달된 경우에만 `TypingChangedNotify`를 받는다. 이렇게
 "확인이 필요한 상태 변경은 request/response, 순간 신호는 one-way send"로 나눠 각 전송
 방식이 어디에 맞는지 대비해 보여 준다.
 
@@ -893,29 +884,29 @@ sequenceDiagram
     end
 
     box Support server
-        participant SUP as SessionRelay module
         participant A as CustomerActor module
         participant R as ConversationSpot module
     end
 
     C->>S: STREAM reconnect
     C->>S: AuthenticateReq(same actor token)
-    S->>SUP: EnsureSupportUserActorReq
-    SUP-->>S: Existing ActorRef
+    S->>A: ActorManager.GetOrCreate(same ActorId, stable type).Request(create request)
+    A-->>S: Existing ActorRef
     S->>S: Bind new stream session to same actor
     S-->>C: AuthenticateRes
     C->>S: JoinConversationReq (metadata ConversationId)
     Note over S: customer는 별도 conversation actor가 없으므로(§9.1) CustomerActor 자신을<br/>새 session에 다시 bind
     S->>A: Relay to CustomerActor
-    A->>R: Join or refresh membership
-    R-->>A: JoinConversationRes(current state)
+    A->>R: Request current conversation state
+    R-->>A: JoinConversationRes(Scheduled = false, current state)
     A-->>S: JoinConversationRes
     S-->>C: JoinConversationRes
 ```
 
-reconnect는 conversation state와 actor를 새로 만들지 않는다. Session 서버는 actor 위치를
-actor directory의 `FindAsync`(actor id 단독 — location store 도달)로 찾아 기존 actor를 새 stream
-session에 다시 bind한다. `FindAsync`가 null이면 그때만 생성 경로(claim-then-activate)로 간다. customer는 reconnect 뒤 `JoinConversationReq`로 자기
+reconnect는 conversation state와 actor를 새로 만들지 않는다. Session 서버는 actor manager의
+`GetOrCreate`를 같은 `ActorId`·stable type과 생성 request로 호출한다. Framework는 Location Store의
+Ready actor를 `Existing`으로 반환하고, 없을 때만 생성 callback을 실행한다. `Rejected`이면 새
+session을 bind하지 않는다. customer는 reconnect 뒤 `JoinConversationReq`로 자기
 conversation state를 다시 확인한다. 상담원은 roster actor를 다시 bind한 뒤
 `SetAgentAvailableReq(true)`로 상담 가능 상태를 다시 등록하고(이때 roster의 bound session
 경로가 새 session으로 갱신된다), 열려 있던 conversation마다 `JoinConversationReq`로 그
@@ -967,7 +958,7 @@ sequenceDiagram
     Note over S: 새 stream session을 기존 actor에 다시 bind
     S-->>C: AuthenticateRes
     C->>S: JoinConversationReq (metadata ConversationId, customer는 신원 actor로 relay)
-    S-->>C: JoinConversationRes(current state)
+    S-->>C: JoinConversationRes(Scheduled = false, current state)
 
     S-->>C: ConversationIdleNotify
     S-->>C: ConversationClosedNotify(Closed)
@@ -1003,14 +994,16 @@ sequenceDiagram
     S-->>A: ConversationAssignedNotify(conv-1)
     A->>S: JoinConversationReq(conv-1)
     Note over S: conv-1 conversation actor를 같은 세션에 bind
-    S-->>A: JoinConversationRes(conv-1, Active)
+    S-->>A: JoinConversationRes(conv-1, Scheduled = true, WaitingForAgent)
+    S-->>A: ParticipantJoinedNotify(conv-1, agent, Active)
     A->>S: SendChatMessageReq(conv-1, greeting)
     S-->>A: SendChatMessageRes(conv-1, MessageSeq 1)
 
     Note over A,S: 고객 c2 상담 시작 → 같은 상담원에 배정 (용량 내)
     S-->>A: ConversationAssignedNotify(conv-2)
     A->>S: JoinConversationReq(conv-2)
-    S-->>A: JoinConversationRes(conv-2, Active)
+    S-->>A: JoinConversationRes(conv-2, Scheduled = true, WaitingForAgent)
+    S-->>A: ParticipantJoinedNotify(conv-2, agent, Active)
 
     Note over A,S: 두 방의 push는 ConversationId로 구분
     S-->>A: ChatMessageNotify(conv-1, customer reply)
@@ -1027,9 +1020,9 @@ sequenceDiagram
     A->>S: SetAgentAvailableReq(true)
     S-->>A: SetAgentAvailableRes(true)
     A->>S: JoinConversationReq(conv-1)
-    S-->>A: JoinConversationRes(conv-1, current state)
+    S-->>A: JoinConversationRes(conv-1, Scheduled = false, current state)
     A->>S: JoinConversationReq(conv-2)
-    S-->>A: JoinConversationRes(conv-2, current state)
+    S-->>A: JoinConversationRes(conv-2, Scheduled = false, current state)
 
     S-->>A: ConversationClosedNotify(conv-1, Closed)
 ```
@@ -1058,20 +1051,20 @@ server push는 해당 단계에서 기다려 payload 의미 값을 바로 확인
 4. customer c1 client connect, AuthenticateReq / AuthenticateRes 검증
 5. c1 OpenConversationReq / OpenConversationRes(Status = WaitingForAgent) 검증
 6. agent waits ConversationAssignedNotify(conv-1)
-7. agent JoinConversationReq(conv-1) / JoinConversationRes(Active) 검증
-8. c1 waits ParticipantJoinedNotify(agent, Active)
+7. agent JoinConversationReq(conv-1) / JoinConversationRes(Scheduled = true) 검증
+8. agent와 c1이 ParticipantJoinedNotify(agent, Active)를 기다려 membership commit 검증
 9. agent SendChatMessageReq(conv-1, greeting) / SendChatMessageRes(MessageSeq = 1) 검증
 10. c1 waits ChatMessageNotify(conv-1, MessageSeq = 1)
 11. c1 SendChatMessageReq(conv-1, reply) / SendChatMessageRes(MessageSeq = 2) 검증
 12. agent waits ChatMessageNotify(conv-1, MessageSeq = 2)
 13. customer c2 client connect, 인증, OpenConversationReq / OpenConversationRes 검증
 14. agent waits ConversationAssignedNotify(conv-2)  # 같은 상담원, 용량 내 두 번째 방
-15. agent JoinConversationReq(conv-2) / JoinConversationRes(Active) 검증
-16. c2 waits ParticipantJoinedNotify, agent SendChatMessageReq(conv-2) → c2 waits ChatMessageNotify(conv-2)
+15. agent JoinConversationReq(conv-2) / JoinConversationRes(Scheduled = true) 검증
+16. agent와 c2가 ParticipantJoinedNotify를 기다린 뒤 agent SendChatMessageReq(conv-2) → c2 waits ChatMessageNotify(conv-2)
 17. conv-1과 conv-2의 MessageSeq·push가 ConversationId로 구분되어 서로 독립인지 검증
 18. c1 or agent SetTypingReq(conv-1)를 one-way send로 전송 → 상대가 TypingChangedNotify(conv-1) 수신
 19. reconnect agent with the same token, SetAgentAvailableReq(true) 재등록 후 열려 있던 각 conversation에 JoinConversationReq로 재join
-20. JoinConversationReq / JoinConversationRes로 각 방 current state 검증
+20. JoinConversationReq / JoinConversationRes(Scheduled = false)로 각 방 current state 검증
 21. idle/close notify를 해당 방의 양쪽 client가 수신하는지 검증
 22. closed conversation에 SendChatMessageReq를 보내 오류 response 검증
 ```
@@ -1118,7 +1111,9 @@ session gateway 구조가 흐려진다.
 - agent client는 인증 후 `SetAgentAvailableReq(true)`로 상담 가능 상태를 등록한다.
 - customer가 `OpenConversationReq`를 보내면 conversation이 생성되고 customer actor가 join한다.
 - `ConversationState.Subject`는 conversation 생성 후 조회, join, reconnect response에서 유지된다.
-- 배정되면 agent는 `ConversationAssignedNotify`를 받고, `JoinConversationReq`로 join하면 conversation이 `Active`가 되며 customer는 `ParticipantJoinedNotify`를 받는다.
+- 배정되면 agent는 `ConversationAssignedNotify`를 받고 `JoinConversationReq`로 deferred Join을
+  등록한다. `JoinConversationRes(Scheduled = true)`는 예약만 뜻하며, membership commit 뒤
+  conversation이 `Active`가 되면 customer와 agent가 `ParticipantJoinedNotify`를 받는다.
 - 배정 가능한(용량 남은) agent가 없으면 conversation은 오류가 아니라 `WaitingForAgent` 상태로 남는다.
 - customer actor와 상담원 conversation actor는 같은 `ConversationSpot`에 join되어 있어야 한다.
 - 한 상담원이 용량 한도까지 여러 conversation에 동시에 배정되고, 각 방은 독립된 `MessageSeq`·idle·close 상태를 갖는다.

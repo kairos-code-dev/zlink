@@ -162,7 +162,13 @@ export class ZLinkChannelRuntimeLifecycle {
           kind: 'request' as const,
           packetName: registration.packetName,
           handler: this.options.dispatchServices.routeRequestHandler(registration.handlerType)
-        }))
+        })),
+        ...[...this.options.internalRouteSendHandlers?.entries() ?? []].map(
+          ([packetName, handler]): ZLinkRouteHandlerRegistration => ({ kind: 'send', packetName, handler })
+        ),
+        ...[...this.options.internalRouteRequestHandlers?.entries() ?? []].map(
+          ([packetName, handler]): ZLinkRouteHandlerRegistration => ({ kind: 'request', packetName, handler })
+        )
       ];
       if (routeHandlers.length > 0) {
         this.meshRouteDispatchers.set(meshName, new ZLinkRoutePacketDispatcher({

@@ -3,7 +3,6 @@ using System.Diagnostics.Metrics;
 using ObservabilityOps.Client.Support;
 using ObservabilityOps.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Zlink.Framework.Contracts.Eventing;
 
 namespace ObservabilityOps.Client.Scenarios;
 
@@ -53,7 +52,7 @@ internal static class ObsB1ConnectionMetricsScenario
         {
             InstrumentPublished = (instrument, owner) =>
             {
-                if (instrument.Meter.Name == ZLinkMeters.Framework
+                if (instrument.Meter.Name == "zlink.framework"
                     && instrument.Name == "zlink.stream.reconnects")
                     owner.EnableMeasurementEvents(instrument);
             }

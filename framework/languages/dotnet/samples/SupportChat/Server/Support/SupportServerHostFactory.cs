@@ -5,9 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SupportChat.Server.Configuration;
 using SupportChat.Server.Support.Application.ConversationAssignment;
-using SupportChat.Server.Support.Infrastructure.ZLink;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
-using SupportChat.Server.Support.Infrastructure.ZLink.Handlers;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Notifications;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot;
@@ -31,8 +29,6 @@ public static class SupportServerHostFactory
             logDirectory,
             "support");
         builder.Services.AddSingleton(topology);
-        builder.Services.AddSingleton<IConversationStarter, ConversationStarter>();
-        builder.Services.AddSingleton<SupportConversationAllocator>();
         builder.Services.AddSingleton(new AgentAvailabilityDirectory(SampleNames.AgentCapacity));
         builder.Services.AddSingleton<AgentAssignmentService>();
         builder.Services.AddSingleton<SupportActorDirectory>();
@@ -44,13 +40,18 @@ public static class SupportServerHostFactory
             var locations = options.ConfigureLocations();
             locations.RouteCacheMaxAge = TimeSpan.Zero;
             locations.MessageFollowDuration = TimeSpan.FromSeconds(5);
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            }));
+            options.AddRelocationStore(new ZLinkRedisRelocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = $"{topology.RedisKeyPrefix}relocation:";
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(logDirectory, "support"))
-                .TraceLabel("support");
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
@@ -66,10 +67,7 @@ public static class SupportServerHostFactory
                     SampleNames.ConversationSpotType,
                     null,
                     ZLinkRelocationPolicy<ConversationSpot>.Disabled);
-            mesh.ChannelName(SampleNames.SupportChannel)
-                .AddHandlerGroup("support");
-            mesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.MeshName);
+            options.AddClientServerChannel(SampleNames.ApiChannel).Client();
         });
 
         return builder.Build();

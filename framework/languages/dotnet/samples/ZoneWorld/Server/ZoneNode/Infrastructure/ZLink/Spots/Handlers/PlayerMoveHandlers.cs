@@ -28,7 +28,7 @@ internal sealed class PlayerMoveHandler(PlayerMovement movement)
 
 /// <summary>
 /// One bot step (§2.7). A bot is the same actor type as a human and walks the same
-/// movement path — validation, zone change and transfer are identical. The only
+/// movement path — validation, zone change and relocation are identical. The only
 /// difference is that a rejection turns it around instead of being pushed to a client.
 /// </summary>
 [ZLinkSpotActorRequestHandler(nameof(BotTickReq))]
@@ -48,6 +48,92 @@ internal sealed class PlayerBotTickHandler(PlayerMovement movement)
         await movement.MoveAsync(spot, actor, target.X, target.Y, cancellationToken);
         return new BotTickRes();
     }
+}
+
+/// <summary>
+/// Receives a zone snapshot on the Actor's serialized turn and forwards it through
+/// the session currently bound to that Actor.
+/// </summary>
+[ZLinkSpotActorSendHandler(nameof(DeliverZoneStateMsg))]
+internal sealed class PlayerZoneStateDeliveryHandler
+    : IZLinkSpotActorSendHandler<ZoneSpot, PlayerActor, DeliverZoneStateMsg>
+{
+    public async ValueTask HandleAsync(
+        ZoneSpot spot,
+        PlayerActor actor,
+        IZLinkMessageContext context,
+        DeliverZoneStateMsg message,
+        CancellationToken cancellationToken)
+    {
+        if (actor.IsBot) return;
+        await actor.Context.BoundSession
+            .Send(new ZoneStateNotify(message.ZoneId, message.Tick, message.Players))
+            .Async(cancellationToken);
+    }
+}
+
+/// <summary>
+/// Reports a committed zone change through the Actor's current bound session.
+/// </summary>
+[ZLinkSpotActorSendHandler(nameof(DeliverZoneChangedMsg))]
+internal sealed class PlayerZoneChangedDeliveryHandler
+    : IZLinkSpotActorSendHandler<ZoneSpot, PlayerActor, DeliverZoneChangedMsg>
+{
+    public async ValueTask HandleAsync(
+        ZoneSpot spot,
+        PlayerActor actor,
+        IZLinkMessageContext context,
+        DeliverZoneChangedMsg message,
+        CancellationToken cancellationToken)
+    {
+        if (actor.IsBot) return;
+        await actor.Context.BoundSession
+            .Send(new ZoneChangedNotify(message.PlayerId, message.ZoneId))
+            .Async(cancellationToken);
+    }
+}
+
+/// <summary>
+/// Receives a world announcement on the Actor's serialized turn and forwards it
+/// through the session currently bound to that Actor.
+/// </summary>
+[ZLinkSpotActorSendHandler(nameof(DeliverWorldAnnounceMsg))]
+internal sealed class PlayerWorldAnnouncementDeliveryHandler
+    : IZLinkSpotActorSendHandler<ZoneSpot, PlayerActor, DeliverWorldAnnounceMsg>
+{
+    public async ValueTask HandleAsync(
+        ZoneSpot spot,
+        PlayerActor actor,
+        IZLinkMessageContext context,
+        DeliverWorldAnnounceMsg message,
+        CancellationToken cancellationToken)
+    {
+        if (actor.IsBot) return;
+        await actor.Context.BoundSession
+            .Send(new WorldAnnounceNotify(message.AnnouncementId, message.Text))
+            .Async(cancellationToken);
+    }
+}
+
+/// <summary>
+/// Returns the probe payload unchanged. The runner sends this through a preserved
+/// previous-owner route when a supported route-injection harness is available.
+/// </summary>
+[ZLinkSpotActorRequestHandler(nameof(MessageFollowProbeReq))]
+internal sealed class PlayerMessageFollowProbeHandler
+    : IZLinkSpotActorRequestHandler<
+        ZoneSpot,
+        PlayerActor,
+        MessageFollowProbeReq,
+        MessageFollowProbeRes>
+{
+    public ValueTask<MessageFollowProbeRes> HandleAsync(
+        ZoneSpot spot,
+        PlayerActor actor,
+        IZLinkMessageContext context,
+        MessageFollowProbeReq request,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new MessageFollowProbeRes(request.ProbeId, request.Payload));
 }
 
 /// <summary>
@@ -85,36 +171,28 @@ internal sealed class PlayerMovement(
 
     /// <summary>
     /// Joining the target zone's spot is what moves the player, and when that spot lives
-    /// on another node the join is the transfer (§2.6). The target spot is the authority
+    /// on another node the join causes relocation (§2.6). The target spot is the authority
     /// on its own maintenance state, so it may still refuse — in which case the departing
     /// node's cache was stale and the coordinate stays where it was (§2.3).
     /// </summary>
-    private async ValueTask ChangeZoneAsync(
+    private ValueTask ChangeZoneAsync(
         PlayerActor actor,
         PlayerPosition to,
         CancellationToken cancellationToken)
     {
-        var joined = await actor.Context
+        cancellationToken.ThrowIfCancellationRequested();
+        actor.TrackDeferredJoin(to);
+        actor.Context
             .JoinSpot(
                 to.ZoneId,
                 new EnterZoneMsg(actor.ActorId, to.X, to.Y, actor.IsBot, InitialEntry: false))
-            .Yield(cancellationToken);
+            .Defer();
 
-        if (joined is ZLinkActorJoinResult.Rejected rejected)
-        {
-            var reply = rejected.Reply.Decode<EnterZoneRes>();
-            logger.LogInformation(
-                "zone change refused by target node. player={PlayerId}, zone={ZoneId}, reason={Reason}",
-                actor.ActorId,
-                to.ZoneId,
-                reply.Error);
-            await RejectAsync(actor, reply.Error ?? MoveRejectReasons.ZoneMaintenance, cancellationToken);
-            return;
-        }
-
-        // The join succeeded. Across nodes this actor instance no longer owns the player —
-        // the target node materialised a new one from the transfer state — so nothing may
-        // touch it from here. The target zone spot announces the change after commit.
+        logger.LogInformation(
+            "zone change scheduled. player={PlayerId}, zone={ZoneId}",
+            actor.ActorId,
+            to.ZoneId);
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>

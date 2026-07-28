@@ -1,6 +1,5 @@
 import type { ZLinkActor } from '../Actors';
 import type { ZLinkMessage } from '../Common';
-import type { ZLinkActorMembership } from '../RouteMesh';
 import type {
   ZLinkEntrySpotContext,
   ZLinkInstanceSpotContext,
@@ -28,20 +27,25 @@ export interface ZLinkSpotClosingContext {
   readonly deadline: Date;
 }
 
-export interface ZLinkSpotActorMembershipLifecycle {
-  onJoinedActor(actor: ZLinkActorMembership): Promise<void>;
-  onLeaveActor(actor: ZLinkActorMembership): Promise<void>;
-  onDisconnectActor(actor: ZLinkActorMembership): Promise<void>;
+export interface ZLinkSpotActorMembershipLifecycle<
+  TActor extends ZLinkActor = ZLinkActor
+> {
+  onJoinedActor(actor: TActor): Promise<void>;
+  onLeaveActor(actor: TActor): Promise<void>;
+  onDisconnectActor?(actor: TActor): Promise<void>;
 }
 
-export interface ZLinkUserSpotActorLifecycle extends ZLinkSpotActorMembershipLifecycle {
+export interface ZLinkUserSpotActorLifecycle<
+  TActor extends ZLinkActor = ZLinkActor
+> extends ZLinkSpotActorMembershipLifecycle<TActor> {
   // Admission observes the joining Actor by identity only. The framework keeps
   // fencing state such as the expected membership epoch inside the runtime so an
   // application callback never has to reason about it.
   onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
 }
 
-export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor> extends ZLinkUserSpotActorLifecycle {
+export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor>
+  extends ZLinkUserSpotActorLifecycle<TActor> {
   readonly context: ZLinkSpotContext<TActor>;
   configure?(): void;
   onCreate?(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse>;
@@ -57,13 +61,13 @@ export interface ZLinkInstanceSpot {
 }
 
 export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>
-  extends ZLinkSpotActorMembershipLifecycle {
+  extends ZLinkSpotActorMembershipLifecycle<TActor> {
   readonly context: ZLinkEntrySpotContext<TActor>;
   configure?(): void;
   onInitialize?(): Promise<void>;
   onClosing?(context: ZLinkSpotClosingContext, cleanupSignal: AbortSignal): Promise<void>;
   onCreateActor?(
-    actor: ZLinkActorMembership,
+    actor: TActor,
     createRequest: ZLinkMessage
   ): Promise<ZLinkActorCreateResponse>;
 }

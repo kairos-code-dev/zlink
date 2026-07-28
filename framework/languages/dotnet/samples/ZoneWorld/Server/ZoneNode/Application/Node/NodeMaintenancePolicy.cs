@@ -10,7 +10,7 @@ namespace ZoneWorld.Server.ZoneNode.Application.Node;
 /// at startup and refreshed by the maintenance fanout.
 ///
 /// The cache is an optimisation. Authority sits with the target node, which re-judges
-/// on arrival and rejects the transfer if it is under maintenance — so a stale cache
+/// on arrival and rejects the relocation if it is under maintenance — so a stale cache
 /// costs a rejected move, never an admitted one.
 /// </summary>
 public sealed class NodeMaintenancePolicy(string ownNodeId)

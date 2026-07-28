@@ -75,7 +75,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         var source = ResolveActorCreationSource(address.MeshName);
         var store = Registration.Locations.ResolveStore()
                     ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.InvalidConfiguration,
+                        ZLinkFrameworkErrorKind.InvalidOperation,
                         "Instance Spot activation requires a Location Store.");
         var descriptors = await store.ListAllMeshNodesAsync(
                 address.MeshName,
@@ -92,9 +92,9 @@ internal sealed partial class ZLinkFrameworkRuntime
             static candidate => candidate.PlacementWeight,
             ref _nextInstanceActivationSelection)
             ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
+                ZLinkFrameworkErrorKind.CapacityExceeded,
                 $"No Ready Instance Spot target is available for '{address.InstanceSpotType}'.",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
         var deadlineAt = DateTimeOffset.UtcNow.Add(timeout);
         var deadlineUnixMs = checked((ulong)deadlineAt.ToUnixTimeMilliseconds());
         var target = new InstanceSpotActivationTarget(
@@ -110,7 +110,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             ZLinkSpotAmbientContext.CurrentOrDefault?.SpotId ?? string.Empty;
         var state = _state
                     ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.InvalidConfiguration,
+                        ZLinkFrameworkErrorKind.InvalidOperation,
                         "Framework runtime is not started.");
         if (state.TryGetSpotNodeByRoutingId(selected.Rid, out var localTarget))
         {
@@ -131,7 +131,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 .ConfigureAwait(false);
             if (local.Result != RequestResult.Ok)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SpotCreateFailed,
+                    ZLinkFrameworkErrorKind.InternalFailure,
                     "Local Instance Spot activation failed.");
             return local.ReplyParts.Select(Message.From).ToArray();
         }

@@ -82,8 +82,8 @@ internal static class StF4MessageFollowThenRejectScenario
         await Task.Delay(TimeSpan.FromSeconds(8));
         await context.ReleaseTransportDeliveryAsync(source, g2);
         var stale = await g2Delivery;
-        ZlinkStreamAssert.Ensure(!stale.Succeeded && stale.ErrorKind == "ActorLocationStale",
-            $"ST-F4 expected ActorLocationStale, got '{stale.ErrorKind}'.");
+        ZlinkStreamAssert.Ensure(!stale.Succeeded && stale.ErrorKind == "InvalidOperation",
+            $"ST-F4 expected InvalidOperation for a stale actor location, got '{stale.ErrorKind}'.");
         ZlinkStreamAssert.Ensure(
             !(await context.GetEvidenceAsync(target)).Any(item =>
                 item.Scenario == scenario

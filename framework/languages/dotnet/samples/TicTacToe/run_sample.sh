@@ -120,6 +120,8 @@ def api(instance_name, bind_url, mesh_endpoint):
             "MeshEndpoint": mesh_endpoint,
             "PeerMeshEndpoints": ["${PLAY_A_MESH_ENDPOINT}", "${PLAY_B_MESH_ENDPOINT}"],
             "PlayEndpoints": ["${PLAY_A_ENDPOINT}", "${PLAY_B_ENDPOINT}"],
+            "RedisEndpoint": "${REDIS_ENDPOINT}",
+            "RedisKeyPrefix": "${TICTACTOE_REDIS_KEY_PREFIX}",
             "LogDirectory": "${SAMPLE_LOG_DIR}"
         }
     }
@@ -206,19 +208,19 @@ dotnet build "${SCRIPT_DIR}/TicTacToe.sln" --maxcpucount:1
 
 wait_port redis "tcp://${REDIS_ENDPOINT}"
 
-start_server play-a "${SCRIPT_DIR}/Server.Play/bin/Debug/net8.0/TicTacToe.Server.Play.dll" "${PLAY_A_CONFIG_FILE}"
+start_server play-a "${SCRIPT_DIR}/Server/Play/bin/Debug/net8.0/TicTacToe.Server.Play.dll" "${PLAY_A_CONFIG_FILE}"
 wait_port play-a-stream "${PLAY_A_ENDPOINT}"
 wait_port play-a-mesh "${PLAY_A_MESH_ENDPOINT}"
 
-start_server play-b "${SCRIPT_DIR}/Server.Play/bin/Debug/net8.0/TicTacToe.Server.Play.dll" "${PLAY_B_CONFIG_FILE}"
+start_server play-b "${SCRIPT_DIR}/Server/Play/bin/Debug/net8.0/TicTacToe.Server.Play.dll" "${PLAY_B_CONFIG_FILE}"
 wait_port play-b-stream "${PLAY_B_ENDPOINT}"
 wait_port play-b-mesh "${PLAY_B_MESH_ENDPOINT}"
 
-start_server api-a "${SCRIPT_DIR}/Server.Api/bin/Debug/net8.0/TicTacToe.Server.Api.dll" "${API_A_CONFIG_FILE}"
+start_server api-a "${SCRIPT_DIR}/Server/Api/bin/Debug/net8.0/TicTacToe.Server.Api.dll" "${API_A_CONFIG_FILE}"
 wait_port api-a-http "${API_A_BIND_URL}"
 wait_port api-a-mesh "${API_A_MESH_ENDPOINT}"
 
-start_server api-b "${SCRIPT_DIR}/Server.Api/bin/Debug/net8.0/TicTacToe.Server.Api.dll" "${API_B_CONFIG_FILE}"
+start_server api-b "${SCRIPT_DIR}/Server/Api/bin/Debug/net8.0/TicTacToe.Server.Api.dll" "${API_B_CONFIG_FILE}"
 wait_port api-b-http "${API_B_BIND_URL}"
 wait_port api-b-mesh "${API_B_MESH_ENDPOINT}"
 
@@ -237,10 +239,4 @@ if grep -R -q "dispatch-error" "${LOG_DIR}"; then
   grep -R -n "dispatch-error" "${LOG_DIR}" >&2 || true
   exit 1
 fi
-if grep -R -q "message flow outcome=error" "${TICTACTOE_LOG_DIR}"; then
-  echo "Unexpected message-flow error in TicTacToe sample logs." >&2
-  grep -R -n "message flow outcome=error" "${TICTACTOE_LOG_DIR}" >&2 || true
-  exit 1
-fi
-grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"
 RUN_SUCCEEDED=1

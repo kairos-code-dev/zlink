@@ -11,6 +11,7 @@ using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace LocationMessaging.Server.Provider;
 
@@ -32,27 +33,37 @@ internal static class ProviderHostFactory
         });
 
         builder.WebHost.UseUrls(options.HttpUrl);
-        builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
-        builder.Services.AddScoped<
-            IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>,
-            ProfileMeshEventObserver>();
+        var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
+        builder.Services.AddSingleton(evidence);
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"{options.Rid}-flow.log"),
+            options.Rid,
+            flow =>
+            {
+                if (flow.Phase is not ("error" or "dropped")) return;
+                evidence.Add(
+                    "dispatch-error"
+                    + $"|surface={flow.Surface}"
+                    + $"|kind={flow.MessageKind}"
+                    + $"|reason={flow.Reason}"
+                    + $"|action={flow.Action}"
+                    + $"|packet={flow.PacketName ?? "<null>"}"
+                    + $"|channel={flow.ChannelName ?? "<null>"}");
+            }));
+        if (!string.IsNullOrWhiteSpace(options.ChannelEndpoint))
+            builder.Services.AddHostedService<ProfileMeshEventObserver>();
 
         builder.Services.AddZLinkFramework(framework =>
         {
             // The official Redis extension registers the peer/spot/actor/route
             // stores and the owner lease store together (doc §2).
-            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint
+            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint
                                          ?? throw new InvalidOperationException(
-                                             "Shared.RedisEndpoint is required."))
-                .SetKeyPrefix(options.RedisKeyPrefix
+                                             "Shared.RedisEndpoint is required."); redis.KeyPrefix = options.RedisKeyPrefix
                                   ?? throw new InvalidOperationException(
-                                      "Shared.RedisKeyPrefix is required."))));
-            framework.ConfigureDispatch()
-                .SetRuntimeMessageFlowObserver<EvidenceDispatchErrorObserver>()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-                .TraceLabel(options.Rid);
+                                      "Shared.RedisKeyPrefix is required."); }));
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
 
             if (!string.IsNullOrWhiteSpace(options.ChannelEndpoint))
             {
@@ -85,12 +96,6 @@ internal static class ProviderHostFactory
                 route.AddRouteRequestHandler<RoutePingHandler, ScenarioRoutePing, ScenarioRoutePong>("ScenarioRoutePing");
             }
         });
-        builder.Services.AddZLinkMonitoring(monitor =>
-        {
-            if (!string.IsNullOrWhiteSpace(options.ChannelEndpoint))
-                monitor.AddMeshNodeEvents("profile");
-        });
-
         var app = builder.Build();
         app.MapProviderEndpoints(options);
         return app;

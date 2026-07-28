@@ -74,6 +74,55 @@ test('typed packet identity is owned by the packet type and not by call or paylo
   assert.equal('packetName' in call, false);
 });
 
+test('Node-direct operations classify Object Client targets as NotFound', async () => {
+  const node = {
+    isObjectClientNodeDirectTarget() {
+      return true;
+    },
+    sendToNode() {
+      throw new Error('Object Client target must not reach transport submission.');
+    },
+    requestToNode() {
+      throw new Error('Object Client target must not reach transport request.');
+    }
+  };
+  const transport = new framework.ZLinkRuntimeRouteTransport(
+    () => undefined,
+    undefined,
+    () => ({
+      meshNode: () => node,
+      meshCompletionTable: () => undefined
+    })
+  );
+  const packet = typedPacket('NodeProbe', { value: 1 });
+
+  assert.equal(
+    transport.trySubmit('mesh', 'client-node', undefined, packet).status,
+    ZLinkSubmitStatus.TargetNotFound
+  );
+  assert.equal(
+    (await transport.submit(
+      'mesh',
+      'client-node',
+      undefined,
+      packet
+    )).status,
+    ZLinkSubmitStatus.TargetNotFound
+  );
+  await assert.rejects(
+    transport.request(
+      'mesh',
+      'client-node',
+      undefined,
+      packet,
+      1000
+    ),
+    (error) =>
+      error.kind === framework.ZLinkFrameworkErrorKind.RequestTargetNotFound
+      && error.isRetriable === false
+  );
+});
+
 function fakeSpotRouteBridge() {
   return {
     attachRouterChannel() {},

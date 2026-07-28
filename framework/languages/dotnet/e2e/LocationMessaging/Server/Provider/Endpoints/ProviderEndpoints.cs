@@ -15,15 +15,15 @@ internal static class ProviderEndpoints
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
-        // Raw peer row check: cache-less runtime query straight to the store
-        // (doc §1 verification basis).
+        // Public topology query reports the application-visible peer state.
         app.MapGet("/locations/peers", async (
             string? mesh,
             IZLinkLocationRuntimeQuery query,
             CancellationToken cancellationToken) =>
         {
-            var peers = await query.ListMeshNodeDescriptorsAsync(
-                mesh ?? throw new InvalidOperationException("mesh query parameter is required."),
+            var peers = await query.ListTopologyAsync(
+                new ZLinkLocationTopologyFilter(
+                    mesh ?? throw new InvalidOperationException("mesh query parameter is required.")),
                 cancellationToken: cancellationToken);
             return Results.Ok(peers.Items.Select(ToPeerRow).ToArray());
         });
@@ -37,17 +37,17 @@ internal static class ProviderEndpoints
             PeerLocationRow[] rows = [];
             while (DateTimeOffset.UtcNow < deadline)
             {
-                rows = (await query.ListMeshNodeDescriptorsAsync(
-                        request.MeshName,
+                rows = (await query.ListTopologyAsync(
+                        new ZLinkLocationTopologyFilter(request.MeshName),
                         cancellationToken: cancellationToken))
                     .Items
                     .Select(ToPeerRow)
                     .ToArray();
                 var matches = rows.Where(row =>
                         row.Role == request.Role
-                        && (row.NodeRid == request.NodeRid
-                            || row.NodeRid.StartsWith($"{request.NodeRid}-", StringComparison.Ordinal))
-                        && (request.Weight is null || row.Weight == request.Weight))
+                        && row.NodeRid is { } nodeRid
+                        && (nodeRid == request.NodeRid
+                            || nodeRid.StartsWith($"{request.NodeRid}-", StringComparison.Ordinal)))
                     .ToArray();
                 var reached = request.Present
                     ? matches.Length == 1
@@ -62,14 +62,15 @@ internal static class ProviderEndpoints
                 $"Peer row did not reach the requested state for rid={request.NodeRid}.",
                 statusCode: StatusCodes.Status504GatewayTimeout);
         });
-        // Public operational query for the current live descriptor page.
+        // The second endpoint verifies the same public topology projection.
         app.MapGet("/locations/member-peers", async (
             string? mesh,
             IZLinkLocationRuntimeQuery query,
             CancellationToken cancellationToken) =>
         {
-            var peers = await query.ListMeshNodeDescriptorsAsync(
-                mesh ?? throw new InvalidOperationException("mesh query parameter is required."),
+            var peers = await query.ListTopologyAsync(
+                new ZLinkLocationTopologyFilter(
+                    mesh ?? throw new InvalidOperationException("mesh query parameter is required.")),
                 cancellationToken: cancellationToken);
             return Results.Ok(peers.Items.Select(ToPeerRow).ToArray());
         });
@@ -101,6 +102,16 @@ internal static class ProviderEndpoints
                 .Async(cancellationToken);
             return Results.Ok(new { status = "sent" });
         });
+        app.MapPost("/profile/weight", (
+            int weight,
+            IZLinkRouteMeshRuntimeOptions runtimeOptions) =>
+        {
+            // The E2E uses the public runtime option to exclude the local
+            // member and prove that ChannelName-only calls reach a remote
+            // MeshNode. No target RID, endpoint or MeshName enters the call.
+            runtimeOptions.Channel("profile").Weight = weight;
+            return Results.Ok(new { weight });
+        });
         app.MapPost("/profile/route/request", async (
             ScenarioRoutePing request,
             IZLinkRouteClient route,
@@ -122,13 +133,13 @@ internal static class ProviderEndpoints
                     .Async<ScenarioRoutePong>();
             }
             catch (ZLinkFrameworkException error) when (
-                error.Kind == ZLinkFrameworkErrorKind.RequestTargetNotFound)
+                error.Kind == ZLinkFrameworkErrorKind.NotFound)
             {
                 return Results.Ok(new ExpectedFailureRes(error.Kind.ToString()));
             }
 
             throw new InvalidOperationException(
-                "A request to a missing route target completed without RequestTargetNotFound.");
+                "A request to a missing route target completed without NotFound.");
         });
         app.MapPost("/profile/route/target", async (
             TargetedRoutePing request,
@@ -146,8 +157,8 @@ internal static class ProviderEndpoints
                 return Results.Ok(new ExpectedFailureRes($"UnexpectedReply:{reply.ProviderRid}"));
             }
             catch (ZLinkFrameworkException error) when (
-                error.Kind is ZLinkFrameworkErrorKind.RequestTargetNotFound
-                    or ZLinkFrameworkErrorKind.RouteNotConnected)
+                error.Kind is ZLinkFrameworkErrorKind.NotFound
+                    or ZLinkFrameworkErrorKind.Unavailable)
             {
                 return Results.Ok(new ExpectedFailureRes(error.Kind.ToString()));
             }
@@ -160,7 +171,18 @@ internal static class ProviderEndpoints
             IZLinkFrameworkRuntime runtime,
             CancellationToken cancellationToken) =>
         {
-            var result = await runtime.RetireAsync(TimeSpan.FromSeconds(30), cancellationToken);
+            var relocation = await runtime.RelocateAsync(
+                new ZLinkFrameworkRelocationOptions
+                {
+                    Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance,
+                    Deadline = TimeSpan.FromSeconds(30)
+                },
+                cancellationToken);
+            var result = relocation.Outcome == ZLinkFrameworkRelocationOutcome.Relocated
+                ? await runtime.ShutdownAsync(TimeSpan.FromSeconds(30), cancellationToken)
+                : new ZLinkFrameworkTerminationResult(
+                    ZLinkFrameworkTerminationOutcome.ForceStopped,
+                    ZLinkFrameworkTerminationReason.TeardownFailed);
             return Results.Ok(new DrainResultRes(
                 result.Outcome.ToString(),
                 result.Reason == ZLinkFrameworkTerminationReason.None
@@ -245,16 +267,15 @@ internal static class ProviderEndpoints
         });
     }
 
-    private static PeerLocationRow ToPeerRow(ZLinkMeshNodeDescriptor peer)
+    private static PeerLocationRow ToPeerRow(ZLinkLocationTopologyEntry peer)
     {
         return new PeerLocationRow(
             peer.MeshName,
-            peer.Rid.ToString(),
+            peer.NodeRid.ToString(),
             "Router",
             peer.Endpoint,
-            (uint)(peer.ChannelWeights.TryGetValue(peer.MeshName, out var weight) ? weight : 0),
-            peer.OwnerId,
-            peer.LifecycleGeneration);
+            peer.Draining,
+            peer.State.ToString());
     }
 
 }

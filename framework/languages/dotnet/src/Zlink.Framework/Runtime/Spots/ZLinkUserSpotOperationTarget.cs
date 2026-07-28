@@ -10,6 +10,8 @@ internal sealed class ZLinkUserSpotOperationTarget(
     ZLinkSpotNodeRegistration registration,
     ZLinkCodecRegistryBuilder codecs) : IUserSpotOperationTarget
 {
+    private const int ExactAuthorityCasRetryLimit = 64;
+
     public async ValueTask<UserSpotOperationTerminal> CreateAsync(
         UserSpotCreateOperation operation,
         CancellationToken cancellationToken)
@@ -80,7 +82,7 @@ internal sealed class ZLinkUserSpotOperationTarget(
                 operation.StableType,
                 out var factory))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotTypeMismatch,
+                ZLinkFrameworkErrorKind.TypeMismatch,
                 $"User Spot type '{operation.StableType}' is not registered.");
 
         using var requestPayload = Message.From(application.Payload.Span);
@@ -204,12 +206,16 @@ internal sealed class ZLinkUserSpotOperationTarget(
             || !string.Equals(authority.OwnerId, snapshot.OwnerId, StringComparison.Ordinal)
             || authority.OwnerLeaseGeneration
             != checked((ulong)snapshot.OwnerLeaseGeneration))
-            throw Moving(operation.Target.SpotId);
+            throw Moving(
+                operation.Target.SpotId,
+                "the Ready authority identity does not match the local owner");
         if (snapshot.Allocation.State != ZLinkPlacementAllocationState.Active
             || snapshot.Allocation.ObjectKind
             != ZLinkPlacementObjectKind.UserSpot
             || authority.State != ZLinkUserSpotAuthorityState.Ready)
-            throw Moving(operation.Target.SpotId);
+            throw Moving(
+                operation.Target.SpotId,
+                "the authority is not an active Ready User Spot");
         var readiness = catalog.CloseReadiness(operation.Target.SpotId);
         if (readiness == ReservedSpotCloseReadiness.HasActors)
             return new UserSpotOperationTerminal(
@@ -218,14 +224,16 @@ internal sealed class ZLinkUserSpotOperationTarget(
                 new UserSpotCloseCompletion(false));
         if (readiness is ReservedSpotCloseReadiness.LocalMissing
             or ReservedSpotCloseReadiness.Closing)
-            throw Moving(operation.Target.SpotId);
+            throw Moving(
+                operation.Target.SpotId,
+                $"the local catalog close readiness is {readiness}");
 
         var closingPayload = ZLinkUserSpotAuthorityPayloadCodec.Encode(
             authority with
             {
                 State = ZLinkUserSpotAuthorityState.Closing
             });
-        var sealedResult = await authorityStore.CompareExchangeAuthorityAsync(
+        var sealedResult = await CompareExchangeExactAuthorityAsync(
                 key,
                 snapshot.StoreVersion,
                 new ZLinkAuthorityMutation.Put(
@@ -236,7 +244,9 @@ internal sealed class ZLinkUserSpotOperationTarget(
                 cancellationToken)
             .ConfigureAwait(false);
         if (sealedResult is not ZLinkAuthorityCompareExchangeResult.Stored sealedSnapshot)
-            throw Moving(operation.Target.SpotId);
+            throw Moving(
+                operation.Target.SpotId,
+                "the Ready-to-Closing authority exchange lost its exact fence");
 
         bool closed;
         try
@@ -269,14 +279,16 @@ internal sealed class ZLinkUserSpotOperationTarget(
                 ServiceWireConstants.FrameworkErrorCode.None,
                 new UserSpotCloseCompletion(false));
         }
-        var deleted = await authorityStore.CompareExchangeAuthorityAsync(
+        var deleted = await CompareExchangeExactAuthorityAsync(
                 key,
                 sealedSnapshot.Snapshot.StoreVersion,
                 new ZLinkAuthorityMutation.Delete(),
                 cancellationToken)
             .ConfigureAwait(false);
         if (deleted is not ZLinkAuthorityCompareExchangeResult.Deleted)
-            throw Moving(operation.Target.SpotId);
+            throw Moving(
+                operation.Target.SpotId,
+                "the Closing-to-deleted authority exchange lost its exact fence");
         return new UserSpotOperationTerminal(
             RequestResult.Ok,
             ServiceWireConstants.FrameworkErrorCode.None,
@@ -288,7 +300,7 @@ internal sealed class ZLinkUserSpotOperationTarget(
         string closingStoreVersion,
         ZLinkAuthoritySnapshot ready)
     {
-        var restored = await authorityStore.CompareExchangeAuthorityAsync(
+        var restored = await CompareExchangeExactAuthorityAsync(
                 key,
                 closingStoreVersion,
                 new ZLinkAuthorityMutation.Put(
@@ -304,6 +316,46 @@ internal sealed class ZLinkUserSpotOperationTarget(
                     ready.Payload.Span, out var authority)
                     ? authority.SpotId
                     : key.Value);
+    }
+
+    private async ValueTask<ZLinkAuthorityCompareExchangeResult>
+        CompareExchangeExactAuthorityAsync(
+        ZLinkAuthorityKey key,
+        string expectedStoreVersion,
+        ZLinkAuthorityMutation mutation,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0;
+             attempt < ExactAuthorityCasRetryLimit;
+             attempt++)
+        {
+            var result = await authorityStore.CompareExchangeAuthorityAsync(
+                    key,
+                    expectedStoreVersion,
+                    mutation,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (result is not ZLinkAuthorityCompareExchangeResult.Conflict(
+                    ZLinkAuthorityReadResult.Found current)
+                || !string.Equals(
+                    current.Snapshot.StoreVersion,
+                    expectedStoreVersion,
+                    StringComparison.Ordinal))
+                return result;
+
+            // The authority row itself is unchanged. Retry a transient loss
+            // against owner/capacity heartbeat conditions without relaxing
+            // the caller's exact row fence.
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Yield();
+        }
+
+        return await authorityStore.CompareExchangeAuthorityAsync(
+                key,
+                expectedStoreVersion,
+                mutation,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private UserSpotOperationTerminal SuccessCreate(
@@ -417,22 +469,29 @@ internal sealed class ZLinkUserSpotOperationTarget(
             || snapshot.Allocation.Descriptor.Rid != fence.TargetNodeRid
             || snapshot.Allocation.DescriptorLifecycleGeneration
             != fence.TargetNodeGeneration)
-            throw Moving(fence.SpotId);
+            throw Moving(
+                fence.SpotId,
+                "the command 48 close fence does not match the current authority");
     }
 
     private static ZLinkFrameworkException Stale(string spotId, string message) =>
         new(
-            ZLinkFrameworkErrorKind.SpotGenerationStale,
+            ZLinkFrameworkErrorKind.InvalidOperation,
             $"User Spot '{spotId}': {message}");
 
     private static ZLinkFrameworkException Moving(string spotId) =>
+        Moving(spotId, "the authority changed during the operation");
+
+    private static ZLinkFrameworkException Moving(
+        string spotId,
+        string reason) =>
         new(
-            ZLinkFrameworkErrorKind.SpotMoving,
-            $"User Spot '{spotId}' authority changed during the operation.",
-            true);
+            ZLinkFrameworkErrorKind.Unavailable,
+            $"User Spot '{spotId}': {reason}.",
+            ZLinkRetryAdvice.RetryAfterBackoff);
 
     private static ZLinkFrameworkException Protocol(string spotId, string message) =>
         new(
-            ZLinkFrameworkErrorKind.RequestProtocolError,
+            ZLinkFrameworkErrorKind.ProtocolError,
             $"User Spot '{spotId}': {message}");
 }

@@ -25,8 +25,8 @@ TypeScript 브라우저 client를 공유한다. 지원 언어는 같은 역할 �
 
 | 샘플 | 목적 | 서버 구성 | 연결 방식 | Handler 등록 방식 | 기본 payload codec |
 |------|------|-----------|-----------|-------------------|--------------------|
-| [Bingo](bingo/README.ko.md) | session gateway, actor binding, Entry Spot, room Spot, timer, bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Play` 분리 | location store 기반 자동 연결 | **자동 등록** | Protobuf |
-| [TicTacToe](tictactoe/README.ko.md) | 2개 API와 2개 Play로 수동 endpoint scale-out, Redis 기반 room route 조회, 실시간 게임 흐름을 보여 준다. | `Api` 2개, `Play` 2개, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | **수동 endpoint 연결** | **수동 등록** — annotation/attribute로 선언한 handler를 구성 코드에서 직접 등록한다(자동 스캔 없음) | JSON |
+| [Bingo](bingo/README.ko.md) | 레벨별 matchmaking Instance Spot, session gateway, actor binding, room User Spot, timer와 bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Matchmaking`, `Play` 분리 | location store 기반 자동 연결 | **자동 등록** | Protobuf |
+| [TicTacToe](tictactoe/README.ko.md) | 2개 API와 2개 Play로 수동 endpoint scale-out, 공식 Redis Location Store 기반 room routing과 실시간 게임 흐름을 보여 준다. | `Api` 2개, `Play` 2개, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | **수동 endpoint 연결** | **수동 등록** — annotation/attribute로 선언한 handler를 구성 코드에서 직접 등록한다(자동 스캔 없음) | JSON |
 | [SupportChat](supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
 | [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 push, 고객 stream push를 확인한다. | `Dispatch`, `CourierSession`, `CourierMeshNode` 2개, `Tracking`, `CustomerGateway` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
 | [ShoppingMall](event/shoppingmall.ko.md) | `CommerceApi`(HTTP edge)와 `OrderWorkflow`(주문 owner)를 분리해 event-sourced 주문 처리와 조회 모델을 구성한다. | `CommerceApi`, `OrderWorkflow` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
@@ -43,13 +43,18 @@ Channel send/request는 ChannelName 하나로 대상을 지정한다. 샘플은 
 추가하지 않고 각 언어의 정식 Channel client를 직접 사용한다. RouteMesh와 ClientServer 선택은 개별 호출
 하나가 아니라 두 process 역할 사이의 전체 업무 방향과 상태 주소 메시징 필요 여부로 결정한다.
 
-- RID·Node·Spot·Actor 직접 메시징, actor relocation 또는 Logical Multicast가 필요한 역할은 RouteMesh를
+- Spot·Actor 직접 메시징, actor relocation 또는 Logical Multicast가 필요한 역할은 RouteMesh를
   사용한다.
 - 두 역할이 서로 독립적인 업무 send/request를 시작하면 하나의 RouteMesh peer 연결을 양방향으로 사용한다.
   호출 방향마다 ClientServer Channel을 만들어 연결을 중복하지 않는다.
 - 한쪽만 업무 호출을 시작하고 두 역할이 공유할 RouteMesh가 없을 때 ClientServer Channel을 사용한다.
 - `Client()`는 송신 경로만 등록하고 `Server()`만 handler와 weight를 제공한다. `SetWeight(0)`으로 client
   역할을 표현하거나 가짜 ChannelName membership을 추가하지 않는다.
+- Object 역할을 `Client()`로만 등록한 MeshNode끼리는 연결하지 않는다. Manual endpoint를 등록해도
+  이 제한을 우회하지 않는다. 서로 호출할 이유가 없는 client끼리 연결하면 설정 오류를 감추고
+  불필요한 socket만 유지하기 때문이다.
+- Object Client process가 channel Server도 제공해야 하면 그 channel은 독립 ClientServer topology로
+  등록한다. Object Client RouteMesh에 channel Server 역할을 섞지 않는다.
 - 로컬 sample runner는 기본 BindHost `127.0.0.1`과 automatic port 0을 사용한다. Container·Kubernetes
   배포는 `ConfigureNetwork()`에 Pod 또는 Service에서 remote peer가 연결할 AdvertiseHost를
   명시한다. Wildcard BindHost를 descriptor의 advertised endpoint로 기록하지 않는다.
@@ -57,10 +62,10 @@ Channel send/request는 ChannelName 하나로 대상을 지정한다. 샘플은 
   Actor·Spot 생성과 direct messaging은 global `ActorId`·`SpotId`와 Location Store 기반 배치를
   사용하며, caller가 owner node를 선택하거나 owner `NodeRid`를 전달하지 않는다. 수동 topology도
   peer endpoint만 구성하고 상대 `NodeRid`를 application route로 사용하지 않는다.
-- Node direct messaging이나 운영 관측을 보여 주는 경우에는 runtime descriptor에서 현재 발견한
-  `NodeRid`만 그 시점의 target 또는 표시 값으로 사용할 수 있다. 이를 저장해 다음 실행의 고정
-  target으로 사용하거나 Actor·Spot 위치를 추론해서는 안 된다. 업무상 `NodeId`가 필요한 sample은
-  transport `NodeRid`와 다른 domain identifier로 정의하고 framework routing에 사용하지 않는다.
+- Node direct messaging은 Admin·Ops 관리 기능에서만 사용한다. 이 경우에도 runtime descriptor에서
+  현재 발견한 `NodeRid`만 그 시점의 관리 target 또는 표시 값으로 사용할 수 있다. 이를 저장해 다음
+  실행의 고정 target으로 사용하거나 Actor·Spot 위치를 추론해서는 안 된다. 업무상 `NodeId`가 필요한
+  sample은 transport `NodeRid`와 다른 domain identifier로 정의하고 framework routing에 사용하지 않는다.
 - STREAM과 classic Pub/Sub은 Channel egress가 아니므로 독립 listener를 유지한다.
 
 언어별 sample topology regression은 다음 공통 fixture를 읽어야 한다. 같은 기대값을 언어별 source에
@@ -71,14 +76,19 @@ framework/doc/framework/common/sample/fixtures/
 `-- channel-topology.json
 ```
 
+Fixture의 `channelKinds`는 각 `channels` entry가 물리 RouteMesh connection을 사용하는지,
+별도 ClientServer socket을 사용하는지 구분한다. Object Client pair의 연결 필요성은
+`RouteMesh` Server membership만 사용해 판단한다. `ClientServer` Server는 이 판정에
+포함하지 않는다.
+
 ### Sample별 물리 연결
 
 | sample | RouteMesh 범위 | ClientServer 범위 | 별도 연결 |
 |---|---|---|---|
-| Bingo | Session·Api·Play가 `bingo` 하나를 공유 | 없음 | Session STREAM, Redis match queue |
-| TicTacToe | Api·Play가 수동 연결 `tictactoe` 하나를 공유 | 없음 | Play STREAM, Redis room route store |
-| SupportChat | Session·Api·Support가 `supportchat` 하나를 공유 | 없음 | Session STREAM |
-| DeliveryDispatch | Dispatch·CourierSession·CourierActorNode의 `deliverydispatch.courier`, Tracking·CustomerGateway의 `deliverydispatch.customer` | `deliverydispatch.tracking`: Dispatch Client → Tracking Server | Courier STREAM, Customer STREAM |
+| Bingo | Api·Matchmaking이 `bingo.matchmaking`, Session·Api·Play가 `bingo.play`를 사용한다. 두 Mesh는 object provider와 배치 pool을 공유하지 않는다. RouteMesh Channel Server가 없는 Object Client끼리는 연결하지 않는다. | `bingo.api`: Session·Play Client → Api Server | Session STREAM, Redis matchmaking state |
+| TicTacToe | Api Object Client와 두 Play Object Server가 `tictactoe`를 수동 연결한다. 두 Play는 milestone multicast Server membership도 제공한다. | `tictactoe.api`: Play Client → Api Server | Play STREAM, Redis location store |
+| SupportChat | Session·Api는 Object Client, Support는 Object Server로 `supportchat`을 공유한다. 두 Object Client에는 RouteMesh Channel Server가 없으므로 서로 연결하지 않는다. | `supportchat.api`: Session·Support Client → Api Server | Session STREAM |
+| DeliveryDispatch | Dispatch·CourierSession은 Object Client, CourierActorNode는 Object Server로 `deliverydispatch.courier`를 공유한다. Tracking은 Object Client, CustomerGateway는 Object Server로 `deliverydispatch.customer`를 공유한다. | `deliverydispatch.dispatch`: CourierActorNode Client → Dispatch Server; `deliverydispatch.tracking`: Dispatch Client → Tracking Server | Courier STREAM, Customer STREAM |
 | ShoppingMall | CommerceApi·OrderWorkflow가 `shoppingmall.workflow` 하나를 공유하고 OrderWorkflow만 Instance factory 제공 | 없음 | Commerce HTTP, shared event·projection store |
 | GameQuest | GameApi·QuestMission이 `gamequest` 하나를 공유 | 없음 | GameApi STREAM, shared state store |
 | ZoneWorld | Gateway·ZoneNode·Ops가 `zoneworld.mesh` 하나를 공유 | 없음 | Gateway STREAM, Ops STREAM, `zoneworld.broadcast` classic fanout |
@@ -87,19 +97,108 @@ framework/doc/framework/common/sample/fixtures/
 
 | sample | Client 역할 | Server 역할 |
 |---|---|---|
-| Bingo | Session·Play: `bingo.api`; Api: `bingo.room` | Api: `bingo.api`; Play: `bingo.room` (reward Logical Multicast 대상 포함) |
-| TicTacToe | Play: `tictactoe.api`; Api: `tictactoe.play` | Api: `tictactoe.api`; 두 Play: `tictactoe.play`; milestone 대상은 Play만 등록 |
-| SupportChat | Session: api·support; Api: support; Support: api | Api: api; Support: support |
-| DeliveryDispatch | CourierActorNode: dispatch; ClientServer의 Dispatch: tracking | RouteMesh의 Dispatch: dispatch; ClientServer의 Tracking: tracking |
-| ShoppingMall | 없음. CommerceApi는 Order ID의 global SpotRid로 direct Spot call을 시작하고 `InstanceSpot("shoppingmall.order-workflow")` marker를 명시한다 | 없음. OrderWorkflow는 `OrderWorkflowSpot` Instance factory만 제공 |
-| GameQuest | 없음. GameApi는 Player ID의 global SpotRid로 direct Spot call을 시작하고 `InstanceSpot("gamequest.player-quest")` marker를 명시한다 | 없음. QuestMission은 `PlayerQuestSpot` Instance factory만 제공 |
+| Bingo | 독립 ClientServer의 Session·Play: `bingo.api` | 독립 ClientServer의 Api: `bingo.api`; `bingo.play` RouteMesh의 Play: `bingo.room` Logical Multicast membership |
+| TicTacToe | 독립 ClientServer의 Play: `tictactoe.api` | 독립 ClientServer의 Api: `tictactoe.api`; RouteMesh의 두 Play: `tictactoe.player.milestone.channel` Logical Multicast membership |
+| SupportChat | 독립 ClientServer의 Session·Support: `supportchat.api` | 독립 ClientServer의 Api: `supportchat.api` |
+| DeliveryDispatch | 독립 ClientServer의 CourierActorNode: `deliverydispatch.dispatch`; Dispatch: `deliverydispatch.tracking` | 독립 ClientServer의 Dispatch: `deliverydispatch.dispatch`; Tracking: `deliverydispatch.tracking` |
+| ShoppingMall | 없음. CommerceApi는 Order ID의 global SpotId로 direct Spot call을 시작하고 `InstanceSpot("shoppingmall.order-workflow")` marker를 명시한다 | 없음. OrderWorkflow는 `OrderWorkflowSpot` Instance factory만 제공 |
+| GameQuest | 없음. GameApi는 Player ID의 global SpotId로 direct Spot call을 시작하고 `InstanceSpot("gamequest.player-quest")` marker를 명시한다 | 없음. QuestMission은 `PlayerQuestSpot` Instance factory만 제공 |
 | ZoneWorld | Gateway: actors; ZoneNode: report | actor 생성 ZoneNode: actors; Ops: report; zone multicast 대상은 ZoneNode만 등록 |
 
-TicTacToe의 수동 peer initiator는 API-A→API-B, API-A→Play-A/Play-B, API-B→Play-A/Play-B,
-Play-A→Play-B로 고정한다.
-Play→API request는 이미 설정된 API→Play pipe를 반대 방향으로 사용한다. Play→API 전용 connect와
-중복 reciprocal connect는 만들지 않는다. API-A→API-B는 같은 MeshName의 네 MeshNode가 full mesh를
-구성하기 위한 물리 연결이며 두 API 사이에 별도 업무 ChannelName을 추가한다는 뜻이 아니다.
+TicTacToe의 수동 RouteMesh initiator는 API-A→Play-A/Play-B, API-B→Play-A/Play-B,
+Play-A→Play-B로 고정한다. Object Client인 API-A와 API-B는 서로 연결하지 않는다.
+Play→API request는 별도 ClientServer `tictactoe.api` 연결을 사용한다. RouteMesh 연결을 역방향
+업무 channel로 재사용하지 않는다.
+
+## Actor·Spot 생성과 matchmaking
+
+샘플은 생성 요청을 channel handler로 중계하지 않는다. 생성하려는 process가 public manager를
+직접 호출하고 Framework가 Location Store의 후보와 weight를 사용해 owner node를 선택하게 한다.
+
+| 목적 | 호출 | 식별자 소유자 |
+|---|---|---|
+| application이 정한 ActorId로 새 Actor만 생성 | Actor manager의 `Create` | application |
+| application이 정한 ActorId로 기존 Actor를 얻거나 한 번만 생성 | Actor manager의 `GetOrCreate` | application |
+| 새 User Spot을 만들고 Framework가 ID를 발급 | Spot manager의 `Create` | Framework |
+| room code·zone code·match reservation처럼 이미 정한 SpotId를 한 번만 생성 | Spot manager의 `GetOrCreate` | application |
+| Instance Spot에 첫 메시지를 보내 필요할 때 생성 | Spot send/request의 `InstanceSpot` marker | caller가 지정한 SpotId |
+
+`Create`와 `GetOrCreate`는 필요할 때 `InMesh`로 최초 배치 Mesh를 지정할 수 있다. 이미 존재하는
+Actor·User Spot에 보내는 direct message에는 `InMesh`를 붙이지 않는다. Framework가 global ID로
+현재 owner를 찾기 때문이다. Missing Instance Spot을 처음 활성화하는 send/request에는
+`InstanceSpot`과 함께 `InMesh`를 사용할 수 있다.
+
+TicTacToe의 `CreateGame`은 새 방을 만드는 요청이다. API는 `SpotManager.Create`가 반환한 SpotId를
+RoomId로 사용한다. 특정 Play endpoint나 NodeRid를 owner로 선택하지 않는다.
+
+Bingo는 matchmaking과 실제 게임 실행의 resource·lifecycle·배치 pool이 다르므로 두 RouteMesh를
+사용한다. API process는 두 Mesh에 각각 Object Client MeshNode를 등록한다.
+
+| MeshName | Object Server | 제공 기능 |
+|---|---|---|
+| `bingo.matchmaking` | Matchmaking | 레벨 bucket별 `bingo.matchmaker` Instance Spot |
+| `bingo.play` | Play | Bingo room User Spot과 player Actor |
+
+Sample runner는 Matchmaking process 하나를 시작하지만 singleton 계약을 만들지 않는다. 운영자는
+Matchmaking node를 여러 개 둘 수 있으며 Framework가 레벨별 Instance Spot을 eligible node에
+분산한다. Matchmaking node는 room User Spot이나 player Actor type을 등록하지 않고, Play node는
+matchmaker Instance Spot type을 등록하지 않는다.
+
+API는 player level을 bounded bucket으로 바꾸고
+`bingo-matchmaker-level-<bucket>` SpotId에 request를 보낸다. Missing Spot이면
+`InstanceSpot("bingo.matchmaker")`와 `InMesh("bingo.matchmaking")` intent로 자동 생성한다.
+Instance Spot은 같은 bucket 요청을 turn 단위로 처리하고 Redis의 open room reservation을
+선택하거나 새로 만든다. 실제 state는 Redis가 소유하며 Instance Spot은 `Recreate` policy를
+사용한다. Idle timer가 만료되면 Spot 내부에서 `Context.CloseAsync()`를 호출한다.
+
+Redis match reservation은 stable RoomId와 같은 RoomSettings를 소유한다. 첫 요청과 동시에 들어온
+요청은 모두 같은 reservation을 받고, API는 모두 `SpotManager.GetOrCreate`를
+`InMesh("bingo.play")`와 함께 호출해 room Spot이 Ready가 될 때까지 기다린다. 첫 요청만 생성
+완료를 기다리고 나머지 요청이 RoomId를 바로 반환해서는 안 된다. 생성이 실패하면 성공하지 않은
+RoomId를 참가자에게 반환하지 않는다. 참가자 수가 채워질 때까지 기다리는 책임은 matchmaking
+request가 아니라 생성된 room User Spot이 맡는다.
+
+## Relocation과 Message Follow 검증
+
+Relocation을 시연하는 샘플은 host 전체 소요 시간이 아니라 application이 사용하는 단위 하나의
+서비스 중단 시간을 측정한다. 측정 구간은 source가 새 작업을 막은 시점부터 target이 새 작업을
+받기 시작했다는 ACK를 보낸 시점까지다. Actor 하나, Instance Spot 하나와 SpotWide User Spot
+aggregate 하나는 각각 기본 1초 이내를 목표로 한다. 1초를 넘겨도 relocation을 취소하거나
+rollback하지 않는다. 자세한 기준은
+[graceful drain과 handoff](../spec/28-graceful-drain-handoff.ko.md#71-relocation-unit별-서비스-중단-시간-목표)를
+따른다.
+
+SpotWide User Spot은 Spot state와 member Actor state를 하나의 relocation unit으로 옮긴다.
+여러 Actor payload는 Relocation Store에 순차로 저장하거나 읽지 않고 설정된 I/O concurrency와
+in-flight byte 제한 안에서 병렬 처리한다. Queue, accepted journal과 logical timer는 Framework가
+저장하고 target에서 순서를 유지해 복원한다.
+
+Entry Spot과 PerActor User Spot은 Spot application state를 옮기지 않는다. Framework는 target에
+같은 SpotId의 stateless shell을 준비하고 Actor를 하나씩 옮긴다. Application은 Actor adapter의
+state만 관리하며 Spot에 ActorRef 목록을 복원하지 않는다.
+
+SpotWide factory가 `ApplicationSignaled` boundary를 선택한 샘플은 안전한 업무 turn에서
+`RelocationReady().Defer()`를 등록한다. Framework는 실제 relocation 여부와 관계없이
+`OnRelocationReadyCompletedAsync`를 호출한다. Application은 이 callback이 끝난 뒤 다음 round를
+시작한다. 기본 `AnyTurnBoundary`에서 `Defer()`를 호출하는 예제는 만들지 않는다.
+
+[Message Follow](../spec/21-location-runtime.ko.md#63-이전-owner로-도착한-message를-새-owner에게-전달한다)는
+owner 변경 직후 이전 node에 도착한 Actor·Spot message를 current owner에게 전달하는 기능이다.
+샘플 검증은 다음 경우를 각각 확인한다.
+
+- Relocation 도중 시작한 one-way send와 request/reply가 target owner에 도달한다. 업무 효과의
+  중복 여부는 보존된 operation ID를 사용하는 handler의 idempotency 검증으로 확인한다.
+- Reply route, operation ID, payload와 ObjectGeneration이 relay 뒤에도 유지된다.
+- Source는 relocation 완료 때 기록한 target만 사용하며 Message Follow 중 Location Store를 다시
+  조회하지 않는다.
+- `MessageFollowDuration` 기본값은 30초이고 0이면 relay를 사용하지 않는다. Sample이 더 짧은
+  값을 설정하면 실제 설정값과 만료 시각을 evidence에 남긴다.
+- Relay는 최대 8번, 이동 하나당 message 1,024개와 16 MiB 이내에서만 동작한다. 기간·hop·용량 또는
+  generation 검증에 실패하면 typed stale-route error를 확인한다.
+- Relay 실패나 target admission 뒤 실행 여부가 불명확한 failure를 fresh owner에게 자동
+  재제출하지 않는다. 실패한 operation은 terminal로 끝나며 다음 call만 fresh resolve한다.
+- Message Follow 기간이 끝난 뒤 시작한 새 call은 Location Store에서 current owner를 찾으며
+  이전 source relay에 의존하지 않는다.
 
 ## 메시지 이름 원칙
 
@@ -163,9 +262,8 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 | 샘플 | 지점 | terminator |
 |------|------|-----------|
 | [Bingo](bingo/README.ko.md) §7.1 | room Spot의 actor join/leave가 Api 서버에서 player 전적을 조회·기록한다 | **`yield`** |
-| [Bingo](bingo/README.ko.md) §7.1 | Entry Spot이 API 서버 응답으로 배정할 room을 결정한다 | `async` |
-| [DeliveryDispatch](deliverydispatch/README.ko.md) §6.1 | courier entry spot의 claim-then-activate probe가 **다른 노드** entry spot에 묻는다 | **`yield`** |
-| [DeliveryDispatch](deliverydispatch/README.ko.md) §6.1 | 자기 entry spot이 소유한 actor 표를 읽고 만들고 등록한다 | `async` |
+| [Bingo](bingo/README.ko.md) §3.1 | Matchmaker Instance Spot이 Redis reservation 결과로 같은 bucket의 다음 상태를 결정한다 | `async` |
+| [DeliveryDispatch](deliverydispatch/README.ko.md) §6.1 | Entry Spot이 전달받은 새 Actor의 application 상태를 초기화한다 | `async` |
 | TicTacToe | game join이 게임 상태 흐름으로 바로 이어진다 | `async` |
 
 **worker와 HTTP client도 같은 축이다**([04 §1.2](../spec/05-async-execution-policy.ko.md),
@@ -176,8 +274,9 @@ DB 드라이버·외부 SDK처럼 자체 terminator가 없는 비동기 대기�
 ## 샘플 포팅 기준
 
 Bingo와 TicTacToe는 각자 맡은 기능을 보여 주는 예외 샘플이다. Bingo는 Protobuf
-payload와 location store 기반 gateway 분리를 보여 주고, TicTacToe는 Redis room route
-store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
+payload, 두 RouteMesh로 분리한 matchmaking·gameplay 배치 pool과 location store 기반
+gateway를 보여 주고, TicTacToe는 수동 endpoint와 공식 Location Store를 함께 쓰는
+scale-out 흐름을 보여 준다.
 
 그 밖의 정본 샘플(SupportChat, DeliveryDispatch, ShoppingMall, GameQuest)은
 아래 기준을 따른다.
@@ -190,9 +289,10 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
 - 서버 간 연결은 공유 location store 기반 자동 연결로 구성한다. 샘플 코드가 endpoint
   연결 순서나 route warmup을 직접 관리하지 않게 하기 위해서다.
 - 한 process는 특별한 물리 격리 요구가 없으면 RouteMesh를 하나만 등록하고, 업무별 route는 그
-  MeshNode의 여러 ChannelName membership으로 나눈다. 현재 정본 샘플에는 보안 경계, 서로 다른
-  transport 수명 또는 상호 연결을 금지해야 하는 노드 집합처럼 RouteMesh를 둘 이상 요구하는 사례가
-  없다. classic pub/sub과 STREAM node는 RouteMesh의 ChannelName이 아니므로 각각 독립 등록을 유지한다.
+  MeshNode의 여러 ChannelName membership으로 나눈다. Bingo API는 예외다. Matchmaking Instance
+  Spot과 gameplay User Spot·Actor를 서로 다른 provider·resource pool에 배치해야 하므로
+  `bingo.matchmaking`과 `bingo.play` Object Client를 함께 등록한다. Classic pub/sub과 STREAM
+  node는 RouteMesh의 ChannelName이 아니므로 각각 독립 등록을 유지한다.
   샘플에서 RouteMesh를 추가하려면 먼저 해당 샘플 문서에 물리 mesh를 분리해야 하는 이유와 사용자가
   체감하는 연결 경계를 기록한다.
 - **절대 규칙: TicTacToe만 수동 연결을 사용할 수 있다.** TicTacToe를 제외한 모든 샘플은
@@ -232,14 +332,15 @@ SupportChat 같은 서로 다른 샘플이 같은 helper 파일을 공유하지 
 stdout/stderr를 `logs/*.log`로 저장하는 샘플은 그 샘플의 console logger에 기록하면 된다.
 로그 한 줄에는 적어도 `surface`, `messageKind`, `reason`, `action`, `packetName`,
 `correlationId` 값을 포함한다. channel 경로에서는 `channelName`, Spot 경로에서는
-`spotRid`, actor 경로에서는 `actorId`처럼 surface에 맞는 식별자를 함께 남긴다. 운영자가
+`spotId`, actor 경로에서는 `actorId`처럼 surface에 맞는 식별자를 함께 남긴다. 운영자가
 메시지 등록 누락인지, payload decode 실패인지, handler 예외인지 빠르게 구분할 수 있어야
 하기 때문이다.
 
-샘플은 각 서버 프로세스의 `AddZLinkFramework(...)` 설정에서
-`ConfigureDispatch().SetMessageFlowObserver<...>()`를 등록하거나 message-flow 로그 파일을
-지정한다. `run_sample.sh`와 `run_sample.ps1`은 프로세스 출력을 `logs/*.log`에 저장하므로,
-message-flow error 줄도 같은 샘플 로그 파일에서 확인한다.
+샘플은 각 서버 프로세스의 `AddZLinkFramework(...)` 설정에서 diagnostics level과 sampling을
+설정한다. Framework가 표준 tracing과 structured logging provider에 기록을 전달하며 application이
+별도 observer·event DTO나 Framework 전용 log file을 구현하지 않는다. `run_sample.sh`와
+`run_sample.ps1`은 프로세스 출력을 `logs/*.log`에 저장하므로 message-flow error도 같은
+샘플 로그에서 확인한다.
 
 샘플 handler는 framework가 처리하는 dispatch 오류를 handler 안에서 다시 잘게
 처리하지 않는다. request, actor request, session packet handler 안에서 예외를 잡아
@@ -393,25 +494,24 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
 - inline object literal은 한 함수 안에서만 쓰는 local state, 테스트 보조 값, 파싱 결과처럼
   wire 계약이 아닌 값에만 사용한다. 샘플은 짧은 데모보다 여러 언어에서 같은 메시지
   흐름을 비교할 수 있는 가시성을 우선한다.
-- Bingo와 TicTacToe는 같은 기능을 반복해서 보여 주지 않는다. Bingo는 공유 location store를
-  이용한 분리 gateway 구조를, TicTacToe는 수동 endpoint와 Redis room route store를 쓰는
-  scale-out 구조를 맡는다.
+- Bingo와 TicTacToe는 같은 기능을 반복해서 보여 주지 않는다. Bingo는 두 RouteMesh로 분리한
+  matchmaking·gameplay 배치 pool과 공유 Location Store를 이용한 gateway 구조를, TicTacToe는
+  수동 endpoint와 공식 Location Store를 함께 쓰는 scale-out 구조를 맡는다.
 - codec 선택은 샘플의 역할을 방해하지 않도록 단순하게 둔다. Bingo는 여러 언어가 공유하는
   schema가 분명한 Protobuf payload를 맡고, TicTacToe와 나머지 샘플은 읽고 비교하기 쉬운
   JSON payload를 기본으로 둔다. Bingo의 Protobuf 사용도 업무 API 차이가 아니라 dependency와
   framework codec extension 등록 차이로만 드러나야 한다.
 - 도메인 식별자는 그 의미가 드러나게 명명한다. 예를 들어 TicTacToe에서 client가 받는
-  값은 임의의 core routing id hex 문자열이 아니라 명시적인 `RoomId`다. room이나
-  conversation처럼 도메인 식별자가 곧 Spot 주소인 경우에는 각 언어의 일반 routing id 생성
-  API(`RoutingId.From(...)`, `RoutingId.from(...)`, 문자열 routing id 등)로 사람이 읽을 수 있는
-  도메인 식별자에서 Spot routing id를 만든다. core routing id를 hex로 직렬화한 뒤 다시
-  `FromHex`/`fromHex`로 복원해서 도메인 식별자로 사용하는 흐름은 허용하지 않는다.
+  값은 Node RID가 아니라 Framework가 발급한 문자열 `RoomId`다. RoomId·ConversationId처럼
+  도메인 식별자가 곧 Spot 주소이면 그 UTF-8 문자열을 SpotId로 그대로 사용한다. SpotId를
+  `RoutingId`로 변환하거나 Node RID의 hex 표현을 도메인 식별자로 사용하지 않는다.
 - MeshNode의 transport RID는 도메인 식별자와 구분되는 infrastructure identity다. Bingo와
   ZoneWorld처럼 routing id allocation을 검증하는 샘플은 location store가 RID를 자동 할당하며,
   애플리케이션이 고정 RID를 설정하지 않는다. 자동 할당된 RID는 public allocation 결과나 runtime
-  관측 결과로 확인하고, node direct 대상이나 `ActorRef`의 node 위치처럼 infrastructure identity가
-  필요한 계약에는 그대로 전달할 수 있다. 이 값은 `RoomId`, `ConversationId`, `OrderId` 같은
-  도메인 식별자를 대신하지 않으며 client에 도메인 식별자로 노출하지 않는다.
+  관측 결과로 확인한다. Node direct target으로 사용하는 범위는 Admin·Ops 관리 operation으로
+  제한한다. `ActorRef`에 들어 있는 NodeRid는 현재 route snapshot일 뿐 application identity나
+  다음 호출의 target이 아니다. 이 값은 `RoomId`, `ConversationId`, `OrderId` 같은 도메인
+  식별자를 대신하지 않으며 client에 도메인 식별자로 노출하지 않는다.
 
 ## Client self-check 기준
 
@@ -422,8 +522,9 @@ Bingo와 TicTacToe client는 아래의 공통 검증 흐름을 따른다. 샘플
 언어별 client는 아래 항목을 반드시 검증한다.
 
 - 인증 요청에 사용한 token 또는 actor id가 인증 응답의 actor id와 일치한다.
-- room 생성이나 matching 요청이 반환한 식별자, endpoint, state status가 요청 시나리오와
-  일치한다. `GameName`처럼 특정 샘플에만 있는 필드는 해당 샘플에서만 확인한다.
+- Room 생성이나 matching 요청이 반환한 RoomId와 state status가 요청 시나리오와 일치한다.
+  TicTacToe가 반환하는 endpoint 목록은 client STREAM 접속 후보이며 Room owner 정보가 아님을
+  함께 확인한다. `GameName`처럼 특정 샘플에만 있는 필드는 해당 샘플에서만 확인한다.
 - 첫 번째 참가자는 waiting 상태를 받고, 두 번째 참가자는 running 또는 in-progress 상태를
   만든다.
 - 자기 자신에게 보내면 안 되는 join notify는 받지 않았음을 확인한다.

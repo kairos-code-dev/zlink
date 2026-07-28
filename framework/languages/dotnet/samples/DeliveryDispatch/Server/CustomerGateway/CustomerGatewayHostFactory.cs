@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
@@ -30,22 +31,23 @@ public static class CustomerGatewayHostFactory
         builder.Services.AddSingleton<CustomerActorAccess>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(configuration.FlowLogPath)
-                .TraceLabel("customer-gateway");
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(CustomerGatewayHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
-                .SetRoutingIdPrefix("customer-gateway")
+                .SetRoutingIdPrefix("customer-gateway");
+            mesh.Objects().Server()
                 .AddEntrySpot<CustomerEntrySpot>()
-                .AddActorFactory<CustomerActorFactory>(SampleNames.CustomerActorType);
-            mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
-            mesh.ChannelName(SampleNames.DispatchChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.TrackingRouteChannel).SetWeight(0);
+                .AddActorFactory<CustomerActor, CustomerActorFactory>(
+                    SampleNames.CustomerActorType,
+                    null,
+                    ZLinkRelocationPolicy<CustomerActor>.Disabled);
             options.AddStreamNode(SampleNames.CustomerStreamNode)
                 .Bind(topology.CustomerStreamEndpoint)
                 .EnableActorDispatch()

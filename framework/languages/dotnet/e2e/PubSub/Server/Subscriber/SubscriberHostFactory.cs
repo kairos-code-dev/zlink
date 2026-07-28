@@ -3,7 +3,7 @@ using PubSub.Server.Subscriber.Handlers;
 using PubSub.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Eventing;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace PubSub.Server.Subscriber;
 
@@ -14,34 +14,38 @@ internal static class SubscriberHostFactory
         var options = SubscriberOptions.Parse(args);
         var builder = HostFactorySupport.CreateBuilder(args, options.HttpUrl, options.LogDir);
         builder.Services.AddSingleton(options);
-        builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
+        var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
+        builder.Services.AddSingleton(evidence);
         builder.Services.AddSingleton(new HandlerDelayOptions(options.HandlerDelayMs));
-        builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEvidenceRecorder>();
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"{options.Rid}-flow.log"),
+            options.Rid,
+            flow =>
+            {
+                if (flow.Phase is not ("error" or "dropped")) return;
+                evidence.Add(
+                    "dispatch-error"
+                    + $"|surface={flow.Surface}"
+                    + $"|kind={flow.MessageKind}"
+                    + $"|reason={flow.Reason}"
+                    + $"|action={flow.Action}"
+                    + $"|packet={flow.PacketName ?? "<null>"}"
+                    + $"|channel={flow.ChannelName ?? "<null>"}"
+                    + $"|topic={flow.Topic ?? "<null>"}");
+            }));
         builder.Services.AddZLinkFramework(framework =>
         {
-            ConfigureFlow(framework.ConfigureDispatch(), options.LogDir, options.Rid);
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             // Classic fanout uses no location store (config-3): the
             // subscriber names the publisher endpoint explicitly.
             var subscriber = framework.AddFanoutChannel(PubSubNames.Channel)
                 .ConnectSubscriber(options.PublisherEndpoint);
             subscriber.AddHandler<EventMsgHandler, EventMsg>("EventMsg");
         });
-        builder.Services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(
-            PubSubNames.SubscriberSocketSource,
-            ZLinkSocketEventKind.Connected,
-            ZLinkSocketEventKind.ConnectionReady,
-            ZLinkSocketEventKind.HandshakeFailed,
-            ZLinkSocketEventKind.Disconnected));
         var app = builder.Build();
         app.MapOperationalEndpoints("subscriber", options.Rid);
         return app;
     }
 
-    private static void ConfigureFlow(IZLinkDispatchOptions dispatch, string logDir, string rid)
-    {
-        dispatch.SetRuntimeMessageFlowObserver<EvidenceDispatchErrorObserver>()
-            .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-            .TraceLogFile(Path.Combine(logDir, $"{rid}-flow.log"))
-            .TraceLabel(rid);
-    }
 }

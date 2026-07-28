@@ -1759,6 +1759,7 @@ void verify_raw_reply_relay_and_exact_source_ack ()
 
     const protocol::reply_relay_ack_t ack{
       {4, 5}, coordinator, {1, 2},
+      3,
       {"source-owner", 13, source_descriptor.node_routing_id,
        source_descriptor.lifecycle_generation},
       protocol::reply_relay_ack_status_t::terminal_received};
@@ -1922,7 +1923,8 @@ void verify_durable_reply_relay_single_winner ()
     assert (target_coordinator.pending_terminal_relays () == 1);
     assert (target_coordinator.terminal_retained_bytes () > 0);
     const protocol::reply_relay_ack_t stale_ack{
-      relocation, coordinator, operation, request_source,
+      relocation, coordinator, operation, relay.reply_route_id,
+      request_source,
       protocol::reply_relay_ack_status_t::terminal_received};
     mesh::service_mailbox_record_t stale_ack_record{
       "target", mesh::service_mailbox_domain_t::infrastructure,
@@ -1930,6 +1932,15 @@ void verify_durable_reply_relay_single_winner ()
       source_descriptor.node_routing_id, std::nullopt, std::nullopt,
       source_descriptor.lifecycle_generation + 1};
     assert (target_coordinator.process (stale_ack_record)
+            == stateful::raw_relocation_replay_result_t::stale_fence);
+    auto wrong_route_ack = stale_ack;
+    ++wrong_route_ack.reply_route_id;
+    mesh::service_mailbox_record_t wrong_route_ack_record{
+      "target", mesh::service_mailbox_domain_t::infrastructure,
+      {protocol::encode_reply_relay_ack (wrong_route_ack)},
+      source_descriptor.node_routing_id, std::nullopt, std::nullopt,
+      source_descriptor.lifecycle_generation};
+    assert (target_coordinator.process (wrong_route_ack_record)
             == stateful::raw_relocation_replay_result_t::stale_fence);
 
     const auto receive = [&] (

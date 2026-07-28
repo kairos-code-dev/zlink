@@ -12,7 +12,7 @@ public sealed partial class RegressionTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(11, runners.Length);
+        Assert.Equal(12, runners.Length);
         foreach (var runner in runners)
         {
             var text = File.ReadAllText(runner);
@@ -69,21 +69,21 @@ public sealed partial class RegressionTests
         Assert.Contains("ExpectedFailureRes(string ErrorKind)", messages, StringComparison.Ordinal);
         Assert.Contains("catch (ZLinkFrameworkException error)", providerEndpoints, StringComparison.Ordinal);
         Assert.Contains(
-            "error.Kind == ZLinkFrameworkErrorKind.RequestTargetNotFound",
+            "error.Kind == ZLinkFrameworkErrorKind.NotFound",
             providerEndpoints,
             StringComparison.Ordinal);
         Assert.Contains(
-            "error.Kind == ZLinkFrameworkErrorKind.HandlerNotFound",
+            "error.Kind == ZLinkFrameworkErrorKind.NotFound",
             consumerEndpoints,
             StringComparison.Ordinal);
 
-        Assert.Contains("ZLinkFrameworkErrorKind.RequestTargetNotFound", rmC2, StringComparison.Ordinal);
+        Assert.Contains("ZLinkFrameworkErrorKind.NotFound", rmC2, StringComparison.Ordinal);
         Assert.True(
             routeRequest.IndexOf("EnsureKnownRouteMeshPeer(", StringComparison.Ordinal)
             < routeRequest.IndexOf("_spotRouteRouter.RequestAsync(", StringComparison.Ordinal),
             "RM-C2 must reject an unknown topology target before invoking the route backend.");
         Assert.DoesNotContain("catch (ZLinkFrameworkException", routeRequest, StringComparison.Ordinal);
-        Assert.Contains("ZLinkFrameworkErrorKind.HandlerNotFound", rmC5, StringComparison.Ordinal);
+        Assert.Contains("ZLinkFrameworkErrorKind.NotFound", rmC5, StringComparison.Ordinal);
         Assert.Contains("reason=HandlerMissing", rmC5, StringComparison.Ordinal);
         Assert.Contains("action=ReplyError", rmC5, StringComparison.Ordinal);
         Assert.Contains("action=Drop", rmC5, StringComparison.Ordinal);
@@ -138,7 +138,7 @@ public sealed partial class RegressionTests
                     source,
                     StringComparison.Ordinal);
                 Assert.DoesNotContain("|value=1", source, StringComparison.Ordinal);
-                Assert.Contains("Result: \"Drained\"", source, StringComparison.Ordinal);
+                Assert.Contains("Result: \"Stopped\"", source, StringComparison.Ordinal);
                 Assert.Contains("WaitForPeerRowGoneAsync(requester, \"api-b\")", source,
                     StringComparison.Ordinal);
                 Assert.Contains("firstAfter.ProviderRid == \"api-a\"", source, StringComparison.Ordinal);
@@ -152,7 +152,9 @@ public sealed partial class RegressionTests
         Assert.Contains("ReadinessPollInterval = TimeSpan.FromMilliseconds(100)", launcher, StringComparison.Ordinal);
         Assert.Contains("GracefulShutdownTimeout = TimeSpan.FromSeconds(30)", launcher, StringComparison.Ordinal);
         Assert.Contains("WaitAsync(GracefulShutdownTimeout)", launcher, StringComparison.Ordinal);
-        Assert.Contains("error.Kind == ZLinkFrameworkErrorKind.RequestFailed", launcher, StringComparison.Ordinal);
+        Assert.Contains("error.Kind is ZLinkFrameworkErrorKind.Unavailable", launcher, StringComparison.Ordinal);
+        Assert.Contains("or ZLinkFrameworkErrorKind.DeadlineExceeded", launcher, StringComparison.Ordinal);
+        Assert.Contains("error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry", launcher, StringComparison.Ordinal);
         Assert.Contains("startInfo.ArgumentList.Add(\"--no-build\")", launcher, StringComparison.Ordinal);
         Assert.Contains("Path.Combine(options.LogDir, \"dynamic\", scenarioName)", launcher,
             StringComparison.Ordinal);
@@ -318,7 +320,7 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
-    public void PubSub_Dynamic_Lifecycle_Waits_For_Public_Socket_Readiness_Before_One_Measured_Publish()
+    public void PubSub_Dynamic_Lifecycle_Uses_Delivery_Probes_Not_Internal_Socket_Events()
     {
         var root = Path.Combine(ResolveE2eRoot(), "PubSub");
         var host = File.ReadAllText(Path.Combine(
@@ -326,11 +328,9 @@ public sealed partial class RegressionTests
         var observation = File.ReadAllText(Path.Combine(
             root, "Client", "Support", "SubscriberObservation.cs"));
 
-        Assert.Contains("AddSocketEvents(", host, StringComparison.Ordinal);
-        Assert.Contains("PubSubNames.SubscriberSocketSource", host, StringComparison.Ordinal);
-        Assert.Contains("ZLinkSocketEventKind.ConnectionReady", host, StringComparison.Ordinal);
-        Assert.Contains("WaitForConnectionAsync", observation, StringComparison.Ordinal);
-        Assert.Contains("StateObservation.WaitUntilAsync", observation, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddZLinkMonitoring", host, StringComparison.Ordinal);
+        Assert.DoesNotContain("ZLinkSocketEvent", host, StringComparison.Ordinal);
+        Assert.Contains("WaitForEventAsync", observation, StringComparison.Ordinal);
 
         foreach (var name in new[]
                  {
@@ -340,7 +340,7 @@ public sealed partial class RegressionTests
                  })
         {
             var scenario = File.ReadAllText(Path.Combine(root, "Client", "Scenarios", name));
-            Assert.Contains("SubscriberObservation.WaitForConnectionAsync", scenario, StringComparison.Ordinal);
+            Assert.Contains("SubscriberObservation.WaitForEventAsync", scenario, StringComparison.Ordinal);
             Assert.DoesNotContain("Task.Delay(500)", scenario, StringComparison.Ordinal);
             Assert.DoesNotContain("i <= 42", scenario, StringComparison.Ordinal);
             Assert.DoesNotContain("i <= 8", scenario, StringComparison.Ordinal);
@@ -351,28 +351,10 @@ public sealed partial class RegressionTests
         Assert.Contains("\"sequence\", \"3\"", restart, StringComparison.Ordinal);
         Assert.Contains("\"seq=3|\"", restart, StringComparison.Ordinal);
 
-        var monitoringHost = File.ReadAllText(Path.Combine(
-            ResolveDotnetRoot(),
-            "src", "Zlink.Framework.AspNetCore", "ZLinkMonitoringHostedService.cs"));
-        var runnerInitialization = monitoringHost.IndexOf(
-            "_taskRunner = new ZLinkRuntimeTaskRunner",
-            StringComparison.Ordinal);
-        var monitorAttachment = monitoringHost.IndexOf(
-            "AttachSocketMonitors(frameworkRuntime);",
-            StringComparison.Ordinal);
-        var monitoringReady = monitoringHost.IndexOf(
-            "autoConnectLifecycle.SocketMonitoringReadyAsync(cancellationToken)",
-            StringComparison.Ordinal);
-        Assert.True(runnerInitialization >= 0 && runnerInitialization < monitorAttachment);
-        Assert.True(monitorAttachment < monitoringReady);
-
         var lifecycle = File.ReadAllText(Path.Combine(
             ResolveDotnetRoot(),
             "src", "Zlink.Framework.AspNetCore", "ZLinkAutoConnectLifecycleCoordinator.cs"));
         Assert.Contains("FrameworkReadyAsync", lifecycle, StringComparison.Ordinal);
-        Assert.Contains("SocketMonitoringReadyAsync", lifecycle, StringComparison.Ordinal);
-        Assert.Contains("_requiresSocketMonitoring && !_socketMonitoringReady", lifecycle,
-            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -427,7 +409,7 @@ public sealed partial class RegressionTests
     public void Config_9_And_10_Keep_One_Client_Scenario_Per_File()
     {
         var root = ResolveE2eRoot();
-        AssertScenarioFiles(root, "SpotActorTransfer", "St", 20);
+        AssertScenarioFiles(root, "SpotActorTransfer", "St", 30);
         AssertScenarioFiles(root, "ToActorMessaging", "Ta", 7);
     }
 
@@ -443,7 +425,7 @@ public sealed partial class RegressionTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(52, scenarioIds.Length);
+        Assert.Equal(54, scenarioIds.Length);
         foreach (var scenarioId in scenarioIds)
             Assert.Contains($"\"{scenarioId}\" =>", program, StringComparison.Ordinal);
     }
@@ -457,7 +439,7 @@ public sealed partial class RegressionTests
         var runner = File.ReadAllText(Path.Combine(root, "run_e2e.sh"));
 
         Assert.Contains(
-            "spot.ChannelName(SpotServiceNames.ExternalClientChannel)",
+            "spot.Channel(SpotServiceNames.ExternalClientChannel).Server()",
             host,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
@@ -502,9 +484,9 @@ public sealed partial class RegressionTests
 
         Assert.Contains("CleanupGatedLocationStore", host, StringComparison.Ordinal);
         Assert.Contains("IZLinkLocationStore", support, StringComparison.Ordinal);
-        Assert.Contains("mutation is ZLinkAuthorityMutation.Delete", support,
+        Assert.Contains("mutation is ZLinkStoreMutation.Delete", support,
             StringComparison.Ordinal);
-        Assert.Contains("inner.CompareExchangeAuthorityAsync(", support,
+        Assert.Contains("inner.WriteAsync(request, cancellationToken)", support,
             StringComparison.Ordinal);
         Assert.DoesNotContain("Zlink.Framework.Runtime", support, StringComparison.Ordinal);
 
@@ -544,7 +526,7 @@ public sealed partial class RegressionTests
         var root = Path.Combine(ResolveE2eRoot(), "ObservabilityOps");
         var clientScenarios = Path.Combine(root, "Client", "Scenarios");
         Assert.True(Directory.Exists(clientScenarios));
-        Assert.Equal(13, Directory.GetFiles(clientScenarios, "Obs*Scenario.cs").Length);
+        Assert.Equal(21, Directory.GetFiles(clientScenarios, "Obs*Scenario.cs").Length);
 
         foreach (var project in Directory.GetFiles(root, "*.csproj", SearchOption.AllDirectories))
         {

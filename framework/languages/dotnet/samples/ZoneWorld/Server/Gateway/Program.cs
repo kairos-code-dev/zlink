@@ -24,15 +24,17 @@ builder.Logging.AddSimpleConsole(console =>
 builder.Services.AddSingleton(shared);
 builder.Services.AddSingleton(gateway);
 builder.Services.AddSingleton<PlayerSessionBinder>();
+builder.Services.AddSingleton<RelocationProbeService>();
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-        .SetConnectionString(shared.RedisEndpoint)
-        .SetKeyPrefix(shared.RedisKeyPrefix)));
+    options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+    {
+        redis.ConnectionString = shared.RedisEndpoint;
+        redis.KeyPrefix = shared.RedisKeyPrefix;
+    }));
     options.ConfigureDispatch()
-        .MessageFlow(ZLinkRuntimeMessageFlowMode.ErrorsOnly)
-        .TraceLabel("gateway");
+        .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Errors);
     options.AddHandlersFromAssemblyOf(typeof(PlayerSession));
 
     // The browser's end of the world.
@@ -47,8 +49,6 @@ builder.Services.AddZLinkFramework(options =>
     var mesh = options.AddRouteMesh(ZoneWorldNames.MeshName)
         .SetRoutingIdPrefix("gw0")
         .Listen(gateway.MeshEndpoint);
-    mesh.Channel(ZoneWorldNames.ZoneChannel).Client();
-    mesh.Channel(ZoneWorldNames.ReportChannel).Client();
     mesh.Objects().Client();
 });
 

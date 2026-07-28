@@ -31,26 +31,6 @@ function Wait-LogContains {
     throw "$Description was not found."
 }
 
-function Wait-SampleLogContains {
-    param(
-        [Parameter(Mandatory = $true)][string]$Pattern,
-        [Parameter(Mandatory = $true)][string]$Description,
-        [int]$Attempts = 15
-    )
-
-    for ($i = 0; $i -lt $Attempts; $i++) {
-        $match = Get-ChildItem -Path $SampleLogDir -Filter "*.log" |
-            Select-String -Pattern $Pattern -List |
-            Select-Object -First 1
-        if ($null -ne $match) {
-            return
-        }
-        Start-Sleep -Milliseconds 200
-    }
-
-    throw "$Description was not found."
-}
-
 try {
     $TICTACTOE_REDIS_KEY_PREFIX = "tictactoe:dotnet:${RunId}:"
 
@@ -91,6 +71,8 @@ try {
                 MeshEndpoint = $MeshEndpoint
                 PeerMeshEndpoints = @($playAMeshEndpoint, $playBMeshEndpoint)
                 PlayEndpoints = @($playAEndpoint, $playBEndpoint)
+                RedisEndpoint = $redisEndpoint
+                RedisKeyPrefix = $TICTACTOE_REDIS_KEY_PREFIX
                 LogDirectory = $SampleLogDir
             }
         }
@@ -126,19 +108,19 @@ try {
 
     Wait-SampleTcpEndpoint "redis" "tcp://$redisEndpoint"
 
-    Start-SampleDotnetAssembly -Name "play-a" -Project (Join-Path $ScriptDir "Server.Play/TicTacToe.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $playAConfigFile) | Out-Null
+    Start-SampleDotnetAssembly -Name "play-a" -Project (Join-Path $ScriptDir "Server/Play/TicTacToe.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $playAConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "play-a-stream" $playAEndpoint
     Wait-SampleTcpEndpoint "play-a-mesh" $playAMeshEndpoint
 
-    Start-SampleDotnetAssembly -Name "play-b" -Project (Join-Path $ScriptDir "Server.Play/TicTacToe.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $playBConfigFile) | Out-Null
+    Start-SampleDotnetAssembly -Name "play-b" -Project (Join-Path $ScriptDir "Server/Play/TicTacToe.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $playBConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "play-b-stream" $playBEndpoint
     Wait-SampleTcpEndpoint "play-b-mesh" $playBMeshEndpoint
 
-    Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server.Api/TicTacToe.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $apiAConfigFile) | Out-Null
+    Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/Api/TicTacToe.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $apiAConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "api-a-http" $apiABindUrl
     Wait-SampleTcpEndpoint "api-a-mesh" $apiAMeshEndpoint
 
-    Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server.Api/TicTacToe.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $apiBConfigFile) | Out-Null
+    Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/Api/TicTacToe.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $apiBConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "api-b-http" $apiBBindUrl
     Wait-SampleTcpEndpoint "api-b-mesh" $apiBMeshEndpoint
 
@@ -159,13 +141,6 @@ try {
     if ($null -ne $dispatchError) {
         throw "Unexpected dispatch-error in TicTacToe sample logs."
     }
-    $messageFlowError = Get-ChildItem -Path $SampleLogDir -Filter "*.log" |
-        Select-String -Pattern "message flow outcome=error" -List |
-        Select-Object -First 1
-    if ($null -ne $messageFlowError) {
-        throw "Unexpected message-flow error in TicTacToe sample logs."
-    }
-    Wait-SampleLogContains "message flow" "TicTacToe message-flow evidence"
     $RunSucceeded = $true
 }
 finally {

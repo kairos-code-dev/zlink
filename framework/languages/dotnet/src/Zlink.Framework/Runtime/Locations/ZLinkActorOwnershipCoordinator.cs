@@ -69,7 +69,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
 
             case ZLinkActorClaimStatus.StoreFailure:
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorCreateFailed,
+                    ZLinkFrameworkErrorKind.InternalFailure,
                     $"Actor '{actorId}' cannot be created because the location store is unavailable.");
         }
 
@@ -201,9 +201,9 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             .ConfigureAwait(false);
         if (read is not ZLinkAuthorityReadResult.Found found)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{actorId}' committed creation authority is missing.",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
 
         AdoptCommittedActorAuthority(
             actorId,
@@ -232,9 +232,9 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                         StringComparison.Ordinal))
                     return;
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorLocationStale,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' is already tracked with another authority.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             }
         }
 
@@ -253,9 +253,9 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             || !string.Equals(authority.OwnerId, runtime.OwnerToken.OwnerId, StringComparison.Ordinal)
             || authority.OwnerLeaseGeneration != checked((ulong)runtime.OwnerToken.LeaseGeneration))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{actorId}' committed creation authority does not belong to this runtime.",
-                true);
+                ZLinkRetryAdvice.RetryAfterBackoff);
 
         TrackCommittedActorAuthority(actorId, snapshot, authority, deactivate);
     }
@@ -304,14 +304,14 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                     out var publication)
                 || phase.RelocationId != relocationId)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorLocationStale,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' relocation authority fence changed.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             if (phase.Phase == next)
                 return;
             if (phase.Phase != expected)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' relocation phase cannot advance from '{phase.Phase}' to '{next}'.");
 
             var nextPhase = phase with { Phase = next };
@@ -351,9 +351,9 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             if (read is not ZLinkAuthorityReadResult.Found found
                 || found.Snapshot.ObjectGeneration != actorRef.ObjectGeneration)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorLocationStale,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' relocation authority disappeared before normalization.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             if (!TryDecodeRelocationPhase(
                     found.Snapshot.Payload,
                     out var phase,
@@ -364,13 +364,13 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                         out _))
                     return;
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorLocationStale,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' authority is not a completed relocation.");
             }
             if (phase.RelocationId != relocationId
                 || phase.Phase != ZLinkActorRelocationAuthorityPhase.Steady)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorMoving,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' relocation is not steady.");
 
             var normalized = publication is null
@@ -434,6 +434,8 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         Guid relocationId,
         ZLinkRemoteActorBoundSessionRoute boundSessionRoute,
         ZLinkRelocationManifestReference relocationReference,
+        ZLinkRelocationCapacityFence? capacityFence,
+        ulong targetAuthorityOwnerGeneration,
         Func<CancellationToken, ValueTask>? deactivate,
         CancellationToken cancellationToken = default)
     {
@@ -445,19 +447,23 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 found.Snapshot.Payload.Span,
                 out var authority))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                ZLinkFrameworkErrorKind.NotFound,
                 $"Actor '{actorId}' does not have readable authority during handoff.");
 
         var snapshot = found.Snapshot;
         if (snapshot.ObjectGeneration != actorRef.ObjectGeneration)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorGenerationStale,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor '{actorId}' authority generation changed during handoff.");
         if (authority.NodeRid == actorRef.NodeRid
             && string.Equals(authority.CurrentSpotId, spotId, StringComparison.Ordinal)
             && authority.CurrentSpotGeneration == spotGeneration
             && authority.CurrentSpotKind == spotKind)
         {
+            if (snapshot.AuthorityOwnerGeneration
+                != targetAuthorityOwnerGeneration)
+                throw new ZLinkRelocationDataLostException(
+                    $"Actor '{actorId}' committed authority does not match its reserved target generation.");
             if (!ZLinkRelocationAuthorityPayloadCodec.TryDecode(
                     snapshot.Payload.Span,
                     out var existingPublication)
@@ -468,9 +474,9 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 || existingPublication.ChecksumCrc32c
                 != relocationReference.ChecksumCrc32c)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RelocationDataLost,
+                    ZLinkFrameworkErrorKind.DataLost,
                     $"Actor '{actorId}' committed authority references another relocation root.",
-                    isRetriable: false);
+                    retryAdvice: ZLinkRetryAdvice.DoNotRetry);
             TrackCommittedActorAuthority(actorId, snapshot, authority, deactivate);
             return new ZLinkCommittedActorAuthority(
                 snapshot.AuthorityOwnerGeneration,
@@ -491,95 +497,20 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             || string.IsNullOrWhiteSpace(target.OwnerId)
             || target.LeaseGeneration <= 0)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                ZLinkFrameworkErrorKind.NotFound,
                 $"Actor '{actorId}' handoff target is not a live mesh node.");
 
         var targetOwner = new ZLinkLocationOwnerToken(
             target.OwnerId,
             target.LeaseGeneration);
-        var sourceOwner = new ZLinkLocationOwnerToken(
-            snapshot.OwnerId,
-            snapshot.OwnerLeaseGeneration);
-        var reserve = await runtime.Store.ReserveRelocationCapacityAsync(
-                new ZLinkRelocationCapacityReservationRequest(
-                    relocationId,
-                    key,
-                    snapshot.StoreVersion,
-                    ZLinkPlacementObjectKind.Actor,
-                    snapshot.Allocation.StableType,
-                    snapshot.Allocation.Descriptor,
-                    snapshot.Allocation.DescriptorLifecycleGeneration,
-                    sourceOwner,
-                    new ZLinkMeshNodeDescriptorKey(meshName, target.Rid),
-                    target.LifecycleGeneration,
-                    targetOwner,
-                    new ZLinkCapacityVector(1, 0, null)),
-                cancellationToken)
-            .ConfigureAwait(false);
-        if (reserve is ZLinkRelocationCapacityReserveResult.Conflict reserveConflict)
-        {
-            if (CanRetryTransferredActorCommit(
-                    reserveConflict.Current,
-                    snapshot,
-                    authority))
-                return await CommitTransferredActorAuthorityAsync(
-                        actorId,
-                        actorRef,
-                        meshName,
-                        spotId,
-                        spotGeneration,
-                        spotKind,
-                        relocationId,
-                        boundSessionRoute,
-                        relocationReference,
-                        deactivate,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-
-            if (TryResolveCommittedAuthority(
-                    reserveConflict.Current,
-                    actorRef,
-                    spotId,
-                    spotGeneration,
-                    spotKind,
-                    relocationId,
-                    relocationReference,
-                    out var currentSnapshot,
-                    out var currentAuthority))
-            {
-                TrackCommittedActorAuthority(
-                    actorId,
-                    currentSnapshot,
-                    currentAuthority,
-                    deactivate);
-                return new ZLinkCommittedActorAuthority(
-                    currentSnapshot.AuthorityOwnerGeneration,
-                    currentAuthority.MeshName,
-                    currentAuthority.NodeGeneration,
-                    currentAuthority.OwnerLeaseGeneration);
-            }
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorLocationStale,
-                $"Actor '{actorId}' authority changed during handoff capacity reservation.",
-                true);
-        }
-        if (reserve is ZLinkRelocationCapacityReserveResult.PlacementCapacityExhausted)
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
-                $"Actor '{actorId}' handoff target has no Actor capacity.",
-                true);
-        if (reserve is ZLinkRelocationCapacityReserveResult.TargetUnavailable)
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorId}' handoff target became unavailable.",
-                true);
-        var capacityFence = reserve switch
-        {
-            ZLinkRelocationCapacityReserveResult.Reserved reserved => reserved.Fence,
-            ZLinkRelocationCapacityReserveResult.AlreadyReserved existing => existing.Fence,
-            _ => throw new InvalidOperationException(
-                "The authority store returned an invalid relocation capacity result.")
-        };
+        if (capacityFence is not { } reservedCapacityFence)
+            throw new ZLinkRelocationDataLostException(
+                $"Actor '{actorId}' has no durable target capacity reservation.");
+        if (targetAuthorityOwnerGeneration
+                <= snapshot.AuthorityOwnerGeneration
+            || targetAuthorityOwnerGeneration > long.MaxValue)
+            throw new ZLinkRelocationDataLostException(
+                $"Actor '{actorId}' target reservation has an invalid authority generation.");
 
         var applicationPayload = ZLinkActorAuthorityPayloadCodec.Encode(
             authority with
@@ -621,12 +552,16 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                         authorityPayload,
                         ZLinkAuthorityGenerationTransition.NewOwner,
                         targetOwner,
-                        capacityFence),
+                        reservedCapacityFence),
                     cancellationToken)
                 .ConfigureAwait(false);
             switch (result)
             {
                 case ZLinkAuthorityCompareExchangeResult.Stored stored:
+                    if (stored.Snapshot.AuthorityOwnerGeneration
+                        != targetAuthorityOwnerGeneration)
+                        throw new ZLinkRelocationDataLostException(
+                            $"Actor '{actorId}' authority commit did not preserve the reserved target generation.");
                     committed = true;
                     TrackCommittedActorAuthority(
                         actorId,
@@ -662,6 +597,10 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                             out var currentSnapshot,
                             out var currentAuthority))
                     {
+                        if (currentSnapshot.AuthorityOwnerGeneration
+                            != targetAuthorityOwnerGeneration)
+                            throw new ZLinkRelocationDataLostException(
+                                $"Actor '{actorId}' reconciled authority does not match its reserved target generation.");
                         committed = true;
                         TrackCommittedActorAuthority(
                             actorId,
@@ -675,9 +614,9 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                             currentAuthority.OwnerLeaseGeneration);
                     }
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorLocationStale,
+                        ZLinkFrameworkErrorKind.Unavailable,
                         $"Actor '{actorId}' authority changed during handoff commit.",
-                        true);
+                        ZLinkRetryAdvice.RetryAfterBackoff);
 
                 case ZLinkAuthorityCompareExchangeResult.GenerationExhausted:
                     throw new ZLinkAuthorityGenerationExhaustedException(
@@ -692,7 +631,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         {
             if (!committed)
                 await runtime.Store.AbortRelocationCapacityAsync(
-                        capacityFence,
+                        reservedCapacityFence,
                         CancellationToken.None)
                     .ConfigureAwait(false);
         }
@@ -812,7 +751,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 actorId,
                 payload => payload.NodeRid != targetNodeRid
                     ? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorLocationStale,
+                        ZLinkFrameworkErrorKind.Unavailable,
                         $"Actor '{actorId}' owner changed before its Entry Spot update.")
                     : RestoreEntrySpot(actorId, payload),
                 expectedActorRef: null,
@@ -832,6 +771,31 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             .ConfigureAwait(false);
     }
 
+    internal async ValueTask NotifyActorLeftSpotAsync(
+        string actorId,
+        string targetEntrySpotId,
+        ulong targetEntrySpotGeneration,
+        CancellationToken cancellationToken = default)
+    {
+        var canonicalEntrySpotId = ZLinkSpotId.Require(
+            targetEntrySpotId,
+            nameof(targetEntrySpotId));
+        if (targetEntrySpotGeneration == 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(targetEntrySpotGeneration));
+        await RenewOwnedActorAsync(
+                actorId,
+                payload => payload with
+                {
+                    CurrentSpotKind = ZLinkSpotKind.Entry,
+                    CurrentSpotId = canonicalEntrySpotId,
+                    CurrentSpotGeneration = targetEntrySpotGeneration
+                },
+                expectedActorRef: null,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private ZLinkActorAuthorityPayload RestoreEntrySpot(
         string actorId,
         ZLinkActorAuthorityPayload payload)
@@ -841,7 +805,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             if (!_actors.TryGetValue(actorId, out var tracked)
                 || string.IsNullOrEmpty(tracked.EntrySpotId))
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorLocationStale,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' Entry Spot identity is unavailable.");
             return payload with
             {
@@ -1097,13 +1061,13 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             if (!_actors.TryGetValue(canonical, out tracked))
             {
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                    ZLinkFrameworkErrorKind.NotFound,
                     $"Actor '{actorId}' is not tracked by this location owner.");
             }
 
             if (tracked.ReleaseTask is not null)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                    ZLinkFrameworkErrorKind.NotFound,
                     $"Actor '{actorId}' location is being released.");
         }
 
@@ -1117,11 +1081,11 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 if (!_actors.TryGetValue(canonical, out var current)
                     || !ReferenceEquals(current, tracked))
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorLocationStale,
+                        ZLinkFrameworkErrorKind.Unavailable,
                         $"Actor '{actorId}' is no longer tracked by this location owner.");
                 if (tracked.ReleaseTask is not null)
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        ZLinkFrameworkErrorKind.NotFound,
                         $"Actor '{actorId}' location is being released.");
 
                 snapshot = tracked.Snapshot;
@@ -1129,7 +1093,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                     && (actorRef.ObjectGeneration != snapshot.ObjectGeneration
                         || actorRef.NodeRid != tracked.Payload.NodeRid))
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorGenerationStale,
+                        ZLinkFrameworkErrorKind.InvalidOperation,
                         $"Actor '{actorId}' reference no longer matches its authority.");
                 proposed = mutate(tracked.Payload);
             }
@@ -1155,9 +1119,9 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                         ZLinkLocationKind.Actor,
                         authorityKey);
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorLocationStale,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{actorId}' authority changed before its update.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
             }
 
             lock (_gate)
@@ -1217,9 +1181,9 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 })
                 && !transferred)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorLocationStale,
+                    ZLinkFrameworkErrorKind.Unavailable,
                     $"Actor '{canonical}' authority changed before release.",
-                    true);
+                    ZLinkRetryAdvice.RetryAfterBackoff);
 
             lock (_gate)
             {
@@ -1345,7 +1309,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 publication with { ApplicationPayload = encoded });
     }
 
-    private void UpdateTrackedSnapshot(
+    internal void UpdateTrackedSnapshot(
         string actorId,
         ZLinkAuthoritySnapshot snapshot)
     {

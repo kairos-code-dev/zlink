@@ -2,7 +2,6 @@ using System.Diagnostics.Metrics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Zlink.Framework.Contracts.Eventing;
 
 namespace Bingo.Server.Configuration;
 
@@ -20,6 +19,10 @@ public static class BingoMetricsRegistration
 public sealed class BingoMetricsListener(
     ILogger<BingoMetricsListener> logger) : IHostedService, IDisposable
 {
+    // The framework exposes diagnostics through the standard .NET meter.
+    // It does not add a zlink-specific public monitoring interface.
+    private const string FrameworkMeterName = "zlink.framework";
+
     private readonly MeterListener _listener = new();
     private PeriodicTimer? _observableTimer;
     private CancellationTokenSource? _stop;
@@ -29,7 +32,7 @@ public sealed class BingoMetricsListener(
     {
         _listener.InstrumentPublished = static (instrument, listener) =>
         {
-            if (instrument.Meter.Name == ZLinkMeters.Framework)
+            if (instrument.Meter.Name == FrameworkMeterName)
                 listener.EnableMeasurementEvents(instrument);
         };
         _listener.SetMeasurementEventCallback<long>(LogLong);

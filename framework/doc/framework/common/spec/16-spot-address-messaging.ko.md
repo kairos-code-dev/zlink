@@ -44,7 +44,7 @@ create 대상으로 지정하지 않는다.
 `<diagnostic-prefix>-entry-<lowercase-canonical-uuid-v4>` 형식은 Framework가 발급하는 Entry Spot ID를 위해
 예약한다. UUID 부분은 MeshNode RID와 별도로 만드는 RFC 4122 UUID v4 값이다.
 Caller가 지정한 User·Instance Spot ID가 이 형식과 일치하면 Location Store reservation이나 factory를
-시작하기 전에 `InvalidConfiguration`으로 거부한다. Framework는 Spot ID 문자열로 MeshNode 관계를 계산하지
+시작하기 전에 `InvalidOperation`으로 거부한다. Framework는 Spot ID 문자열로 MeshNode 관계를 계산하지
 않고 MeshNode descriptor가 게시한 exact Entry Spot ID mapping을 사용한다.
 
 Entry Spot ID는 같은 Object Server lifecycle 동안 유지한다. Endpoint가 같은 replacement lifecycle에서도
@@ -54,7 +54,7 @@ ID를 만들지 않는다.
 Object Server descriptor의 `NewClaim`은 `(MeshName, NodeRid)` descriptor identity와 `EntrySpotId`의 global
 Spot identity claim을 exact owner lease와 lifecycle에 연결하여 하나의 Location Store transaction에서
 생성한다. 둘 중 하나라도 active claim과 충돌하면 descriptor, Entry claim과 index를 모두 변경하지 않고
-첫 claim에서 `SpotIdConflict`를 반환한다. 두 번째 Entry UUID나 claim은 만들지 않는다.
+첫 claim에서 startup configuration error를 반환한다. 두 번째 Entry UUID나 claim은 만들지 않는다.
 
 Descriptor remove와 owner cleanup은 저장된 descriptor의 exact owner lease와 lifecycle이 요청과 일치할
 때만 연결된 Entry claim을 같은 transaction에서 해제한다. 이전 lifecycle의 stale cleanup은 replacement
@@ -93,8 +93,8 @@ Instance Spot kind를 받는 manager overload와 Instance Spot 전용 create ope
 제출할 수 있는 fluent call이다.
 
 `InMesh`, encoded creation request와 timeout은 선택 항목이다. Caller callback, target RID와
-predicate를 받지 않는다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal submit을 두 번
-실행하면 `AlreadySubmitted`다. Terminal submit을 시작할 때 resolve, reservation, factory와 Ready barrier
+predicate를 받지 않는다. 같은 option을 두 번 설정하거나 terminal submit을 두 번
+실행하면 `InvalidOperation`이다. Terminal submit을 시작할 때 resolve, reservation, factory와 Ready barrier
 전체에 적용할 end-to-end deadline 하나를 고정한다.
 
 다음 .NET 발췌는 두 operation의 identity 입력과 공통 optional 값을 보여준다. 다른
@@ -130,8 +130,8 @@ ZLinkSpotCreateResult result = await spotManager
 ```
 
 `InMesh`를 지정하면 해당 Mesh를 사용한다. 생략했을 때 object Client 또는 Server role의 Mesh가 하나면
-자동 선택한다. 후보가 0개이면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`, 명시한
-Mesh가 없으면 `MeshNotFound`로 끝난다. Framework는 role, stable type capability,
+자동 선택한다. 후보가 0개이면 `NotConfigured`, 둘 이상이면 `InvalidOperation`, 명시한
+Mesh가 없으면 `NotFound`로 끝난다. Framework는 role, stable type capability,
 active·pending capacity를 먼저 검사하고 남은 후보를 node-wide placement weight로 선택한다.
 
 Encoded creation request는 최대 1 MiB다. Framework는 reservation 전에 변경할 수
@@ -143,8 +143,8 @@ Encoded creation request는 최대 1 MiB다. Framework는 reservation 전에 변
 
 `Create`는 lowercase canonical UUID v4 문자열을 automatic global Spot ID로 발급한다. Active
 [authority](01-glossary.ko.md#authority)와 충돌하면 새 UUID나 reservation을 만들지 않고
-`SpotIdConflict`로 terminal completion을 반환한다.
-같은 caller Spot ID의 kind 또는 stable type이 다르면 `SpotTypeMismatch`다.
+`AlreadyExists`로 terminal completion을 반환한다.
+같은 caller Spot ID의 kind 또는 stable type이 다르면 `TypeMismatch`다.
 `GetOrCreate`는 같은 User Spot type의 Ready object를 `Existing`으로 반환한다. 진행
 중인 Creating attempt를 관찰한 서로 다른 operation은 새 reservation이나 factory를
 시작하지 않고 authority 변경을 기다린다. 앞선 attempt가 Ready로 끝나면
@@ -218,7 +218,7 @@ public interface IZLinkSpotRequestCall
     IZLinkSpotRequestCall InstanceSpot(); // Mesh에 등록된 type이 하나일 때만 자동 선택한다.
     IZLinkSpotRequestCall InstanceSpot(string instanceSpotType);
     // Missing Instance Spot을 처음 생성할 Mesh를 지정한다.
-    // 후보 Mesh가 하나면 생략할 수 있고, 둘 이상인데 생략하면 MeshSelectionRequired다.
+    // 후보 Mesh가 하나면 생략할 수 있고, 둘 이상인데 생략하면 InvalidOperation이다.
     IZLinkSpotRequestCall InMesh(string meshName);
     IZLinkSpotRequestCall Timeout(TimeSpan timeout);
     ValueTask<TReply> Async<TReply>(
@@ -251,10 +251,10 @@ Terminal call은 별도 check와 send로 나누지 않고 다음 순서로 resol
 2. Ready authority가 있으면 저장된 kind와 stable type을 사용해 current owner로 전송한다.
 3. authority가 Missing이고 Instance intent가 없으면 target-not-found로 끝낸다.
 4. authority가 Missing이고 Instance intent가 있으면 eligible Object Mesh를 선택한다. `InMesh`를 생략했고 후보가
-   0개이면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`다.
+   0개이면 `NotConfigured`, 둘 이상이면 `InvalidOperation`이다.
 5. stable type을 명시하면 해당 capability를 가진 serving node만 후보로 사용한다.
 6. stable type을 생략하면 선택한 Mesh의 serving descriptor에 등록된 distinct Instance type을 계산한다. 하나면
-   자동 선택하고, 0개이면 target-not-found, 둘 이상이면 required type을 생략한 `InvalidConfiguration`이다.
+   자동 선택하고, 0개이면 `NotFound`, 둘 이상이면 required type을 생략한 `InvalidOperation`이다.
 7. Source는 global Spot ID, 선택한 Mesh·stable type과 target descriptor fence,
    source node RID·lifecycle generation·optional source Spot ID, operation
    identity·reply correlation·deadline, command 39의 optional metadata 존재 여부와
@@ -333,7 +333,7 @@ target은 local Spot을 만들지 않는다.
 권한을 얻은 Spot이 이미 Ready이면 최초 operation의 identity, payload, reply
 correlation과 deadline을 유지하여 current owner로 한 번만 전달한다. 아직
 `Creating`이면 같은 activation 완료를 기다린다. 기존 authority가 User Spot이거나
-builder에 명시한 stable type과 다르면 `SpotTypeMismatch`다. 기존 Instance Spot에
+builder에 명시한 stable type과 다르면 `TypeMismatch`다. 기존 Instance Spot에
 type을 명시하지 않은 일반 direct call은 authority에 저장된 type을 사용하므로 등록
 type 수와 관계없이 전송할 수 있다.
 
@@ -402,7 +402,7 @@ lifecycle로 Instance Spot을 정리하거나 이동할 수 있다.
 4. 같은 owner·generation fence로 authority를 release한다.
 
 같은 incarnation이 이미 없으면 idempotent `false`, 같은 Spot ID의 다른 generation이 있으면
-`SpotGenerationStale`, 이동 seal 중이면 `SpotMoving`으로 끝난다. Framework는 current ref를 다시 찾아 새
+`InvalidOperation`, 이동 seal 중이면 `Unavailable`로 끝난다. Framework는 current ref를 다시 찾아 새
 incarnation을 닫지 않는다. Seal 전에 accepted된 operation은 기존 generation에서 완료할 수 있지만 seal 뒤
 operation은 closing 또는 stale 결과로 끝난다.
 
@@ -466,7 +466,7 @@ label로 사용하지 않는다.
 
 - Spot ID가 Store namespace 전체의 global key이고 MeshName별 중복을 허용하지 않는다.
 - Caller가 `<prefix>-entry-<lowercase-canonical-uuid-v4>` 예약 형식으로 User·Instance Spot ID를 지정하면 Store
-  reservation과 factory 실행 전에 `InvalidConfiguration`으로 거부한다.
+  reservation과 factory 실행 전에 `InvalidOperation`으로 거부한다.
 - User Spot `Create`가 lowercase canonical UUID v4 문자열을 발급하고 active conflict에서 두 번째 UUID를 만들지 않는다.
 - Entry Spot join과 placement가 descriptor의 exact lifecycle mapping을 사용하고 Spot ID 문자열을 parsing하지
   않는다.

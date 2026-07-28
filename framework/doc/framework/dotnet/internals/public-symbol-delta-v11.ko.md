@@ -1,62 +1,73 @@
-# .NET v11 public symbol delta
+<!-- framework-adapter-nav:start -->
+[문서 목록](../../../README.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md)
+<!-- framework-adapter-nav:end -->
+
+# .NET v11 public boundary
 
 [Exact interface](../../common/spec/server/languages/dotnet/interfaces/README.ko.md) ·
 [Runtime lifecycle](runtime-lifecycle.ko.md)
 
-## 1. 분류 기준
+## 1. 목적
 
-Core service 구현을 Framework 내부로 옮기는 작업만으로 application public API를 바꾸지 않는다. 기존
-Channel, Spot, Actor, STREAM handler·call·builder는 같은 이름과 member를
-유지한다. `interfaces/` 분할은 문서 위치만 바꾸며 symbol delta가 아니다.
+이 문서는 Core service runtime을 Framework로 옮긴 뒤 `.NET` public boundary에 남는 항목을 분류한다.
+정확한 signature와 enum 숫자는 [exact interface](../../common/spec/server/languages/dotnet/interfaces/README.ko.md)가
+소유한다.
 
-## 2. 내부 이관으로 인한 public delta
+## 2. Core 이관 경계
 
-| 분류 | 결과 |
+Framework는 bindings의 public raw socket API만 사용한다. Core service object, private member,
+reflection과 native symbol 우회 option은 public API에 노출하지 않는다.
+
+| 구분 | v11 public boundary |
 |---|---|
-| Channel·Spot·Actor·STREAM handler와 call rename | 0건 |
-| 기존 builder와 manager 제거 | 0건 |
-| Core service C API를 대신하기 위한 public adapter 추가 | 0건 |
-| Private member·reflection·native symbol 우회 option 추가 | 0건 |
+| Application messaging | Channel, Spot, Actor와 STREAM의 typed builder·handler |
+| Object location | global `SpotId`, `ActorId`와 immutable `SpotRef`·`ActorRef` |
+| Host lifecycle | `IZLinkFrameworkRuntime.RelocateAsync(...)`, `ShutdownAsync(...)`와 status/result |
+| Provider SPI | `IZLinkLocationStore`, `IZLinkRelocationStore` |
+| Redis extension | `ZLinkRedisLocationStore`, `ZLinkRedisRelocationStore` |
+| Internal only | authority record, reservation, recovery state machine, wire command와 raw socket |
 
-Framework runtime은 bindings의 public raw socket API만 사용한다. Binding service SPI는 Framework public
-contract로 투영하지 않는다.
+Actor·Spot application은 provider record나 wire command를 알 필요가 없다. Provider도 Framework의 private
+record type을 구현하지 않고 두 Store SPI가 받는 key와 opaque bytes만 저장한다.
 
-이 판정의 source baseline은 현재 tree의
-`Contracts/Configuration/IZLinkRouteMeshRuntime.cs`, `ZLinkDrainContracts.cs`와 각 handler·builder contract다.
-Baseline의 `ZLinkMeshNodeState` 7개 값, `ZLinkMeshDrainSnapshot`, `ZLinkMeshDrainResult`, MeshName별
-`DrainAsync(...)`·`AwaitDrainedAsync(...)`, host-wide `IZLinkDrainControl`은 모두 v11 exact interface에 남긴다.
-Internal transport를 Core service object에서 public raw socket으로 바꾸는 작업은 이 이름이나 signature를
-바꾸는 근거가 아니다.
+## 3. Relocation과 shutdown
 
-## 3. 신규 maintenance 계약의 최소 delta
+`RelocateAsync(...)`는 stateful workload를 옮기고 infrastructure를 `Relocated` 상태로 유지한다.
+`ShutdownAsync(...)`는 workload relocation을 시작하지 않고 host를 종료한다. Application은 continuity가
+필요하면 relocation 성공을 확인한 뒤 shutdown을 별도로 호출한다.
 
-| 종류 | Public symbol | 근거 |
-|---|---|---|
-| 추가 | `IZLinkFrameworkRuntime`, `ZLinkFrameworkRuntimeState`, termination intent·outcome·reason·result·snapshot·event | host 단위 Retire·Shutdown과 first-intent-wins를 표현함 |
-| 유지 | `ZLinkMeshNodeState`, Mesh drain snapshot·result와 `IZLinkRouteMeshRuntime.DrainAsync(...)`·`AwaitDrainedAsync(...)` | 기존 MeshName scoped non-continuity operation이며 host `Retire`와 의미가 다름 |
-| 유지 | `IZLinkDrainControl`, `ZLinkDrainResult`, `Drained`, `ForceStopped` | 기존 host-wide drain을 `Shutdown` compatibility facade로 연결함 |
-| 추가 | `SetApplicationVersion(long)`, `SetMaintenanceWave(...)`, descriptor version·capability·capacity·wave·state | relocation target compatibility와 reservation을 판정함 |
-| 추가 | `IZLinkActorRelocationAdapter<TActor>`, `IZLinkSpotRelocationAdapter<TSpot>`, `ZLinkRelocationPolicy<TInstance>`와 typed factory overload | factory type과 `Disabled/Recreate/Snapshot`을 한 등록에 고정하고 Snapshot application state를 opaque bytes로 capture·restore함 |
-| 유지 | `IZLinkActorFactory`, 기존 Actor·Instance factory overload | 기존 등록은 `Disabled` policy로 해석해 source compatibility를 보존함 |
-| 추가 | `IZLinkLocationStore`와 `AddLocationStore(...)` | owner·phase·participant set·generation·relocation reference를 하나의 authority transaction으로 commit함 |
-| 추가 | `IZLinkRelocationStore`와 `AddRelocationStore(...)` | application state·accepted journal·timer·queue payload를 immutable relocation root로 저장함 |
-| 추가 | `ZLinkRedisLocationStore`, `ZLinkRedisRelocationStore` | 두 Store를 같은 Redis deployment 또는 별도 deployment에 구성할 수 있게 분리함 |
-| 유지 | `HeartbeatInterval` | owner lease 갱신 주기를 정하며 transport liveness와 구분함 |
+Relocation mode는 두 가지다.
 
-`ZLinkFrameworkRuntimeState`는 기존 `ZLinkMeshNodeState`를 rename하거나 숫자를 덮어쓴 타입이 아니다. 전자는
-host maintenance의 닫힌 0..4 값이고 후자는 기존 scoped Mesh drain의 0..6 값을 그대로 유지한다. 기존
-`IZLinkDrainControl`은 `Shutdown` 결과를 v10 result로 투영하지만 continuity preflight가 필요한 application은
-새 `RetireAsync(...)`를 명시적으로 호출한다.
+| Mode | Target |
+|---|---|
+| `PlannedMaintenance` | 같은 application version의 eligible node |
+| `RollingUpdate` | option에 지정한 exact application version의 eligible node |
 
-## 4. No-loss 대조
+Actor·Spot factory는 `Disabled`, `Recreate` 또는 `Snapshot` policy를 고정한다. Snapshot adapter는 opaque
+`byte[]` application state만 capture·restore한다. Authority phase, participant metadata, accepted journal,
+queue와 timer 복원은 Framework 내부 책임이다.
 
-현재 package baseline은 `Zlink.Framework.api.txt`, `Zlink.Framework.Contracts.api.txt`,
-`Zlink.Framework.AspNetCore.api.txt`, `Zlink.Framework.Locations.Redis.api.txt`다. 네 snapshot에서 추출한 public
-type 단순 이름은 275개이며 exact category 문서에서 source-only 이름은 0개다. 문서에는 maintenance와 다른
-확정 topology 계약을 포함해 355개의 unique public type 이름이 있다. Delegate 선언처럼 반환 type이 이름 앞에
-오는 `ZLinkHandlerFilterNext`도 별도로 확인했다.
+## 4. Store 경계
 
-Type 이름 비교 뒤에는 Actor manager와 join default body, STREAM session bind와 relay, dispatch event constructor,
-location descriptor·result factory, routing allocation constructor, codec registrar와 encoded payload operator를
-member 단위로 snapshot과 대조했다. Nullable annotation, generic constraint, enum 숫자와 default value도 각
-category의 declaration에 포함한다.
+Location Store는 owner, generation, relocation phase와 payload reference를 원자적으로 공개한다.
+Relocation Store는 application state, accepted journal, queue와 timer payload를 immutable root로 저장한다.
+두 Store 사이의 distributed transaction은 요구하지 않는다.
+
+Framework는 payload를 Relocation Store에 먼저 기록하고 검증한다. 그다음 Location Store의 한 CAS로
+reference를 공개한다. 공개되지 않은 payload는 retention 정책으로 정리한다.
+
+## 5. 회귀 테스트
+
+| 테스트 케이스 | 확인 기준 |
+|---|---|
+| `FrameworkRuntimeContracts.Public_values_match_the_exact_contract` | runtime·relocation enum 숫자가 exact interface와 일치한다. |
+| `FrameworkRuntimeContracts.Relocation_and_shutdown_are_separate_host_operations` | relocation과 shutdown이 별도 public operation이다. |
+| `FrameworkRuntimeContracts.Retire_surface_is_not_public` | 이전 host maintenance method가 public interface에 다시 노출되지 않는다. |
+| `ProviderStoreContracts.Location_provider_exposes_only_opaque_store_operations` | Location provider가 opaque Store operation만 구현한다. |
+| `ProviderStoreContracts.Relocation_provider_exposes_only_immutable_blob_operations` | Relocation provider가 immutable payload Store operation만 구현한다. |
+| `ScaffoldSmokeTests.PublicSurface_DoesNotExpose_BackendConcreteTypes` | raw backend service object가 application public API에 노출되지 않는다. |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../README.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

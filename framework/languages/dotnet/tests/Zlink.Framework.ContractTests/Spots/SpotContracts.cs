@@ -177,7 +177,7 @@ public sealed class SpotContracts
         var reply = await localClient.RequestToSpot("room-1", new JoinRoom("room-1")).Async<JoinedRoom>();
 
         IZLinkSpotPublisherClient publisher = new SpotPublisherClient();
-        await publisher.Publish("play", "play-events", "room.events", new RoomEvent("opened")).Async();
+        await publisher.Publish("play-events", "room.events", new RoomEvent("opened")).Async();
 
         Assert.Equal(ZLinkSpotCreateState.Created, created.State);
         Assert.Equal("room-1", reply.RoomId);
@@ -500,6 +500,9 @@ public sealed class SpotContracts
 
         public IZLinkSpotOutbound Outbound => this;
 
+        public IZLinkSpotRelocationReadyCall RelocationReady() =>
+            new RelocationReadyCall();
+
         public ValueTask LeaveActorAsync(
             IZLinkActor actor,
             CancellationToken cancellationToken = default)
@@ -534,6 +537,14 @@ public sealed class SpotContracts
             Func<CancellationToken, ValueTask<TResult>> work)
         {
             return new IoWorkerCall<TResult>(work);
+        }
+
+        private sealed class RelocationReadyCall
+            : IZLinkSpotRelocationReadyCall
+        {
+            public void Defer()
+            {
+            }
         }
 
         public void AddHandler<THandler>()
@@ -795,6 +806,8 @@ public sealed class SpotContracts
             public IZLinkSpotCreateCall Timeout(TimeSpan timeout) => this;
             public ValueTask<ZLinkSpotCreateResult> Async(
                 CancellationToken cancellationToken = default) => SubmitAsync();
+            public ValueTask<ZLinkSpotCreateResult> Yield(
+                CancellationToken cancellationToken = default) => SubmitAsync();
         }
 
         private sealed class SpotGetOrCreateCall(
@@ -806,6 +819,8 @@ public sealed class SpotContracts
             public IZLinkSpotGetOrCreateCall Request<TRequest>(TRequest request) => this;
             public IZLinkSpotGetOrCreateCall Timeout(TimeSpan timeout) => this;
             public ValueTask<ZLinkSpotCreateResult> Async(
+                CancellationToken cancellationToken = default) => SubmitAsync();
+            public ValueTask<ZLinkSpotCreateResult> Yield(
                 CancellationToken cancellationToken = default) => SubmitAsync();
         }
     }
@@ -837,7 +852,6 @@ public sealed class SpotContracts
     private sealed class SpotPublisherClient : IZLinkSpotPublisherClient
     {
         public IZLinkPublishCall Publish<TEvent>(
-            string meshName,
             string channelName,
             string topic,
             TEvent message)

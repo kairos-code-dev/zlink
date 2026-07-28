@@ -243,6 +243,13 @@ internal sealed class ZLinkStandaloneActorRelocationProgressCoordinator(
             var payload = current.Canonical is { } canonical
                 ? canonical.SteadyAuthorityPayload
                 : LegacySteadyPayload(current.Authority.Payload, current.Phase);
+            if (!ZLinkRelocationAuthorityPayloadCodec.TryDecode(
+                    current.Authority.Payload.Span,
+                    out var publication))
+                throw new ZLinkRelocationDataLostException(
+                    "Standalone Actor relocation root pointer disappeared during normalization.");
+            var relocationReference = current.Canonical?.RelocationReference
+                                      ?? publication.Reference;
             var exchanged = await authorityStore.CompareExchangeAuthorityAsync(
                     identity.Participants.Single().AuthorityKey,
                     current.Authority.StoreVersion,
@@ -257,14 +264,9 @@ internal sealed class ZLinkStandaloneActorRelocationProgressCoordinator(
             {
                 try
                 {
-                    if (!ZLinkRelocationAuthorityPayloadCodec.TryDecode(
-                            current.Authority.Payload.Span,
-                            out var publication))
-                        throw new ZLinkRelocationDataLostException(
-                            "Standalone Actor relocation root pointer disappeared during normalization.");
                     await ZLinkRelocationTreeStore.DeleteTreeAsync(
                             relocationStore,
-                            publication.Reference,
+                            relocationReference,
                             CancellationToken.None)
                         .ConfigureAwait(false);
                 }
@@ -283,7 +285,7 @@ internal sealed class ZLinkStandaloneActorRelocationProgressCoordinator(
     }
 
     internal async ValueTask<ZLinkStandaloneActorRelocationProgress>
-        CompleteSourceCleanupAsync(
+        PublishAdmissionReadyAuthorityAsync(
         ZLinkRelocationEnvelope identity,
         ZLinkLocationOwnerToken targetOwner,
         CancellationToken cancellationToken)
@@ -614,9 +616,9 @@ internal sealed class ZLinkStandaloneActorRelocationProgressCoordinator(
                 expected.Owner.OwnerId)
             || snapshot.OwnerLeaseGeneration != expected.Owner.LeaseGeneration)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorMoving,
+                ZLinkFrameworkErrorKind.Unavailable,
                 "Standalone Actor relocation target attempt fence changed.",
-                isRetriable: true);
+                retryAdvice: ZLinkRetryAdvice.RetryAfterBackoff);
     }
 
     private static ZLinkActorRelocationAuthorityPhase CanonicalActorPhase(
@@ -647,9 +649,9 @@ internal sealed class ZLinkStandaloneActorRelocationProgressCoordinator(
     }
 
     private static ZLinkFrameworkException Moving(string reason) => new(
-        ZLinkFrameworkErrorKind.ActorMoving,
+        ZLinkFrameworkErrorKind.Unavailable,
         $"Standalone Actor relocation {reason}.",
-        isRetriable: true);
+        retryAdvice: ZLinkRetryAdvice.RetryAfterBackoff);
 
     private static bool SameCompletion(
         ZLinkCanonicalTerminalCompletion left,

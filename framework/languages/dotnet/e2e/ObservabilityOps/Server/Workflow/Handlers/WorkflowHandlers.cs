@@ -1,6 +1,7 @@
 using ObservabilityOps.Server.Workflow.Spots;
 using ObservabilityOps.Server.Workflow.Support;
 using ObservabilityOps.Shared;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
@@ -22,7 +23,7 @@ internal sealed class ReadWorkflowHandler
         _ = request;
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(new ReadWorkflowRes(
-            spot.Context.SpotRid.ToString(), spot.Context.NodeRid.ToString(), spot.Version, spot.State));
+            spot.Context.SpotId.ToString(), spot.Context.NodeRid.ToString(), spot.Version, spot.State));
     }
 }
 
@@ -33,10 +34,75 @@ internal sealed class WorkflowSignalHandler(WorkflowEvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"workflow-signal|rid={spot.Context.SpotRid}|marker={message.Marker}"
+        evidence.Add($"workflow-signal|rid={spot.Context.SpotId}|marker={message.Marker}"
                      + $"|node={spot.Context.NodeRid}");
         return ValueTask.CompletedTask;
     }
+}
+
+internal sealed class DiagnosticsBeforeHandler
+    : IZLinkSpotRequestHandler<
+        WorkflowSpot,
+        DiagnosticsBeforeReq,
+        DiagnosticsProbeRes>
+{
+    public ValueTask<DiagnosticsProbeRes> HandleAsync(
+        WorkflowSpot spot,
+        DiagnosticsBeforeReq request,
+        CancellationToken cancellationToken) =>
+        Complete(spot, request.Marker, cancellationToken);
+
+    internal static ValueTask<DiagnosticsProbeRes> Complete(
+        WorkflowSpot spot,
+        string marker,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(new DiagnosticsProbeRes(
+            marker, spot.Context.NodeRid.ToString()));
+    }
+}
+
+internal sealed class DiagnosticsOffHandler
+    : IZLinkSpotRequestHandler<
+        WorkflowSpot,
+        DiagnosticsOffReq,
+        DiagnosticsProbeRes>
+{
+    public ValueTask<DiagnosticsProbeRes> HandleAsync(
+        WorkflowSpot spot,
+        DiagnosticsOffReq request,
+        CancellationToken cancellationToken) =>
+        DiagnosticsBeforeHandler.Complete(
+            spot, request.Marker, cancellationToken);
+}
+
+internal sealed class DiagnosticsErrorsHandler
+    : IZLinkSpotRequestHandler<
+        WorkflowSpot,
+        DiagnosticsErrorsReq,
+        DiagnosticsProbeRes>
+{
+    public ValueTask<DiagnosticsProbeRes> HandleAsync(
+        WorkflowSpot spot,
+        DiagnosticsErrorsReq request,
+        CancellationToken cancellationToken) =>
+        DiagnosticsBeforeHandler.Complete(
+            spot, request.Marker, cancellationToken);
+}
+
+internal sealed class DiagnosticsAfterHandler
+    : IZLinkSpotRequestHandler<
+        WorkflowSpot,
+        DiagnosticsAfterReq,
+        DiagnosticsProbeRes>
+{
+    public ValueTask<DiagnosticsProbeRes> HandleAsync(
+        WorkflowSpot spot,
+        DiagnosticsAfterReq request,
+        CancellationToken cancellationToken) =>
+        DiagnosticsBeforeHandler.Complete(
+            spot, request.Marker, cancellationToken);
 }
 
 internal sealed class PublishProjectionHandler
@@ -50,10 +116,12 @@ internal sealed class ProjectionUpdatedHandler(WorkflowEvidenceStore evidence)
     : IZLinkSpotSubscriptionHandler<ProjectionSpot, ProjectionUpdatedEvent>
 {
     public ValueTask HandleAsync(ProjectionSpot spot, ProjectionUpdatedEvent message,
+        ZLinkPublishMessageContext context,
         CancellationToken cancellationToken)
     {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"projection-received|subscriber={spot.Context.SpotRid}|rid={message.WorkflowRid}"
+        evidence.Add($"projection-received|subscriber={spot.Context.SpotId}|rid={message.WorkflowRid}"
                      + $"|version={message.Version}|marker={message.Marker}|node={spot.Context.NodeRid}");
         return ValueTask.CompletedTask;
     }

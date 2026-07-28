@@ -1,13 +1,13 @@
-using System.Net.Http.Json;
 using SubmitAdmission.Client;
 using SubmitAdmission.Shared;
+using System.Text.Json;
+using Zlink.HttpClient;
 
 var options = ClientOptions.Parse(args);
-using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-var runner = new ScenarioRunner(http, options);
+var runner = new ScenarioRunner(options);
 await runner.RunAsync();
 
-internal sealed class ScenarioRunner(HttpClient http, ClientOptions options)
+internal sealed class ScenarioRunner(ClientOptions options)
 {
     private static readonly string[] Implemented =
     [
@@ -101,6 +101,19 @@ internal sealed class ScenarioRunner(HttpClient http, ClientOptions options)
             options.TargetUrl, remoteMessage.OperationId, value => value.HandlerCompletedCount == 1);
         Require(localEvidence.HandlerEnteredCount == 1 && remoteEvidence.HandlerEnteredCount == 1,
             "local and remote direct dispatch did not each enter one handler");
+
+        var objectClient = await PostJsonAsync<NodeTargetOutcome>(
+            $"{options.CallerUrl}/submit/node-target-outcome/{options.ObjectClientRid}",
+            new { });
+        Require(
+            objectClient.Send == "NotFound"
+            && objectClient.Request == "NotFound",
+            $"Object Client Node direct outcome mismatch: {objectClient}");
+        Require(
+            objectClient.PeerCountBefore == objectClient.PeerCountAfter
+            && objectClient.ReadyPeerCountBefore
+                == objectClient.ReadyPeerCountAfter,
+            $"Object Client Node direct changed the route set: {objectClient}");
     }
 
     private async Task ChannelAsync()
@@ -154,8 +167,9 @@ internal sealed class ScenarioRunner(HttpClient http, ClientOptions options)
         {
             try
             {
-                using var response = await http.GetAsync($"{options.CallerUrl}/ready/{options.TargetRid}");
-                if (response.IsSuccessStatusCode) return;
+                using var http = CreateClient(options.CallerUrl);
+                if ((await http.Get($"/ready/{options.TargetRid}").AsyncRaw()).Status is >= 200 and < 300)
+                    return;
             }
             catch (Exception exception)
             {
@@ -174,10 +188,13 @@ internal sealed class ScenarioRunner(HttpClient http, ClientOptions options)
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
         while (DateTimeOffset.UtcNow < deadline)
         {
-            using var response = await http.GetAsync($"{baseUrl}/evidence/{operationId}");
-            if (response.IsSuccessStatusCode)
+            using var http = CreateClient(baseUrl);
+            var response = await http.Get($"/evidence/{operationId}").AsyncRaw();
+            if (response.Status is >= 200 and < 300)
             {
-                var evidence = await response.Content.ReadFromJsonAsync<OperationEvidence>();
+                var evidence = JsonSerializer.Deserialize<OperationEvidence>(
+                    response.Body,
+                    new JsonSerializerOptions(JsonSerializerDefaults.Web));
                 if (evidence is not null && condition(evidence)) return evidence;
             }
             await Task.Delay(25);
@@ -187,16 +204,29 @@ internal sealed class ScenarioRunner(HttpClient http, ClientOptions options)
 
     private async Task PostAsync(string url)
     {
-        using var response = await http.PostAsync(url, null);
-        response.EnsureSuccessStatusCode();
+        var (baseUrl, path) = SplitUrl(url);
+        using var http = CreateClient(baseUrl);
+        var response = await http.Post(path).AsyncRaw();
+        Require(response.Status is >= 200 and < 300,
+            $"HTTP POST failed. url={url}, status={response.Status}");
     }
 
     private async Task<T> PostJsonAsync<T>(string url, object body)
     {
-        using var response = await http.PostAsJsonAsync(url, body);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>()
-               ?? throw new InvalidOperationException($"Empty response from {url}");
+        var (baseUrl, path) = SplitUrl(url);
+        using var http = CreateClient(baseUrl);
+        return (await http.Post(path).Body(body).Async<T>()).Body;
+    }
+
+    private static ZLinkHttpClient CreateClient(string baseUrl) =>
+        ZLinkHttpClient.Create(baseUrl)
+            .Timeout(TimeSpan.FromSeconds(3))
+            .Build();
+
+    private static (string BaseUrl, string Path) SplitUrl(string url)
+    {
+        var uri = new Uri(url, UriKind.Absolute);
+        return (uri.GetLeftPart(UriPartial.Authority), uri.PathAndQuery);
     }
 
     private static AdmissionMessage Next(string marker) =>

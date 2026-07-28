@@ -1,5 +1,5 @@
+// Verifies MON-B1/B2 publish delivery without publish-specific monitoring.
 using System.Reflection;
-using System.Net.Http.Json;
 using System.Text;
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
@@ -49,15 +49,16 @@ internal static class MonBPublishMonitoringAbsenceScenario
         var evidenceStart =
             (await service.Get("/evidence").Async<string[]>()).Body.Length;
 
-        using var http = new HttpClient { BaseAddress = new Uri(options.ServiceUrl) };
         if (createSubject)
-            (await http.PostAsync("/admin/subject/create", content: null))
-                .EnsureSuccessStatusCode();
+            EnsureSuccess(
+                await service.Post("/admin/subject/create").AsyncRaw(),
+                $"{scenario} subject creation");
 
-        using var publishBody = JsonContent.Create(
-            new ProfileReq("publish", scenario.ToLowerInvariant()));
-        (await http.PostAsync($"/spot/publish/{topic}", publishBody))
-            .EnsureSuccessStatusCode();
+        EnsureSuccess(
+            await service.Post($"/spot/publish/{topic}")
+                .Body(new ProfileReq("publish", scenario.ToLowerInvariant()))
+                .AsyncRaw(),
+            $"{scenario} publish");
 
         if (createSubject)
         {
@@ -71,8 +72,11 @@ internal static class MonBPublishMonitoringAbsenceScenario
             await Task.Delay(TimeSpan.FromMilliseconds(100));
         }
 
-        var snapshotJson =
-            await http.GetStringAsync($"/runtime/snapshot/{RuntimeMonitoringNames.SpotChannel}");
+        var snapshotResponse = await service.Get(
+                $"/runtime/snapshot/{RuntimeMonitoringNames.SpotChannel}")
+            .AsyncRaw();
+        EnsureSuccess(snapshotResponse, $"{scenario} snapshot");
+        var snapshotJson = snapshotResponse.Body;
         ZlinkStreamAssert.Ensure(
             snapshotJson.Contains("\"peers\"", StringComparison.Ordinal)
             && snapshotJson.Contains("\"channels\"", StringComparison.Ordinal)
@@ -97,10 +101,15 @@ internal static class MonBPublishMonitoringAbsenceScenario
         Console.WriteLine($"scenario {scenario} passed");
     }
 
+    private static void EnsureSuccess(RawHttpResponse response, string operation) =>
+        ZlinkStreamAssert.Ensure(
+            response.Status is >= 200 and < 300,
+            $"{operation} failed with HTTP status {response.Status}.");
+
     private static void AssertPublicContractShape()
     {
-        var snapshot = typeof(ZLinkMeshNodeSnapshot);
-        var runtimeEvent = typeof(ZLinkMeshRuntimeEvent);
+        var snapshot = typeof(ZLinkRouteMeshStatus);
+        var runtimeEvent = typeof(ZLinkPeerStatus);
         var assembly = snapshot.Assembly;
 
         ZlinkStreamAssert.Ensure(

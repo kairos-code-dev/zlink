@@ -130,10 +130,10 @@ export interface ZLinkActorSendCall {
 }
 ```
 
-`create`와 `getOrCreate`가 반환하는 call은 single-use다. 같은 option을 두 번 설정하면
-`InvalidConfiguration`, terminal `submit(...)`을 두 번 호출하면 `AlreadySubmitted`다. `inMesh(...)`를
-생략했는데 eligible Mesh가 둘 이상이면 `MeshSelectionRequired`, object-role Mesh가 하나도 없으면
-`ObjectClientNotConfigured`다. 명시한 Mesh가 없으면 `MeshNotFound`다.
+`create`와 `getOrCreate`가 반환하는 call은 single-use다. 같은 option을 두 번 설정하거나
+terminal `submit(...)`을 두 번 호출하면 `InvalidOperation`이다. `inMesh(...)`를
+생략했는데 eligible Mesh가 둘 이상이면 `InvalidOperation`, object-role Mesh가 하나도 없으면
+`NotConfigured`다. 명시한 Mesh가 없으면 `NotFound`다.
 Caller는 target RID나 predicate를 지정하지 않는다.
 
 `create`는 같은 ActorId의 ready incarnation이 있으면 `ActorAlreadyExists`, stable type이 다르면

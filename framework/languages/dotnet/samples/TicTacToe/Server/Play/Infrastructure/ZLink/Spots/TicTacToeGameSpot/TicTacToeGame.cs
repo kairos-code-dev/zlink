@@ -1,5 +1,3 @@
-using System.Text;
-using Systems.Zlink;
 using TicTacToe.Server.Configuration;
 using TicTacToe.Server.Play.Domain.TicTacToe;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
@@ -21,8 +19,10 @@ internal sealed class TicTacToeGame(
 
     private readonly Dictionary<string, PlayActor> _actors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (string RoomId, PlayerInfo Player)> _pendingJoins = new(StringComparer.Ordinal);
-    private readonly TicTacToeMatch _match = new(DecodeRoomId(context.SpotRid), TurnTimeout);
-    private readonly string _roomId = DecodeRoomId(context.SpotRid);
+    private readonly TicTacToeMatch _match = new(context.SpotId, TurnTimeout);
+    private readonly string _roomId = context.SpotId;
+    private string _gameName = SampleDefaults.GameName;
+    private int _requiredLevel = SampleDefaults.RequiredLevel;
     private IZLinkTimer? _gameTick;
 
     public IZLinkSpotContext Context { get; } = context;
@@ -100,10 +100,21 @@ internal sealed class TicTacToeGame(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
+        var settings = request.Decode<TicTacToeGameCreateReq>();
+        if (string.IsNullOrWhiteSpace(settings.GameName))
+            return ValueTask.FromResult(
+                ZLinkSpotCreateResponse.Reject("GameName is required."));
+        if (settings.RequiredLevel < 0)
+            return ValueTask.FromResult(
+                ZLinkSpotCreateResponse.Reject("RequiredLevel must not be negative."));
+
+        _gameName = settings.GameName;
+        _requiredLevel = settings.RequiredLevel;
         logger.LogInformation(
-            "game spot: created. roomId={RoomId}, createPayloadEmpty={CreatePayloadEmpty}",
+            "game spot: created. roomId={RoomId}, game={GameName}, requiredLevel={RequiredLevel}",
             _roomId,
-            request.IsEmpty);
+            _gameName,
+            _requiredLevel);
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 
@@ -137,9 +148,9 @@ internal sealed class TicTacToeGame(
             throw new InvalidOperationException(
                 $"Join player '{player.ActorId}' does not match actor '{actorId}'.");
 
-        if (player.Level < SampleDefaults.RequiredLevel)
+        if (player.Level < _requiredLevel)
             throw new InvalidOperationException(
-                $"Player level {player.Level} is below required level {SampleDefaults.RequiredLevel}.");
+                $"Player level {player.Level} is below required level {_requiredLevel}.");
 
         _pendingJoins[actorId] = (roomId, player);
 
@@ -228,7 +239,7 @@ internal sealed class TicTacToeGame(
             });
     }
 
-    private ValueTask PublishWinMilestoneAsync(
+    private async ValueTask PublishWinMilestoneAsync(
         PlayActor actor,
         GameState before,
         GameState after,
@@ -237,44 +248,26 @@ internal sealed class TicTacToeGame(
         if (string.Equals(before.Status, TicTacToeGameStatuses.Won, StringComparison.Ordinal)
             || !string.Equals(after.Status, TicTacToeGameStatuses.Won, StringComparison.Ordinal)
             || !string.Equals(after.Winner, actor.ActorId, StringComparison.Ordinal))
-            return ValueTask.CompletedTask;
+            return;
 
         var player = actor.RequirePlayer();
         var wins = player.Wins + 1;
-        if (wins != 100) return ValueTask.CompletedTask;
+        if (wins != 100) return;
 
         logger.LogInformation(
             "game spot: publishing win milestone. actor={ActorId}, roomId={RoomId}, wins={Wins}",
             player.ActorId,
             after.RoomId,
             wins);
-        return VerifyWinMilestonePublishAsync(
-            Context.Outbound.Publish(
-                    SampleTopics.PlayerMilestoneChannel,
-                    SampleTopics.PlayerMilestone,
-                    new PlayerWinMilestoneEvent(after.RoomId, player.ActorId, player.DisplayName, wins))
-                .Async(cancellationToken));
-    }
-
-    private async ValueTask VerifyWinMilestonePublishAsync(ValueTask<ZLinkPublishResult> submit)
-    {
-        var result = await submit.ConfigureAwait(false);
+        await Context.Outbound.Publish(
+                SampleTopics.PlayerMilestoneChannel,
+                SampleTopics.PlayerMilestone,
+                new PlayerWinMilestoneEvent(after.RoomId, player.ActorId, player.DisplayName, wins))
+            .Async(cancellationToken);
         logger.LogInformation(
-            "game spot: milestone publish completed. status={Status}, remoteSnapshot={RemoteSnapshot}, remoteAdmitted={RemoteAdmitted}, localSnapshot={LocalSnapshot}, localAdmitted={LocalAdmitted}",
-            result.Status,
-            result.Detail.SnapshotRemoteNodeCount,
-            result.Detail.AdmittedRemoteNodeCount,
-            result.Detail.SnapshotLocalSpotCount,
-            result.Detail.AdmittedLocalSpotCount);
-        if (result.Status != ZLinkSubmitStatus.Submitted
-            || result.Detail.AdmittedRemoteNodeCount != 1
-            || result.Detail.AdmittedLocalSpotCount != 1)
-            throw new InvalidOperationException(
-                $"Milestone publish did not reach the two Play nodes. status={result.Status}, " +
-                $"remoteSnapshot={result.Detail.SnapshotRemoteNodeCount}, " +
-                $"remoteAdmitted={result.Detail.AdmittedRemoteNodeCount}, " +
-                $"localSnapshot={result.Detail.SnapshotLocalSpotCount}, " +
-                $"localAdmitted={result.Detail.AdmittedLocalSpotCount}.");
+            "game spot: milestone publish submitted. actor={ActorId}, roomId={RoomId}",
+            player.ActorId,
+            after.RoomId);
     }
 
     private static async ValueTask SendSessionPushAsync(
@@ -291,8 +284,4 @@ internal sealed class TicTacToeGame(
                || string.Equals(state.Status, TicTacToeGameStatuses.TurnTimedOut, StringComparison.Ordinal);
     }
 
-    private static string DecodeRoomId(RoutingId spotRid)
-    {
-        return Encoding.UTF8.GetString(spotRid.ToBytes());
-    }
 }

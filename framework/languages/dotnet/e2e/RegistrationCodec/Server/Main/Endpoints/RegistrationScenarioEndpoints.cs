@@ -10,52 +10,52 @@ internal static class RegistrationScenarioEndpoints
     {
         app.MapPost("/registration/auto", async (IZLinkRouteClient channel, CancellationToken cancellationToken) =>
         {
-            var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoAutoReq("rc-a1"))
+            var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, new EchoAutoReq("rc-a1"))
                 .Async<EchoRes>(cancellationToken);
-            await channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoAutoMsg("cmd-rc-a1", "rc-a1-send")).SubmitAsync(cancellationToken);
+            await channel.SendToChannel(RegistrationCodecNames.Channel, new EchoAutoMsg("cmd-rc-a1", "rc-a1-send")).Async(cancellationToken);
             return Results.Ok(reply);
         });
         app.MapPost("/registration/attribute",
             async (IZLinkRouteClient channel, CancellationToken cancellationToken) =>
             {
-                var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoAttrReq("rc-a2"))
+                var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, new EchoAttrReq("rc-a2"))
                     .Async<EchoRes>(cancellationToken);
-                await channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoAttrMsg("cmd-rc-a2", "rc-a2-send")).SubmitAsync(cancellationToken);
+                await channel.SendToChannel(RegistrationCodecNames.Channel, new EchoAttrMsg("cmd-rc-a2", "rc-a2-send")).Async(cancellationToken);
                 return Results.Ok(reply);
             });
         app.MapPost("/registration/manual", async (IZLinkRouteClient channel, CancellationToken cancellationToken) =>
         {
-            var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoManualReq("rc-a3"))
+            var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, new EchoManualReq("rc-a3"))
                 .Async<EchoRes>(cancellationToken);
-            await channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel,
-                    new EchoManualMsg("cmd-rc-a3", "rc-a3-send")).SubmitAsync(cancellationToken);
+            await channel.SendToChannel(RegistrationCodecNames.Channel,
+                    new EchoManualMsg("cmd-rc-a3", "rc-a3-send")).Async(cancellationToken);
             return Results.Ok(reply);
         });
         app.MapPost("/registration/di-filter-order",
             async (IZLinkRouteClient channel, CancellationToken cancellationToken) =>
             {
-                var first = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoDiReq("rc-a4-1"))
+                var first = await channel.RequestToChannel(RegistrationCodecNames.Channel, new EchoDiReq("rc-a4-1"))
                     .Async<EchoRes>(cancellationToken);
-                var second = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoDiReq("rc-a4-2"))
+                var second = await channel.RequestToChannel(RegistrationCodecNames.Channel, new EchoDiReq("rc-a4-2"))
                     .Async<EchoRes>(cancellationToken);
                 return Results.Ok(new[] { first, second });
             });
         app.MapPost("/codec/roundtrip", async (IZLinkRouteClient channel, CancellationToken cancellationToken) =>
         {
-            var json = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new JsonEchoReq("rc-b1"))
+            var json = await channel.RequestToChannel(RegistrationCodecNames.Channel, new JsonEchoReq("rc-b1"))
                 .Async<EchoRes>(cancellationToken);
-            await channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new JsonEchoMsg("cmd-rc-b1", "rc-b1-send")).SubmitAsync(cancellationToken);
+            await channel.SendToChannel(RegistrationCodecNames.Channel, new JsonEchoMsg("cmd-rc-b1", "rc-b1-send")).Async(cancellationToken);
 
             var protobuf = await channel
-                .RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new StringValue { Value = "rc-b2" })
+                .RequestToChannel(RegistrationCodecNames.Channel, new StringValue { Value = "rc-b2" })
                 .Async<StringValue>(cancellationToken);
-            await channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new StringValue { Value = "rc-b2-send" }).SubmitAsync(cancellationToken);
+            await channel.SendToChannel(RegistrationCodecNames.Channel, new StringValue { Value = "rc-b2-send" }).Async(cancellationToken);
 
             var packed = await channel
-                .RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new PackedEchoReq { Value = "rc-b3" })
+                .RequestToChannel(RegistrationCodecNames.Channel, new PackedEchoReq { Value = "rc-b3" })
                 .Async<PackedEchoReq>(cancellationToken);
-            await channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel,
-                    new PackedEchoMsg { CommandId = "cmd-rc-b3", Value = "rc-b3-send" }).SubmitAsync(cancellationToken);
+            await channel.SendToChannel(RegistrationCodecNames.Channel,
+                    new PackedEchoMsg { CommandId = "cmd-rc-b3", Value = "rc-b3-send" }).Async(cancellationToken);
 
             return Results.Ok(new CodecScenarioRes(json, protobuf.Value, packed.Value));
         });

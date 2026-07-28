@@ -63,7 +63,7 @@ internal static class DispatchChannelClient
         CancellationToken cancellationToken,
         TimeSpan? timeout = null)
     {
-        var call = channels.RequestToChannel(SampleNames.MeshName, channelName, request);
+        var call = channels.RequestToChannel(channelName, request);
         if (timeout is { } value)
         {
             call = call.Timeout(value);

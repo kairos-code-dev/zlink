@@ -489,12 +489,12 @@ node가 Spot을 만들고 같은 message를 처리한다. 이 동작은 §6.1에
 | Entry Spot | Framework만 ID를 발급한다. |
 
 `InMesh`를 지정하면 해당 Mesh에서 node를 고른다. 생략했을 때 Object role Mesh가
-하나면 그 Mesh를 사용한다. 후보가 없으면 `ObjectClientNotConfigured`, 둘 이상이면
-`MeshSelectionRequired`, 지정한 Mesh가 없으면 `MeshNotFound`다.
+하나면 그 Mesh를 사용한다. 후보가 없으면 `NotConfigured`, 둘 이상이면
+`InvalidOperation`, 지정한 Mesh가 없으면 `NotFound`다.
 
 Create call은 한 번만 제출할 수 있다. 제출할 때 위치 조회부터 `Ready` 확정까지
-하나의 deadline을 사용한다. 같은 option을 중복 지정하면 `InvalidConfiguration`,
-같은 call을 다시 제출하면 `AlreadySubmitted`다.
+하나의 deadline을 사용한다. 같은 option을 중복 지정하거나 같은 call을 다시 제출하면
+`InvalidOperation`이다.
 
 생성 요청의 저장 크기는 최대 1 MiB다. Actor와 User Spot 요청은 Location Store의
 생성 중인 record에 저장한다. Relocation Store에는 저장하지 않는다.
@@ -547,7 +547,7 @@ Process가 중간에 종료되면 같은 ID와 같은 generation에 대해 facto
 | 같은 type의 `Ready` | `AlreadyExists` | 기존 ref |
 | 같은 type의 `Creating` | `AlreadyExists` | 진행 중인 생성 결과를 기다린다. |
 | 다른 Actor type | `TypeMismatch` | `TypeMismatch` |
-| 다른 Spot 종류 또는 type | `SpotTypeMismatch` | `SpotTypeMismatch` |
+| 다른 Spot 종류 또는 type | `TypeMismatch` | `TypeMismatch` |
 
 기다리는 동안 생성 완료 조건을 만족하지 못한 채 deadline을 넘으면
 [`DeadlineExceeded`](01-glossary.ko.md#deadlineexceeded)다. 다음 call은 Location Store를
@@ -581,8 +581,8 @@ Spot 요청임을 표시했고 Spot이 없을 때만, message를 받은 target n
 |---|---|
 | `Ready` record가 있음 | 저장된 Spot 종류, type과 Mesh를 사용한다. Request option으로 현재 owner를 바꾸지 않는다. |
 | Record가 없고 `InMesh` 지정 | 해당 Mesh에서 target node를 고른다. |
-| Record가 없고 `InMesh` 생략 | Object role Mesh가 없으면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`다. |
-| Type 생략 | 사용 가능한 Instance Spot type이 하나면 선택한다. 0개면 target-not-found, 둘 이상이면 `InvalidConfiguration`이다. |
+| Record가 없고 `InMesh` 생략 | Object role Mesh가 없으면 `NotConfigured`, 둘 이상이면 `InvalidOperation`이다. |
+| Type 생략 | 사용 가능한 Instance Spot type이 하나면 선택한다. 0개면 `NotFound`, 둘 이상이면 `InvalidOperation`이다. |
 
 같은 type을 여러 node가 등록해도 type 하나와 여러 target 후보로 처리한다.
 
@@ -635,7 +635,7 @@ Spot 종류, `Creating`, `Closing`, `Relocating` 또는 host relocation에는 �
 
 이미 `Ready`면 원래 요청을 현재 owner에게 한 번 전달한다. `Creating`이면 같은 생성
 결과를 기다린다. 이전 generation의 process 내부 instance에서는 message를 실행하지
-않는다. User Spot이거나 type이 다르면 `SpotTypeMismatch`다. 위치 확인과 message
+않는다. User Spot이거나 type이 다르면 `TypeMismatch`다. 위치 확인과 message
 전달 사이에 별도의 owner 변경을 허용하지 않는다.
 
 ### 6.2 현재 object를 찾고 정확한 generation만 변경한다
@@ -859,7 +859,7 @@ Target은 Location Store가 가리키는 데이터만 사용한다. Checksum 또
 | `Preparing` 또는 payload 저장 중 source 종료 | 현재 source owner를 확인한 뒤 이동을 취소한다. 어떤 위치 record도 가리키지 않는 payload는 보관 기한 뒤 삭제한다. |
 | `Captured` 뒤 target 실패 | 기록된 payload와 새로운 target 시도 번호로 계속한다. Source로 되돌리지 않는다. |
 | `Captured` 또는 `Prepared` 직전에 필수 정보가 사라짐 | Owner를 바꾸지 않고 이동을 취소한다. Payload 위치도 Location Store에 연결하지 않는다. |
-| Location Store가 가리키는 payload가 영구적으로 없거나 확인값이 다름 | 다시 시도해도 고칠 수 없는 `RelocationDataLost`로 기록한다. |
+| Location Store가 가리키는 payload가 영구적으로 없거나 확인값이 다름 | 다시 시도해도 고칠 수 없는 `DataLost`로 기록한다. |
 
 `Captured` 전의 요청 실패는 일반 connection failure, timeout 또는 cancellation으로
 처리한다. 이미 받았던 작업을 다른 node에서 자동 실행한다고 보장하지 않는다.
@@ -981,7 +981,7 @@ Store를 distributed transaction이나 2PC로 묶을 필요는 없으며 서로 
 
 Location Store가 가리키는 payload가 일시적으로 보이지 않으면 제한된 횟수만 다시
 읽고 현재 위치 record도 다시 확인한다. Payload가 영구적으로 없거나 checksum 또는
-두 Store의 이동 대상 목록 내용 확인값이 다르면 `RelocationDataLost`다. Runtime은
+두 Store의 이동 대상 목록 내용 확인값이 다르면 `DataLost`다. Runtime은
 오류를 현재 위치 record에 기록한다. 이미 변경한 owner와 membership을 source로
 되돌리거나 다른 payload를 추측해서 사용하지 않는다.
 
@@ -1024,7 +1024,7 @@ Deadline을 넘으면 `ForceStopped` 결과를 한 번만 완료한다. Timer, S
 | Membership | Entry Spot member Actor와 User Spot 전체 이동은 각각 필요한 owner와 membership을 한 번에 바꾼다. |
 | 완료 결과 | `OperationId`와 `ReplyRouteId`를 구분한다. 저장한 항목 수가 Location Store의 항목 수와 같아야 하며 source 응답 또는 owner lease 종료 전에는 payload 사용을 끝내지 않는다. |
 | 두 Store의 순서 | Payload 저장과 확인이 Location Store CAS보다 먼저다. Location Store의 reference 사용 종료가 payload 삭제보다 먼저다. |
-| 데이터 손실 | Payload가 영구적으로 없거나 checksum·목록 확인값이 다르면 `RelocationDataLost`다. Source로 되돌리지 않는다. |
+| 데이터 손실 | Payload가 영구적으로 없거나 checksum·목록 확인값이 다르면 `DataLost`다. Source로 되돌리지 않는다. |
 | 이동 취소 | `Aborted`를 기록하기 전에 Session 취소 route를 보내거나 source가 새 작업을 받지 않는다. |
 | Store 장애 | 유예 시간에는 새 discovery connection만 막으며 owner deadline은 연장하지 않는다. 결과를 받지 못한 Store 요청은 같은 key와 version으로 다시 확인한다. |
 

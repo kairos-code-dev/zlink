@@ -28,7 +28,7 @@ internal static class SmF5ClosedSpotRouteIsolationScenario
                 "SM-F5 closed target spot still accepted a routed request.");
         }
         catch (ZLinkFrameworkException error) when (
-            error.Kind == ZLinkFrameworkErrorKind.RequestFailed)
+            error.Kind == ZLinkFrameworkErrorKind.InternalFailure)
         {
         }
 

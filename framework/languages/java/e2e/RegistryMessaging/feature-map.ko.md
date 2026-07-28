@@ -88,3 +88,8 @@ public HTTP client만 사용한다.
   - `RM-C7`: `logs/20260703-202238-83024/`
   - `RM-C8`: `logs/20260703-202115-75588/`
   - `RM-C9`: `logs/20260707-220422-3590936/`
+
+## 공통 scenario parity gap — 2026-07-29
+
+- `RM-A3`, `RM-A7`, `RM-C10`: 공통 scenario는 추가됐지만 Java actual fixture와 runner
+  selector가 없다.

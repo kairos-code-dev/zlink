@@ -16,6 +16,7 @@ marker는 관련 행의 부분 증거로만 기록한다.
 | MON-A3 | 구현 | Spot subject 상태와 ChannelName 변경을 typed event와 snapshot으로 함께 확인했다. | 없음 |
 | MON-A4 | 구현 | 정상 교체와 비정상 종료 뒤 같은 RID 재시작에서 이전 generation 제거, 새 generation 준비와 별도 request 완료를 확인했다. | 없음 |
 | MON-A5 | 구현 | location store 중단·복구 중 peer·channel messaging이 유지되고 location health event와 snapshot이 일치하는지 확인했다. | 없음 |
+| MON-A6 | 미구현 | Public placement snapshot의 node·stable type별 사용량, reservation·commit·release와 capacity 거부를 actual process에서 대조하는 selector가 없다. | 역할 server와 runner registration을 추가해야 한다. |
 | MON-B1 | 부분 구현 | zero-target publish를 실제로 시작한 뒤 public snapshot·event에 publish 전용 필드가 없고, framework assembly에 제거한 public type·metric·event 이름이 없음을 검사한다. | 막힌 remote target이 있어도 시작 뒤 정상 완료하며 rollback·자동 재시도가 없음을 process E2E에서 추가로 확인한다. |
 | MON-B2 | 부분 구현 | local subscriber를 만든 뒤 publish하고 handler 단일 처리와 public snapshot·event의 publish 전용 관측값 부재를 검사한다. | 막힌 local target과 정상 target을 함께 두고 message-flow trace에도 target별 결과가 남지 않음을 추가로 확인한다. |
 | MON-C1 | 구현 | application gate 중 별도 request와 정상 observer가 진행되고, 작은 observer queue의 coalescing·consumer 예외 뒤 snapshot resync와 messaging이 유지되는지 확인했다. | 없음 |

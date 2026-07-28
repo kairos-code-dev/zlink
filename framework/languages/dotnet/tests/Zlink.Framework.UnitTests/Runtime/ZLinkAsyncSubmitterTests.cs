@@ -428,7 +428,7 @@ public sealed class ZLinkAsyncSubmitterTests
                 _ => throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.NotConnected))
                 .AsTask());
 
-        Assert.Equal(ZLinkFrameworkErrorKind.RouteNotConnected, exception.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, exception.Kind);
     }
 
     [Fact]
@@ -697,6 +697,38 @@ public sealed class ZLinkAsyncSubmitterTests
         nativeComplete(RequestResult.Ok, lateReply);
         Assert.All(lateReply, part =>
             Assert.Throws<ObjectDisposedException>(() => part.AsReadOnlySpan()));
+    }
+
+    [Fact]
+    public async Task SubmitRequestAsync_OperationTimeoutCoversRouteAdmissionBeyondSocketDefault()
+    {
+        await using var submitter = new ZLinkAsyncSubmitter(
+            _ => { },
+            TimeSpan.FromMilliseconds(50),
+            CancellationToken.None);
+        Action<string>? complete = null;
+        var writable = false;
+
+        var request = submitter.SubmitRequestAsync<string>(
+            Message.From("request"),
+            (_, onResult, _) =>
+            {
+                if (!writable)
+                    throw new ZlinkSubmitException(
+                        ZlinkSubmitException.ErrorCode.NotConnected);
+                complete = onResult;
+                return true;
+            },
+            operationTimeout: TimeSpan.FromSeconds(1));
+
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+        writable = true;
+        Assert.True(SpinWait.SpinUntil(
+            () => Volatile.Read(ref complete) is not null,
+            TimeSpan.FromSeconds(1)));
+        complete!("reply");
+
+        Assert.Equal("reply", await request);
     }
 
     [Fact]

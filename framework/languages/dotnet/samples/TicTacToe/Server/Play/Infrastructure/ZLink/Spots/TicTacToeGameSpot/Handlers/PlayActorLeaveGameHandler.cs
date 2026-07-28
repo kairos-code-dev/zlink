@@ -12,7 +12,7 @@ internal sealed class PlayActorLeaveGameHandler(ILogger<PlayActorLeaveGameHandle
     public async ValueTask HandleAsync(
         TicTacToeGame spot,
         PlayActor actor,
-        ZLinkSpotActorSendContext context,
+        IZLinkMessageContext context,
         LeaveGameReq message,
         CancellationToken cancellationToken)
     {

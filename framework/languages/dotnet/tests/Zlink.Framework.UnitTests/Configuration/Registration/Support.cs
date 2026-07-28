@@ -389,9 +389,16 @@ public abstract class RegistrationValidationSupport
         public IZLinkActorContext Context { get; } = context;
     }
 
-    protected sealed class TestRelocationStore : IZLinkRelocationRepository
+    private protected sealed class TestRelocationStore : IZLinkRelocationRepository
     {
         public ValueTask<ZLinkRelocationStored> PutRelocationAsync(
+            ReadOnlyMemory<byte> payload,
+            TimeSpan retention,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ZLinkRelocationStored> PutRelocationAtAsync(
+            string reference,
             ReadOnlyMemory<byte> payload,
             TimeSpan retention,
             CancellationToken cancellationToken = default) =>

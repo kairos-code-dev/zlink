@@ -53,7 +53,7 @@ public class ZLinkHttpRequestBuilder
     {
         if (path.Length == 0 || path[0] != '/')
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "HTTP request path must start with /");
     }
 
@@ -92,7 +92,7 @@ public class ZLinkHttpRequestBuilder
     {
         if (content is null)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError, "HTTP request raw body content is required");
+                ZLinkFrameworkErrorKind.ProtocolError, "HTTP request raw body content is required");
 
         HttpClientText.RequireNonBlank(contentType, "HTTP request body content type is required");
         _body = Encoding.UTF8.GetBytes(content);
@@ -142,7 +142,7 @@ public class ZLinkHttpRequestBuilder
     {
         if (_ownsClient && _consumed)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 "A one-shot HTTP request can only be submitted once");
 
         _consumed = true;
@@ -211,7 +211,7 @@ public class ZLinkHttpRequestBuilder
         var raw = await AsyncRaw(cancellationToken).ConfigureAwait(false);
         if (raw.Status >= 400)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestFailed,
+                ZLinkFrameworkErrorKind.InternalFailure,
                 $"HTTP request failed with status {raw.Status}");
 
         T body;
@@ -234,7 +234,7 @@ public class ZLinkHttpRequestBuilder
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or JsonException)
         {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.PayloadDecodeFailed, ex.Message, innerException: ex);
+                ZLinkFrameworkErrorKind.ProtocolError, ex.Message, innerException: ex);
         }
 
         return new HttpResponse<T>
@@ -250,7 +250,7 @@ public class ZLinkHttpRequestBuilder
     {
         return _executionTurn
                ?? throw new ZLinkFrameworkException(
-                   ZLinkFrameworkErrorKind.RequestProtocolError,
+                   ZLinkFrameworkErrorKind.ProtocolError,
                    $"HTTP {operation} can only run inside a framework execution turn.");
     }
 
@@ -352,7 +352,7 @@ public class ZLinkHttpRequestBuilder
     {
         if (CountBodySources() > 1)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 "HTTP request accepts a single body source: body, body_stream, form, or multipart");
 
         var headers = new Dictionary<string, string>(_headers, StringComparer.OrdinalIgnoreCase);
@@ -489,15 +489,6 @@ public sealed class ZLinkHttpServerRequestBuilder : ZLinkHttpRequestBuilder
     {
         base.MultipartFile(name, filename, content, contentType);
         return this;
-    }
-
-    /// <summary>
-    ///     Waits for a typed response while releasing the captured Spot turn. The continuation is
-    ///     queued on the same execution line, and caller cancellation cancels the wait.
-    /// </summary>
-    public ValueTask<HttpResponse<T>> Yield<T>(CancellationToken cancellationToken = default)
-    {
-        return RequireExecutionTurn("Yield").YieldAsync(ExecuteTypedAsync<T>, cancellationToken);
     }
 
     /// <summary>

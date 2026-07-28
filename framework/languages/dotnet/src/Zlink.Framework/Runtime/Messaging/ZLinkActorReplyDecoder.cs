@@ -82,14 +82,14 @@ internal static class ZLinkActorReplyDecoder
     private static ZLinkFrameworkException ProtocolError(
         string message,
         Exception? innerException = null) => new(
-        ZLinkFrameworkErrorKind.RequestProtocolError,
+        ZLinkFrameworkErrorKind.ProtocolError,
         message,
         innerException: innerException);
 
     private static ZLinkFrameworkException PayloadDecodeFailed(
         string message,
         Exception? innerException = null) => new(
-        ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+        ZLinkFrameworkErrorKind.ProtocolError,
         message,
         innerException: innerException);
 }

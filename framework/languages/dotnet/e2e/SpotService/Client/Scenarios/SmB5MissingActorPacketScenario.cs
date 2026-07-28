@@ -23,7 +23,7 @@ internal static class SmB5MissingActorPacketScenario
             MaxReceivedMessages = 1024
         });
         await client.Connect.Async();
-        await client.Request(new AuthReq(actorId, "missing handler actor", "play-a"))
+        await client.Request(new AuthReq(actorId, "missing handler actor"))
             .PacketName("AuthReq")
             .Async<AuthRes>();
         await ZlinkStreamAssert.ExpectFailureAsync(

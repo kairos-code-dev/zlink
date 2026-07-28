@@ -172,8 +172,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
                         new ZLinkAuthorityReadResult.Found(
                             current! with { StoreNow = now })));
             }
-            if (!CanIncrement(_authorityRevision)
-                || needsOwner && !CanIncrement(_authorityOwnerGeneration))
+            if (!CanIncrement(_authorityRevision))
                 return ValueTask.FromResult<ZLinkAuthorityCompareExchangeResult>(
                     new ZLinkAuthorityCompareExchangeResult.GenerationExhausted());
 
@@ -186,7 +185,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
                 put.Payload.ToArray(),
                 current.ObjectGeneration,
                 needsOwner
-                    ? checked((ulong)Next(ref _authorityOwnerGeneration))
+                    ? relocationCapacity!.TargetAuthorityOwnerGeneration
                     : current.AuthorityOwnerGeneration,
                 owner.OwnerId,
                 owner.LeaseGeneration,
@@ -661,9 +660,14 @@ internal sealed partial class ZLinkInMemoryLocationStore
             if (_authorityAggregates.TryGetValue(fence, out var existing))
             {
                 return ValueTask.FromResult<ZLinkAggregatePrepareResult>(
-                    existing.Status == AggregateStatus.Prepared
+                    (existing.Status is AggregateStatus.Prepared
+                        or AggregateStatus.Committed)
                     && AggregateRequestsEqual(existing.Request, request)
                         ? new ZLinkAggregatePrepareResult.AlreadyPrepared(fence)
+                        {
+                            TargetAuthorityOwnerGenerations =
+                                existing.TargetAuthorityOwnerGenerations
+                        }
                         : new ZLinkAggregatePrepareResult.Conflict());
             }
             if (request.Participants.Any(participant =>
@@ -704,10 +708,27 @@ internal sealed partial class ZLinkInMemoryLocationStore
                 return ValueTask.FromResult<ZLinkAggregatePrepareResult>(
                     new ZLinkAggregatePrepareResult.Conflict());
 
+            if (_authorityOwnerGeneration
+                > long.MaxValue - relocating.Length)
+                return ValueTask.FromResult<ZLinkAggregatePrepareResult>(
+                    new ZLinkAggregatePrepareResult.GenerationExhausted());
+            var targetAuthorityOwnerGenerations =
+                new Dictionary<ZLinkAuthorityKey, ulong>(
+                    request.Participants.Count);
+            foreach (var participant in request.Participants)
+            {
+                var current = _authorities[participant.Key.Value];
+                targetAuthorityOwnerGenerations[participant.Key] =
+                    participant.OwnerTransition
+                    == ZLinkAuthorityGenerationTransition.NewOwner
+                        ? checked((ulong)Next(ref _authorityOwnerGeneration))
+                        : current.AuthorityOwnerGeneration;
+            }
             _authorityAggregates[fence] =
                 new AggregateState(
                     CloneAggregateRequest(request),
-                    AggregateStatus.Prepared);
+                    AggregateStatus.Prepared,
+                    targetAuthorityOwnerGenerations);
             foreach (var participant in relocating)
             {
                 var source = _authorities[participant.Key.Value].Allocation;
@@ -722,7 +743,11 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     1);
             }
             return ValueTask.FromResult<ZLinkAggregatePrepareResult>(
-                new ZLinkAggregatePrepareResult.Prepared(fence));
+                new ZLinkAggregatePrepareResult.Prepared(fence)
+                {
+                    TargetAuthorityOwnerGenerations =
+                        targetAuthorityOwnerGenerations
+                });
         }
     }
 
@@ -742,9 +767,15 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     out var existing))
             {
                 return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
-                    existing.Request == request
+                    existing.Status
+                    == RelocationCapacityStatus.Reserved
+                    && existing.Request == request
                         ? new ZLinkRelocationCapacityReserveResult.AlreadyReserved(
                             fence)
+                        {
+                            TargetAuthorityOwnerGeneration =
+                                existing.TargetAuthorityOwnerGeneration
+                        }
                         : new ZLinkRelocationCapacityReserveResult.Conflict(
                             ReadCurrent(request.Key)));
             }
@@ -781,16 +812,26 @@ internal sealed partial class ZLinkInMemoryLocationStore
                 return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
                     new ZLinkRelocationCapacityReserveResult
                         .PlacementCapacityExhausted());
+            if (!CanIncrement(_authorityOwnerGeneration))
+                throw new ZLinkAuthorityGenerationExhaustedException(
+                    "reserving relocation capacity");
+            var targetAuthorityOwnerGeneration =
+                checked((ulong)Next(ref _authorityOwnerGeneration));
             _relocationCapacityReservations[fence.Value] =
                 new RelocationCapacityState(
                     request,
-                    RelocationCapacityStatus.Reserved);
+                    RelocationCapacityStatus.Reserved,
+                    targetAuthorityOwnerGeneration);
             AdjustAllocationCapacity(
                 _pendingPlacementCapacity,
                 TargetAllocation(request),
                 1);
             return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
-                new ZLinkRelocationCapacityReserveResult.Reserved(fence));
+                new ZLinkRelocationCapacityReserveResult.Reserved(fence)
+                {
+                    TargetAuthorityOwnerGeneration =
+                        targetAuthorityOwnerGeneration
+                });
         }
     }
 
@@ -850,13 +891,8 @@ internal sealed partial class ZLinkInMemoryLocationStore
                 return ValueTask.FromResult(
                     ZLinkAggregateCommitResult.AlreadyCommitted);
 
-            var ownerTransitions = aggregate.Request.Participants.Count(
-                static participant =>
-                    participant.OwnerTransition
-                    == ZLinkAuthorityGenerationTransition.NewOwner);
             if (_authorityRevision > long.MaxValue
-                    - aggregate.Request.Participants.Count
-                || _authorityOwnerGeneration > long.MaxValue - ownerTransitions)
+                    - aggregate.Request.Participants.Count)
                 return ValueTask.FromResult(
                     ZLinkAggregateCommitResult.GenerationExhausted);
             if (aggregate.Request.Participants.Any(participant =>
@@ -883,7 +919,8 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     StoreVersion = Next(ref _authorityRevision).ToString(),
                     Payload = participant.AuthorityPayload.ToArray(),
                     AuthorityOwnerGeneration = changesOwner
-                        ? checked((ulong)Next(ref _authorityOwnerGeneration))
+                        ? aggregate.TargetAuthorityOwnerGenerations[
+                            participant.Key]
                         : current.AuthorityOwnerGeneration,
                     OwnerId = changesOwner
                         ? aggregate.Request.TargetOwner.OwnerId
@@ -1517,7 +1554,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
         ArgumentNullException.ThrowIfNull(request);
         if (request.AggregateId == Guid.Empty
             || request.AggregateGeneration is 0 or > long.MaxValue
-            || request.Participants.Count is < 1 or > 1024
+            || request.Participants.Count < 1
             || request.InventoryDigest.Length != 32
             || request.TargetDescriptorLifecycleGeneration == 0
             || !IsAggregateCapacityValid(request)
@@ -1574,19 +1611,27 @@ internal sealed partial class ZLinkInMemoryLocationStore
 
     private sealed class AggregateState(
         ZLinkAggregatePrepareRequest request,
-        AggregateStatus status)
+        AggregateStatus status,
+        IReadOnlyDictionary<ZLinkAuthorityKey, ulong>
+            targetAuthorityOwnerGenerations)
     {
         internal ZLinkAggregatePrepareRequest Request { get; } = request;
         internal AggregateStatus Status { get; set; } = status;
+        internal IReadOnlyDictionary<ZLinkAuthorityKey, ulong>
+            TargetAuthorityOwnerGenerations { get; } =
+                targetAuthorityOwnerGenerations;
     }
 
     private sealed class RelocationCapacityState(
         ZLinkRelocationCapacityReservationRequest request,
-        RelocationCapacityStatus status)
+        RelocationCapacityStatus status,
+        ulong targetAuthorityOwnerGeneration)
     {
         internal ZLinkRelocationCapacityReservationRequest Request { get; set; } =
             request;
         internal RelocationCapacityStatus Status { get; set; } = status;
+        internal ulong TargetAuthorityOwnerGeneration { get; } =
+            targetAuthorityOwnerGeneration;
     }
 
     private readonly record struct PlacementCapacityKey(

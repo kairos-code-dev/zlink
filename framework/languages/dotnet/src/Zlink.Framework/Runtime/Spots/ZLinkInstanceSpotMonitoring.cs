@@ -70,20 +70,20 @@ internal sealed class ZLinkInstanceSpotMonitoring
             } => "timed_out",
             ZLinkFrameworkException
             {
-                Kind: ZLinkFrameworkErrorKind.RuntimeShutdown
+                Kind: ZLinkFrameworkErrorKind.ShuttingDown
             } => "shutdown",
             ZLinkFrameworkException
             {
-                Kind: ZLinkFrameworkErrorKind.SpotGenerationStale
+                Kind: ZLinkFrameworkErrorKind.InvalidOperation
             } => "fenced",
             ZLinkFrameworkException
             {
-                Kind: ZLinkFrameworkErrorKind.SpotIdConflict
+                Kind: ZLinkFrameworkErrorKind.AlreadyExists
             } => "conflict",
             ZLinkFrameworkException
             {
-                Kind: ZLinkFrameworkErrorKind.RequestFailed
-                or ZLinkFrameworkErrorKind.RequestTargetNotFound
+                Kind: ZLinkFrameworkErrorKind.InternalFailure
+                or ZLinkFrameworkErrorKind.NotFound
             } => "store_failure",
             _ => "rejected"
         };

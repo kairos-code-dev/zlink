@@ -229,6 +229,5 @@ grep -q "shoppingmall=completed" "${SHOPPINGMALL_LOG_DIR}/client.log"
 grep -q "shoppingmall order: started" "${LOG_DIR}/workflow-a.log" \
   || grep -q "shoppingmall order: started" "${LOG_DIR}/workflow-b.log"
 grep -q "shoppingmall evidence:" "${LOG_DIR}/api-a.log"
-grep -Rq "message flow" "${SHOPPINGMALL_LOG_DIR}"
 echo "shoppingmall-server-evidence=completed"
 RUN_SUCCEEDED=1

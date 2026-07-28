@@ -258,7 +258,7 @@ internal static class ZLinkEnvelopeCodec
         if (!contentType.Equals(JsonContentType, StringComparison.OrdinalIgnoreCase)
             && (codecs is null || !codecs.TryGetSerializer(contentType, out customSerializer)))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                ZLinkFrameworkErrorKind.ProtocolError,
                 $"No payload serializer is registered for received content type '{contentType}'.");
 
         if (bodyType == typeof(Message)) return bodyMessage;

@@ -9,10 +9,10 @@ internal static class TdB2YieldQueuedProbeOrderScenario
     {
         var spot = await context.SpotAsync();
         var requestId = ExecutionTurnScenarioContext.NewId("TD-B2");
-        context.SendSpot(new AwaitMsg(requestId, 300, "queue-order", "yield"), spot);
+        await context.SendSpotAsync(new AwaitMsg(requestId, 300, "queue-order", "yield"), spot);
         await context.EvidenceAsync(requestId, "yield-released");
         for (var index = 1; index <= 3; index++)
-            context.SendSpot(new ProbeMsg(requestId, $"probe-{index}"), spot);
+            await context.SendSpotAsync(new ProbeMsg(requestId, $"probe-{index}"), spot);
         var evidence = await context.EvidenceAsync(requestId, "yield-completed");
         EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
         [

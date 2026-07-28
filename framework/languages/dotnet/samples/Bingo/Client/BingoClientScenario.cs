@@ -25,8 +25,10 @@ internal sealed class BingoClientScenario
 
         ZlinkStreamAssert.Ensure(client1Auth.ActorId == BingoSamplePlayers.Player1, "Assertion failed: client1Auth.ActorId == BingoSamplePlayers.Player1");
 
-        var client1MatchRes = await client1.Request(new MatchBingoReq { Mode = BingoSampleModes.TwoPlayer })
-            .Async<MatchBingoRes>(cancellationToken);
+        var client1MatchRes = await MatchAsync(
+            client1,
+            BingoSampleModes.TwoPlayer,
+            cancellationToken);
 
         ZlinkStreamAssert.Ensure(client1MatchRes.State.Status == BingoRoomStatuses.WaitingForPlayers, "Assertion failed: client1MatchRes.State.Status == BingoRoomStatuses.WaitingForPlayers");
         ZlinkStreamAssert.Ensure(client1MatchRes.State.HostActorId == client1Auth.ActorId, "Assertion failed: client1MatchRes.State.HostActorId == client1Auth.ActorId");
@@ -39,8 +41,10 @@ internal sealed class BingoClientScenario
             .Async<AuthenticateRes>(cancellationToken);
         ZlinkStreamAssert.Ensure(observerAuth.ActorId == BingoSamplePlayers.Observer, "Assertion failed: observerAuth.ActorId == BingoSamplePlayers.Observer");
 
-        var observed = await observer.Request(new ObserveBingoEventsReq { RoomId = client1MatchRes.RoomId })
-            .Async<ObserveBingoEventsRes>(cancellationToken);
+        var observed = await ObserveAsync(
+            observer,
+            client1MatchRes.RoomId,
+            cancellationToken);
         ZlinkStreamAssert.Ensure(observed.Subscribed, "Assertion failed: observed.Subscribed");
 
         // Register before the room can finish so the reward push cannot race past the observer.
@@ -57,8 +61,10 @@ internal sealed class BingoClientScenario
         ZlinkStreamAssert.Ensure(client2Auth.ActorId == BingoSamplePlayers.Player2, "Assertion failed: client2Auth.ActorId == BingoSamplePlayers.Player2");
         ZlinkStreamAssert.Ensure(client2Auth.ActorId != client1Auth.ActorId, "Assertion failed: client2Auth.ActorId != client1Auth.ActorId");
 
-        var client2MatchRes = await client2.Request(new MatchBingoReq { Mode = BingoSampleModes.TwoPlayer })
-            .Async<MatchBingoRes>(cancellationToken);
+        var client2MatchRes = await MatchAsync(
+            client2,
+            BingoSampleModes.TwoPlayer,
+            cancellationToken);
 
         ZlinkStreamAssert.Ensure(client2MatchRes.RoomId == client1MatchRes.RoomId, "Assertion failed: client2MatchRes.RoomId == client1MatchRes.RoomId");
         ZlinkStreamAssert.Ensure(client2MatchRes.State.Status == BingoRoomStatuses.Running, "Assertion failed: client2MatchRes.State.Status == BingoRoomStatuses.Running");
@@ -180,6 +186,30 @@ internal sealed class BingoClientScenario
         var stopped = await observer.Request(new StopObservingBingoEventsReq { RoomId = client1MatchRes.RoomId })
             .Async<StopObservingBingoEventsRes>(cancellationToken);
         ZlinkStreamAssert.Ensure(stopped.Stopped, "Assertion failed: stopped.Stopped");
+    }
+
+    private static async ValueTask<MatchBingoRes> MatchAsync(
+        IZlinkStreamConnector connector,
+        string mode,
+        CancellationToken cancellationToken)
+    {
+        var completion = connector.WaitFor<MatchBingoRes>()
+            .Async(cancellationToken);
+        await connector.Send(new MatchBingoReq { Mode = mode })
+            .Async(cancellationToken);
+        return (await completion).Payload;
+    }
+
+    private static async ValueTask<ObserveBingoEventsRes> ObserveAsync(
+        IZlinkStreamConnector connector,
+        string roomId,
+        CancellationToken cancellationToken)
+    {
+        var completion = connector.WaitFor<ObserveBingoEventsRes>()
+            .Async(cancellationToken);
+        await connector.Send(new ObserveBingoEventsReq { RoomId = roomId })
+            .Async(cancellationToken);
+        return (await completion).Payload;
     }
 }
 

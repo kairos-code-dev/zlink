@@ -12,7 +12,7 @@ internal sealed class BingoEntrySpot(
 {
     public IZLinkEntrySpotContext Context { get; } = context;
 
-    public ValueTask OnCreateActorAsync(
+    public ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
         PlayerActor actor,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
@@ -23,7 +23,7 @@ internal sealed class BingoEntrySpot(
             "entry spot: actor created. actor={ActorId}, displayName={DisplayName}",
             actor.ActorId,
             actor.DisplayName);
-        return ValueTask.CompletedTask;
+        return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(

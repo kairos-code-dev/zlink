@@ -34,6 +34,16 @@ public sealed record CancellationResponse(
     int InvalidInvocationCount,
     int TerminalCount);
 
+public sealed record NodeTargetOutcome(
+    string Send,
+    string Request,
+    int PeerCountBefore,
+    int PeerCountAfter,
+    int ReadyPeerCountBefore,
+    int ReadyPeerCountAfter);
+
+public sealed record ObjectClientIdentity(string Rid, string Endpoint);
+
 public sealed record OperationEvidence(
     string OperationId,
     string Family,

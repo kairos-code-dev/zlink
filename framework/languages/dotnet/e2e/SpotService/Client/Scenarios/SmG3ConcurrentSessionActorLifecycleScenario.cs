@@ -27,7 +27,7 @@ internal static class SmG3ConcurrentSessionActorLifecycleScenario
                     Endpoint = new Uri(sessionAStreamEndpoint)
                 });
                 await client.Connect.Async();
-                await client.Request(new UserSpotAuthReq(spotRid, actorId, actorId, "play-a"))
+                await client.Request(new UserSpotAuthReq(spotRid, actorId, actorId))
                     .PacketName("UserSpotAuthReq").Async<AuthRes>();
                 await playA.Post("/spot/create").Body(new CreateSpotReq(spotRid)).Async<CreateSpotRes>();
                 await client.Request(new JoinUserSpotActorReq(spotRid, actorId))

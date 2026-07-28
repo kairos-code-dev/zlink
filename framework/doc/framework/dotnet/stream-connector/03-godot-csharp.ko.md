@@ -16,8 +16,8 @@ connector를 그대로 쓰고, Godot main thread에서 `Dispatch.Async()`를 호
 ## 기본 원칙
 
 Godot의 `Node`와 scene tree는 main thread 밖에서 다루면 안 된다. 그래서 connector의 기본
-dispatch mode는 `Manual`이다. 이 모드에서 network receive loop는 `On(...)` handler, error
-event, disconnect event, request callback을 직접 호출하지 않고 connector 내부 queue에 넣는다.
+dispatch mode는 `Manual`이다. 이 모드에서는 `Dispatch.Async()`를 호출한 thread에서
+`On(...)` handler, error event, disconnect event와 request callback을 실행한다.
 
 Godot에서는 `Node._Process(double)`에서 `Dispatch.Async()`를 호출한다. 그러면 그 frame에 쌓인
 callback이 Godot main thread에서 실행된다.

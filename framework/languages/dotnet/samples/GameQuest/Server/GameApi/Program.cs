@@ -11,6 +11,7 @@ using GameQuest.Server.Configuration;
 using GameQuest.Shared;
 using Microsoft.AspNetCore.Mvc;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Channels;
@@ -52,23 +53,30 @@ internal static class Program
         builder.Services.AddScoped<SyncQuestProgressHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+            options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = topology.RedisKeyPrefix;
+            }));
+            options.AddRelocationStore(new ZLinkRedisRelocationStore(redis =>
+            {
+                redis.ConnectionString = topology.RedisEndpoint;
+                redis.KeyPrefix = $"{topology.RedisKeyPrefix}relocation:";
+            }));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(SampleFlowLog.Path(configuration.LogDirectory, apiName))
-                .TraceLabel(apiName);
+                .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(Program));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.GameApiMeshEndpoint(apiName))
-                .SetRoutingIdPrefix("game-api")
+                .SetRoutingIdPrefix("game-api");
+            mesh.Objects().Server()
                 .AddEntrySpot<GameQuestEntrySpot>()
-                .AddActorFactory<PlayerSessionActorFactory>(SampleNames.SessionActorType);
-            mesh.ChannelName(SampleNames.GameApiChannel)
+                .AddActorFactory<PlayerSessionActor, PlayerSessionActorFactory>(
+                    SampleNames.SessionActorType,
+                    null,
+                    ZLinkRelocationPolicy<PlayerSessionActor>.Recreate);
+            mesh.Channel(SampleNames.GameApiChannel).Server()
                 .AddHandlerGroup(SampleNames.GameApiHandlerGroup);
-            mesh.ChannelName(SampleNames.QuestOwnerChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.MeshName);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(streamEndpoint)
                 .EnableActorDispatch()

@@ -51,3 +51,18 @@ resolved artifact의 SHA-256이 입력한 candidate와 같은지도 확인한다
 
 `all`은 process selector `SA-E2E-01·05·08·09·14·20`과 `SA-REG-01~03`을 실행한다. Process 완료 gate는
 `SA-E2E-01~20`과 `SA-REG-01~04`가 모두 구현되고 독립 evidence를 남긴 뒤에만 충족한다.
+# 2026-07-29 Object Client 연결 계약 검증
+
+Java와 Kotlin이 공유하는 Framework-owned raw RouteMesh에서 다음 경계를 focused test로
+검증했다.
+
+- Automatic planner는 양쪽 모두 Object Client이고 RouteMesh Channel Server membership도
+  없는 pair만 연결 대상에서 제외한다.
+- Manual handshake는 같은 pair를 `NOT_REQUIRED`로 끝내고 reconnect announcement와
+  liveness 대상에서 제외한다.
+- 어느 한쪽에 weight `0`인 RouteMesh Channel Server membership이 있으면 연결한다.
+- Object Client RID를 Node direct target으로 사용하면 `NOT_FOUND`로 끝낸다.
+
+검증 명령은 `ZLinkAutoConnectPlannerTest`와 `ZLinkJavaRawMeshNodeM6ATest`를
+single worker로 실행했다. 결과는 13/13 성공이며 실패·오류·skip은 0이다. Automatic과
+Manual의 전체 process E2E는 아직 남아 있으므로 `SA-E2E-08`의 상태는 부분 구현을 유지한다.

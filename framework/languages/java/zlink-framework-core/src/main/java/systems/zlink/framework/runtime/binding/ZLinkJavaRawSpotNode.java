@@ -164,6 +164,9 @@ final class ZLinkJavaRawSpotNode
     @Override
     public Optional<Integer> classifyNodeSendTarget(
         RoutingId targetNodeRid) {
+        if (owner.isObjectClientNodeDirectTarget(targetNodeRid)) {
+            return Optional.of(ZLinkOneWayCalls.TARGET_NOT_FOUND);
+        }
         if (routingId().equals(targetNodeRid)
             || owner.peers().stream().anyMatch(
                 peer -> peer.routingId().equals(targetNodeRid))) {

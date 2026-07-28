@@ -1,17 +1,19 @@
 import type { ZLinkLocationOptionOverrides } from '../../contracts/Locations/Options';
-import type {
-} from '../../contracts';
+import type { ZLinkPeerLocationFilter } from '../../contracts/Locations/Keys';
+import type { ZLinkPeerLocationResolver } from '../../contracts/Locations/Resolvers';
 import type { ZLinkDomainLocationStore as ZLinkLocationStore } from '../locations/domain-store-contract';
 import type { ZLinkPeerLocation } from '../../contracts/Locations/Rows';
 import { ZLinkLocationAutoConnectType } from '../../contracts/Locations/Values';
-import { ZLinkLocationRole } from '../../contracts';
+import {
+  ZLinkFrameworkRuntimeState,
+  ZLinkLocationRole
+} from '../../contracts';
 import type { ZLinkSpotNodeOptions } from '../configuration';
 import type { ZLinkBackendMeshNode } from '../backend/contracts';
 import { toBindingRoutingId } from '../routing-id';
 import {
   ZLinkLocationRuntime,
   ZLinkOwnerLeaseTracker,
-  ZLinkStoreLocationResolvers,
   type IZLinkAutoConnectExecutor,
   type ZLinkAutoConnectLocal,
   type ZLinkAutoConnectTarget,
@@ -24,14 +26,14 @@ export interface ZLinkSpotNodeLocationAutoConnectContext {
   readonly stores: ZLinkLocationRuntimeStores;
   readonly options: ZLinkLocationOptionOverrides;
   readonly leaseTracker: ZLinkOwnerLeaseTracker;
-  readonly resolver: ZLinkStoreLocationResolvers;
+  readonly resolver: ZLinkPeerLocationResolver;
   readonly events?: ZLinkLocationEventSink;
   readonly changeStampStore?: Pick<ZLinkLocationStore, 'getMeshNodeChangeStamp'>;
 }
 
 export interface ZLinkSpotNodeAutoConnectCapability {
   readonly local: ZLinkAutoConnectLocal;
-  readonly localRow: ZLinkPeerLocation;
+  readonly localRow?: ZLinkPeerLocation;
   readonly executor: IZLinkAutoConnectExecutor;
 }
 
@@ -50,13 +52,12 @@ export function createSpotNodeLocationAutoConnectContext(
     stores,
     options,
     leaseTracker,
-    resolver: new ZLinkStoreLocationResolvers({
-      stores,
-      leaseTracker,
-      events
-    }),
+    resolver: meshDescriptorPeerResolver(runtime),
     events,
-    changeStampStore: stores.locationStore
+    // The opaque provider has no cross-process change notification primitive.
+    // A process-local inherited stamp would hide descriptors written by peers,
+    // so RouteMesh discovery polls the authoritative descriptor scan.
+    changeStampStore: undefined
   };
 }
 
@@ -78,30 +79,66 @@ export function spotNodeAutoConnectCapability(
     meshName: spotNodeName,
     role: ZLinkLocationRole.Router,
     nodeRid: String(status.routingId),
-    endpoint
+    endpoint,
+    objectRole: spotNode.objectRole ?? 'none',
+    hasRouteMeshServerChannel: Object.keys(spotNode.meshChannels ?? {}).length > 0
   };
   return {
     local,
-    localRow: {
-      autoConnectType: local.autoConnectType,
-      meshName: local.meshName,
-      nodeRid: local.nodeRid,
-      role: local.role,
-      endpoint,
-      weight: 100,
-      draining: false,
-      value: 0n,
-      capabilities: Object.keys(spotNode.actorFactories ?? {})
-        .map((actorType) => `actor:${actorType}`)
-        .sort(),
-      ownerId: '',
-      generation: 0n,
-      updatedAt: new Date(0)
-    },
     executor: new ZLinkSpotNodeAutoConnectExecutor(
       node,
       hasManualRouterConnections(spotNode)
     )
+  };
+}
+
+function meshDescriptorPeerResolver(
+  runtime: ZLinkLocationRuntime
+): ZLinkPeerLocationResolver {
+  return {
+    async listLivePeers(
+      filter: ZLinkPeerLocationFilter,
+      signal?: AbortSignal
+    ): Promise<readonly ZLinkPeerLocation[]> {
+      if (
+        filter.meshName === undefined
+        || (
+          filter.autoConnectType !== undefined
+          && filter.autoConnectType !== ZLinkLocationAutoConnectType.RouteMesh
+        )
+        || (
+          filter.role !== undefined
+          && filter.role !== ZLinkLocationRole.Router
+        )
+      ) {
+        return [];
+      }
+      const descriptors = await runtime.listLiveMeshNodes(filter.meshName, signal);
+      return descriptors
+        .map((descriptor): ZLinkPeerLocation => ({
+          autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
+          meshName: descriptor.meshName,
+          nodeRid: descriptor.rid,
+          role: ZLinkLocationRole.Router,
+          endpoint: descriptor.endpoint,
+          weight: 100,
+          draining: descriptor.state !== ZLinkFrameworkRuntimeState.Serving,
+          value: descriptor.descriptorRevision,
+          ownerId: descriptor.ownerId,
+          generation: descriptor.lifecycleGeneration,
+          updatedAt: descriptor.updatedAt,
+          metadata: {
+            objectRole: descriptor.objectRole,
+            hasRouteMeshServerChannel:
+              String(Object.keys(descriptor.channelWeights).length > 0),
+            descriptorRevision: descriptor.descriptorRevision.toString()
+          }
+        }))
+        .filter(peer =>
+          (filter.nodeRid === undefined || String(peer.nodeRid) === String(filter.nodeRid))
+          && (filter.endpoint === undefined || peer.endpoint === filter.endpoint)
+        );
+    }
   };
 }
 
@@ -140,6 +177,19 @@ class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
       (target.nodeRid === undefined || String(peer.routingId) === String(target.nodeRid)) &&
       peer.lifecycleGeneration === target.lifecycleGeneration &&
       peer.state === 3);
+  }
+
+  replaceNotRequired(targets: readonly ZLinkAutoConnectTarget[]): void {
+    this.node.replaceDiscoveredNotRequiredPeers?.(targets
+      .filter((target): target is ZLinkAutoConnectTarget & {
+        readonly nodeRid: NonNullable<ZLinkAutoConnectTarget['nodeRid']>;
+      } => target.nodeRid !== undefined)
+      .map(target => ({
+        nodeRoutingId: String(target.nodeRid),
+        lifecycleGeneration: target.lifecycleGeneration,
+        descriptorRevision: target.descriptorRevision ?? 1n,
+        endpoint: target.endpoint
+      })));
   }
 
   private connectPeer(target: ZLinkAutoConnectTarget): void {

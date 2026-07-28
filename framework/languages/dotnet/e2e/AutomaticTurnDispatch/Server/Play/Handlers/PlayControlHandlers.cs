@@ -45,9 +45,7 @@ internal sealed class BindAwaitActorsControlHandler(
     }
 }
 
-internal sealed class EnsureSpotControlHandler(
-    IZLinkSpotManager spots,
-    NodeOptions node)
+internal sealed class EnsureSpotControlHandler(IZLinkSpotManager spots)
     : IZLinkRouteRequestHandler<EnsureSpotReq, EnsureSpotRes>
 {
     public async ValueTask<EnsureSpotRes> HandleAsync(
@@ -56,9 +54,13 @@ internal sealed class EnsureSpotControlHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        await spots.GetOrCreate(request.SpotRid, AutomaticTurnDispatchNames.SpotType)
+        var result = await spots.GetOrCreate(
+                request.SpotRid,
+                AutomaticTurnDispatchNames.SpotType)
             .Async(cancellationToken);
-        return new EnsureSpotRes(request.SpotRid, node.Rid);
+        return new EnsureSpotRes(
+            result.Spot.SpotId,
+            result.Spot.NodeRid.ToString());
     }
 }
 

@@ -126,15 +126,10 @@ public interface IZLinkFrameworkOptions
     IZLinkClientServerChannelRoleBuilder AddClientServerChannel(string channelName);
 
     /// <summary>
-    /// Registers one physical location store instance for every store role,
-    /// the way codecs register serializer instances. The instance may
-    /// additionally implement the optional change stamp and watch contracts;
-    /// they are picked up automatically. The official Redis store is the
-    /// production default; the single-process in-memory store is test-only
-    /// (registered via the internal test helper, spec 05-route-mesh §7 / gap
-    /// 90 §12.33). Hosts that use auto discovery, distributed Spot/Actor
-    /// addressing, or Actor transfer must register a store or host startup
-    /// fails fast.
+    /// Registers the opaque location store used by Framework records that
+    /// require atomic conditional publication. Provider-specific watch,
+    /// change-stamp, schema, and key-layout capabilities are not part of this
+    /// public contract.
     /// </summary>
     void AddLocationStore(LocationProvider.IZLinkLocationStore store);
 

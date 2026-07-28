@@ -2,6 +2,85 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkActorHandoffIngress
 {
+    internal static bool TryCaptureOrFollowStaleManagedIngress(
+        ZLinkFrameworkRuntime runtime,
+        IReadOnlyList<ZLinkBackendActorPart> parts)
+    {
+        if (parts.Count == 0)
+            return false;
+        var headerPart = parts[0];
+        var state = runtime.GetOrCreateActorState(headerPart.Actor.ActorId);
+        if (!state.Handoff.CapturesSourceIngress
+            && !ZLinkActorMessageFollowDispatcher.CanFollow(
+                state,
+                headerPart.Actor,
+                headerPart.RouteContext))
+            return false;
+
+        var index = 1;
+        if (!ZLinkSpotActorFrameReader.TryRead(
+                parts,
+                ref index,
+                headerPart,
+                out var frame))
+            return true;
+        var frameTransferred = false;
+        try
+        {
+            var capture = state.Handoff.TryCapture(
+                frame,
+                () => ZLinkActorInboundPipeline.EnsureRelocationReplyRoute(
+                    runtime,
+                    frame));
+            if (capture == ZLinkActorHandoffCaptureResult.Captured)
+                return true;
+
+            try
+            {
+                if (ZLinkActorMessageFollowDispatcher.TryFollow(
+                        runtime,
+                        state,
+                        frame.Actor,
+                        frame.SourceNodeRid,
+                        frame.SourceSessionRid,
+                        frame.RequestId,
+                        frame.Flags,
+                        frame.RouteContext,
+                        frame.Header,
+                        frame.Body,
+                        frame.SourceNodeGeneration,
+                        frame.RequestSource,
+                        frame.DirectReply,
+                        frame.ApplicationMetadata))
+                    return true;
+            }
+            catch (ZLinkFrameworkException exception)
+                when (exception.Kind == ZLinkFrameworkErrorKind.Unavailable)
+            {
+                // The regular inbound pipeline returns the typed moving/stale
+                // terminal after a capture-to-follow transition race.
+            }
+
+            var owned = new ZLinkSpotActorFrameBatch([frame]);
+            frameTransferred = true;
+            if (!runtime.TryRunDetached(
+                    "actor-stale-managed-ingress",
+                    cancellationToken => new ZLinkActorInboundPipeline(
+                            runtime,
+                            new ZLinkEntrySpotActorInboundEndpoint(runtime))
+                        .DispatchAsync(owned, cancellationToken)))
+                owned.Dispose();
+            return true;
+        }
+        finally
+        {
+            if (!frameTransferred)
+                frame.Dispose();
+            for (; index < parts.Count; index++)
+                parts[index].Message.Dispose();
+        }
+    }
+
     public static ZLinkSpotActorFrameBatch CaptureMovingFrames(
         ZLinkFrameworkRuntime runtime,
         IReadOnlyList<ZLinkBackendActorPart> parts)
@@ -33,14 +112,15 @@ internal static class ZLinkActorHandoffIngress
                             frame.Body,
                             frame.SourceNodeGeneration,
                             frame.RequestSource,
-                            frame.DirectReply))
+                            frame.DirectReply,
+                            frame.ApplicationMetadata))
                     {
                         frame.Dispose();
                         continue;
                     }
                 }
                 catch (ZLinkFrameworkException exception)
-                    when (exception.Kind == ZLinkFrameworkErrorKind.ActorLocationStale)
+                    when (exception.Kind == ZLinkFrameworkErrorKind.Unavailable)
                 {
                     // The async dispatcher owns stale request replies.
                 }

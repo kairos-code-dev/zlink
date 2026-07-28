@@ -6,7 +6,6 @@ using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Eventing;
 
 namespace RuntimeMonitoring.Server.Service.Support;
 
@@ -23,15 +22,12 @@ internal sealed class ChannelMonitoringRoleHost
         _builder.Configuration.AddInMemoryCollection();
         _builder.WebHost.UseUrls(_options.HttpUrl);
         _builder.Services.AddSingleton(new EvidenceStore(_options.EvidenceFile, _options.Rid));
-        _builder.Services.AddSingleton<LocationTopologyTransitionTracker>();
-        _builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEventRecorder>();
-        _builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>, LocationRuntimeEventRecorder>();
         _builder.Services.AddZLinkFramework(framework =>
         {
             var mesh = framework.AddRouteMesh(RuntimeMonitoringNames.Channel)
                 .Listen(Require(_options.ChannelEndpoint, "ChannelEndpoint"))
                 .SetRoutingId(RoutingId.From(_options.Rid));
-            mesh.ChannelName(RuntimeMonitoringNames.Channel)
+            mesh.Channel(RuntimeMonitoringNames.Channel).Server()
                 .AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
             mesh.PeerConnections.Connect(Require(_options.ChannelEndpoint, "ChannelEndpoint"));
             _builder.Services.AddSingleton(mesh.PeerConnections);
@@ -41,20 +37,6 @@ internal sealed class ChannelMonitoringRoleHost
     public static ChannelMonitoringRoleHost Create(string[] args, string defaultRole)
     {
         return new ChannelMonitoringRoleHost(args, defaultRole);
-    }
-
-    public void AddSocketEventHandler<THandler>()
-        where THandler : class, IZLinkRuntimeEventHandler<ZLinkSocketEvent>
-    {
-        _builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, THandler>();
-    }
-
-    public void ConfigureMonitoring(params ZLinkSocketEventKind[] socketEvents)
-    {
-        _builder.Services.AddZLinkMonitoring(monitor =>
-        {
-            monitor.AddMeshNodeEvents(RuntimeMonitoringNames.Channel);
-        });
     }
 
     public WebApplication Build()
@@ -87,7 +69,7 @@ internal sealed class ChannelMonitoringRoleHost
             IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            var response = await channel.RequestToChannel(RuntimeMonitoringNames.Channel, RuntimeMonitoringNames.Channel, request)
+            var response = await channel.RequestToChannel(RuntimeMonitoringNames.Channel, request)
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async<ProfileRes>(cancellationToken);
             return Results.Ok(response);

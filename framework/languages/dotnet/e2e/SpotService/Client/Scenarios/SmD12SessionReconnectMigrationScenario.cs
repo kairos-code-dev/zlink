@@ -13,7 +13,7 @@ internal static class SmD12SessionReconnectMigrationScenario
 
         await using var first = CreateConnector(sessionAStreamEndpoint);
         await first.Connect.Async();
-        await first.Request(new AuthReq(actorId, "api transfer", "play-a"))
+        await first.Request(new AuthReq(actorId, "api transfer"))
             .PacketName("AuthReq").Async<AuthRes>();
 
         var firstReply = await first.Request(new ActorPingReq("before-transfer"))
@@ -26,7 +26,7 @@ internal static class SmD12SessionReconnectMigrationScenario
 
         await using var second = CreateConnector(sessionBStreamEndpoint);
         await second.Connect.Async();
-        await second.Request(new AuthReq(actorId, "api transfer", "play-a"))
+        await second.Request(new AuthReq(actorId, "api transfer"))
             .PacketName("AuthReq").Async<AuthRes>();
 
         var snapshot = await second.Request(new SnapshotReq(actorId))

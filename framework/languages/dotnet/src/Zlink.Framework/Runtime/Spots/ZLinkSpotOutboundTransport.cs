@@ -87,6 +87,41 @@ internal sealed class ZLinkSpotOutboundTransport(
             cancellationToken);
     }
 
+    internal ValueTask<ZLinkOneWaySubmitResult> SendMessageFollowToSpotAsync(
+        RoutingId targetNodeRid,
+        string targetSpotId,
+        ulong targetSpotGeneration,
+        MeshOperationId operationId,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
+        byte messageFollowHopCount,
+        IReadOnlyList<Message> parts,
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        return _submitter.SubmitAsync(
+            parts,
+            pending => ZLinkSubmitFailureMapper.AcceptOrThrow(
+                nativeSpot is IZLinkBackendSpotMessageFollower relay
+                    ? relay.MessageFollowSendToSpot(
+                        targetNodeRid,
+                        targetSpotId,
+                        targetSpotGeneration,
+                        operationId,
+                        targetNodeGeneration,
+                        authorityOwnerGeneration,
+                        ownerLeaseGeneration,
+                        messageFollowHopCount,
+                        pending,
+                        SendFlags.DontWait,
+                        metadata)
+                    : throw new InvalidOperationException(
+                        "The Spot backend does not support Message Follow."),
+                $"Message Follow to SPOT '{targetSpotId}' on node '{targetNodeRid}'"),
+            cancellationToken);
+    }
+
     private void ObserveSpotAuthority(
         RoutingId targetNodeRid,
         string targetSpotId,
@@ -168,7 +203,8 @@ internal sealed class ZLinkSpotOutboundTransport(
                 timeout,
                 metadata),
             cancellationToken,
-            ZLinkMessageParts.DisposeAll);
+            ZLinkMessageParts.DisposeAll,
+            timeout);
     }
 
     public ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
@@ -214,7 +250,8 @@ internal sealed class ZLinkSpotOutboundTransport(
                 timeout,
                 metadata),
             cancellationToken,
-            ZLinkMessageParts.DisposeAll);
+            ZLinkMessageParts.DisposeAll,
+            timeout);
     }
 
 }

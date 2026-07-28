@@ -14,6 +14,8 @@ export interface ZLinkAutoConnectLocal {
   readonly role: ZLinkLocationRole;
   readonly nodeRid?: RoutingId;
   readonly endpoint: string;
+  readonly objectRole?: 'none' | 'client' | 'server';
+  readonly hasRouteMeshServerChannel?: boolean;
 }
 
 export interface ZLinkAutoConnectTarget {
@@ -24,6 +26,7 @@ export interface ZLinkAutoConnectTarget {
   readonly endpoint: string;
   readonly metadata?: Readonly<Record<string, string>>;
   readonly ownerId?: string;
+  readonly descriptorRevision?: bigint;
 }
 
 export interface IZLinkAutoConnectExecutor {
@@ -31,6 +34,7 @@ export interface IZLinkAutoConnectExecutor {
   disconnect(target: ZLinkAutoConnectTarget): void;
   isDisconnected?(target: ZLinkAutoConnectTarget): boolean;
   onDisconnected?(handler: (endpoint: string) => void): void;
+  replaceNotRequired?(targets: readonly ZLinkAutoConnectTarget[]): void;
 }
 
 export interface IZLinkAutoConnectPeerPublisher {

@@ -15,6 +15,8 @@ export interface ZLinkActorAuthorityIdentity {
   readonly meshName: string;
   readonly ownerNodeGeneration: bigint;
   readonly owner: ZLinkLocationOwnerToken;
+  readonly spotId?: string;
+  readonly spotGeneration?: bigint;
 }
 
 /**
@@ -120,7 +122,9 @@ export function encodeActorAuthorityIdentity(
     meshName: identity.meshName,
     ownerNodeGeneration: identity.ownerNodeGeneration.toString(),
     ownerId: identity.owner.ownerId,
-    ownerLeaseGeneration: identity.owner.leaseGeneration.toString()
+    ownerLeaseGeneration: identity.owner.leaseGeneration.toString(),
+    spotId: identity.spotId,
+    spotGeneration: identity.spotGeneration?.toString()
   }), 'utf8');
 }
 
@@ -130,6 +134,19 @@ export function decodeActorAuthorityIdentity(
   let value: Record<string, unknown>;
   try {
     value = JSON.parse(Buffer.from(payload).toString('utf8')) as Record<string, unknown>;
+    for (let depth = 0; depth < 4; depth += 1) {
+      const nested = (
+        (value.magic === 'ZLAP' || value.magic === 'ZLAR')
+        && value.version === 1
+        && typeof value.base === 'string'
+      )
+        ? value.base
+        : typeof value.applicationPayload === 'string'
+          ? value.applicationPayload
+          : undefined;
+      if (nested === undefined) break;
+      value = JSON.parse(Buffer.from(nested, 'base64').toString('utf8')) as Record<string, unknown>;
+    }
   } catch {
     return undefined;
   }
@@ -170,8 +187,49 @@ export function decodeActorAuthorityIdentity(
     owner: {
       ownerId: value.ownerId,
       leaseGeneration: ownerLeaseGeneration
-    }
+    },
+    spotId: typeof value.spotId === 'string' ? value.spotId : undefined,
+    spotGeneration: typeof value.spotGeneration === 'string'
+      ? BigInt(value.spotGeneration)
+      : undefined
   };
+}
+
+export function rewriteActorAuthorityRoute(
+  payload: Uint8Array,
+  actor: ActorRef,
+  spotId: string,
+  spotGeneration: bigint | undefined
+): Buffer {
+  const rewrite = (encoded: Buffer, depth: number): Buffer => {
+    if (depth > 4) throw new Error('Actor authority payload nesting exceeds the supported bound.');
+    const value = JSON.parse(encoded.toString('utf8')) as Record<string, unknown>;
+    const nestedKey = (
+      (value.magic === 'ZLAP' || value.magic === 'ZLAR')
+      && value.version === 1
+      && typeof value.base === 'string'
+    )
+      ? 'base'
+      : typeof value.applicationPayload === 'string'
+        ? 'applicationPayload'
+        : undefined;
+    if (nestedKey !== undefined) {
+      value[nestedKey] = rewrite(
+        Buffer.from(value[nestedKey] as string, 'base64'),
+        depth + 1
+      ).toString('base64');
+      return Buffer.from(JSON.stringify(value));
+    }
+    if (value.version !== ACTOR_AUTHORITY_VERSION || value.actorId !== actor.actorId) {
+      throw new Error(`Actor '${actor.actorId}' authority identity is invalid.`);
+    }
+    value.actorNodeRid = String(actor.nodeRid);
+    value.actorGeneration = actor.objectGeneration.toString();
+    value.spotId = spotId;
+    value.spotGeneration = spotGeneration?.toString();
+    return Buffer.from(JSON.stringify(value));
+  };
+  return rewrite(Buffer.from(payload), 0);
 }
 
 function requireActorAuthority(

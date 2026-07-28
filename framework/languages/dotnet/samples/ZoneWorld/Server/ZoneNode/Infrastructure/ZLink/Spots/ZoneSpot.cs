@@ -14,9 +14,9 @@ using ZoneWorld.Shared.Contracts;
 namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Spots;
 
 /// <summary>
-/// One geographic zone. Its spotRid is the ZoneId, so entering a zone means joining the
+/// One geographic zone. Its SpotId is the ZoneId, so entering a zone means joining the
 /// spot named after it — and when that spot lives on another node, the join is what
-/// transfers the actor (§2.6). Nothing else moves a player between zones.
+/// relocates the actor (§2.6). Nothing else moves a player between zones.
 ///
 /// The spot keeps a copy of each resident's position for rendering and border sync. The
 /// authority is the player actor (§2.1); this copy never overrules it.
@@ -26,12 +26,9 @@ public sealed class ZoneSpot(
     NodeMaintenancePolicy maintenance,
     NodePlayerCensus census,
     IZLinkActorClient actors,
-    IZLinkActorManager directory,
     ILogger<ZoneSpot> logger) : IZLinkSpot<PlayerActor>
 {
     private readonly ZoneState _state = new(context.SpotId);
-    private readonly Dictionary<string, PlayerActor> _residents = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, ActorRef> _botRefs = new(StringComparer.Ordinal);
     private readonly Dictionary<string, EnterZoneMsg> _pendingJoins = new(StringComparer.Ordinal);
     private readonly HashSet<string> _observedBorderSources = new(StringComparer.Ordinal);
     private IZLinkTimer? _tick;
@@ -45,7 +42,7 @@ public sealed class ZoneSpot(
 
     public void Configure()
     {
-        // Startup validation has no concrete SpotRid. Registering one representative topic
+        // Startup validation has no concrete SpotId. Registering one representative topic
         // lets it validate the handler type; each real spot then registers only its own
         // incoming edge topics.
         if (string.IsNullOrEmpty(Context.SpotId))
@@ -125,19 +122,20 @@ public sealed class ZoneSpot(
         if (!_pendingJoins.Remove(actor.ActorId, out var enter)) return;
 
         actor.Restore(enter.X, enter.Y, ZoneId, enter.IsBot, actor.DirX, actor.DirY);
-        _residents[enter.PlayerId] = actor;
         _state.Enter(enter.PlayerId, enter.X, enter.Y, enter.IsBot);
         census.Record(ZoneId, _state.PlayerCount);
 
         // A brand-new entry learns its zone from JoinWorldRes, so only a zone *change*
-        // is announced here. For a remote transfer the framework invokes this callback only
+        // is announced here. For a remote relocation the framework invokes this callback only
         // after the handoff commits, making the notification a safe boundary for the client's
         // next command.
         if (!enter.IsBot && !enter.InitialEntry)
-            await actor.Context.BoundSession
-                .Send(new ZoneChangedNotify(
-                    enter.PlayerId,
-                    ZoneId))
+            await actors
+                .SendToActor(
+                    actor.ActorId,
+                    new DeliverZoneChangedMsg(
+                        enter.PlayerId,
+                        ZoneId))
                 .Async(cancellationToken);
 
         logger.LogInformation(
@@ -173,8 +171,6 @@ public sealed class ZoneSpot(
     internal void Remove(string playerId)
     {
         _state.Leave(playerId);
-        _residents.Remove(playerId);
-        _botRefs.Remove(playerId);
         census.Record(ZoneId, _state.PlayerCount);
     }
 
@@ -189,7 +185,6 @@ public sealed class ZoneSpot(
     internal JoinWorldRes Rejoin(PlayerActor actor)
     {
         var position = actor.Position;
-        _residents[actor.ActorId] = actor;
         _state.Enter(actor.ActorId, position.X, position.Y, actor.IsBot);
         census.Record(ZoneId, _state.PlayerCount);
 
@@ -215,7 +210,13 @@ public sealed class ZoneSpot(
     {
         var output = ZoneTickUseCase.Advance(_state);
 
-        await PushToClientsAsync(output.PushTargets, output.Notify, cancellationToken);
+        await PushToClientsAsync(
+            output.PushTargets,
+            new DeliverZoneStateMsg(
+                output.Notify.ZoneId,
+                output.Notify.Tick,
+                output.Notify.Players),
+            cancellationToken);
 
         foreach (var borderEvent in output.BorderEvents)
         {
@@ -233,17 +234,15 @@ public sealed class ZoneSpot(
     /// Drives this zone's bots (§2.7). A bot moves down the same path a human does, and
     /// that path can end in a JoinSpot, which only an actor handler turn may start — so
     /// the bot is driven by a request addressed to it rather than by calling into it here.
-    /// Waiting for each result applies backpressure at the periodic producer: if a transfer
+    /// Waiting for each result applies backpressure at the periodic producer: if a relocation
     /// is pending, later timer periods are skipped instead of accumulating stale move steps.
     /// </summary>
     internal async ValueTask BotTickAsync(CancellationToken cancellationToken)
     {
         foreach (var playerId in ZoneTickUseCase.Bots(_state))
         {
-            var actorRef = await ResolveBotAsync(playerId, cancellationToken);
-            if (actorRef is null) continue;
             _ = await actors
-                .RequestToActor(actorRef.Value.ActorId, new BotTickReq())
+                .RequestToActor(playerId, new BotTickReq())
                 .Yield<BotTickRes>(cancellationToken);
         }
     }
@@ -262,14 +261,14 @@ public sealed class ZoneSpot(
 
         await PushToClientsAsync(
             ZoneTickUseCase.Humans(_state),
-            new WorldAnnounceNotify(announce.AnnouncementId, announce.Text),
+            new DeliverWorldAnnounceMsg(announce.AnnouncementId, announce.Text),
             cancellationToken);
     }
 
     /// <summary>
-    /// Pushes through the resident's own bound session. Bots never appear in
-    /// <paramref name="playerIds"/>: they have no bound session, so a push addressed to
-    /// one would be a message with nowhere to go (ZW-F3).
+    /// Sends to each global ActorId. The Actor handler uses that Actor's current
+    /// bound session. Bots never appear in <paramref name="playerIds"/> because they
+    /// have no client session (ZW-F3).
     /// </summary>
     private async ValueTask PushToClientsAsync<TMessage>(
         IReadOnlyList<string> playerIds,
@@ -278,43 +277,23 @@ public sealed class ZoneSpot(
     {
         foreach (var playerId in playerIds)
         {
-            if (!_residents.TryGetValue(playerId, out var actor)) continue;
-
             try
             {
-                await actor.Context.BoundSession.Send(message).Async(cancellationToken);
+                // PlayerId is the global ActorId. Resolve the current owner for every
+                // delivery instead of retaining an Actor instance from a lifecycle callback.
+                await actors.SendToActor(playerId, message).Async(cancellationToken);
             }
             catch (Exception error)
             {
-                // A player whose client went away is still in the world — the actor keeps
-                // its coordinate so the same PlayerId can come back to it (§2.4). What it
-                // no longer has is somewhere to push to. That must not cost the other
-                // players their tick, so the failure stops here rather than unwinding the
-                // whole push loop and killing the timer with it.
+                // One unavailable Actor route must not prevent delivery to the other
+                // players or terminate the periodic Spot timer.
                 logger.LogWarning(
                     error,
-                    "push skipped, no session. zone={ZoneId}, player={PlayerId}",
+                    "actor delivery skipped. zone={ZoneId}, player={PlayerId}",
                     ZoneId,
                     playerId);
             }
         }
-    }
-
-    /// <summary>
-    /// A bot's ActorRef, read from the actor directory rather than carried in the join
-    /// payload: that payload is built on the node the bot is leaving, so a ref inside it
-    /// would name the wrong node the moment the transfer lands (§8.3). The lookup happens
-    /// on the bot tick, by which point the location row for the arrival is committed.
-    /// </summary>
-    private async ValueTask<ActorRef?> ResolveBotAsync(string playerId, CancellationToken cancellationToken)
-    {
-        if (_botRefs.TryGetValue(playerId, out var cached)) return cached;
-
-        var resolved = await directory.FindAsync(playerId, cancellationToken);
-        if (resolved is null) return null;
-
-        _botRefs[playerId] = resolved.Value;
-        return resolved;
     }
 
 }

@@ -55,11 +55,18 @@ internal static class PsA3LateSubscriberScenario
                 "PS-A3 expected late subscriber to become healthy.");
             connectionGate.Unblock();
             await connectionGate.WaitForUpstreamConnectionAsync();
-            await SubscriberObservation.WaitForConnectionAsync(lateSubscriberClient);
+            var readyRun = $"ready-{Guid.NewGuid():N}";
+            await publisher.Post("/publish/event")
+                .Query("topic", PubSubNames.MainTopic)
+                .Query("runId", readyRun)
+                .Query("sequence", "0")
+                .Query("value", "late-subscriber-ready")
+                .AsyncRaw();
+            await SubscriberObservation.WaitForEventAsync(lateSubscriberClient, readyRun, 0);
 
             var afterLateRun = Guid.NewGuid().ToString("N");
 
-            // Socket readiness proves the late subscriber has joined before this measured publish.
+            // Probe delivery proves the late subscriber joined before this measured publish.
             await publisher.Post("/publish/event")
                 .Query("topic", PubSubNames.MainTopic)
                 .Query("runId", afterLateRun)

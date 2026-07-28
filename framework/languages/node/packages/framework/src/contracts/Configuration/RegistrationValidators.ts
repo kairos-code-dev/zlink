@@ -305,6 +305,17 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
     validateSpotNodeFactories(spotNodeName, spotNode);
     validateSpotNodeTimers(spotNode);
     if (
+      spotNode.objectRole === 'client'
+      && (
+        (spotNode.routeSendHandlers?.length ?? 0) > 0
+        || (spotNode.routeRequestHandlers?.length ?? 0) > 0
+      )
+    ) {
+      throw new ZLinkConfigurationException(
+        `Object Client RouteMesh '${spotNodeName}' cannot register Node-direct handlers.`
+      );
+    }
+    if (
       spotNode.router?.routingId !== undefined &&
       spotNode.pubSub?.routingId !== undefined &&
       spotNode.router.routingId !== spotNode.pubSub.routingId

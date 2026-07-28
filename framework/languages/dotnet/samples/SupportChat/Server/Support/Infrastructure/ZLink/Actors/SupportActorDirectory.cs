@@ -1,10 +1,7 @@
-using Systems.Zlink;
-
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 
 internal sealed record SupportActorDirectoryEntry(
     SupportUserActor Actor,
-    ActorRef Ref,
     string DisplayName,
     string Role);
 
@@ -12,11 +9,10 @@ internal sealed class SupportActorDirectory
 {
     private readonly Dictionary<string, SupportActorDirectoryEntry> _actors = new(StringComparer.Ordinal);
 
-    public void AddOrUpdate(SupportUserActor actor, ActorRef actorRef)
+    public void AddOrUpdate(SupportUserActor actor)
     {
         _actors[actor.ActorId] = new SupportActorDirectoryEntry(
             actor,
-            actorRef,
             actor.DisplayName,
             actor.Role);
     }

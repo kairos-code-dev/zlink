@@ -1,5 +1,8 @@
 import type { ZLinkBackendActorRef } from '../backend/contracts';
-import type { ZLinkRemoteBoundSessionTarget } from '../actors';
+import {
+  decodeActorMessageFollowContext,
+  type ZLinkRemoteBoundSessionTarget
+} from '../actors';
 import type { RoutingId, ZLinkActor } from '../../contracts';
 import type { ZLinkActorHandoffPacket } from '../actors/actor-handoff';
 import type { Message } from '../../contracts/Common/Message';
@@ -161,19 +164,21 @@ export function decodeHandoffBacklog(value: unknown): readonly ZLinkActorHandoff
       throw new Error('Remote actor handoff backlog is not a contiguous packet sequence.');
     }
     const packet = entry as ZLinkActorHandoffPacket;
+    const messageFollowContext = decodeActorMessageFollowContext(
+      packet.messageFollowContext
+    );
     const source = packet.source;
-    if (typeof packet.operationId !== 'string' || packet.operationId.length === 0
-      || !Number.isSafeInteger(packet.messageFollowHopCount)
-      || packet.messageFollowHopCount < 0 || packet.messageFollowHopCount > 8
+    if (messageFollowContext === undefined
       || (packet.returnResponse && (
         source === undefined || source.ownerId.length === 0
         || BigInt(source.ownerLeaseGeneration) <= 0n || source.nodeRid.length === 0
-        || BigInt(source.nodeGeneration) <= 0n || BigInt(source.replyRouteId) <= 0n
+        || BigInt(source.nodeGeneration) <= 0n
+        || source.replyRouteId !== messageFollowContext.replyRouteId
       ))
       || (!packet.returnResponse && source !== undefined)) {
       throw new Error('Remote actor handoff request source fence is invalid.');
     }
-    return packet;
+    return { ...packet, messageFollowContext };
   });
 }
 

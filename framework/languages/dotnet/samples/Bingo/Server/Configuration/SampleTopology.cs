@@ -9,6 +9,17 @@ public static class SampleConfigurationLoader
         var settings = Load(args);
         settings.ValidateCommon();
         return settings.ToRuntime(new SampleApiNode(
+            settings.Require(nameof(settings.MeshEndpoint), settings.MeshEndpoint),
+            settings.Require(
+                nameof(settings.MatchmakingMeshEndpoint),
+                settings.MatchmakingMeshEndpoint)));
+    }
+
+    public static SampleRuntimeConfiguration<SampleMatchmakingNode> LoadMatchmaking(string[] args)
+    {
+        var settings = Load(args);
+        settings.ValidateCommon(allowSingleNodeName: true);
+        return settings.ToRuntime(new SampleMatchmakingNode(
             settings.Require(nameof(settings.MeshEndpoint), settings.MeshEndpoint)));
     }
 
@@ -57,15 +68,16 @@ public sealed class SampleConfiguration
     public string RedisEndpoint { get; init; } = "";
     public string RedisKeyPrefix { get; init; } = "";
     public string MeshEndpoint { get; init; } = "";
+    public string MatchmakingMeshEndpoint { get; init; } = "";
     public string StreamEndpoint { get; init; } = "";
 
-    public void ValidateCommon()
+    public void ValidateCommon(bool allowSingleNodeName = false)
     {
         Require(nameof(NodeName), NodeName);
         Require(nameof(LogDirectory), LogDirectory);
         Require(nameof(RedisEndpoint), RedisEndpoint);
         Require(nameof(RedisKeyPrefix), RedisKeyPrefix);
-        if (NodeName is not ("a" or "b"))
+        if (!allowSingleNodeName && NodeName is not ("a" or "b"))
             throw new InvalidOperationException("Bingo Sample.NodeName must be 'a' or 'b'.");
     }
 
@@ -87,7 +99,11 @@ public sealed class SampleConfiguration
     }
 }
 
-public sealed record SampleApiNode(string MeshEndpoint);
+public sealed record SampleApiNode(
+    string PlayMeshEndpoint,
+    string MatchmakingMeshEndpoint);
+
+public sealed record SampleMatchmakingNode(string MeshEndpoint);
 
 public sealed record SamplePlayNode(string MeshEndpoint);
 

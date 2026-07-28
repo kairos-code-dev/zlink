@@ -6,6 +6,13 @@ Kotlin은 Java의 RouteMesh, ClientServer, automatic fanout과 host runtime snap
 사용한다. `Flow` projection은 Java publisher를 coroutine cancellation에 연결할 뿐 별도 state 또는 event value를
 정의하지 않는다.
 
+RouteMesh peer는 Java `ZLinkPeerState`를 그대로 사용한다. `NOT_CONNECTED`는 연결이
+필요하지만 ready connection이 없는 상태이고, `NOT_REQUIRED`는 두 Object Client 모두 RouteMesh
+Channel Server membership이 없어 연결이 필요하지 않은 정상 상태다. Channel Client membership만
+등록한 경우도 같다. 어느 한쪽에라도 weight `0`을 포함한 Channel Server membership이 있으면 연결
+부재를 `NOT_CONNECTED`로 표시한다. 두 상태를 Kotlin 전용 boolean이나 문자열로 합치지 않는다.
+`NOT_REQUIRED`는 ready peer 수, liveness·health failure 집계에서 제외한다.
+
 Topology runtime은 Java `ZLinkFrameworkRuntime`의 `routeMeshRuntime()`, `clientServerRuntime()`과
 `fanoutRuntime()`을 그대로 사용한다. Kotlin wrapper accessor를 추가하지 않으며 Spring에서 주입받은 topology
 bean은 해당 Java accessor의 반환값과 reference identity가 같다.

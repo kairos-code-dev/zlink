@@ -1441,7 +1441,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                 descriptor.entry_spot_id = entry->second;
         }
         descriptor.channel_weights = node->channel_weights ();
-        descriptor.object_role = object_role_t::server;
+        descriptor.object_role = registration->object_role;
         descriptor.placement_weight =
           node->placement_weight ();
         descriptor.capacity.actors.limit =

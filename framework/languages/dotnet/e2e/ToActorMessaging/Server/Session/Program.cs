@@ -19,14 +19,12 @@ builder.WebHost.UseUrls(options.HttpUrl);
 builder.Services.AddSingleton(new SessionEvidence(options.EvidenceFile));
 builder.Services.AddZLinkFramework(framework =>
 {
-    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-        .SetConnectionString(options.RedisEndpoint)
-        .SetKeyPrefix(options.RedisKeyPrefix)));
+    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix; }));
     framework.AddHandlersFromAssemblyOf(typeof(Program));
     var mesh26 = framework.AddRouteMesh("to-actor")
         .Listen(options.RouterEndpoint)
         .SetRoutingId(RoutingId.From(options.Rid));
-    mesh26.ChannelName("to-actor");
+    mesh26.Channel("to-actor").Client();
     framework.AddStreamNode("to-actor-session")
         .Bind(options.StreamEndpoint)
         .EnableActorDispatch("to-actor")
@@ -108,7 +106,7 @@ internal sealed class BindActorHandler(
             $"actor-bound|session={context.SessionId}|actor={actor.ActorId}"
             + $"|node={actor.NodeRid}|generation={actor.Generation}");
         await context.Client.Reply(new BindActorReply(actor.ActorId, actor.NodeRid.ToString(), actor.Generation))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 }
 

@@ -193,3 +193,10 @@ red gate는 `logs/20260716-091218-3232864/`에서 기존 구현의 선기동 의
 - `SM-C6`: remote ROUTER backpressure를 만들고,
   blocking publish의 전체 대상 원자적 admission과 timeout, non-blocking submit의 즉시 backpressure
   결과를 검증해야 한다. 일부 대상 전달을 성공으로 처리하지 않아야 하며 현재 runner에는 이 증거가 없다.
+
+## 공통 scenario parity gap — 2026-07-29
+
+다음 공통 scenario에는 Java actual fixture와 runner selector가 없다.
+
+- `SM-A9`, `SM-A10`, `SM-A11`, `SM-A12`, `SM-A13`
+- `SM-B0`, `SM-B10`, `SM-B11`, `SM-G5`

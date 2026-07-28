@@ -1,6 +1,7 @@
 using Systems.Zlink;
 using AutomaticTurnDispatch.Shared;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 
@@ -62,19 +63,33 @@ internal sealed partial class AwaitSession
 
     private RoutingId ResolveControlNode(string targetPrefix)
     {
-        var peers = meshRuntime.Snapshot(AutomaticTurnDispatchNames.ControlChannel).Peers;
+        targetPrefix = ProcessPrefix(targetPrefix);
+        var peers = meshRuntime.GetStatus(AutomaticTurnDispatchNames.ControlChannel).Peers;
         foreach (var peer in peers)
         {
-            if (!peer.Ready)
+            if (peer.State != ZLinkPeerState.Ready)
                 continue;
-            var rid = peer.Rid.ToString();
+            var rid = peer.NodeRid.ToString();
             if (string.Equals(rid, targetPrefix, StringComparison.Ordinal)
                 || rid.StartsWith($"{targetPrefix}-", StringComparison.Ordinal))
-                return peer.Rid;
+                return peer.NodeRid;
         }
 
         throw new InvalidOperationException(
             $"Ready control MeshNode with prefix '{targetPrefix}' was not found.");
+    }
+
+    private static string ProcessPrefix(string routingId)
+    {
+        const int generatedSuffixLength = 37;
+        if (routingId.Length > generatedSuffixLength
+            && routingId[^generatedSuffixLength] == '-'
+            && Guid.TryParse(routingId.AsSpan(routingId.Length + 1 - generatedSuffixLength), out _))
+        {
+            return routingId[..^generatedSuffixLength];
+        }
+
+        return routingId;
     }
 
     private static void AssertOrder(string[] evidence, string requestFilter, string[] markers)

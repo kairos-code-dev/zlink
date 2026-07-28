@@ -98,8 +98,8 @@ lifecycle마다 발급한다. MeshNode와 Entry Spot은 같은 prefix를 사용�
 Descriptor가 MeshNode와 exact Entry Spot ID의 관계를 기록하며 application은 Spot ID 문자열을 parsing해 node
 관계를 추론하지 않는다. 같은 lifecycle에서는 RID를 유지하고 replacement lifecycle에서는 새 RID를
 발급한다. Global Spot ID authority가 충돌하면 새 UUID나 reservation을 만들지 않고 startup을 즉시
-`SpotIdConflict`로 끝낸다. 이 형식은 Framework 발급용으로 예약하므로 caller가 같은 형식의
-User·Instance Spot ID를 지정하면 Store와 factory를 실행하기 전에 `InvalidConfiguration`으로 거부한다.
+configuration error로 끝낸다. 이 형식은 Framework 발급용으로 예약하므로 caller가 같은 형식의
+User·Instance Spot ID를 지정하면 Store와 factory를 실행하기 전에 `InvalidOperation`으로 거부한다.
 
 세 종류의 기능, Actor membership, close와 relocation 차이는
 [Spot 모델](11-spot-model.ko.md)이 정의한다.
@@ -154,7 +154,7 @@ startup 등록 옵션이다.
 Callback은 언어별 Spot interface에 기본 no-op 구현으로 제공한다. Application은
 round나 match의 다음 단계를 callback에서 시작해야 할 때만 구현한다.
 `AnyTurnBoundary`, `PerActor`, Entry Spot과 Instance Spot에서 `Defer()`를 호출하면
-queue를 바꾸기 전에 `InvalidConfiguration`으로 실패한다.
+queue를 바꾸기 전에 `InvalidOperation`으로 실패한다.
 
 <a id="meshnode"></a>
 ### MeshNode
@@ -203,6 +203,12 @@ RouteMesh에 참여하여 message를 보내거나 받는 runtime node다. Object
   제공하지 않는다.
 - Object Server는 Client 기능을 포함하며 Spot factory, Entry Spot과 lifecycle을
   제공할 수 있다.
+
+Object Client는 object 기능에서만 outbound-only다. Spot·Actor factory와 application
+Node direct handler는 제공하지 않지만, 독립된 RouteMesh Channel Server는 같은
+MeshNode에 등록할 수 있다. 두 node가 모두 Object Client이고 양쪽 모두 RouteMesh
+Channel Server membership이 없을 때만 peer connection을 생략한다. 어느 한쪽에
+Server membership이 있으면 Channel weight가 `0`이어도 연결이 필요하다.
 
 | 항목 | 내용 |
 |---|---|
@@ -866,8 +872,8 @@ status나 result 값을 반환하지 않으며 target handler 실행이나 remot
 ### Backpressured
 
 송신 경로나 queue의 capacity가 일시적으로 부족한 내부 상태다. Public terminal result가 아니며 Framework는
-family별 send timeout까지 capacity를 기다린다. Logical Multicast transaction이 시작된 뒤 target별 capacity
-부족은 monitoring metric과 event에 기록한다.
+family별 send timeout까지 capacity를 기다린다. Logical Multicast를 시작한 뒤에는 target별
+capacity 부족을 public 결과나 publish 전용 monitoring으로 집계하지 않는다.
 
 <a id="timed-out"></a>
 ### DeadlineExceeded
@@ -884,18 +890,19 @@ Public submit status가 아니며 request handler가 application reply를 반환
 ### TargetNotFound
 
 조건에 맞는 logical target을 찾거나 새로 준비할 수 없을 때 operation family가 발생시키는 오류 범주다.
-Actor·Spot·Node·Channel은 각 계약의 기존 route-not-found·Mesh-not-found error kind를 사용한다.
+Public Framework error kind는 `NotFound`다.
 
 <a id="route-not-connected"></a>
 ### RouteNotConnected
 
-Logical target은 확인했지만 현재 사용할 수 있는 송신 경로가 없을 때 발생하는 Framework exception이다.
+Logical target은 확인했지만 현재 사용할 수 있는 송신 경로가 없을 때 발생하는 내부 transport
+상태다. Public Framework error kind는 `Unavailable`이다.
 
 <a id="shutdown"></a>
 ### Shutdown
 
 Runtime이 종료를 진행하고 있어 새로운 operation admission을 받을 수 없는 상태다. 새 one-way call은
-`RuntimeShutdown` exception으로 완료한다. Runtime termination reason과 outcome은 별도 lifecycle 결과가
+`ShuttingDown` exception으로 완료한다. Runtime termination reason과 outcome은 별도 lifecycle 결과가
 소유한다.
 
 ## 4. Channel과 Logical Multicast
@@ -1226,28 +1233,38 @@ selection은 후보 weight 합계를 최소 64-bit 정수로 계산한다. Logic
 <a id="full-mesh"></a>
 ### Full mesh
 
-같은 MeshName의 ready MeshNode가 서로 직접 연결되는 topology다. Node가 `N`개이면
-각 node가 관리하는 peer 연결은 최대 `N-1`개다.
+같은 MeshName에서 서로 message를 주고받아야 하는 MeshNode pair를 직접 연결하는
+topology다. Node가 `N`개이면 각 node가 관리하는 peer 연결은 최대 `N-1`개다.
+두 node가 모두 Object Client이고 양쪽 모두 RouteMesh Channel Server membership이
+없으면 연결하지 않으므로 실제 연결 수는 이 상한보다 작을 수 있다.
 
 | 항목 | 내용 |
 |---|---|
 | 형태 | RouteMesh connection topology |
 | .NET 표기 | `IZLinkMeshNodeBuilder.PeerConnections` 설정과 `ZLinkMeshNodeSnapshot.Peers`로 구성·관측한다. |
-| 공개 구성 | 같은 MeshName의 MeshNode와 각 node 사이의 direct peer connection 집합이다. |
+| 공개 구성 | 같은 MeshName의 MeshNode 가운데 연결이 필요한 pair의 direct peer connection 집합이다. 양쪽 모두 Object Client이고 RouteMesh Channel Server membership도 없는 pair만 제외한다. |
 | 수명 | MeshNode join·leave와 readiness에 따라 reconcile하며 각 connection은 독립 lifecycle을 가진다. |
 
 <a id="peer-admission"></a>
 ### Peer admission
 
-연결한 remote node의 MeshName, RID, lifecycle, descriptor와 security identity를
-검사하여 ready peer 연결로 받아들일지 결정하는 과정이다.
+연결한 remote node의 MeshName, RID, lifecycle, descriptor, object role과 security
+identity를 검사하여 ready peer 연결로 받아들일지 결정하는 과정이다. Manual
+connection에서 양쪽이 Object Client이고 RouteMesh Channel Server membership도
+없으면 connection이 필요하지 않다는 terminal admission 결과를 기록하고 ready 전에
+socket을 닫는다.
 
 | 항목 | 내용 |
 |---|---|
 | 형태 | Transport validation process |
-| .NET 표기 | 독립 public result type 없음. `ZLinkMeshPeerSnapshot.AdmissionState`, `Ready`, `LastFailure`로 관측한다. |
-| 공개 구성 | MeshName, RID, lifecycle generation, descriptor 조건, protocol capability와 security identity 검증으로 구성된다. |
-| 수명 | 새 connection마다 수행하며 reconnect는 이전 admission 결과를 재사용하지 않는다. |
+| .NET 표기 | 독립 public result type은 없다. Peer 상태는 `ZLinkPeerStatus.State`로 관측하며 연결 장애 `NotConnected`와 정상 생략 `NotRequired`를 구분한다. |
+| 공개 구성 | MeshName, RID, lifecycle generation, object role, descriptor 조건, protocol capability와 security identity 검증으로 구성된다. |
+| 수명 | 새 connection마다 수행한다. 같은 manual endpoint와 configuration generation에서 Server membership 없는 Object Client pair로 끝난 결과는 연결 설정이 바뀔 때까지 재시도하지 않는다. |
+
+`NotRequired`는 두 node가 모두 Object Client이고 양쪽 모두 RouteMesh Channel Server
+membership이 없어 connection이 필요하지 않다는 뜻이다. Public monitoring에는 이
+peer를 남기지만 ready·liveness·health failure 집계에서는 제외한다.
+`NotConnected`는 연결이 필요한데 ready connection이 없다는 뜻이며 장애 집계에 반영한다.
 
 <a id="lifecycle-generation"></a>
 ### Lifecycle generation
@@ -1294,6 +1311,7 @@ MeshNode descriptor에는 다음 정보가 들어간다.
 - Lifecycle generation과 descriptor revision
 - 실제로 연결할 advertised ROUTER endpoint
 - Server ChannelName set과 Channel별 weight
+- `None`, `Client`, `Server` 중 하나인 Object role
 - 연결 상대를 검증하는 security identity
 - Protocol version과 필수 capability
 - Object Server이면 같은 lifecycle에 발급한 exact Entry Spot ID
@@ -1343,10 +1361,10 @@ count 및 설정한 limit을 서로 구분한 projection이다. 일반 object �
 Descriptor 값은 후보를 빠르게 거르는 데만 사용하고, 실제 slot 확보 여부는 Location Store의 atomic
 reservation으로 확정한다.
 
-Remote MeshNode는 이 등록 정보에서 endpoint를 찾는다. 그러나 등록 정보를 찾았다는
-사실만으로 연결을 ready 상태로 사용하지 않는다. 실제 transport handshake에서
-MeshName, RID, lifecycle generation과 security identity가 등록 정보와 같은지 다시
-확인하고 peer admission을 마쳐야 한다.
+Remote MeshNode는 이 등록 정보에서 endpoint와 Object role을 확인한다. 두 descriptor의
+Object role이 모두 `Client`이면 automatic connection intent를 만들지 않는다. 그 밖의
+pair는 실제 transport handshake에서 MeshName, RID, lifecycle generation, Object role과
+security identity가 등록 정보와 같은지 다시 확인하고 peer admission을 마쳐야 한다.
 
 ClientServer Server, fanout publisher와 Spot·Actor location은 MeshNode descriptor에
 기록하지 않는다. 각 기능은 자신의 descriptor나 location record를 사용한다.
@@ -1466,7 +1484,7 @@ generation을 확인해야 ready target으로 사용한다.
 |---|---|
 | 형태 | Descriptor-based discovery process |
 | .NET 표기 | `IZLinkLocationStore` 등록과 endpoint를 생략한 topology builder 설정으로 사용한다. |
-| 공개 구성 | Descriptor query, desired-set reconcile, transport connect와 identity·lifecycle admission 단계로 구성된다. |
+| 공개 구성 | Descriptor query, Server membership 없는 Object Client pair 제외, desired-set reconcile, transport connect와 identity·lifecycle admission 단계로 구성된다. |
 | 수명 | Host runtime이 store polling과 connection lifecycle 동안 반복 수행한다. |
 
 <a id="manual-discovery"></a>
@@ -1479,8 +1497,8 @@ Application 설정으로 remote endpoint를 직접 등록하는 방식이다. En
 |---|---|
 | 형태 | Application-provided endpoint configuration |
 | .NET 표기 | Topology별 builder의 `Listen(string)`·manual peer·subscriber endpoint method에서 `string`으로 지정한다. |
-| 공개 구성 | Remote endpoint와 topology가 요구하는 expected identity 조건으로 구성된다. |
-| 수명 | Host startup configuration 동안 고정하며 reconnect에서도 transport admission을 다시 수행한다. |
+| 공개 구성 | Remote endpoint와 topology가 요구하는 expected identity 조건으로 구성된다. 양쪽 모두 Object Client이고 RouteMesh Channel Server membership도 없는 pair는 handshake admission에서 ready 전에 제외한다. |
+| 수명 | Host startup configuration 동안 고정한다. 연결이 필요한 pair의 reconnect는 transport admission을 다시 수행한다. 같은 endpoint와 configuration generation에서 제외한 pair는 설정이 바뀔 때까지 다시 연결하지 않는다. |
 
 <a id="ready-target"></a>
 ### Ready target
@@ -1515,13 +1533,14 @@ message의 일부 payload를 handler에 전달하지 않는다.
 ### Node direct
 
 Caller가 MeshName과 target RID를 함께 지정하여 특정 MeshNode에 message를 보내는
-방식이다. Framework는 지정한 RID를 다른 node로 바꾸지 않는다.
+방식이다. Framework는 지정한 RID를 다른 node로 바꾸지 않는다. Object Client는
+application Node direct handler를 등록할 수 없으므로 Node direct target이 아니다.
 
 | 항목 | 내용 |
 |---|---|
 | 형태 | Explicit node-addressed messaging surface |
 | .NET 표기 | `IZLinkRouteClient`의 node direct send/request call |
-| 공개 구성 | MeshName, target `RoutingId`, typed payload와 optional metadata·timeout으로 구성한다. |
+| 공개 구성 | MeshName, Object Client가 아닌 target `RoutingId`, typed payload와 optional metadata·timeout으로 구성한다. |
 | 수명 | Single-use call이며 지정한 RID의 route가 없다고 다른 node로 변경하지 않는다. |
 
 <a id="select-one"></a>
@@ -1835,9 +1854,9 @@ Framework가 자동 발급한 RID를 claim할 때 이미 active identity가 사�
 
 | 항목 | 내용 |
 |---|---|
-| 형태 | Closed Framework identity conflict error |
-| .NET 표기 | `ZLinkFrameworkErrorKind.RoutingIdConflict` (`31`) |
-| 공개 구성 | Active transport descriptor owner claim이 충돌했다는 오류 kind 하나다. 충돌한 RID나 owner token은 포함하지 않는다. |
+| 형태 | Startup configuration failure |
+| .NET 표기 | `ZLinkConfigurationException` |
+| 공개 구성 | Active transport descriptor owner claim이 충돌했다는 설명을 제공한다. 충돌한 owner token은 포함하지 않는다. |
 | 수명 | 해당 startup operation을 terminal failure로 끝내며 같은 operation에서 새 UUID를 만들지 않는다. |
 
 <a id="spot-id-conflict"></a>
@@ -1848,9 +1867,9 @@ Framework는 기존 claim을 덮어쓰거나 새 UUID를 만들어 같은 operat
 
 | 항목 | 내용 |
 |---|---|
-| 형태 | Closed Framework Spot identity conflict error |
-| .NET 표기 | `ZLinkFrameworkErrorKind.SpotIdConflict` (`35`) |
-| 공개 구성 | Global Spot ID claim이 충돌했다는 오류 kind 하나다. 충돌한 Spot ID나 owner token은 포함하지 않는다. |
+| 형태 | Startup 또는 create failure |
+| .NET 표기 | Startup은 `ZLinkConfigurationException`, exclusive create는 `ZLinkFrameworkErrorKind.AlreadyExists` |
+| 공개 구성 | Global Spot ID claim이 충돌했음을 설명한다. 충돌한 owner token은 포함하지 않는다. |
 | 수명 | 해당 startup 또는 create operation을 terminal failure로 끝낸다. |
 
 ## 10. STREAM session과 Actor binding

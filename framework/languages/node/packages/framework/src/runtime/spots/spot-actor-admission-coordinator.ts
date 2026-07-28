@@ -2,7 +2,6 @@ import type { ActorRef, ZLinkActor } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import {
-  createActorMembership,
   type ZLinkActorHandoffPacket,
   type ZLinkActorHandoffResult,
   type ZLinkRemoteBoundSessionTarget
@@ -38,7 +37,8 @@ export class ZLinkSpotActorAdmissionCoordinator {
     parts: readonly Message[],
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
+    fallbackActorRef?: ActorRef,
+    requestTerminal?: (response: unknown) => Promise<void> | void
   ): Promise<unknown> {
     const handoff = this.options.actorHandoffRuntime?.capture(
       actorId,
@@ -54,7 +54,8 @@ export class ZLinkSpotActorAdmissionCoordinator {
       parts,
       returnResponse,
       remoteBoundSessionTarget,
-      fallbackActorRef
+      fallbackActorRef,
+      requestTerminal
     );
   }
 
@@ -118,7 +119,8 @@ export class ZLinkSpotActorAdmissionCoordinator {
     parts: readonly Message[],
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
+    fallbackActorRef?: ActorRef,
+    requestTerminal?: (response: unknown) => Promise<void> | void
   ): Promise<unknown> {
     return await activation.executeActor(actorId, async (actorSerial) =>
       new ZLinkSpotActorPacketDispatch({
@@ -133,13 +135,20 @@ export class ZLinkSpotActorAdmissionCoordinator {
         onRemoteBoundSessionTarget: (targetActorId, target) =>
           this.options.boundSessionRuntime?.rememberRemoteBoundSessionTarget(targetActorId, target),
         onDisconnectActor: (actor) =>
-          activation.serial.execute(() => activation.spot.onDisconnectActor(createActorMembership(actor))),
+          activation.serial.execute(() => activation.spot.onDisconnectActor?.(actor)),
         actorResponseSender: this.options.boundSessionRuntime?.sendActorResponse.bind(this.options.boundSessionRuntime),
         actorErrorSender: this.options.boundSessionRuntime?.sendActorError.bind(this.options.boundSessionRuntime),
         providerResolver: this.options.providerResolver,
         messageSerializers: this.options.messageSerializers,
         dispatchErrors: this.options.dispatchErrors
-      }).dispatch(actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef)
+      }).dispatch(
+        actorId,
+        parts,
+        returnResponse,
+        remoteBoundSessionTarget,
+        fallbackActorRef,
+        requestTerminal
+      )
     );
   }
 
@@ -160,7 +169,7 @@ export class ZLinkSpotActorAdmissionCoordinator {
       transfer?.commitRoutedActor(actor, activation.spotId, activation.spot);
       rollbackMembership = activation.commitActorJoin(actor);
       activation.beginActorTransfer(actor.context.actorId);
-      await activation.serial.execute(() => activation.spot.onJoinedActor(createActorMembership(actor)));
+      await activation.serial.execute(() => activation.spot.onJoinedActor(actor));
       routeSwitchStarted = true;
       await transfer?.publishRoutedActorOwnership(actor);
       await transfer?.openRoutedActorSession(actor);
@@ -188,7 +197,7 @@ export class ZLinkSpotActorAdmissionCoordinator {
       transfer?.commitRoutedActor(actor, activation.spotId, activation.spot);
       activation.commitActorJoin(actor);
       activation.beginActorTransfer(actor.context.actorId);
-      await activation.serial.execute(() => activation.spot.onJoinedActor(createActorMembership(actor)));
+      await activation.serial.execute(() => activation.spot.onJoinedActor(actor));
       const results = backlog.length === 0
         ? []
         : await this.replayActorBacklog(activation, actor, backlog);

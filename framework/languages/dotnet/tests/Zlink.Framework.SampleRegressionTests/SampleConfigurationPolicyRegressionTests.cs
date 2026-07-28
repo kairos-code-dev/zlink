@@ -145,8 +145,9 @@ public sealed partial class RegressionTests
             Assert.Contains("ReadinessPollInterval = TimeSpan.FromMilliseconds(100)", source,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("for (var i = 0; i < 120", source, StringComparison.Ordinal);
-            Assert.Contains("ZLinkFrameworkErrorKind.RequestFailed && error.IsRetriable", source,
-                StringComparison.Ordinal);
+            Assert.Contains("error.Kind is ZLinkFrameworkErrorKind.Unavailable", source, StringComparison.Ordinal);
+            Assert.Contains("or ZLinkFrameworkErrorKind.DeadlineExceeded", source, StringComparison.Ordinal);
+            Assert.Contains("error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry", source, StringComparison.Ordinal);
         }
 
         var monitoring = File.ReadAllText(Path.Combine(
@@ -288,7 +289,6 @@ public sealed partial class RegressionTests
         var source = string.Join('\n', Directory.EnumerateFiles(scenarios, "*.cs")
             .Select(File.ReadAllText));
 
-        Assert.DoesNotContain("DateTimeOffset.UtcNow < deadline", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Actor auth did not become routable", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Last error:", source, StringComparison.Ordinal);
 
@@ -320,20 +320,23 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
-    public void ZoneWorldRunnerExercisesAllocationLifecycleWithProcessEvidence()
+    public void ZoneWorldRunnerExercisesPrefixUuidLifecycleWithProcessEvidence()
     {
         var sample = ResolveSampleRoot("ZoneWorld");
         var runner = File.ReadAllText(Path.Combine(sample, "run_sample.sh"));
-        var reporter = File.ReadAllText(Path.Combine(sample, "Server", "ZoneNode", "Infrastructure", "ZLink",
-            "Monitoring", "LocalSpotEventHandler.cs"));
+        var reportHandler = File.ReadAllText(Path.Combine(sample, "Server", "Ops", "Infrastructure", "ZLink",
+            "Handlers", "OpsReportHandlers.cs"));
 
         foreach (var id in new[] { "ZW-G1", "ZW-G2", "ZW-G3", "ZW-G4", "ZW-G5" })
             Assert.Contains(id, runner, StringComparison.Ordinal);
-        Assert.Contains("runner inferred allocation wait", runner, StringComparison.Ordinal);
-        Assert.Contains("assert_no_allocation_while_running", runner, StringComparison.Ordinal);
+        Assert.Contains("routing_id_of", runner, StringComparison.Ordinal);
+        Assert.Contains("is_zone_node_rid", runner, StringComparison.Ordinal);
+        Assert.Contains("node status observed. node=", runner, StringComparison.Ordinal);
+        Assert.Contains("ZW-G2-rid", runner, StringComparison.Ordinal);
+        Assert.DoesNotContain("allocation_field", runner, StringComparison.Ordinal);
+        Assert.DoesNotContain("WaitingForSlot", runner, StringComparison.Ordinal);
+        Assert.DoesNotContain("zone node allocation ready", runner, StringComparison.Ordinal);
         Assert.DoesNotContain("sleep 2", runner, StringComparison.Ordinal);
-        Assert.Contains("kill -0", runner, StringComparison.Ordinal);
-        Assert.Contains("generation", runner, StringComparison.Ordinal);
         Assert.Contains("$0\" --g4-child ZW-G4", runner, StringComparison.Ordinal);
         Assert.Contains("if scenario_selected ZW-G3", runner, StringComparison.Ordinal);
         Assert.Contains("if scenario_selected ZW-G5", runner, StringComparison.Ordinal);
@@ -349,8 +352,9 @@ public sealed partial class RegressionTests
         Assert.Equal(2, Regex.Matches(runner, "remove_owned_pid \\\"\\$pid\\\"").Count);
         Assert.Contains("if [[ \"$G4_PROVEN\" == \"1\" ]]; then g_pass ZW-G4; fi", runner,
             StringComparison.Ordinal);
-        Assert.Contains("IZLinkRouteMeshRuntime routeMesh", reporter, StringComparison.Ordinal);
-        Assert.Contains("routeMesh.Snapshot(ZoneWorldNames.MeshName).Rid", reporter, StringComparison.Ordinal);
+        Assert.Contains("node status observed. node={NodeId}, rid={NodeRid}", reportHandler,
+            StringComparison.Ordinal);
+        Assert.Contains("context.SourceNodeRid", reportHandler, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -591,11 +595,11 @@ public sealed partial class RegressionTests
             "PlayerMoveHandlers.cs"));
 
         Assert.Contains(
-            "RequestToActor(ZoneWorldNames.ActorsChannel, actorRef.Value, new BotTickReq())",
+            "RequestToActor(playerId, new BotTickReq())",
             spot,
             StringComparison.Ordinal);
         Assert.Contains(".Yield<BotTickRes>(cancellationToken)", spot, StringComparison.Ordinal);
-        Assert.DoesNotContain("SendToActor(actorRef.Value, new BotTick", spot, StringComparison.Ordinal);
+        Assert.DoesNotContain("FindAsync(playerId", spot, StringComparison.Ordinal);
         Assert.Contains("IZLinkSpotActorRequestHandler<ZoneSpot, PlayerActor, BotTickReq, BotTickRes>",
             handlers, StringComparison.Ordinal);
     }

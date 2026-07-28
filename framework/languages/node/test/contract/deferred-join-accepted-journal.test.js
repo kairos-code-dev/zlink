@@ -24,7 +24,7 @@ function harness() {
       actor: {
         nodeRid: 'node-a',
         actorId: 'actor-a',
-        generation: 17n
+        objectGeneration: 17n
       },
       meshName: 'game',
       ownerNodeGeneration: 1n,
@@ -107,12 +107,14 @@ test('cross-node Accepted root preserves identity, reply and cursor across mailb
   const sourceActorRef = {
     nodeRid: 'node-a',
     actorId: 'actor-a',
-    generation: 17n
+    objectGeneration: 17n,
+    meshName: 'game'
   };
   const actorRef = {
     nodeRid: 'node-b',
     actorId: 'actor-a',
-    generation: 17n
+    objectGeneration: 17n,
+    meshName: 'game'
   };
   const operationId = { high: 41n, low: 73n };
   let root = await journal.prepare(
@@ -137,7 +139,7 @@ test('cross-node Accepted root preserves identity, reply and cursor across mailb
     actorId: actorRef.actorId,
     async onJoinCompleted(completion) {
       callbackEvents.push(
-        `completion:${completion.operationId.high}:${completion.actor.nodeRid}:${completion.actor.generation}`
+        `completion:${completion.operationId.high}:${completion.actor.nodeRid}:${completion.actor.objectGeneration}`
       );
       attempts++;
       if (attempts === 1) throw new Error('retry');
@@ -191,12 +193,14 @@ test('generation fence rejects a replacement Actor before mailbox admission', as
   const sourceActorRef = {
     nodeRid: 'node-a',
     actorId: 'actor-a',
-    generation: 17n
+    objectGeneration: 17n,
+    meshName: 'game'
   };
   const actorRef = {
     nodeRid: 'node-b',
     actorId: 'actor-a',
-    generation: 17n
+    objectGeneration: 17n,
+    meshName: 'game'
   };
   const root = await journal.markCommitted(await journal.prepare(
     actorRef.actorId,
@@ -209,7 +213,7 @@ test('generation fence rejects a replacement Actor before mailbox admission', as
     journal.deliver(
       root,
       { actorId: actorRef.actorId },
-      { ...actorRef, generation: 18n },
+      { ...actorRef, objectGeneration: 18n },
       async operation => {
         admitted = true;
         return await operation();
@@ -218,4 +222,50 @@ test('generation fence rejects a replacement Actor before mailbox admission', as
     /generation fence/
   );
   assert.equal(admitted, false);
+});
+
+test('a delivered Join completion can be replaced by the next Join for the same Actor generation', async () => {
+  const { journal, roots } = harness();
+  const sourceActorRef = {
+    nodeRid: 'node-a',
+    actorId: 'actor-a',
+    objectGeneration: 17n,
+    meshName: 'game'
+  };
+  const firstTargetRef = {
+    ...sourceActorRef,
+    nodeRid: 'node-b'
+  };
+  const secondTargetRef = {
+    ...sourceActorRef,
+    nodeRid: 'node-c'
+  };
+  let first = await journal.prepare(
+    sourceActorRef.actorId,
+    { high: 1n, low: 2n },
+    sourceActorRef,
+    Buffer.from('"first"')
+  );
+  first = await journal.markCommitted(first, firstTargetRef);
+  first = await journal.deliver(
+    first,
+    { actorId: sourceActorRef.actorId },
+    firstTargetRef,
+    operation => operation()
+  );
+
+  const second = await journal.prepare(
+    sourceActorRef.actorId,
+    { high: 3n, low: 4n },
+    firstTargetRef,
+    Buffer.from('"second"')
+  );
+  assert.equal(second.cursor, 'prepared');
+  assert.deepEqual(second.operationId, { high: 3n, low: 4n });
+  assert.equal(second.actor.nodeRid, 'node-b');
+  assert.equal(roots.has(first.reference.value), false);
+
+  const recovered = await journal.recover(secondTargetRef.actorId);
+  assert.deepEqual(recovered.operationId, second.operationId);
+  assert.equal(recovered.cursor, 'prepared');
 });

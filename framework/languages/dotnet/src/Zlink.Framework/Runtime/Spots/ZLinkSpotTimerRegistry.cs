@@ -8,13 +8,16 @@ internal sealed record ZLinkSpotLogicalTimerSnapshot(
     Type SpotType,
     ZLinkTimerLogicalSnapshot Timer);
 
-internal sealed class ZLinkSpotTimerRegistry(Func<bool> flowCaptureEnabled) : IAsyncDisposable
+internal sealed class ZLinkSpotTimerRegistry(
+    Func<bool> flowCaptureEnabled,
+    bool restorePending = false) : IAsyncDisposable
 {
     private readonly object _lifecycleGate = new();
     private readonly List<ZLinkSpotTimerRegistration> _timers = [];
     private Task? _finalization;
     private bool _closed;
-    private bool _frozen;
+    private bool _frozen = restorePending;
+    private bool _restorePending = restorePending;
 
     internal bool IsFrozen
     {
@@ -60,7 +63,7 @@ internal sealed class ZLinkSpotTimerRegistry(Func<bool> flowCaptureEnabled) : IA
         {
             ObjectDisposedException.ThrowIf(_closed, this);
             cancellationToken.ThrowIfCancellationRequested();
-            if (_frozen)
+            if (_frozen && !_restorePending)
                 throw new ZLinkConfigurationException(
                     "SPOT timer registration is sealed for relocation.");
 
@@ -85,7 +88,8 @@ internal sealed class ZLinkSpotTimerRegistry(Func<bool> flowCaptureEnabled) : IA
                     null,
                     null,
                     flowCaptureEnabled(),
-                    ZLinkFlowOrigin.Timer));
+                    ZLinkFlowOrigin.Timer),
+                startFrozen: _restorePending);
             _timers.Add(new ZLinkSpotTimerRegistration(
                 timer,
                 handlerType,
@@ -118,6 +122,20 @@ internal sealed class ZLinkSpotTimerRegistry(Func<bool> flowCaptureEnabled) : IA
             .ToArray();
     }
 
+    internal void FreezeForApplicationAdmissionSeal()
+    {
+        lock (_lifecycleGate)
+        {
+            if (_closed || _frozen) return;
+            _frozen = true;
+            foreach (var registration in _timers)
+            {
+                if (!registration.Timer.IsDisposed)
+                    _ = registration.Timer.Freeze();
+            }
+        }
+    }
+
     internal void RestoreRelocation(
         IReadOnlyList<ZLinkRelocationLogicalTimer> logicalTimers,
         CancellationToken stopToken,
@@ -143,19 +161,37 @@ internal sealed class ZLinkSpotTimerRegistry(Func<bool> flowCaptureEnabled) : IA
         lock (_lifecycleGate)
         {
             ObjectDisposedException.ThrowIf(_closed, this);
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            var snapshots = logicalTimers
+                .Select(logicalTimer =>
+                {
+                    var snapshot = ZLinkSpotTimerRelocationCodec.Decode(
+                        logicalTimer,
+                        spotType);
+                    if (!names.Add(snapshot.Timer.Name))
+                        throw new InvalidDataException(
+                            $"Duplicate logical timer '{snapshot.Timer.Name}'.");
+                    return snapshot;
+                })
+                .ToArray();
+
+            if (_restorePending)
+            {
+                RestoreConfiguredTimers(
+                    snapshots,
+                    stopToken,
+                    dispatchAsync,
+                    reportFailureAsync);
+                _restorePending = false;
+                _frozen = true;
+                return;
+            }
             if (_timers.Count != 0)
                 throw new InvalidOperationException(
                     "Logical timers can only be restored into an empty registry.");
 
-            var names = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var logicalTimer in logicalTimers)
+            foreach (var snapshot in snapshots)
             {
-                var snapshot = ZLinkSpotTimerRelocationCodec.Decode(
-                    logicalTimer,
-                    spotType);
-                if (!names.Add(snapshot.Timer.Name))
-                    throw new InvalidDataException(
-                        $"Duplicate logical timer '{snapshot.Timer.Name}'.");
                 var descriptor = ZLinkSpotDescriptorFactory.CreateTimerDescriptor(
                     snapshot.Timer.Name,
                     snapshot.Timer.Period,
@@ -179,6 +215,58 @@ internal sealed class ZLinkSpotTimerRegistry(Func<bool> flowCaptureEnabled) : IA
                     snapshot.SpotType));
             }
             _frozen = true;
+        }
+    }
+
+    private void RestoreConfiguredTimers(
+        IReadOnlyList<ZLinkSpotLogicalTimerSnapshot> snapshots,
+        CancellationToken stopToken,
+        Func<ZLinkSpotTimerDescriptor, ZLinkTimerTick, CancellationToken, ValueTask<bool>> dispatchAsync,
+        Func<ZLinkSpotTimerDescriptor, ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask>
+            reportFailureAsync)
+    {
+        var registrations = _timers.ToDictionary(
+            static registration => registration.Timer.Snapshot().Name,
+            StringComparer.Ordinal);
+        foreach (var snapshot in snapshots)
+        {
+            if (registrations.TryGetValue(
+                    snapshot.Timer.Name,
+                    out var registration))
+            {
+                if (registration.HandlerType != snapshot.HandlerType
+                    || registration.SpotType != snapshot.SpotType)
+                    throw new InvalidDataException(
+                        $"Logical timer '{snapshot.Timer.Name}' does not match its target registration.");
+                registration.Timer.RestoreFrozen(snapshot.Timer);
+                continue;
+            }
+
+            var descriptor = ZLinkSpotDescriptorFactory.CreateTimerDescriptor(
+                snapshot.Timer.Name,
+                snapshot.Timer.Period,
+                snapshot.HandlerType,
+                snapshot.SpotType);
+            var timer = new ZLinkTimer(
+                snapshot.Timer,
+                stopToken,
+                (tick, ct) => dispatchAsync(descriptor, tick, ct),
+                (tick, error, stopped, ct) =>
+                    reportFailureAsync(descriptor, tick, error, stopped, ct),
+                () => ZLinkFlowContext.Enter(
+                    null,
+                    null,
+                    flowCaptureEnabled(),
+                    ZLinkFlowOrigin.Timer),
+                startFrozen: true);
+            var restored = new ZLinkSpotTimerRegistration(
+                timer,
+                snapshot.HandlerType,
+                snapshot.SpotType);
+            if (!registrations.TryAdd(snapshot.Timer.Name, restored))
+                throw new InvalidDataException(
+                    $"Duplicate logical timer '{snapshot.Timer.Name}'.");
+            _timers.Add(restored);
         }
     }
 

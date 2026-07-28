@@ -98,7 +98,7 @@ handler와 timer는 Stage 공통 gate를 사용할 수 있지만 같은 Actor의
 앞질러 실행하거나 inline으로 재진입하지 않는다.
 
 같은 gate가 필요한 request를 `Async`로 기다리거나 자신에게 보낸 request를
-기다리는 호출은 submit 전에 `InvalidConfiguration`으로 거부한다.
+기다리는 호출은 submit 전에 `InvalidOperation`으로 거부한다.
 
 Host `Relocate`가 시작되어도 relocation을 시작할 실행 권한을 아직 얻지 못한 Stage
 Spot은 기존 message와 timer turn을 계속 처리한다. Framework가 relocation 준비
@@ -159,7 +159,7 @@ snapshot을 handler에 그대로 제공하고 transport frame이나 storage owne
 - `SpotWide` Actor의 `Yield`는 Spot gate만 반납하고 Actor queue head의 실행 권한은
   유지한다.
 - 같은 gate가 필요한 `Async`와 self-awaited request는 submit 전에
-  `InvalidConfiguration`으로 거부한다.
+  `InvalidOperation`으로 거부한다.
 - Actor payload가 Stage Spot callback이나 [Spot application queue](01-glossary.ko.md#spot-application-queue)를 거치지 않는다.
 - Actor handler가 Stage state를 바꿀 때 명시적인 Spot 호출을 사용한다.
 - Framework의 Spot lifecycle 전용 queue에는 join·leave와 lifecycle control만

@@ -7,6 +7,7 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.E2E.Diagnostics;
 
 namespace ResilienceLifecycle.Server.Provider;
 
@@ -27,25 +28,39 @@ internal static class ProviderHostFactory
             console.TimestampFormat = "HH:mm:ss.fff ";
         });
         builder.WebHost.UseUrls(options.HttpUrl);
-        builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
-        builder.Services.AddSingleton<FaultState>();
+        var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
+        var fault = new FaultState();
+        builder.Services.AddSingleton(evidence);
+        builder.Services.AddSingleton(fault);
+        builder.Services.AddSingleton(new E2eMessageFlowListener(
+            Path.Combine(options.LogDir, $"{options.Rid}-flow.log"),
+            options.Rid,
+            flow =>
+            {
+                if (flow.Phase != "error") return;
+                evidence.Add(
+                    "dispatch-error"
+                    + $"|surface={flow.Surface}"
+                    + $"|kind={flow.MessageKind}"
+                    + $"|reason={flow.Reason}"
+                    + $"|action={flow.Action}"
+                    + $"|packet={flow.PacketName ?? "<null>"}"
+                    + $"|channel={flow.ChannelName ?? "<null>"}");
+                if (fault.Mode == "observer-throws")
+                    throw new InvalidOperationException("dispatch observer failure");
+            }));
 
         builder.Services.AddZLinkFramework(framework =>
         {
             if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
-                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                    .SetConnectionString(options.RedisEndpoint)
-                    .SetKeyPrefix(options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
-            framework.ConfigureDispatch()
-                .SetRuntimeMessageFlowObserver<EvidenceDispatchErrorObserver>()
-                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
-                .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
-                .TraceLabel(options.Rid);
+                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix
+                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."); }));
+            framework.ConfigureDispatch().Diagnostics
+                .SetLevel(ZLinkDiagnosticsLevel.Normal);
             var mesh = framework.AddRouteMesh(ResilienceLifecycleNames.Channel)
                 .Listen(Require(options.ChannelEndpoint, "ChannelEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid));
-            mesh.ChannelName(ResilienceLifecycleNames.Channel)
+            mesh.Channel(ResilienceLifecycleNames.Channel).Server()
                 .SetWeight(options.Weight)
                 .AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq")
                 .AddSendHandler<ProfileCommandHandler, ProfileMsg>("ProfileMsg");

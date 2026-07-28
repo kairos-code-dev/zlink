@@ -23,7 +23,7 @@ internal static class SmD3EntryAndUserSpotSessionRelayScenario
             MaxReceivedMessages = 1024
         });
         await entry.Connect.Async();
-        await entry.Request(new AuthReq(entryActorId, "entry bind", "play-a"))
+        await entry.Request(new AuthReq(entryActorId, "entry bind"))
             .PacketName("AuthReq").Async<AuthRes>();
 
         var entryPushed = entry.WaitFor<ActorPushNotify>().Async().AsTask();
@@ -46,7 +46,7 @@ internal static class SmD3EntryAndUserSpotSessionRelayScenario
             MaxReceivedMessages = 1024
         });
         await user.Connect.Async();
-        await user.Request(new UserSpotAuthReq(userSpotRid, userActorId, "user bind", "play-a"))
+        await user.Request(new UserSpotAuthReq(userSpotRid, userActorId, "user bind"))
             .PacketName("UserSpotAuthReq").Async<AuthRes>();
         await playA.Post("/spot/create").Body(new CreateSpotReq(userSpotRid)).Async<CreateSpotRes>();
         await user.Request(new JoinUserSpotActorReq(userSpotRid, userActorId))

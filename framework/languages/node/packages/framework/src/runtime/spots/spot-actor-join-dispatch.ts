@@ -2,7 +2,6 @@ import type {
   ActorRef,
   RoutingId,
   ZLinkActor,
-  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkMessageSerializer,
   ZLinkSpot,
@@ -53,9 +52,9 @@ const ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3;
  */
 interface ZLinkActorJoinAdmissionTarget {
   onActorJoin?(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
-  onJoinedActor?(actor: ZLinkActorMembership): Promise<void>;
-  onLeaveActor?(actor: ZLinkActorMembership): Promise<void>;
-  onDisconnectActor?(actor: ZLinkActorMembership): Promise<void>;
+  onJoinedActor?(actor: ZLinkActor): Promise<void>;
+  onLeaveActor?(actor: ZLinkActor): Promise<void>;
+  onDisconnectActor?(actor: ZLinkActor): Promise<void>;
 }
 
 interface ZLinkSpotActorAdmissionRuntime {

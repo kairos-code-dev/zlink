@@ -35,31 +35,31 @@ internal sealed class ZLinkDeferredActorJoinHandlerScope : IDisposable
     {
         var scope = CurrentScope.Value
                     ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.InvalidConfiguration,
+                        ZLinkFrameworkErrorKind.InvalidOperation,
                         "Actor Join Defer is only valid in a Framework-managed Spot or Actor handler.");
 
         if (requestBytes > MaxRequestBytes)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                ZLinkFrameworkErrorKind.InvalidOperation,
                 $"Actor Join request exceeds the {MaxRequestBytes}-byte limit.");
 
         lock (scope._sync)
         {
             if (!scope._allowed)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.InvalidConfiguration,
+                    ZLinkFrameworkErrorKind.InvalidOperation,
                     "Instance Spot handlers cannot register Actor Join operations.");
             if (scope._sealed)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.InvalidConfiguration,
+                    ZLinkFrameworkErrorKind.InvalidOperation,
                     "Actor Join Defer cannot register after the handler has completed.");
             if (scope._joins.Count >= MaxOperations)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.InvalidConfiguration,
+                    ZLinkFrameworkErrorKind.InvalidOperation,
                     $"A handler turn cannot register more than {MaxOperations} Actor Joins.");
             if (scope._requestBytes > MaxTotalRequestBytes - requestBytes)
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.InvalidConfiguration,
+                    ZLinkFrameworkErrorKind.InvalidOperation,
                     $"Actor Join requests in one handler turn exceed {MaxTotalRequestBytes} bytes.");
 
             join.ReserveBarrier();
@@ -126,7 +126,7 @@ internal sealed class ZLinkDeferredActorJoin(
     {
         if (runtime.ShutdownToken.IsCancellationRequested)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RuntimeShutdown,
+                ZLinkFrameworkErrorKind.ShuttingDown,
                 "Actor Join cannot be deferred while the Framework runtime is shutting down.");
         actorState.EnsureDeferredJoinIdentity(actor, objectGeneration);
         _barrier = actorState.ReserveDeferredJoinBarrier();
@@ -243,14 +243,14 @@ internal sealed class ZLinkDeferredActorJoin(
         CancellationTokenSource deadline)
     {
         if (exception is ZLinkFrameworkException framework)
-            return (framework.Kind, framework.IsRetriable);
+            return (framework.Kind, framework.RetryAdvice != ZLinkRetryAdvice.DoNotRetry);
         if (exception is OperationCanceledException
             && runtime.ShutdownToken.IsCancellationRequested)
-            return (ZLinkFrameworkErrorKind.RuntimeShutdown, false);
+            return (ZLinkFrameworkErrorKind.ShuttingDown, false);
         if (exception is TimeoutException
             || exception is OperationCanceledException && deadline.IsCancellationRequested)
             return (ZLinkFrameworkErrorKind.DeadlineExceeded, true);
-        return (ZLinkFrameworkErrorKind.RequestFailed, false);
+        return (ZLinkFrameworkErrorKind.InternalFailure, false);
     }
 
     private static ZLinkActorJoinOperationId CreateOperationId()

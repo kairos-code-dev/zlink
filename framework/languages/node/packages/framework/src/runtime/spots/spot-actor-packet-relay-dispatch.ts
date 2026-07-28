@@ -110,10 +110,8 @@ export class ZLinkSpotActorPacketRelayDispatch {
         }
         return true;
       }
-      if (
-        actorPacketRelay.deadlineUnixMs !== undefined
-        && Date.now() >= actorPacketRelay.deadlineUnixMs
-      ) {
+      if (actorPacketRelay.messageFollowContext?.deadlineUnixMs !== undefined
+        && Date.now() >= actorPacketRelay.messageFollowContext.deadlineUnixMs) {
         throw new ZLinkFrameworkException(
           ZLinkFrameworkErrorKind.DeadlineExceeded,
           `Actor request '${actorPacketRelay.actorId}' expired before target handler admission.`

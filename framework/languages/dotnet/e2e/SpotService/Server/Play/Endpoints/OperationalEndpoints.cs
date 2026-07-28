@@ -33,31 +33,12 @@ internal static class OperationalEndpoints
             evidence.Add($"control-ping|rid={node.Rid}|value={request.Value}");
             return Results.Ok(new ControlPingRes(request.Value, node.Rid));
         });
-        app.MapPost("/placement-weight", async (
+        app.MapPost("/placement-weight", (
             PlacementWeightReq request,
-            NodeOptions node,
-            IZLinkRouteMeshRuntimeOptions runtimeOptions,
-            IZLinkLocationRuntimeQuery location,
-            CancellationToken cancellationToken) =>
+            IZLinkRouteMeshRuntimeOptions runtimeOptions) =>
         {
             runtimeOptions.Mesh(SpotServiceNames.SpotChannel).PlacementWeight = request.Weight;
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-            while (DateTime.UtcNow < deadline)
-            {
-                var page = await location.ListMeshNodeDescriptorsAsync(
-                    SpotServiceNames.SpotChannel,
-                    cancellationToken: cancellationToken);
-                if (page.Items.Any(descriptor =>
-                        descriptor.Rid.ToString().StartsWith(
-                            node.Rid + "-",
-                            StringComparison.Ordinal)
-                        && descriptor.PlacementWeight == request.Weight))
-                {
-                    return Results.Ok(new PlacementWeightRes(request.Weight));
-                }
-                await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken);
-            }
-            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            return Results.Ok(new PlacementWeightRes(request.Weight));
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {

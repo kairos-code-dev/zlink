@@ -9,7 +9,9 @@ namespace Zlink.Framework.Runtime.Locations;
 /// (06-location-store §5), so topology and summaries project MeshNode
 /// descriptors only.
 /// </summary>
-internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQuery
+internal sealed class ZLinkLocationRuntimeQueryService :
+    IZLinkLocationRuntimeQuery,
+    IZLinkLocationDescriptorQuery
 {
     private readonly ZLinkLocationOptions _options;
     private readonly IZLinkLocationRepository _meshNodeStore;

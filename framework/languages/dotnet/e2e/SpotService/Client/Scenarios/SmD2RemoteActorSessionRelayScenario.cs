@@ -24,7 +24,7 @@ internal static class SmD2RemoteActorSessionRelayScenario
             MaxReceivedMessages = 1024
         });
         await remote.Connect.Async();
-        await remote.Request(new AuthReq("actor-sm-d2", "remote relay", "play-b"))
+        await remote.Request(new AuthReq("actor-sm-d2", "remote relay"))
             .PacketName("AuthReq").Async<AuthRes>();
         var remotePushed = remote.WaitFor<ActorPushNotify>().Async().AsTask();
         var remoteReply = await remote.Request(new ActorPushReq("push-remote"))

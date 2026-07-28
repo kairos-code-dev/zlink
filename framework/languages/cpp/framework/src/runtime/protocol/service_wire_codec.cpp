@@ -1577,6 +1577,7 @@ std::vector<std::uint8_t> encode_reply_relay_ack (
 {
     if ((record.relocation.high == 0 && record.relocation.low == 0)
         || (record.operation.high == 0 && record.operation.low == 0)
+        || record.reply_route_id == 0
         || record.request_source.lease_generation == 0
         || record.request_source.node_generation == 0
         || (record.status != reply_relay_ack_status_t::terminal_received
@@ -1592,6 +1593,7 @@ std::vector<std::uint8_t> encode_reply_relay_ack (
     append_coordinator (bytes, record.coordinator);
     append_u64 (bytes, record.operation.high);
     append_u64 (bytes, record.operation.low);
+    append_u64 (bytes, record.reply_route_id);
     append_text8 (bytes, record.request_source.owner_id,
                   "request source owner ID");
     append_u64 (bytes, record.request_source.lease_generation);
@@ -1615,6 +1617,7 @@ reply_relay_ack_t decode_reply_relay_ack (
     record.coordinator = read_coordinator (bytes, offset);
     record.operation.high = read_u64 (bytes, offset);
     record.operation.low = read_u64 (bytes, offset);
+    record.reply_route_id = read_u64 (bytes, offset);
     record.request_source.owner_id =
       read_text8 (bytes, offset, "request source owner ID");
     record.request_source.lease_generation = read_u64 (bytes, offset);

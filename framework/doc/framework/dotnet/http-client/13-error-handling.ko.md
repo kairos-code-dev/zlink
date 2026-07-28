@@ -3,33 +3,29 @@
 # 13. 에러 처리
 
 실패는 `ZLinkFrameworkException`(`Zlink.Framework.Contracts.Errors`)으로 보고된다.
-`Kind`(`ZLinkFrameworkErrorKind`)와 `IsRetriable`을 노출한다.
+`Kind`(`ZLinkFrameworkErrorKind`)는 실패 종류를 나타낸다. `RetryAdvice`는 같은 요청을
+다시 시도할 수 있는 조건을 나타낸다.
 
 ## error kind 매핑
 
-| 상황 | kind |
-|------|------|
-| 구성/요청 검증 실패(base_url, path, single body source, proxy scheme, 0 timeout 등) | `RequestProtocolError` |
-| status ≥ 400 (`Async<T>` 또는 typed callback) | `RequestFailed` |
-| redirect 한도 초과 | `RequestFailed` |
-| 응답 JSON 디코드 실패 | `PayloadDecodeFailed` |
-| 압축 본문 손상 | `PayloadDecodeFailed` |
-| 압축 decoded 크기 초과 / 본문 크기 초과 | `RequestFailed` |
-| transport 실패(연결 오류 등) | `RequestFailed` (`IsRetriable = true`) |
+| 상황 | `Kind` | `RetryAdvice` |
+|------|--------|---------------|
+| 요청 형식, redirect 또는 응답 decode 오류 | `ProtocolError` | `DoNotRetry` |
+| DNS, proxy CONNECT 또는 target 연결 실패 | `Unavailable` | `RetryAfterBackoff` |
+| 응답 본문 또는 압축 해제 크기 제한 초과 | `CapacityExceeded` | `DoNotRetry` |
+| 요청 timeout | `DeadlineExceeded` | `RetryAfterBackoff` |
+| HTTP status 400 이상 | `InternalFailure` | `DoNotRetry` |
 
 ## timeout
 
-.NET framework의
-`ZLinkFrameworkErrorKind`에는 timeout 전용 kind가 없다. 따라서 timeout은 .NET 관용에
-맞춰 `RequestFailed`인 `ZLinkFrameworkException`으로 보고하며 `IsRetriable`은 `true`다.
-원인은 `InnerException`의 `TimeoutException`으로 확인할 수 있다. `Retry`가 설정돼 있으면
-재시도된다.
+timeout은 `DeadlineExceeded`다. `RetryAdvice`는 `RetryAfterBackoff`이며,
+`Retry(attempts)`가 설정되어 있으면 정한 횟수 안에서 다시 시도한다.
 
-## retriable
+## 재시도 판단
 
-`IsRetriable`이 `true`인 실패(transport 오류, timeout)는 `Retry(attempts)`가 설정돼
-있을 때 재시도된다. status 코드 실패(4xx/5xx)는 retriable이 아니다. streaming 요청은
-retry에서 제외된다([10장](10-redirects-retries-cookies.ko.md)).
+`RetryAfterBackoff`인 transport 오류와 timeout만 `Retry(attempts)` 설정에 따라 다시
+시도한다. `DoNotRetry`인 HTTP status 오류와 protocol 오류는 다시 시도하지 않는다.
+Streaming 요청도 retry에서 제외된다([10장](10-redirects-retries-cookies.ko.md)).
 
 ## 예외 경로 정리
 
@@ -38,19 +34,20 @@ try
 {
     var res = await client.Post("/games").Body(req).Async<CreateGameRes>();
 }
-catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.RequestFailed)
+catch (ZLinkFrameworkException ex)
+    when (ex.Kind == ZLinkFrameworkErrorKind.DeadlineExceeded)
 {
-    // 4xx/5xx 또는 transport 실패
-}
-catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.PayloadDecodeFailed)
-{
-    // 응답 본문 디코드 실패
+    // timeout. RetryAdvice는 RetryAfterBackoff다.
 }
 catch (ZLinkFrameworkException ex)
-    when (ex.Kind == ZLinkFrameworkErrorKind.RequestFailed
-          && ex.InnerException is TimeoutException)
+    when (ex.Kind == ZLinkFrameworkErrorKind.Unavailable)
 {
-    // 요청 timeout. 일반 transport 실패와 구분해야 할 때 inner exception을 확인한다.
+    // 현재 target에 연결할 수 없다.
+}
+catch (ZLinkFrameworkException ex)
+    when (ex.Kind == ZLinkFrameworkErrorKind.ProtocolError)
+{
+    // 요청 형식, redirect 또는 응답 decode 오류다.
 }
 ```
 

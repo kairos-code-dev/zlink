@@ -8,6 +8,11 @@ internal sealed class PlayActor(
     IZLinkActorContext context)
     : IZLinkActor
 {
+    private const int ProcessedJoinOperationRetention = 256;
+    private readonly Queue<string> _pendingJoins = new();
+    private readonly HashSet<ZLinkActorJoinOperationId> _processedJoinOperations = [];
+    private readonly Queue<ZLinkActorJoinOperationId> _processedJoinOperationOrder = new();
+
     public string RoomId { get; private set; } = string.Empty;
 
     public PlayerInfo? Player { get; private set; }
@@ -41,9 +46,96 @@ internal sealed class PlayActor(
         RoomId = roomId;
     }
 
+    public void TrackDeferredJoin(string roomId)
+    {
+        _pendingJoins.Enqueue(roomId);
+    }
+
+    internal IReadOnlyCollection<ZLinkActorJoinOperationId> ProcessedJoinOperations =>
+        _processedJoinOperationOrder;
+
+    internal void RestoreProcessedJoinOperations(
+        IEnumerable<ZLinkActorJoinOperationId> operationIds)
+    {
+        foreach (var operationId in operationIds)
+            RememberJoinOperation(operationId);
+    }
+
+    public async ValueTask OnJoinCompletedAsync(
+        ZLinkActorJoinCompletion completion,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var operationId = GetOperationId(completion);
+        if (_processedJoinOperations.Contains(operationId)) return;
+
+        var roomId = _pendingJoins.Count > 0
+            ? _pendingJoins.Peek()
+            : ResolveRecoveredRoomId(completion);
+
+        switch (completion)
+        {
+            case ZLinkActorJoinCompletion.Accepted { Reply: { } reply }:
+                JoinRoom(roomId);
+                await Context.BoundSession
+                    .Send(new JoinGameRes(reply.Decode<TicTacToeGameJoinRes>().State))
+                    .Async(cancellationToken);
+                break;
+
+            case ZLinkActorJoinCompletion.Rejected:
+                await Context.BoundSession
+                    .Send(new JoinGameFailedNotify(roomId, "Rejected", false))
+                    .Async(cancellationToken);
+                break;
+
+            case ZLinkActorJoinCompletion.Failed failed:
+                await Context.BoundSession
+                    .Send(new JoinGameFailedNotify(
+                        roomId,
+                        failed.Kind.ToString(),
+                        failed.IsRetriable))
+                    .Async(cancellationToken);
+                break;
+        }
+
+        RememberJoinOperation(operationId);
+        if (_pendingJoins.Count > 0) _pendingJoins.Dequeue();
+    }
+
+    private bool RememberJoinOperation(ZLinkActorJoinOperationId operationId)
+    {
+        if (!_processedJoinOperations.Add(operationId)) return false;
+
+        _processedJoinOperationOrder.Enqueue(operationId);
+        while (_processedJoinOperationOrder.Count > ProcessedJoinOperationRetention)
+            _processedJoinOperations.Remove(_processedJoinOperationOrder.Dequeue());
+        return true;
+    }
+
+    private static ZLinkActorJoinOperationId GetOperationId(
+        ZLinkActorJoinCompletion completion) =>
+        completion switch
+        {
+            ZLinkActorJoinCompletion.Accepted accepted => accepted.OperationId,
+            ZLinkActorJoinCompletion.Rejected rejected => rejected.OperationId,
+            ZLinkActorJoinCompletion.Failed failed => failed.OperationId,
+            _ => throw new ArgumentOutOfRangeException(nameof(completion))
+        };
+
+    private static string ResolveRecoveredRoomId(
+        ZLinkActorJoinCompletion completion)
+    {
+        return completion switch
+        {
+            ZLinkActorJoinCompletion.Accepted { Reply: { } reply } =>
+                reply.Decode<TicTacToeGameJoinRes>().State.RoomId,
+            _ => string.Empty
+        };
+    }
+
     public string RequireJoinedRoom()
     {
-        if (Context.SpotRid is null || string.IsNullOrEmpty(RoomId))
+        if (Context.SpotId is null || string.IsNullOrEmpty(RoomId))
             throw new InvalidOperationException("Actor has not joined a room.");
 
         return RoomId;

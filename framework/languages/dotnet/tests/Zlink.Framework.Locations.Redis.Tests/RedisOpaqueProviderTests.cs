@@ -1,3 +1,7 @@
+using System.Security.Cryptography;
+using System.Text;
+using StackExchange.Redis;
+
 namespace Zlink.Framework.Locations.Redis.Tests;
 
 [Collection(RedisTestCollection.Name)]
@@ -6,20 +10,57 @@ public sealed class RedisOpaqueProviderTests(RedisTestFixture fixture)
     [Fact]
     public void Location_provider_implements_only_the_opaque_store_contract()
     {
-        var interfaces = typeof(ZLinkRedisLocationStore).GetInterfaces();
+        var locationInterfaces = typeof(ZLinkRedisLocationStore).GetInterfaces();
+        var relocationInterfaces =
+            typeof(ZLinkRedisRelocationStore).GetInterfaces();
 
-        Assert.Contains(typeof(IZLinkLocationStore), interfaces);
+        Assert.Contains(typeof(IZLinkLocationStore), locationInterfaces);
         Assert.DoesNotContain(
-            interfaces,
+            locationInterfaces,
             type => type.Name == "IZLinkLocationRepository");
+        Assert.Contains(typeof(IZLinkRelocationStore), relocationInterfaces);
         Assert.DoesNotContain(
-            typeof(ZLinkRedisLocationStore).Assembly.GetTypes(),
-            type => type.Name.StartsWith(
-                        "ZLinkRedisAuthority",
-                        StringComparison.Ordinal)
-                    || type.Name is "ZLinkRedisLocationCommands"
-                        or "ZLinkRedisLocationKeyCodec"
-                        or "ZLinkRedisLocationRowJson");
+            relocationInterfaces,
+            type => type.Name == "IZLinkRelocationRepository");
+
+        var dependencies = typeof(ZLinkRedisLocationStore).Assembly
+            .GetReferencedAssemblies()
+            .Select(static dependency => dependency.Name)
+            .ToArray();
+        Assert.Contains(
+            "Zlink.Framework.Provider.Abstractions",
+            dependencies);
+        Assert.DoesNotContain("Zlink.Framework", dependencies);
+
+        var exactOptionMembers = new[]
+        {
+            "get_ConfigurationOptions",
+            "get_ConnectionString",
+            "get_KeyPrefix",
+            "get_OperationTimeout",
+            "set_ConfigurationOptions",
+            "set_ConnectionString",
+            "set_KeyPrefix",
+            "set_OperationTimeout"
+        };
+        Assert.Equal(
+            exactOptionMembers,
+            typeof(ZLinkRedisLocationOptions)
+                .GetMethods(
+                    System.Reflection.BindingFlags.Public
+                    | System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.DeclaredOnly)
+                .Select(static method => method.Name)
+                .Order(StringComparer.Ordinal));
+        Assert.Equal(
+            exactOptionMembers,
+            typeof(ZLinkRedisRelocationOptions)
+                .GetMethods(
+                    System.Reflection.BindingFlags.Public
+                    | System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.DeclaredOnly)
+                .Select(static method => method.Name)
+                .Order(StringComparer.Ordinal));
     }
 
     [SkippableFact]
@@ -110,10 +151,22 @@ public sealed class RedisOpaqueProviderTests(RedisTestFixture fixture)
         var thirdKey = new ZLinkStoreKey("actor:3");
         var third = Assert.IsType<ZLinkStoreReadResult.Found>(
             await store.ReadAsync(thirdKey));
+        var fourthKey = new ZLinkStoreKey("actor:4");
         Assert.IsType<ZLinkStoreWriteResult.Applied>(
             await store.WriteAsync(new ZLinkStoreWriteRequest(
-                [new ZLinkStoreCondition.Version(thirdKey, third.Value.Version)],
-                [new ZLinkStoreMutation.Put(thirdKey, new byte[] { 8 }, null)])));
+                [
+                    new ZLinkStoreCondition.Version(
+                        thirdKey,
+                        third.Value.Version),
+                    new ZLinkStoreCondition.Missing(fourthKey)
+                ],
+                [
+                    new ZLinkStoreMutation.Delete(thirdKey),
+                    new ZLinkStoreMutation.Put(
+                        fourthKey,
+                        new byte[] { 4 },
+                        null)
+                ])));
 
         var second = Assert.IsType<ZLinkStoreScanResult.Page>(
             await store.ScanAsync(new ZLinkStoreScanRequest(
@@ -131,6 +184,178 @@ public sealed class RedisOpaqueProviderTests(RedisTestFixture fixture)
                 new ZLinkStoreScanCursor(
                     $"{Guid.NewGuid():N}:0"),
                 2)));
+    }
+
+    [SkippableFact]
+    public async Task Location_scan_cursor_stores_only_bounded_metadata()
+    {
+        Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
+        await using var store = fixture.CreateStore(out var keyPrefix);
+        for (var index = 0; index < 4; index++)
+        {
+            var key = new ZLinkStoreKey($"metadata:{index}");
+            Assert.IsType<ZLinkStoreWriteResult.Applied>(
+                await store.WriteAsync(new ZLinkStoreWriteRequest(
+                    [],
+                    [
+                        new ZLinkStoreMutation.Put(
+                            key,
+                            new byte[512 * 1024],
+                            null)
+                    ])));
+        }
+
+        var first = Assert.IsType<ZLinkStoreScanResult.Page>(
+            await store.ScanAsync(new ZLinkStoreScanRequest(
+                "metadata:",
+                null,
+                1)));
+        var cursor = Assert.IsType<ZLinkStoreScanCursor>(
+            first.Value.NextCursor);
+        var scanId = cursor.Value[..cursor.Value.IndexOf(':')];
+        var scanKey =
+            $"{keyPrefix}:{{zlink-location-v3}}:opaque:scan:{scanId}";
+
+        await using var connection =
+            await ConnectionMultiplexer.ConnectAsync(fixture.ConnectionString);
+        var metadata = await connection.GetDatabase().HashGetAllAsync(scanKey);
+
+        Assert.Equal(3, metadata.Length);
+        Assert.True(
+            metadata.Sum(static item =>
+                item.Name.ToString().Length + item.Value.ToString().Length)
+            < 4096);
+    }
+
+    [SkippableFact]
+    public async Task Hot_key_history_is_bounded_without_postponing_snapshot_cleanup()
+    {
+        Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
+        await using var store = fixture.CreateStore(out var keyPrefix);
+        var firstKey = new ZLinkStoreKey("mvcc:a");
+        var hotKey = new ZLinkStoreKey("mvcc:b");
+        foreach (var (key, value) in new[]
+                 {
+                     (firstKey, (byte)1),
+                     (hotKey, (byte)2)
+                 })
+        {
+            Assert.IsType<ZLinkStoreWriteResult.Applied>(
+                await store.WriteAsync(new ZLinkStoreWriteRequest(
+                    [],
+                    [new ZLinkStoreMutation.Put(key, new[] { value }, null)])));
+        }
+
+        var firstPage = Assert.IsType<ZLinkStoreScanResult.Page>(
+            await store.ScanAsync(new ZLinkStoreScanRequest(
+                "mvcc:",
+                null,
+                1)));
+        Assert.Equal(firstKey, Assert.Single(firstPage.Value.Items).Key);
+        Assert.NotNull(firstPage.Value.NextCursor);
+
+        var current = Assert.IsType<ZLinkStoreReadResult.Found>(
+            await store.ReadAsync(hotKey));
+        await using var connection =
+            await ConnectionMultiplexer.ConnectAsync(fixture.ConnectionString);
+        var database = connection.GetDatabase();
+        var cleanupKey =
+            $"{keyPrefix}:{{zlink-location-v3}}:opaque:cleanup";
+
+        Assert.IsType<ZLinkStoreWriteResult.Applied>(
+            await store.WriteAsync(new ZLinkStoreWriteRequest(
+                [new ZLinkStoreCondition.Version(
+                    hotKey,
+                    current.Value.Version)],
+                [new ZLinkStoreMutation.Put(hotKey, new byte[] { 3 }, null)])));
+        var fixedCleanupDue = await database.SortedSetScoreAsync(
+            cleanupKey,
+            hotKey.Value);
+        Assert.NotNull(fixedCleanupDue);
+
+        current = Assert.IsType<ZLinkStoreReadResult.Found>(
+            await store.ReadAsync(hotKey));
+        Assert.IsType<ZLinkStoreWriteResult.Applied>(
+            await store.WriteAsync(new ZLinkStoreWriteRequest(
+                [new ZLinkStoreCondition.Version(
+                    hotKey,
+                    current.Value.Version)],
+                [new ZLinkStoreMutation.Put(hotKey, new byte[] { 4 }, null)])));
+        Assert.Equal(
+            fixedCleanupDue,
+            await database.SortedSetScoreAsync(cleanupKey, hotKey.Value));
+
+        for (var index = 0; index < 125; index++)
+        {
+            current = Assert.IsType<ZLinkStoreReadResult.Found>(
+                await store.ReadAsync(hotKey));
+            Assert.IsType<ZLinkStoreWriteResult.Applied>(
+                await store.WriteAsync(new ZLinkStoreWriteRequest(
+                    [new ZLinkStoreCondition.Version(
+                        hotKey,
+                        current.Value.Version)],
+                    [new ZLinkStoreMutation.Put(
+                        hotKey,
+                        new[] { (byte)(index & 0xff) },
+                        null)])));
+        }
+
+        current = Assert.IsType<ZLinkStoreReadResult.Found>(
+            await store.ReadAsync(hotKey));
+        await Assert.ThrowsAsync<IOException>(
+            () => store.WriteAsync(new ZLinkStoreWriteRequest(
+                [new ZLinkStoreCondition.Version(
+                    hotKey,
+                    current.Value.Version)],
+                [new ZLinkStoreMutation.Put(
+                    hotKey,
+                    new byte[] { 0xff },
+                    null)])).AsTask());
+
+        var finalPage = Assert.IsType<ZLinkStoreScanResult.Page>(
+            await store.ScanAsync(new ZLinkStoreScanRequest(
+                "mvcc:",
+                firstPage.Value.NextCursor,
+                1)));
+        var snapshotItem = Assert.Single(finalPage.Value.Items);
+        Assert.Equal(hotKey, snapshotItem.Key);
+        Assert.Equal(new byte[] { 2 }, snapshotItem.Value.Bytes.ToArray());
+        Assert.Null(finalPage.Value.NextCursor);
+
+        var snapshotBoundaryKey =
+            $"{keyPrefix}:{{zlink-location-v3}}:opaque:snapshot-boundary";
+        Assert.Equal(
+            0,
+            await database.SortedSetLengthAsync(snapshotBoundaryKey));
+        var cleanupDue = Assert.IsType<double>(
+            await database.SortedSetScoreAsync(cleanupKey, hotKey.Value));
+        var cleanupDelay = Math.Max(
+            0,
+            (long)Math.Ceiling(
+                cleanupDue - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+            + 100);
+        await Task.Delay(TimeSpan.FromMilliseconds(cleanupDelay));
+        current = Assert.IsType<ZLinkStoreReadResult.Found>(
+            await store.ReadAsync(hotKey));
+        Assert.IsType<ZLinkStoreWriteResult.Applied>(
+            await store.WriteAsync(new ZLinkStoreWriteRequest(
+                [new ZLinkStoreCondition.Version(
+                    hotKey,
+                    current.Value.Version)],
+                [new ZLinkStoreMutation.Put(
+                    hotKey,
+                    new byte[] { 5 },
+                    null)])));
+
+        var digest = Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(hotKey.Value)))
+            .ToLowerInvariant();
+        var recordKey =
+            $"{keyPrefix}:{{zlink-location-v3}}:opaque:{digest}";
+        Assert.InRange(
+            await database.SortedSetLengthAsync(recordKey),
+            1,
+            2);
     }
 
     [SkippableFact]

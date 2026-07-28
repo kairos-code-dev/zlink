@@ -73,9 +73,7 @@ internal sealed class ScenarioSession(
 }
 
 internal sealed class AuthSessionHandler(
-    IZLinkRouteClient routes,
     IZLinkActorManager actors,
-    NodeOptions node,
     EvidenceStore evidence)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, AuthReq>
 {
@@ -86,13 +84,12 @@ internal sealed class AuthSessionHandler(
         CancellationToken cancellationToken)
     {
         _ = dispatch;
-        var ensured = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
-            ? await EnsureLocalActorAsync(actors, node, evidence, request, cancellationToken)
-            : await routes.RequestToNode(
-                    SpotServiceNames.ControlChannel,
-                    RoutingId.From(request.NodeRid),
-                    new EnsureActorReq(request.ActorId, request.DisplayName, request.NodeRid))
-                .Async<EnsureActorRes>(cancellationToken);
+        var ensured = await EnsureActorAsync(
+            actors,
+            evidence,
+            request.ActorId,
+            request.DisplayName,
+            cancellationToken);
         await context.Actors.BindAsync(
             new ActorRef(
                 ensured.ActorId,
@@ -104,16 +101,17 @@ internal sealed class AuthSessionHandler(
             .Async(cancellationToken);
     }
 
-    private static async ValueTask<EnsureActorRes> EnsureLocalActorAsync(
+    internal static async ValueTask<EnsureActorRes> EnsureActorAsync(
         IZLinkActorManager actors,
-        NodeOptions node,
         EvidenceStore evidence,
-        AuthReq request,
+        string actorId,
+        string displayName,
         CancellationToken cancellationToken)
     {
         var actor = await actors
-            .GetOrCreate(request.ActorId, SpotServiceNames.ActorType)
-            .Request(new ScenarioActorCreateReq(request.DisplayName))
+            .GetOrCreate(actorId, SpotServiceNames.ActorType)
+            .InMesh(SpotServiceNames.SpotChannel)
+            .Request(new ScenarioActorCreateReq(displayName))
             .Async(cancellationToken) switch
         {
             ZLinkActorCreateResult.Existing value => value.Actor,
@@ -121,8 +119,8 @@ internal sealed class AuthSessionHandler(
             _ => throw new InvalidOperationException("Actor creation was rejected.")
         };
 
-        evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
-        evidence.Add($"entry-joined|rid={node.Rid}|actor={request.ActorId}");
+        evidence.Add($"ensure-actor|rid={actor.NodeRid}|actor={actorId}");
+        evidence.Add($"entry-joined|rid={actor.NodeRid}|actor={actorId}");
         return new EnsureActorRes(
             actor.ActorId,
             actor.NodeRid.ToString(),
@@ -131,7 +129,8 @@ internal sealed class AuthSessionHandler(
 }
 
 internal sealed class MultiBindSessionHandler(
-    IZLinkRouteClient routes)
+    IZLinkActorManager actors,
+    EvidenceStore evidence)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, MultiBindReq>
 {
     public async ValueTask HandleAsync(
@@ -143,11 +142,12 @@ internal sealed class MultiBindSessionHandler(
         _ = dispatch;
         foreach (var actorId in new[] { request.FirstActorId, request.SecondActorId })
         {
-            var ensured = await routes.RequestToNode(
-                    SpotServiceNames.ControlChannel,
-                    RoutingId.From(request.NodeRid),
-                    new EnsureActorReq(actorId, actorId, request.NodeRid))
-                .Async<EnsureActorRes>(cancellationToken);
+            var ensured = await AuthSessionHandler.EnsureActorAsync(
+                actors,
+                evidence,
+                actorId,
+                actorId,
+                cancellationToken);
             await context.Actors.BindAsync(
                 new ActorRef(
                     ensured.ActorId,
@@ -164,8 +164,6 @@ internal sealed class MultiBindSessionHandler(
 
 internal sealed class UserSpotAuthSessionHandler(
     IZLinkActorManager actors,
-    IZLinkRouteClient routes,
-    NodeOptions node,
     EvidenceStore evidence)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, UserSpotAuthReq>
 {
@@ -176,13 +174,7 @@ internal sealed class UserSpotAuthSessionHandler(
         CancellationToken cancellationToken)
     {
         _ = dispatch;
-        var ensured = string.Equals(request.NodeRid, node.Rid, StringComparison.Ordinal)
-            ? await EnsureLocalActorAsync(actors, evidence, request, cancellationToken)
-            : await routes.RequestToNode(
-                    SpotServiceNames.ControlChannel,
-                    RoutingId.From(request.NodeRid),
-                    new EnsureActorReq(request.ActorId, request.DisplayName, request.NodeRid))
-                .Async<EnsureActorRes>(cancellationToken);
+        var ensured = await EnsureActorAsync(actors, evidence, request, cancellationToken);
         await context.Actors.BindAsync(
             new ActorRef(
                 ensured.ActorId,
@@ -194,7 +186,7 @@ internal sealed class UserSpotAuthSessionHandler(
             .Async(cancellationToken);
     }
 
-    private static async ValueTask<EnsureActorRes> EnsureLocalActorAsync(
+    private static async ValueTask<EnsureActorRes> EnsureActorAsync(
         IZLinkActorManager actors,
         EvidenceStore evidence,
         UserSpotAuthReq request,
@@ -202,6 +194,7 @@ internal sealed class UserSpotAuthSessionHandler(
     {
         var actor = await actors
             .GetOrCreate(request.ActorId, SpotServiceNames.ActorType)
+            .InMesh(SpotServiceNames.SpotChannel)
             .Request(new ScenarioActorCreateReq(request.SpotRid))
             .Async(cancellationToken) switch
         {
@@ -215,7 +208,7 @@ internal sealed class UserSpotAuthSessionHandler(
             + $"|actor={request.ActorId}");
         return new EnsureActorRes(
             actor.ActorId,
-            request.NodeRid,
+            actor.NodeRid.ToString(),
             actor.ObjectGeneration);
     }
 }

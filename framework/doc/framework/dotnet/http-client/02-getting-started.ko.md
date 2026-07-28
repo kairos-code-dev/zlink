@@ -4,12 +4,12 @@
 
 ## 프로젝트 참조
 
-`Zlink.HttpClient`는 `Zlink.Framework`를 참조하는 라이브러리 프로젝트다. 소비 프로젝트
-에서는 패키지 참조를 추가한다. 이 패키지는 필요한 `Zlink.Framework` 의존성을 함께 선언한다.
+소비 프로젝트에 `Zlink.HttpClient` package를 추가한다. 서버 runtime 전체가 아니라
+HTTP client가 사용하는 framework contract package만 함께 설치된다.
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Zlink.HttpClient" Version="0.4.0" />
+  <PackageReference Include="Zlink.HttpClient" Version="0.5.1" />
 </ItemGroup>
 ```
 
@@ -29,12 +29,11 @@ Console.WriteLine(player.Body.Name);
 
 - `Create(baseUrl)`로 builder를 시작하고 `.Build()`로 client를 만든다.
 - client는 재사용 가능하고 thread-safe하다. 보통 한 번 만들어 오래 쓴다.
-- `using`으로 수명을 관리하면 내부 `HttpClient`/핸들러가 정리된다.
+- `using`으로 client 수명을 관리한다.
 
 ## 한 줄 요청
 
-단발 요청은 `Build()`를 생략하고 builder에서 바로 메서드를 호출할 수 있다. 내부적으로
-client를 만들어 요청을 수행한다.
+단발 요청은 `Build()`를 생략하고 builder에서 바로 메서드를 호출할 수 있다.
 
 ```csharp
 var res = await ZLinkHttpClient.Create("https://game-api.example.internal")

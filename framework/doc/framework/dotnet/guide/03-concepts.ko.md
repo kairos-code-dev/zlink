@@ -86,50 +86,63 @@ node를 선택하지 않는다. **위치 투명성이 없다.**
 논리 이름**이고, **ClientServer channel은 다른 channel과 transport를 공유하지 않는
 독립 연결 단위**다.
 
+**route mesh channel** — MeshNode 소켓 하나로 mesh에 붙고, channel 이름은 그 위에서
+"이 요청을 누가 받는가"를 가르는 논리 묶음이다.
+
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-flowchart TB
-  subgraph RM["route mesh channel — 연결은 한 번, channel은 그 위의 이름"]
-    direction LR
-    A["node A<br/>orders Client"]
-    B["node B<br/>orders Server<br/>billing Client"]
-    C["node C<br/>orders Server<br/>billing Server"]
-    A <-->|"MeshNode 소켓"| B
-    B <-->|"MeshNode 소켓"| C
-    A <-->|"MeshNode 소켓"| C
+flowchart LR
+  subgraph ORD["channel: orders"]
+    direction TB
+    A1["node A1"]:::server
+    A2["node A2"]:::server
   end
-  subgraph CS["ClientServer channel — channel마다 별도 transport"]
-    direction LR
-    subgraph PX["process X"]
-      direction TB
-      X1["auth Client"]
-      X2["report Client"]
-    end
-    subgraph PY["process Y"]
-      direction TB
-      Y1["auth Server"]
-    end
-    subgraph PZ["process Z"]
-      direction TB
-      Z1["auth Server"]
-      Z2["report Server"]
-    end
-    X1 -->|"auth 소켓"| Y1
-    X1 -->|"auth 소켓"| Z1
-    X2 -->|"report 소켓"| Z2
+  B["node B<br/>orders Client<br/>billing Client<br/>MeshNode 소켓 1개"]:::client
+  subgraph BIL["channel: billing"]
+    direction TB
+    C1["node C1"]:::server
+    C2["node C2"]:::server
   end
-  RM ~~~ CS
+  B <-->|"MeshNode 소켓"| A1
+  B <-->|"MeshNode 소켓"| A2
+  B <-->|"MeshNode 소켓"| C1
+  B <-->|"MeshNode 소켓"| C2
+  classDef server fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+  classDef client fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
 ```
 
-위쪽에서 `orders`·`billing`은 소켓이 아니다. node들은 MeshNode 소켓으로 이미 서로
-연결돼 있고, channel 이름은 그 연결 위에서 "이 요청은 누가 받는가"를 가르는 논리
-구분일 뿐이다. `orders`는 Client 하나(A)에 Server 둘(B·C)이라 A가 호출하면 select-one이
-둘 중 하나를 고른다. `billing`은 같은 소켓 위의 또 다른 이름이고 Client·Server 짝도
-다르다 — B가 Client, C가 Server다. channel을 열 개 더 등록해도 연결 수는 늘지 않는다.
+node B는 소켓 하나로 mesh에 붙어 있고, 그 위에서 `orders`와 `billing`을 둘 다 호출한다.
+`orders`를 부르면 select-one이 그 상자 안의 A1·A2 중 하나를, `billing`을 부르면 C1·C2
+중 하나를 고른다. 상자는 소켓이 아니라 이름으로 묶인 그룹이라, channel을 열 개 더
+등록해도 B의 소켓은 그대로 하나다.
 
-아래쪽도 Server가 둘(process Y·Z)이라 select-one은 같지만, **연결이 channel마다
-따로**다. `auth` Client는 두 Server에 각각 연결하고, 같은 process Z 안에서도 `report`는
-자기 소켓을 따로 사용한다. Channel마다 연결 대상과 수명을 따로 관리한다.
+**ClientServer channel** — 상자 모양은 같지만, 상자마다 자기 소켓을 따로 연다.
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+flowchart LR
+  subgraph AUTH["channel: auth"]
+    direction TB
+    Y1["process Y"]:::server
+    Z1["process Z"]:::server
+  end
+  X["process X<br/>auth Client<br/>report Client<br/>channel마다 소켓 별도"]:::client
+  subgraph REP["channel: report"]
+    direction TB
+    Z2["process Z"]:::server
+    W2["process W"]:::server
+  end
+  X -->|"auth 소켓"| Y1
+  X -->|"auth 소켓"| Z1
+  X -->|"report 소켓"| Z2
+  X -->|"report 소켓"| W2
+  classDef server fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+  classDef client fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+```
+
+Server가 둘이라 select-one은 똑같이 동작한다. 다른 건 소켓이다 — `auth`와 `report`가
+각자 연결을 열고, 같은 process Z가 양쪽 channel에 다 들어가 있어도 두 소켓을 따로
+쓴다. Channel마다 연결 대상과 수명을 따로 관리한다.
 
 방향도 고정이라 Server는 Client가 시작한 요청에만 응답할 수 있다. Server가 먼저 알림을
 보내야 한다면 ClientServer가 아니라 RouteMesh를 쓴다. TicTacToe에서 로그인 인증

@@ -73,7 +73,6 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.45 | `.NET`, Java/Kotlin, C++ | User Spot aggregate relocation은 command 30 source accept 뒤 participant 전체의 typed capacity bundle으로 aggregate prepare를 한 번 실행하고, target factory·Restore 뒤 같은 aggregate fence를 commit해야 한다. Standalone relocation capacity fence와 뒤늦은 aggregate prepare를 함께 사용하면 capacity를 이중 예약하므로 금지한다 |
 | §12.49 | 전 언어 | Host relocation mode와 exact application-version target 선택이 구현되지 않았다. 현재 runtime은 `PlannedMaintenance`와 `RollingUpdate`를 구분하지 않으며 언어별 target filter에도 차이가 있다 |
 | §12.52 | 전 언어 | `Message Follow`의 Actor·Spot 전체 조합과 relocation payload·대량 처리·서비스 연속성 process E2E가 없다. `.NET`은 Actor·Spot route를 구현했지만 전체 matrix를 검증하지 않았고, Java/Kotlin·Node.js·C++는 Spot route 구현도 남아 있다 |
-| §12.59 | Java·Kotlin·Node.js·C++ | Factory option 객체와 이전 relocation policy value를 factory configure callback과 typed builder로 교체해야 한다. 세 factory 종류 모두 callback에서 policy를 정확히 하나 선택해야 한다. `.NET` 전환은 완료했다 |
 | §12.53 | 전 언어 E2E | 정식 public contract는 `SpotId` 문자열을 사용하지만 기존 process fixture와 application DTO에 `SpotRid`·`spotRid`·`spot_rid` 이름과 RoutingId 변환이 남아 있다 |
 | §12.54 | `.NET`, Java/Kotlin, Node.js E2E | 여러 fixture가 제거된 handler context, Spot handle resolver, 이전 builder와 rich Store 표면을 사용해 현재 framework source와 compile되지 않는다 |
 | §12.57 | Java/Kotlin | Global Actor ID request가 remote owner route를 resolve한 뒤에도 local-only dispatch에서 실패한다 |
@@ -1420,14 +1419,3 @@ all-settled 통지를 수행하도록 요구한다.
 | Kotlin | `server/languages/kotlin/` |
 | Node.js / TypeScript | `server/languages/node/` |
 | C++ | `server/languages/cpp/` |
-### 12.59 전 언어 factory configure callback 미구현
-
-목표 계약은 Actor, User Spot과 Instance Spot factory의 option과 relocation policy를 하나의 configure callback에서
-설정한다. Policy는 `DisableRelocation`, `RecreateOnRelocation`, `PreserveStateWith(adapter)` 세 가지다.
-Callback에서 정확히 하나를 선택하지 않으면 socket bind 전에 startup configuration error다. User Spot builder는
-stable type limit, execution mode와 relocation readiness를 함께 설정한다.
-
-`.NET`은 factory builder, package export, sample, E2E와 contract test 전환을 완료했다. Java·Kotlin·Node.js·C++는
-factory option 객체와 기존 relocation policy value를 새 builder 계약으로 옮기고 이전 public symbol을
-제거해야 한다. Redis
-`AddRelocationStore` SPI와 Store 동작은 바꾸지 않는다.

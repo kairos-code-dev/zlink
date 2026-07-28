@@ -176,7 +176,7 @@ public interface ZLinkSpotManager {
 ```
 
 Factory registration의 정확한 builder member는 [구성과 host](configuration-host.ko.md)가 소유한다.
-Actor·User Spot·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) [factory](../../../../01-glossary.ko.md#factory)는 explicit relocation policy를 받으며 생략 overload는 제공하지 않는다.
+Actor·User Spot·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) [factory](../../../../01-glossary.ko.md#factory)는 configure callback에서 relocation 동작을 정확히 하나 선택하며 callback을 생략하는 overload는 제공하지 않는다.
 Spot manager는 User Spot 전용이다. `create(spotType)`과 `getOrCreate(spotId, spotType)`만 User Spot의
 creation intent를 만들며 Instance Spot create/get-or-create member와 kind marker를 제공하지 않는다.
 
@@ -205,8 +205,8 @@ capture 결과를 즉시 복사한다. Capture 배열은 adapter가 계속 소�
 않는다. 길이가 0인 배열도 유효한 application state이며 Restore를 생략하거나 `recreateOnRelocation`으로 해석하지 않는다.
 Whole User Spot relocation에서는 Spot 자체에 Spot adapter를 사용하고 각 Actor participant에는 해당 Actor type의
 `ZLinkActorRelocationAdapter`를 사용한다.
-Instance Spot relocation에는 Spot adapter를 사용한다. Same-node operation과 `Disabled` policy에서는 adapter를
-호출하지 않고 `Recreate` policy에는 application state adapter가 없다.
+Instance Spot relocation에는 Spot adapter를 사용한다. Same-node operation과 `disableRelocation()`을 선택한 factory에서는 adapter를
+호출하지 않고 `recreateOnRelocation()`을 선택한 factory에는 application state adapter가 없다.
 
 Capture exception은 authority publication 전에 relocation을 abort하고 source admission을 유지한다. Restore
 exception은 target admission을 sealed 상태로 유지한 채 같은 immutable payload를 retry하거나 target을 교체한다.
@@ -226,7 +226,7 @@ dispatch 개방 순서로 진행한다. Infrastructure relocation은 target
 callback을 호출하지 않는다.
 
 `PerActor` User Spot도 같은 Actor 단위 relocation을 사용한다. Spot policy는
-`Recreate`만 허용하고 Spot adapter를 등록하지 않는다. Spot authority 전환 뒤
+`recreateOnRelocation()`만 허용하고 Spot adapter를 등록하지 않는다. Spot authority 전환 뒤
 `ToSpot`·Create·Join은 target, `ToActor`는 Actor별 current owner를 사용한다.
 Spot field와 Spot-level schedule은 이전하지 않는다. 유지해야 하는 shared state와
 schedule은 application의 Redis·database·service 같은 외부 저장소에 둔다.

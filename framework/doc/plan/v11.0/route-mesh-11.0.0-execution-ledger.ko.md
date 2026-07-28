@@ -7053,6 +7053,22 @@ JVM factory builder 계약은 commit `116bc1bd97` 기준으로 Java core 603/603
 22/22, Kotlin 46/46과 Java·Kotlin SpotActorTransfer build를 통과했다. 기존 Kotlin contract
 3건 실패는 이 변경과 무관한 별도 gap으로 유지한다.
 
+Node.js와 C++ 전환은 commit `bd0c4df076`에서 완료했다. Node.js는 object 등록을
+`objects().server()`로 단일화하고 top-level 호환 등록 함수를 제거했다. C++은 exact interface가
+정한 `mesh_node_builder_t` 등록 표면을 유지했다. 두 언어 모두 이전 Transfer Adapter 이름과
+public Snapshot policy factory를 제거했다.
+
+- Node.js TypeScript build: 통과
+- Node.js factory 집중 contract test: 128/128
+- C++ contract header, vertical runtime, M6b runtime: 통과
+- C++ sample parity: 54/54
+- 기존 Node.js NestJS manual ClientServer DI: 57/58
+- 기존 C++ Store resolver RouteMesh role gap: 32/37
+
+마지막 두 실패는 factory builder 변경과 무관한 기존 gap이다. Factory builder gap §12.59는
+다섯 언어 구현, sample과 집중 contract test가 목표 계약에 도달했으므로 닫았다. Redis
+`AddRelocationStore` SPI와 Store 동작은 변경하지 않았다.
+
 ## 2026-07-29 .NET Config 10 target completion crash window 수정
 
 High review에서 target이 completion journal의 `Prepare`를 저장한 직후 종료되면 startup

@@ -22,7 +22,7 @@ public suspend fun <T> CompletionStage<T>.await(): T
 
 User Spot은 Spot과 current member Actor 전체를 하나의 aggregate로 이전하며 participant 총수에
 고정 상한을 두지 않는다. 따라서 존재 자체가 relocation blocker가
-아니다. `Disabled`, target 부재와 state capability 불일치의 relocation reason은 Java와 동일하다.
+아니다. `disableRelocation()` 선택, target 부재와 state capability 불일치의 relocation reason은 Java와 동일하다.
 Local manual RouteMesh peer, ClientServer client endpoint, fanout subscriber endpoint 또는 manual fanout publisher가
 하나라도 있으면 Java enum의 `MANUAL_TOPOLOGY_UNSUPPORTED(8)`로 `Blocked`된다. Automatic RouteMesh는 source의
 Core peer table에서 descriptor와 같은 RID·lifecycle generation이 admitted·ready가 된 뒤에만

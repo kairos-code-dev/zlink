@@ -102,9 +102,9 @@ public final class ZLinkFrameworkRuntime
 `relocate(options)`는 신규 application admission과 placement를 닫고 현재 object를 compatible target으로
 이전한다. 성공하면 `RELOCATED` 상태가 되며 host process와 infrastructure connection은 유지한다. User Spot은 [Spot](../../../../01-glossary.ko.md#spot)과 current
 member Actor 전체를 하나의 aggregate로 옮긴다. Participant 총수에 고정 상한을 두지 않는다.
-Aggregate participant 하나라도 `Disabled`이면
+Aggregate participant 하나라도 `disableRelocation()`을 선택했으면
 `Blocked/RelocationDisabled`, target·capacity·reservation을 확보할 수 없으면 `Blocked/TargetUnavailable`,
-application version·type·Snapshot adapter capability가 맞지 않으면 `Blocked/StateIncompatible`로 끝난다. 이
+application version·type·state 보존 adapter capability가 맞지 않으면 `Blocked/StateIncompatible`로 끝난다. 이
 preflight failure는 admission을 변경하지 않는다. [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)이 존재한다는 사실만으로 relocation을 차단하지 않는다.
 Local manual RouteMesh peer, ClientServer client endpoint, fanout subscriber endpoint 또는 manual fanout publisher가
 하나라도 있으면 `Blocked/ManualTopologyUnsupported`로 끝난다. Automatic RouteMesh는 source의 Core peer table에서
@@ -138,7 +138,7 @@ Mode와 target version 조합이 위 조건에 맞지 않으면 Framework는 adm
 2. `PLANNED_MAINTENANCE`는 source version과 같은 node만, `ROLLING_UPDATE`는 지정한 target version과
    정확히 같은 node만 남긴다.
 3. Source와 같은 maintenance wave에 속한 node를 제외한다.
-4. stable type, relocation policy와 adapter capability가 맞는지 확인한다.
+4. stable type, factory에서 선택한 relocation 동작과 adapter capability가 맞는지 확인한다.
 5. population capacity와 reservation 가능 여부를 확인한다.
 6. 남은 후보에 node-wide placement weight를 적용한다.
 

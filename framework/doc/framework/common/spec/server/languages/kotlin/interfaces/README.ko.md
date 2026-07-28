@@ -16,7 +16,7 @@ Kotlin package는 Java와 JVM service runtime을 공유한다. 아래 문서는 
 
 ## 공개 API 구조
 
-Kotlin application은 Java의 lifecycle, termination, relocation policy와 Location type을 직접 사용한다. Kotlin
+Kotlin application은 Java의 lifecycle, termination, factory relocation builder와 Location type을 직접 사용한다. Kotlin
 package는 coroutine handler, suspending call, reified registration과 구성 DSL을 제공하며 같은 의미의 runtime
 facade나 상태 type을 중복해서 정의하지 않는다.
 
@@ -50,7 +50,7 @@ Missing [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-in
 `instanceSpot(stableType)`을 명시한 경우에만 시작한다. Marker가 없으면 not-found이고, marker만 사용한 cold
 activation은 selected Mesh의 distinct serving Instance type이 하나일 때만 type을 자동 선택한다. Existing
 [authority](../../../../01-glossary.ko.md#authority)는 등록 type 수와 관계없이 저장된 type을 사용한다. Mesh object role은 None, Client, Server로
-구분한다. 모든 server factory는 명시적인 relocation policy와 object 종류별 factory option을 받는다. Kotlin extension은
+구분한다. 모든 server factory configure callback은 relocation 동작을 정확히 하나 선택한다. Kotlin extension은
 이 계약을 축약하거나 local fallback을 추가하지 않는다.
 
 Global ref의 JSON field는 `actorId` 또는 `spotId`, `objectGeneration`, `meshName`, `nodeRid`다.

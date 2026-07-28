@@ -39,7 +39,7 @@ internal sealed class CourierSessionBinder(
     {
         var result = await actors
             .GetOrCreate(courierId, SampleNames.CourierActorType)
-            .InMesh(SampleNames.MeshName)
+            .InMesh(SampleNames.CourierMeshName)
             .Request(new EnsureCourierActorReq(courierId))
             .Async(cancellationToken);
         var actor = result switch

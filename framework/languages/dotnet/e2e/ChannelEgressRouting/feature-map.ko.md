@@ -26,10 +26,10 @@
 | CH-REG-03 | actual 통과 | Logical Multicast의 remote subscribed Spot delivery와 classic Pub/Sub remote delivery를 각각 exactly-once로 검증한다. 증거: `logs/20260729-004432-4150890` |
 | CH-REG-04 | 부분 구현·실행 대기 | 32개 병렬 request correlation·terminal uniqueness 구현. timeout·cancellation·disconnect·Spot shutdown은 미구현 |
 | CH-REG-05 | 부분 actual | 같은 ClientServer endpoint에서 WorkflowServer를 종료·재시작하고 새 RID 선택, 이전 RID 제거와 request 완료를 검증했다. lifecycle generation public evidence와 이전 generation late reply 경쟁은 아직 미구현이다. 증거: `logs/20260729-004432-4150890` |
-| CH-REG-06 | 구현·실행 대기 | retry 없이 정상 request가 1초 안에 완료되는지 검증 |
-| CH-REG-07 | 구현·실행 대기 | 공통 fixture의 일곱 sample·RouteMesh·ChannelName과 .NET sample source 일치 |
+| CH-REG-06 | actual 통과 | 정상 RouteMesh와 ClientServer request가 application retry 없이 각각 1초 안에 완료된다. 증거: `logs/20260729-045757-1462397` |
+| CH-REG-07 | actual 통과 | 공통 fixture의 일곱 sample·RouteMesh·ChannelName과 .NET sample source 일치. `logs/20260729-050208-1671604` |
 | CH-REG-08 | 부분 구현·실행 대기 | peer RID 중복 부재 검증. listener topology별 개수 검증은 미구현 |
-| CH-REG-09 | 구현·실행 대기 | sample source에 `PreferredNodeRid`·`PreferredRoutingId`가 없는지 검증 |
+| CH-REG-09 | actual 통과 | sample source에 `PreferredNodeRid`·`PreferredRoutingId`가 없는지 검증. `logs/20260729-050242-1677966` |
 | CH-REG-10 | 부분 구현·실행 대기 | 같은 ChannelName Client+Server와 weighted local·remote 선택 구현. drain variant는 미구현 |
 
 2026-07-29 actual 과정에서 `ZLinkManagedMeshNode`가 port 0 bind 요청값을 그대로 게시해 모든

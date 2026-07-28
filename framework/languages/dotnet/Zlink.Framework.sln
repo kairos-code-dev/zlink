@@ -41,7 +41,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TicTacToe.Client", "samples
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Server", "Server", "{813802F4-70B0-925D-8F8F-208C9A135882}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TicTacToe.Server", "samples\TicTacToe\Server\TicTacToe.Server.csproj", "{8A179090-24D1-464D-802C-525B92359DC7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TicTacToe.Server.Configuration", "samples\TicTacToe\Server\Configuration\TicTacToe.Server.Configuration.csproj", "{8A179090-24D1-464D-802C-525B92359DC7}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Bingo", "Bingo", "{BD6B7FDF-F350-AAE1-A742-F1EA1A95F732}"
 EndProject

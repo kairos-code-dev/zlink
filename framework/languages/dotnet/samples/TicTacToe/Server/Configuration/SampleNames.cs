@@ -2,7 +2,7 @@ namespace TicTacToe.Server.Configuration;
 
 internal static class SampleChannels
 {
-    public const string Api = "Api";
+    public const string Api = "tictactoe.api";
 }
 
 internal static class SampleTypes

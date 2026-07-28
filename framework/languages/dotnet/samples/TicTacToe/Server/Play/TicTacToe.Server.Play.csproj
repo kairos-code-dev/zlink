@@ -9,6 +9,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="../TicTacToe.Server.csproj"/>
+        <ProjectReference Include="../Configuration/TicTacToe.Server.Configuration.csproj"/>
     </ItemGroup>
 </Project>

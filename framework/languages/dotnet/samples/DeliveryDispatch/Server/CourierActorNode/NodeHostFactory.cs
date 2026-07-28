@@ -37,7 +37,7 @@ public static class NodeHostFactory
             options.ConfigureDispatch()
                 .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(NodeHostFactory));
-            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+            var mesh = options.AddRouteMesh(SampleNames.CourierMeshName)
                 .Listen(topology.MeshEndpoint)
                 .SetRoutingIdPrefix("courier-actor");
             mesh.Objects().Server()

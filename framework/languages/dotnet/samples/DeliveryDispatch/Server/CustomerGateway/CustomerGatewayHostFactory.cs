@@ -39,7 +39,7 @@ public static class CustomerGatewayHostFactory
             options.ConfigureDispatch()
                 .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(CustomerGatewayHostFactory));
-            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+            var mesh = options.AddRouteMesh(SampleNames.CustomerMeshName)
                 .Listen(topology.MeshEndpoint)
                 .SetRoutingIdPrefix("customer-gateway");
             mesh.Objects().Server()

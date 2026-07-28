@@ -36,7 +36,7 @@ public static class TrackingServerHostFactory
             options.ConfigureDispatch()
                 .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(DeliveryStatusChangedHandler));
-            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+            var mesh = options.AddRouteMesh(SampleNames.CustomerMeshName)
                 .Listen(topology.MeshEndpoint)
                 .SetRoutingIdPrefix("delivery-tracking");
             mesh.Objects().Client();

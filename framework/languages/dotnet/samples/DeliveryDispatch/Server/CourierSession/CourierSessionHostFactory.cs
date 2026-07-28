@@ -35,7 +35,7 @@ public static class CourierSessionHostFactory
             options.ConfigureDispatch()
                 .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(CourierSessionHostFactory));
-            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+            var mesh = options.AddRouteMesh(SampleNames.CourierMeshName)
                 .Listen(topology.MeshEndpoint)
                 .SetRoutingIdPrefix("courier-session");
             mesh.Objects().Client();

@@ -46,7 +46,7 @@ public static class DispatchServerHostFactory
             options.ConfigureDispatch()
                 .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
             options.AddHandlersFromAssemblyOf(typeof(DispatchServerHostFactory));
-            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+            var mesh = options.AddRouteMesh(SampleNames.CourierMeshName)
                 .Listen(topology.MeshEndpoint)
                 .SetRoutingIdPrefix("delivery-dispatch");
             mesh.Objects().Client();
@@ -62,7 +62,7 @@ public static class DispatchServerHostFactory
             CancellationToken cancellationToken) =>
         {
             var courierOwnerReady = await readiness.IsPeerReadyAsync(
-                SampleNames.MeshName,
+                SampleNames.CourierMeshName,
                 ZLinkLocationRole.Spot,
                 nodeRid: null,
                 cancellationToken);

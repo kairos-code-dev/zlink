@@ -117,26 +117,32 @@ public sealed partial class RegressionTests
     public void TicTacToe_Server_Assemblies_Preserve_Role_Boundaries()
     {
         var sampleRoot = ResolveSampleRoot("TicTacToe");
-        var sharedServerProject = File.ReadAllText(
-            Path.Combine(sampleRoot, "Server", "TicTacToe.Server.csproj"));
+        var configurationProject = File.ReadAllText(
+            Path.Combine(
+                sampleRoot,
+                "Server",
+                "Configuration",
+                "TicTacToe.Server.Configuration.csproj"));
         var apiProject = File.ReadAllText(
             Path.Combine(sampleRoot, "Server", "Api", "TicTacToe.Server.Api.csproj"));
         var playProject = File.ReadAllText(
             Path.Combine(sampleRoot, "Server", "Play", "TicTacToe.Server.Play.csproj"));
 
         Assert.Contains("<EnableDefaultCompileItems>false</EnableDefaultCompileItems>",
-            sharedServerProject,
+            configurationProject,
             StringComparison.Ordinal);
-        Assert.Contains("<Compile Include=\"Configuration/**/*.cs\"/>",
-            sharedServerProject,
+        Assert.Contains("<Compile Include=\"*.cs\"/>",
+            configurationProject,
             StringComparison.Ordinal);
-        Assert.DoesNotContain("Api/**/*.cs", sharedServerProject, StringComparison.Ordinal);
-        Assert.DoesNotContain("Play/**/*.cs", sharedServerProject, StringComparison.Ordinal);
-        Assert.Contains("<ProjectReference Include=\"../TicTacToe.Server.csproj\"",
+        Assert.DoesNotContain("Api/**/*.cs", configurationProject, StringComparison.Ordinal);
+        Assert.DoesNotContain("Play/**/*.cs", configurationProject, StringComparison.Ordinal);
+        Assert.Contains(
+            "<ProjectReference Include=\"../Configuration/TicTacToe.Server.Configuration.csproj\"",
             apiProject,
             StringComparison.Ordinal);
         Assert.DoesNotContain("Play/**/*.cs", apiProject, StringComparison.Ordinal);
-        Assert.Contains("<ProjectReference Include=\"../TicTacToe.Server.csproj\"",
+        Assert.Contains(
+            "<ProjectReference Include=\"../Configuration/TicTacToe.Server.Configuration.csproj\"",
             playProject,
             StringComparison.Ordinal);
         Assert.DoesNotContain("Api/**/*.cs", playProject, StringComparison.Ordinal);

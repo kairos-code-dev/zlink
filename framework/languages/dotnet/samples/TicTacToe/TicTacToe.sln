@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TicTacToe.Server", "Server\TicTacToe.Server.csproj", "{1F580BCE-21FC-406A-B0A6-AD740BD66CCD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TicTacToe.Server.Configuration", "Server\Configuration\TicTacToe.Server.Configuration.csproj", "{1F580BCE-21FC-406A-B0A6-AD740BD66CCD}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TicTacToe.Server.Api", "Server\Api\TicTacToe.Server.Api.csproj", "{A8B547E9-BA23-455B-A57F-4CED24D35899}"
 EndProject

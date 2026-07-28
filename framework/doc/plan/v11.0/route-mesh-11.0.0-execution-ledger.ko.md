@@ -6888,6 +6888,14 @@ Node direct 경로로 바뀌지 않았다.
 Actual-process 증거는
 `framework/languages/dotnet/e2e/ChannelEgressRouting/logs/20260729-045702-1376921`이다.
 
+## 2026-07-29 .NET Config 12 CH-REG-06 actual-process 증거
+
+정상 RouteMesh와 ClientServer request를 application retry 없이 각각 한 번 제출했다.
+두 request는 모두 1초 안에 reply로 완료됐다.
+
+Actual-process 증거는
+`framework/languages/dotnet/e2e/ChannelEgressRouting/logs/20260729-045757-1462397`이다.
+
 ## 2026-07-29 .NET Config 12 CH-E2E-06 actual-process 증거
 
 두 startup validation을 별도 child process에서 실행했다. RouteMesh와 ClientServer가
@@ -6897,3 +6905,25 @@ Actual-process 증거는
 Actual-process 증거는
 `framework/languages/dotnet/e2e/ChannelEgressRouting/logs/20260729-045555-1335584`이다.
 Server와 Client build는 warning 0, error 0이며 runner exit code는 0이다.
+
+## 2026-07-29 .NET Config 12 CH-REG-07 sample topology checkpoint
+
+공통 sample topology fixture와 일곱 .NET sample의 실제 source를 대조했다. 첫 실행에서
+TicTacToe의 ClientServer ChannelName과 DeliveryDispatch·ShoppingMall의 RouteMesh 이름이
+공통 sample 계약과 다른 것을 확인했다. Assertion을 완화하지 않고 sample 구성을 수정했다.
+
+- TicTacToe API ChannelName은 `tictactoe.api`다.
+- DeliveryDispatch는 courier와 customer object routing을 각각
+  `deliverydispatch.courier`, `deliverydispatch.customer` RouteMesh로 분리한다.
+- ShoppingMall workflow RouteMesh는 `shoppingmall.workflow`다.
+
+DeliveryDispatch solution build는 warning 0, error 0이다. 일곱 sample의 RouteMesh와
+ChannelName을 다시 검사한 actual-process 증거는
+`framework/languages/dotnet/e2e/ChannelEgressRouting/logs/20260729-050208-1671604`이다.
+
+## 2026-07-29 .NET Config 12 CH-REG-09 placement input checkpoint
+
+일곱 .NET sample source 전체를 검사해 application placement 입력에
+`PreferredNodeRid`와 `PreferredRoutingId`가 남아 있지 않음을 확인했다. Actual-process
+증거는
+`framework/languages/dotnet/e2e/ChannelEgressRouting/logs/20260729-050242-1677966`이다.

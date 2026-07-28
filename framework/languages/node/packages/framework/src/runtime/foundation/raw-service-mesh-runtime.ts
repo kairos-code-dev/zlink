@@ -68,6 +68,10 @@ export interface RawServiceMeshRuntimeOptions {
   readonly probeIntervalMs?: number;
   readonly peerTimeoutMs?: number;
   readonly bindingPort?: { createHost(): ZLinkRawHostPort };
+  readonly onPeerNotRequired?: (
+    nodeRoutingId: string,
+    endpoint: string
+  ) => void;
 }
 
 const DEFAULT_MAILBOX_LIMITS: ServiceMailboxLimits = {
@@ -103,6 +107,7 @@ export class RawServiceMeshRuntime {
   private readonly connectionIds = new Map<string, string>();
   private readonly monitorEvents: ZLinkRawMonitorRecord[] = [];
   private readonly bindingPort: { createHost(): ZLinkRawHostPort };
+  private readonly onPeerNotRequired?: RawServiceMeshRuntimeOptions['onPeerNotRequired'];
   private descriptor: ServiceNodeDescriptor;
   private host?: ZLinkRawHostPort;
   private router?: ZLinkRawRouterPort;
@@ -117,6 +122,7 @@ export class RawServiceMeshRuntime {
     this.mailbox = new ServiceMailbox({ ...DEFAULT_MAILBOX_LIMITS, ...options.mailbox });
     this.liveness = new ServiceLivenessRegistry(options.probeIntervalMs, options.peerTimeoutMs);
     this.bindingPort = options.bindingPort ?? new ZLinkNodeRawBindingPort();
+    this.onPeerNotRequired = options.onPeerNotRequired;
   }
 
   start(): void {
@@ -336,6 +342,9 @@ export class RawServiceMeshRuntime {
         const result = this.admitPeer(descriptor, connectionId, nowMs);
         if (result !== 'admitted') {
           this.trySend(received.sourceRid, [encodeReject(admissionReason(result))]);
+          if (result === 'notRequired') {
+            this.retireNotRequiredExpectedPeer(received.sourceRid);
+          }
           return 'infrastructure';
         }
         if (header.command === M6aServiceWireCommand.hello) {
@@ -363,10 +372,7 @@ export class RawServiceMeshRuntime {
             channels: [],
             objectRole: 'client'
           });
-          if (expected?.endpoint !== undefined) {
-            this.requireStarted().disconnect(expected.endpoint);
-          }
-          this.expectedPeers.delete(received.sourceRid);
+          this.retireNotRequiredExpectedPeer(received.sourceRid);
         }
         return 'infrastructure';
       }
@@ -573,6 +579,15 @@ export class RawServiceMeshRuntime {
       this.connectionIds.set(nodeRoutingId, connectionId);
     }
     return connectionId;
+  }
+
+  private retireNotRequiredExpectedPeer(nodeRoutingId: string): void {
+    const expected = this.expectedPeers.get(nodeRoutingId);
+    if (expected?.endpoint !== undefined) {
+      this.requireStarted().disconnect(expected.endpoint);
+      this.onPeerNotRequired?.(nodeRoutingId, expected.endpoint);
+    }
+    this.expectedPeers.delete(nodeRoutingId);
   }
 
   private removePeer(peer: AdmittedServicePeer): void {

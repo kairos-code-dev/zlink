@@ -373,6 +373,7 @@ metric_states = {m["tags"].get("state") for m in body["metrics"]
 assert {"serving", "draining"} <= metric_states, metric_states
 print("OBS-C1 marker PASS (row retained + readiness flip + drain metric transition)")
 PY
+  existing_route_successes=0
   for index in $(seq 1 8); do
     curl_local -fsS -X POST "$PLAY_A_HTTP/spot/action" -H 'Content-Type: application/json' \
       -d "{\"spotId\":\"$SPOT_ID\",\"marker\":\"drain-$index\",\"value\":1}" \
@@ -382,8 +383,11 @@ import json, sys
 body = json.load(open(sys.argv[1], encoding="utf-8"))
 assert body["marker"] == f"drain-{sys.argv[2]}", body
 PY
+    existing_route_successes=$((existing_route_successes + 1))
     sleep 0.25
   done
+  [[ "$existing_route_successes" -eq 8 ]] \
+    || { echo "OBS-C1 existing route traffic did not complete 8/8" >&2; exit 1; }
   curl_local -fsS "$PLAY_B_HTTP/evidence" >"$LOG_DIR/play-b.drain-traffic.evidence.json"
   python3 - "$LOG_DIR/play-b.before-drain.evidence.json" \
     "$LOG_DIR/play-b.drain-traffic.evidence.json" <<'PY'
@@ -394,9 +398,21 @@ play_b_hex = "play-b".encode().hex()
 rows = [row for row in during["peerRows"]
         if row["nodeRid"] == play_b_hex and row["draining"]]
 assert rows, f"draining peer row disappeared during traffic: {during['peerRows']}"
+before_leases = before.get("ownerLeases", [])
+during_leases = during.get("ownerLeases", [])
+assert len(before_leases) == 1 and len(during_leases) == 1, \
+       f"owner lease evidence missing: before={before_leases}, during={during_leases}"
+before_renewed = before_leases[0].get("renewedAtUnixMs")
+during_renewed = during_leases[0].get("renewedAtUnixMs")
+assert before_leases[0].get("healthy") is True, before_leases
+assert during_leases[0].get("healthy") is True, during_leases
+assert isinstance(before_renewed, int) and isinstance(during_renewed, int), \
+       f"renewedAtUnixMs missing: before={before_renewed}, during={during_renewed}"
+assert during_renewed > before_renewed, \
+       f"owner lease did not renew while draining: before={before_renewed}, during={during_renewed}"
 assert len(during["metrics"]) >= len(before["metrics"]), \
        "metric evidence regressed while existing traffic continued"
-print("OBS-C1 existing route traffic PASS (8/8, descriptor retained)")
+print("OBS-C1 existing route traffic PASS (8/8, descriptor retained, owner lease renewed)")
 PY
   # The typed create result must explicitly report rejection; transport failure
   # cannot stand in for this application-visible result.

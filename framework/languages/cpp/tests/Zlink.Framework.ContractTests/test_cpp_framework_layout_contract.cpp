@@ -403,8 +403,8 @@ bool framework_api_documents_actor_destroy_lifecycle (const std::filesystem::pat
       "Object Server의 Entry Spot, user Spot, typed Actor와 actor-free Instance Spot factory",
       "Actor factory에 `ActorRelocationAdapter`, User·Instance Spot factory에 "
       "`SpotRelocationAdapter`를 지정한다.",
-      "| exact ActorRef destroy | idempotent `false` | `RouteNotConnected` | "
-      "`ActorGenerationStale` | `ActorMoving` |"};
+      "| exact ActorRef destroy | idempotent `false` | `Unavailable` | "
+      "`InvalidOperation` | `Unavailable` |"};
     for (const auto &needle : required) {
         if (text.find (needle) == std::string::npos) {
             std::cerr << "framework API spec lacks actor destroy lifecycle contract: " << needle
@@ -1266,9 +1266,19 @@ int main ()
     ok &= require_exists (
       root
       / "samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp");
-    ok &= require_exists (
+    ok &= require_absent (
       root
-      / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/ensure_player_actor_handler.hpp");
+        / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/"
+          "ensure_player_actor_handler.hpp",
+      "Bingo Entry Spot owns Actor creation admission in on_create_actor");
+    ok &= file_contains (
+      root
+        / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp",
+      "void on_create_actor (player_actor_t &actor, const message_t &create_request)");
+    ok &= file_contains (
+      root
+        / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp",
+      "create_request.decode<ensure_player_actor_req_t> ()");
     ok &= require_exists (root / "samples/Bingo/Server/Play/play_server_host_factory.hpp");
     ok &= require_absent (root / "samples/Bingo/Server/Registry",
                           "Bingo uses Redis location store instead of a registry role");
@@ -1721,7 +1731,7 @@ int main ()
     ok &= file_contains (root / "framework/include/zlink/framework/contracts/actors/actor.hpp",
                          "request_to_actor (actor_ref_t actor_ref");
     ok &= file_contains (root / "framework/src/runtime/actors/actor_client.cpp",
-                         "actor_location_key_t{runtime->mesh_name (), actor_id}");
+                         "authority_key_t{\"1:\" + actor_id}");
     ok &= file_contains (root / "CMakeLists.txt",
                          "framework/src/runtime/actors/actor_client.cpp");
 

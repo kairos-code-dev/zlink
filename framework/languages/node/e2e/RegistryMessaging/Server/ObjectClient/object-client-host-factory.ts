@@ -84,8 +84,11 @@ function createObjectClientModule(): Function {
           if (options.serverWeight !== undefined) {
             channel.server().setWeight(options.serverWeight);
           }
-          for (const endpoint of options.routePeers) {
-            mesh.peerConnections().connect(endpoint);
+          for (let index = 0; index < options.routePeers.length; index += 1) {
+            mesh.peerConnections().connect(
+              options.routePeerRids[index]!,
+              options.routePeers[index]!
+            );
           }
           return builder.build();
         }

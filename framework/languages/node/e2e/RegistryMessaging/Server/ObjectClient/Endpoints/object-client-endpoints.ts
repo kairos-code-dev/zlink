@@ -31,6 +31,11 @@ export function createObjectClientEndpoints(
           rid: String(snapshot.rid),
           state: snapshot.state,
           readyPeerCount: snapshot.peers.filter((peer) => peer.ready).length,
+          channels: snapshot.channels.map((channel) => ({
+            channelName: channel.channelName,
+            localWeight: channel.localWeight,
+            readyMemberCount: channel.readyMemberCount
+          })),
           peers: snapshot.peers.map((peer) => ({
             rid: String(peer.rid),
             state: peerStateName(peer.state),
@@ -45,21 +50,18 @@ export function createObjectClientEndpoints(
       path: '/rm-a3/node-direct',
       handle: async (body) => {
         const targetRid = String((body as { targetRid?: unknown }).targetRid ?? '');
-        try {
+        const send = await nodeDirectOutcome(async () => {
           await route
-            .requestToNode(meshName, targetRid, new ScenarioRouteReq('rm-a3'))
+            .sendToNode(meshName, targetRid, new ScenarioRouteReq('rm-a3-send'))
+            .submit();
+        });
+        const request = await nodeDirectOutcome(async () => {
+          await route
+            .requestToNode(meshName, targetRid, new ScenarioRouteReq('rm-a3-request'))
             .timeout(500)
             .submit<ScenarioRouteRes>();
-          return { terminal: 'UnexpectedSuccess', errorKind: '' };
-        } catch (error) {
-          const kind = error instanceof ZLinkFrameworkException ? error.kind : 'Error';
-          return {
-            terminal: kind === ZLinkFrameworkErrorKind.RequestTargetNotFound
-              ? 'NotFound'
-              : 'Failed',
-            errorKind: kind
-          };
-        }
+        });
+        return { send, request };
       }
     },
     {
@@ -71,6 +73,24 @@ export function createObjectClientEndpoints(
       }
     }
   ];
+}
+
+async function nodeDirectOutcome(operation: () => Promise<void>): Promise<{
+  readonly terminal: string;
+  readonly errorKind: string;
+}> {
+  try {
+    await operation();
+    return { terminal: 'UnexpectedSuccess', errorKind: '' };
+  } catch (error) {
+    const kind = error instanceof ZLinkFrameworkException ? error.kind : 'Error';
+    return {
+      terminal: kind === ZLinkFrameworkErrorKind.RequestTargetNotFound
+        ? 'NotFound'
+        : 'Failed',
+      errorKind: kind
+    };
+  }
 }
 
 function peerStateName(state: ZLinkPeerState): string {

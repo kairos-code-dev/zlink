@@ -99,6 +99,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
       lastFailure: peer.lastError === 0 ? undefined : String(peer.lastError)
     }));
     const channels = Object.entries(this.options.meshOptions.get(meshName)?.meshChannels ?? {})
+      .filter(([, channel]) => channel.server === true)
       .map(([channelName, channel]) => {
         const readyMemberCount = BigInt(peerChannels.filter((entry, index) =>
           peers[index]?.ready === true

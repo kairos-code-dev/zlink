@@ -13,7 +13,7 @@ API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Pl
 - Play ChannelName handler 구성
 - session stream endpoint 구성
 - authenticate player/session handler
-- ensure player actor handler
+- Entry Spot의 Actor 생성 승인과 player 초기화 callback
 - match API handler와 actor match handler
 - allocate room, join room, card submit handler
 - bingo room state, 3 x 3 card, server draw, winner 판단

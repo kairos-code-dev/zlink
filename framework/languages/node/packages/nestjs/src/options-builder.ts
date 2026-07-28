@@ -890,10 +890,12 @@ class DefaultZLinkNestMeshChannelBuilder extends ZLinkNestOptionsBuilder impleme
   }
 
   client(): ZLinkNestMeshChannelClientBuilder {
+    this.channel.client = true;
     return new DefaultZLinkNestMeshChannelClientBuilder(this.state);
   }
 
   server(): ZLinkNestMeshChannelServerBuilder {
+    this.channel.server = true;
     return new DefaultZLinkNestMeshChannelServerBuilder(this.state, this.channel);
   }
 }

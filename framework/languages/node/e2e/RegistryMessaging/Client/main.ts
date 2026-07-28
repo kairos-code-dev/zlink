@@ -1,6 +1,7 @@
 import { parseClientOptions } from './Support/client-options';
 import { runRmA1 } from './Scenarios/rm-a1-discovery-request-scenario';
 import { runRmA2 } from './Scenarios/rm-a2-manual-endpoint-scenario';
+import { runRmA3 } from './Scenarios/rm-a3-object-client-connection-scenario';
 import { runRmA4 } from './Scenarios/rm-a4-same-rid-failover-scenario';
 import { runRmA6 } from './Scenarios/rm-a6-multiple-channels-scenario';
 import { runRmB1 } from './Scenarios/rm-b1-scale-out-scenario';
@@ -20,6 +21,7 @@ async function main(): Promise<void> {
   const scenarios: Record<string, () => Promise<void>> = {
     'RM-A1': () => runRmA1(options.locationConsumerUrl, options.providerAUrl, options.providerBUrl),
     'RM-A2': () => runRmA2(options.providerAUrl),
+    'RM-A3': () => runRmA3(options),
     'RM-A4': () => runRmA4(options),
     'RM-A6': () => runRmA6(options.providerAUrl, options.providerBUrl, options.workflowUrl),
     'RM-B1': () => runRmB1(options),

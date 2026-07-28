@@ -777,8 +777,12 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS)
     framework/src/runtime/mesh/service_topology_registry.cpp)
   target_compile_features(test_cpp_framework_service_wire_codec PRIVATE cxx_std_20)
   target_include_directories(test_cpp_framework_service_wire_codec PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
     ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
+  target_link_libraries(test_cpp_framework_service_wire_codec PRIVATE
+    zlink::cpp
+    Threads::Threads)
   add_test(NAME test_cpp_framework_service_wire_codec
     COMMAND test_cpp_framework_service_wire_codec)
   set_tests_properties(test_cpp_framework_service_wire_codec PROPERTIES

@@ -81,7 +81,8 @@ export function spotNodeAutoConnectCapability(
     nodeRid: String(status.routingId),
     endpoint,
     objectRole: spotNode.objectRole ?? 'none',
-    hasRouteMeshServerChannel: Object.keys(spotNode.meshChannels ?? {}).length > 0
+    hasRouteMeshServerChannel: Object.values(spotNode.meshChannels ?? {})
+      .some((channel) => channel.server === true)
   };
   return {
     local,

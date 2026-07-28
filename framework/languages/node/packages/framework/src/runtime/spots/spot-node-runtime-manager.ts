@@ -247,6 +247,9 @@ export class ZLinkSpotNodeRuntimeManager {
           objectCapabilities: stableTypes.map(type => `object-type:${type}`)
         });
         for (const [channelName, channel] of Object.entries(spotNode.meshChannels ?? {})) {
+          if (channel.server !== true) {
+            continue;
+          }
           node.addChannelName(channelName);
           if (channel.weight !== undefined) {
             node.setChannelWeight(channelName, channel.weight);
@@ -365,6 +368,7 @@ export class ZLinkSpotNodeRuntimeManager {
         },
         channelWeights: Object.fromEntries(
           Object.entries(registration.meshChannels ?? {})
+            .filter(([, channel]) => channel.server === true)
             .map(([channelName, channel]) => [
               channelName,
               state === ZLinkFrameworkRuntimeState.Draining

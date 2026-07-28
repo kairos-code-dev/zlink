@@ -1,8 +1,12 @@
 import fs from 'node:fs';
 const [output, ...args] = process.argv.slice(2);
 if (!output) throw new Error('Usage: node write-config.mjs <output> [--key value ...]');
-const listKeys = new Set(['providerEndpoints', 'routePeers']);
-const aliases = { providerEndpoint: 'providerEndpoints', routePeer: 'routePeers' };
+const listKeys = new Set(['providerEndpoints', 'routePeers', 'routePeerRids']);
+const aliases = {
+  providerEndpoint: 'providerEndpoints',
+  routePeer: 'routePeers',
+  routePeerRid: 'routePeerRids'
+};
 const e2e = {};
 for (let index = 0; index < args.length; index += 2) {
   const flag = args[index]; const value = args[index + 1];

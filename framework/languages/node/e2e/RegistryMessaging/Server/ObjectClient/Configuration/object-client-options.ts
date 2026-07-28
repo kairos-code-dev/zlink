@@ -8,6 +8,7 @@ export interface ObjectClientOptions {
   readonly redisKeyPrefix: string;
   readonly routeEndpoint: string;
   readonly routePeers: readonly string[];
+  readonly routePeerRids: readonly string[];
   readonly serverWeight?: number;
 }
 
@@ -17,6 +18,13 @@ export function validateObjectClientOptions(value: unknown): ObjectClientOptions
     ? values.routePeers.filter((entry): entry is string =>
       typeof entry === 'string' && entry.length > 0)
     : [];
+  const routePeerRids = Array.isArray(values.routePeerRids)
+    ? values.routePeerRids.filter((entry): entry is string =>
+      typeof entry === 'string' && entry.length > 0)
+    : [];
+  if (routePeers.length !== routePeerRids.length) {
+    throw new Error('routePeers and routePeerRids must contain the same number of entries.');
+  }
   const serverWeight = values.serverWeight === undefined
     ? undefined
     : Number(values.serverWeight);
@@ -32,6 +40,7 @@ export function validateObjectClientOptions(value: unknown): ObjectClientOptions
     redisKeyPrefix: requireString(values, 'redisKeyPrefix'),
     routeEndpoint: requireString(values, 'routeEndpoint'),
     routePeers,
+    routePeerRids,
     serverWeight
   };
 }

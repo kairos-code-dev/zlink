@@ -203,7 +203,19 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     if (this.closed) throw new Error('MeshNode is closed.');
     if (this.bindEndpoint === undefined) throw new Error('MeshNode bind endpoint is not configured.');
     const descriptor = this.createDescriptor();
-    const runtime = new RawServiceMeshRuntime({ descriptor });
+    const runtime = new RawServiceMeshRuntime({
+      descriptor,
+      onPeerNotRequired: (nodeRoutingId, endpoint) => {
+        for (const [intent, peer] of this.peerIntents) {
+          if (
+            peer.nodeRoutingId === nodeRoutingId
+            && peer.endpoint === endpoint
+          ) {
+            this.peerIntents.delete(intent);
+          }
+        }
+      }
+    });
     runtime.start();
     this.stateful = new ServiceStatefulRuntime(
       runtime,
@@ -383,10 +395,13 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
 
   peers(): MeshPeerEntry[] {
     const intents = new Map(
-      [...this.peerIntents.entries()].map(([id, intent]) => [intent.nodeRoutingId, id])
+      [...this.peerIntents.entries()].map(([id, intent]) => [
+        intent.nodeRoutingId,
+        { id, ...intent }
+      ])
     );
     const admitted = (this.runtime?.topology.peers() ?? []).map(peer => ({
-      connectionIntentId: intents.get(peer.descriptor.nodeRoutingId) ?? 0n,
+      connectionIntentId: intents.get(peer.descriptor.nodeRoutingId)?.id ?? 0n,
       source: 1,
       state: peerStateCode(peer.descriptor.state),
       routingId: peer.descriptor.nodeRoutingId as RoutingId,
@@ -398,7 +413,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       lastChangedMs: BigInt(Math.trunc(performance.now()))
     }));
     const notRequired = (this.runtime?.topology.notRequiredPeers() ?? []).map(descriptor => ({
-      connectionIntentId: intents.get(descriptor.nodeRoutingId) ?? 0n,
+      connectionIntentId: intents.get(descriptor.nodeRoutingId)?.id ?? 0n,
       source: 1,
       state: 6,
       routingId: descriptor.nodeRoutingId as RoutingId,
@@ -409,7 +424,30 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       lastError: 0,
       lastChangedMs: BigInt(Math.trunc(performance.now()))
     }));
-    return [...admitted, ...notRequired]
+    const projected = new Set([
+      ...admitted.map(peer => String(peer.routingId)),
+      ...notRequired.map(peer => String(peer.routingId))
+    ]);
+    const disconnected = [...intents.values()]
+      .filter(intent => !projected.has(intent.nodeRoutingId))
+      .map(intent => {
+        const descriptor = this.runtime?.topology.knownDescriptor(intent.nodeRoutingId);
+        return {
+          connectionIntentId: intent.id,
+          source: 1,
+          // A new manual intent is Connecting until its first descriptor is
+          // observed. A previously admitted required peer is NotConnected.
+          state: descriptor === undefined ? 1 : 0,
+          routingId: intent.nodeRoutingId as RoutingId,
+          lifecycleGeneration: descriptor?.lifecycleGeneration ?? 0n,
+          descriptorRevision: descriptor?.descriptorRevision ?? 0n,
+          endpoint: descriptor?.advertisedEndpoint ?? intent.endpoint,
+          channelCount: descriptor?.channels.length ?? 0,
+          lastError: 0,
+          lastChangedMs: BigInt(Math.trunc(performance.now()))
+        };
+      });
+    return [...admitted, ...notRequired, ...disconnected]
       .sort((left, right) => String(left.routingId).localeCompare(String(right.routingId)));
   }
 

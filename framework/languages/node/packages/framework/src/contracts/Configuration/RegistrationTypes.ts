@@ -272,6 +272,8 @@ export interface ZLinkObjectFactoryRegistration<T, TImplementation = T, TOptions
 }
 
 export interface ZLinkMeshChannelOptions {
+  readonly client?: boolean;
+  readonly server?: boolean;
   readonly weight?: number;
   readonly sendHandlers?: readonly ZLinkMeshSendHandlerRegistration[];
   readonly requestHandlers?: readonly ZLinkMeshRequestHandlerRegistration[];

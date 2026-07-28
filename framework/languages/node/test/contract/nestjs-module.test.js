@@ -395,12 +395,17 @@ test('zlinkFramework builder maps channel and route mesh options', () => {
     .routingId('node-a');
   mesh.channelName('route').addHandlerGroup('route-api');
   mesh.peerConnections().connect('tcp://127.0.0.1:7202');
+  const clientOnly = builder.addRouteMesh('client-only').channel('outbound');
+  clientOnly.client();
+  const bothRoles = builder.addRouteMesh('both-roles').channel('shared');
+  bothRoles.client();
+  bothRoles.server().setWeight(0);
   const options = builder.build();
 
   assert.deepEqual(options.spotNodes.api, {
     router: { bind: 'tcp://127.0.0.1:7101', routingId: 'api-a' },
     routingId: 'api-a',
-    meshChannels: { api: { handlerGroups: ['api'] } }
+    meshChannels: { api: { server: true, handlerGroups: ['api'] } }
   });
   assert.deepEqual(options.spotNodes.play, {
     router: { manualConnections: ['tcp://127.0.0.1:7102'] }
@@ -413,8 +418,14 @@ test('zlinkFramework builder maps channel and route mesh options', () => {
     },
     routingId: 'node-a',
     meshChannels: {
-      route: { handlerGroups: ['route-api'] }
+      route: { server: true, handlerGroups: ['route-api'] }
     }
+  });
+  assert.deepEqual(options.spotNodes['client-only'].meshChannels, {
+    outbound: { client: true }
+  });
+  assert.deepEqual(options.spotNodes['both-roles'].meshChannels, {
+    shared: { client: true, server: true, weight: 0 }
   });
   assert.equal(framework.getDispatchObserverType(options.dispatch), DispatchObserver);
 });

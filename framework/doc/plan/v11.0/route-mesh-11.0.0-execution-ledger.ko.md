@@ -2889,7 +2889,7 @@ disconnect의 기존 fixed snapshot all-settled cleanup은 유지한다.
 | `V11-M6C-CAPACITY-JVM` | JVM runtime·Redis typed capacity | JVM Location provider lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | creation·relocation·aggregate·abort·destroy가 단일 typed bundle을 원자적으로 처리하고 cross-language Redis fixture 통과 | Root가 Core와 Redis module 전체를 `--rerun-tasks`로 재실행해 build 성공을 확인했다. Core 494/494, Redis module 35건 실패 0이며 환경 비대상 2건만 skip했다. Descriptor v2 fixture와 creation·standalone relocation·aggregate·abort·destroy의 Actor total·Spot total·Spot stable-type bundle 원자성을 실제 Redis 7.0.15에서 검증했고 legacy scalar aggregate Lua와 relocation helper는 production source에서 제거했다. |
 | `V11-M6C-CAPACITY-NODE` | Node.js runtime·Redis typed capacity | Node.js Location provider lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | creation·relocation·aggregate·abort·destroy가 단일 typed bundle을 원자적으로 처리하고 cross-language Redis fixture 통과 | Root가 production typecheck·Node/browser build와 실제 Redis filtered 3/3을 재실행했다. Descriptor v2·authority fixture, exact 14-field admission과 creation·standalone relocation·aggregate·abort·destroy의 Actor total·Spot total·Spot stable-type bundle 원자성을 검증했다. 전체 M6C 36건 중 capacity와 무관한 Entry/User Spot collision 정책 2건은 `V11-M6B-ENTRY-IDENTITY-NODE` gap으로 분리한다. |
 | `V11-M6C-CAPACITY-MONITORING` | 다섯 언어 capacity 관측 구현 | monitoring lanes, `P-DELIVERY` | `V11-M6C-CAPACITY-CPP`, `V11-M6C-CAPACITY-DN`, `V11-M6C-CAPACITY-JVM`, `V11-M6C-CAPACITY-NODE` | 진행 | Actor total·Spot total·Spot stable type별 active·reserved·limit, activation active·limit과 unlimited 표현의 parity test 통과 | C++는 Location Store descriptor의 Actor·Spot·stable type별 active·reserved·limit과 activation active·limit을 snapshot에 투영하고 store 불가 시 registration limit으로 fallback한다. .NET은 descriptor cache를 snapshot에 투영하고 capacity 변경 시 placement event를 발행한다. JVM도 같은 descriptor 값을 Java exact `objectCapacity`·`activationConcurrency`에 투영하며 Actor·Spot total과 User·Instance Spot stable type의 active·reserved·limit을 유지하고 limit 0을 unlimited로 표현한다. Store row를 조회할 수 없으면 registration의 configured limit으로 fallback한다. Spring monitor는 100 ms 간격으로 local descriptor를 비교해 `zlink.runtime.object.placement_changed`를 발행하며, exact Java event가 허용하는 descriptor revision과 `updated` reason으로 변화 시점을 알리고 값은 같은 runtime의 snapshot에서 읽는다. Exact snapshot constructor·accessor와 Java·Kotlin 사용 표면을 검증했고 Java core 565/565, Spring starter 32/32, Kotlin 49/49가 통과했다. Node snapshot도 descriptor capacity·activation shape를 투영하지만 현재 observer는 capacity 변경 event를 발행하지 않으므로 이 row는 진행 상태를 유지한다. .NET focused 2건과 public contract snapshot, C++ framework·contract header·runtime integration build/run도 통과했다. C++ vertical target은 기존 generated include와 stale service API 오류로 전체 compile evidence를 만들지 못했다. |
-| `V11-M6B-ENTRY-IDENTITY-CPP` | C++ global SpotId와 Framework-issued lifecycle identity | C++ runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 수정 진행 | 모든 Spot path가 UTF-8 string SpotId를 사용하고 Entry·User UUID v4, exact descriptor mapping·v3 provider·cleanup contract test 통과 | C++ runtime은 User Spot create reply를 `RoutingId`로 변환하지 않고 wire의 UTF-8 SpotId를 그대로 보존한다. InMemory·Redis Location Store는 descriptor `NewClaim`에서 Entry SpotId claim, User·Instance authority 충돌 검사와 descriptor 저장을 한 transaction으로 처리한다. Descriptor remove와 owner cleanup은 exact owner lease·lifecycle이 일치할 때만 claim을 해제하며 stale cleanup은 replacement claim을 변경하지 않는다. Generic Spot reservation은 live Entry claim을 authority `Missing` conflict로 반환한다. UUID v4 version·variant, generated User Spot 첫 conflict의 추가 UUID·reservation 0, descriptor exact mapping과 InMemory lifecycle test를 포함한 `test_cpp_framework_m6b_runtime` 1/1이 통과했다. 실제 Redis claim HASH·무기한 retention, reverse authority collision, duplicate claim, exact remove·owner cleanup focused 1/1과 provider 전체 17/17도 통과했다. 전체 C++ `M6-RUNTIME`과 immutable `ROW-GATE`는 Node aggregate 종료 뒤 실행한다. |
+| `V11-M6B-ENTRY-IDENTITY-CPP` | C++ global SpotId와 Framework-issued lifecycle identity | C++ runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 수정 진행 | 모든 Spot path가 UTF-8 string SpotId를 사용하고 Entry·User UUID v4, exact descriptor mapping·v3 provider·cleanup contract test 통과 | C++ runtime은 User Spot create reply를 `RoutingId`로 변환하지 않고 wire의 UTF-8 SpotId를 그대로 보존한다. InMemory·Redis Location Store는 descriptor `NewClaim`에서 Entry SpotId claim, User·Instance authority 충돌 검사와 descriptor 저장을 한 transaction으로 처리한다. Descriptor remove와 owner cleanup은 exact owner lease·lifecycle이 일치할 때만 claim을 해제하며 stale cleanup은 replacement claim을 변경하지 않는다. Generic Spot reservation은 live Entry claim을 authority `Missing` conflict로 반환한다. UUID v4 version·variant, generated User Spot 첫 conflict의 추가 UUID·reservation 0, descriptor exact mapping과 InMemory lifecycle test를 포함한 `test_cpp_framework_m6b_runtime` 1/1이 통과했다. 실제 Redis claim HASH·무기한 retention, reverse authority collision, duplicate claim, exact remove·owner cleanup focused 1/1과 provider 전체 17/17도 통과했다. checkpoint `29f7be7ade87c74dcd36657afed3e8baedbcbffa`의 immutable candidate로 실행한 전체 C++ `M6-RUNTIME`은 configure·runtime compile·public build까지 통과했으나 public contract test 1/3 통과, 2/3 실패로 PASS evidence를 만들지 못했다. 후속 조사에서 Bingo는 별도 handler가 아니라 Entry Spot `on_create_actor`가 생성 승인과 초기화를 소유하고, Actor lookup은 global ActorId authority key를 사용하며, ST-D1·SM-F4는 string SpotId field로 이미 계약을 검증하는 것을 확인했다. Contract gate를 이 현행 의미에 맞춰 고치고 ObservabilityOps에 owner lease의 before/during renewal과 기존 route 8/8 성공 증거를 추가했다. `test_cpp_framework_layout_contract`와 `test_cpp_framework_target_contract`가 모두 통과했고 ObservabilityOps host target도 compile됐다. 전체 `M6-RUNTIME`과 `ROW-GATE`는 새 immutable candidate로 다시 실행하기 전까지 완료하지 않는다. |
 | `V11-M6B-ENTRY-IDENTITY-DN` | .NET global SpotId와 Framework-issued lifecycle identity | .NET runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 완료 | 모든 Spot path가 string SpotId를 사용하고 Entry·User UUID v4, exact descriptor mapping·v3 provider·cleanup contract test 통과 | Entry Spot은 bind 전에 `<prefix>-entry-<lowercase UUID v4>` SpotId를 발급하고 reserved caller ID를 거부한다. Descriptor publish와 Spot authority claim을 같은 owner·lifecycle fence로 연결했으며 InMemory·Redis provider가 duplicate claim, stale owner cleanup과 renew idempotence를 동일하게 처리한다. Instance activation의 public fluent surface와 production source에서 `InstanceSpotAddress`·`CloseLegacyAsync` 잔여를 제거했다. Entry identity·topology·auto-connect·ClientServer focused 묶음 48/48, Instance·wire·metrics·Actor manager focused 묶음 50/50과 relocation·capacity focused 24/24가 통과했다. 2026-07-26 완료 감사에서 전체 Unit 940/940과 Contract 65/65를 다시 통과해 이전 fixture·snapshot 대기를 닫았다. |
 | `V11-M6B-ENTRY-IDENTITY-JVM` | JVM global SpotId와 Framework-issued lifecycle identity | JVM runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 완료 | Java·Kotlin 모든 Spot path가 String SpotId를 사용하고 Entry·User UUID v4·v3 provider parity test 통과 | Root가 Core 497/497, Kotlin 46/46과 실제 Redis module 35건 실패 0을 `--rerun-tasks`로 재실행했다. Public `joinEntrySpot(Object)`는 target RID를 받지 않고 Actor stable type·capacity·weight로 eligible descriptor를 선택한 뒤 exact `entrySpotId`를 사용한다. Entry·User Spot UUID v4, 첫 충돌 즉시 실패, descriptor kind·Mesh·owner mapping과 v3 identity claim을 검증했다. 비활성 integration source의 이전 public 호출은 `V11-R5D` 뒤 E2E 활성화 단계에서 current contract로 함께 갱신하며 이 runtime sub-ID gate에는 포함하지 않는다. |
 | `V11-M6B-ENTRY-IDENTITY-NODE` | Node.js global SpotId와 Framework-issued lifecycle identity | Node.js runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 완료 | 모든 Spot path가 string SpotId를 사용하고 Entry·User UUID v4, exact descriptor mapping·v3 provider·cleanup contract test 통과 | Root가 typecheck, production/browser build, M6B 39/39, M6C 36/36과 Unicode Redis SpotId·public contract focused 2/2를 재실행했다. Public/runtime/Location/wire의 Spot identity는 UTF-8 string이고 hex side field·NodeRid==SpotId fallback은 0이다. Entry descriptor exact match, UUID v4 첫 충돌의 즉시 SpotIdConflict와 추가 UUID·reservation 0을 검증했다. |
@@ -3241,6 +3241,15 @@ registration을 삭제하거나 runtime 통과용 compatibility helper를 추가
   남아 있다. 따라서 이 증거만으로
   [object routing spec](../../framework/common/spec/18-object-routing.ko.md)의 relocation 순서 전체를
   완료로 판정하지 않는다.
+- 2026-07-29 현재 C++ candidate 7개 파일에 대해 정식 `M6-RUNTIME` 10개 command와
+  `ROW-GATE`를 다시 실행해 모두 통과했다. Protocol test target에는 production
+  `service_topology_registry.cpp`가 사용하는 Framework public header와 `zlink::cpp` dependency를
+  명시했다. 증거는
+  `.artifacts/v11/evidence/V11-M6B-CPP/checkpoint-current/runtime-regression.json`
+  (`sha256:d4c8bd638941f7c4725d53a88b1cef152fefd5f1257e6006c7ba0e35a25366aa`)이며,
+  candidate와 owned-path manifest SHA-256은 각각
+  `e29da18095cc2c743d867745a530d5ca2592c55961ea0cf0683cbab6b44827ec`,
+  `66e83a824a51070d1795c4708d92fde87bdef4e484810e555d535be49af9abee`다.
 
 Framework service runtime은 제거한 Core heartbeat option을 설정하지 않는다. Raw monitor는 orderly disconnect를
 즉시 알리고 Framework liveness probe scheduler가 half-open deadline을 소유한다. Location owner lease와
@@ -6233,6 +6242,42 @@ harness를 사용하는 SpotActorTransfer Config 10과 최종 Codex high finding
 review가 남아 있으므로 `V11-M6-DN-DESIGN-REVIEW`와
 `V11-M6-DN-REFERENCE` 상태는 계속 `수정 진행`으로 유지한다.
 
+## 2026-07-29 Logical Multicast lifetime 수정 뒤 .NET reference candidate gate
+
+Logical Multicast request의 owner 수명을 수정한 `main`
+`29f7be7ade87c74dcd36657afed3e8baedbcbffa`에서 .NET reference
+candidate를 다시 고정했다.
+
+- Candidate는
+  `.artifacts/v11/evidence/V11-M6-DN-REFERENCE/candidate-29f7be7ade87.json`이다.
+  변경 파일은 507개이며 modified 320개, added 106개, deleted 81개다.
+  Aggregate SHA-256은
+  `35101468935dae7a9eb4b0c717bdff9c3625a142398090585fc885cac3244d2c`다.
+  Candidate 파일 SHA-256은
+  `4a730eca5a12a6b4343753ef83ab5792346b65834c9cecb9bd8d41c4d7e3ae5f`다.
+- Owned-path manifest는
+  `.artifacts/v11/evidence/V11-M6-DN-REFERENCE/candidate-29f7be7ade87-owned-paths.json`이다.
+  파일 SHA-256은
+  `43b3907a023c3bd5212ac0347eb9f4558df39489e76c425a0b0df083d1e189ae`다.
+- `.NET M6-RUNTIME`은 compile, public declaration snapshot, internal runtime,
+  resource와 protocol 5개 required command를 모두 통과했다. 모든 command의
+  stderr는 비어 있으며 sample·E2E 실행과 skip은 모두 0이다. 증거는
+  `.artifacts/v11/evidence/V11-M6-DN-REFERENCE/result-29f7be7ade87.json`이고
+  파일 SHA-256은
+  `c601ff9439659fb21bf125b3c8a0cec3c04791a101b070d125762970b1da5929`다.
+- `REMOVE --scope framework:dotnet`은 inventory record 1개에서 제거 대상
+  symbol·file·artifact 0으로 통과했다. 증거는
+  `.artifacts/v11/evidence/V11-M6-DN-REFERENCE/removal-29f7be7ade87.json`이고
+  파일 SHA-256은
+  `2605491f1966e237636cbc983ade209d21992374aec62585b5933658de787bc4`다.
+- 같은 candidate와 runtime evidence를 사용한 `ROW-GATE`는
+  files 507·commands 5로 통과했다. .NET owned path와 전체 tracked diff의
+  `git diff --check`도 통과했고 `framework/doc/plan/log/` 변경은 0이다.
+
+이 gate는 Logical Multicast lifetime 수정 뒤 runtime·public contract·removal과
+provenance가 같은 revision에서 통과했음을 확인한다. Reference 승인 여부는 별도
+Codex high review와 남은 process E2E gate가 판정한다.
+
 ## 2026-07-29 C++ RM-A3 actual-process 증거
 
 Config 1 `RM-A3`를 C++ production runtime과 Redis Location Store로
@@ -6282,3 +6327,28 @@ finding은 0이다. 다만 이 수정은
 `f14abf3c37f8196cbcc56ad291a28f59d07d261f` 이후 working tree delta이므로, 새
 immutable candidate와 같은 revision의 `.NET M6-RUNTIME`·`REMOVE`·`ROW-GATE`를
 다시 고정하기 전에는 두 reference 행을 완료로 전환하지 않는다.
+
+## 2026-07-29 Node RM-A3 actual-process 증거
+
+Config 1 `RM-A3`를 Node production runtime과 Redis Location Store로 실행했다.
+증거는
+`framework/languages/node/e2e/RegistryMessaging/log/20260729-025247-2423445`이다.
+
+- Automatic Object Client pair는 20초 동안 212회 연속 `NotRequired`였고 Ready
+  peer와 failure가 없었다.
+- Manual Object Client pair도 20초 동안 213회 연속 같은 상태를 유지했다. 각
+  endpoint 앞의 TCP proxy가 기록한 connection은 각각 1회다.
+- Node direct Send와 Request는 다른 Object Client RID로 전달되지 않았고 typed
+  `RequestTargetNotFound`로 끝났다.
+- weight `0` RouteMesh Server membership을 가진 Object Client pair는 `Ready`로
+  연결되었다. 한 process를 종료한 뒤 남은 process의 public peer 상태는
+  `NotConnected`로 바뀌었다. 모든 단계에서 같은 peer RID의 public row는 정확히
+  하나였다.
+- `RM-A3.result`는 `result=passed`이고 runner exit code는 0이다. 종료 뒤
+  ObjectClient process와 TCP proxy는 남지 않았다.
+- Node workspace build와
+  `location-autoconnect.test.js`·`nestjs-module.test.js`·`drain-control.test.js`
+  focused contract test 91개가 모두 통과했다.
+
+따라서 Node Config 1 `RM-A3` actual-process gap만 해소했다. Full Node aggregate의
+101개 missing scenario는 별도 row blocker로 유지한다.

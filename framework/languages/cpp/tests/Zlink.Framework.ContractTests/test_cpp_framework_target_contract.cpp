@@ -400,8 +400,9 @@ int main ()
                     != std::string::npos,
                   "E2E-CP-11",
                   "OBS-C2 bound-session gap is still reported as implemented");
-    gate.require (observability_feature_map.find ("구현") == std::string::npos
-                    && observability_feature_map.find ("구현(부분)") == std::string::npos,
+    gate.require (observability_feature_map.find ("| `전환 대상` |") == std::string::npos
+                    && observability_feature_map.find ("| `미구현` |")
+                         == std::string::npos,
                   "E2E-CP-11",
                   "feature-map uses ambiguous non-standard status values");
     gate.require (observability_runner.find ("PENDING") == std::string::npos,
@@ -1049,12 +1050,12 @@ int main ()
                     != std::string::npos,
                   "E2E-CP-55",
                   "ST-D1 local commit does not preserve the Actor lifetime generation");
-    /* spot_rid is the current identifier field name (RoutingId-typed, not a plain "id"); the
-     * scenario already asserts this exact routing check, just under that name. */
+    /* SpotId is the global UTF-8 object identity. The delayed local commit must keep
+     * Actor packets blocked until the same SpotId becomes authoritative. */
     gate.require (st_d1_local.find ("{\"ST-D1\", \"during-joined-wait\"}")
                     != std::string::npos
                     && st_d1_local.find ("blocked_probe.wait_for") != std::string::npos
-                    && st_d1_local.find ("probe.spot_rid == spot_rid") != std::string::npos,
+                    && st_d1_local.find ("probe.spot_id == spot_id") != std::string::npos,
                   "E2E-CP-55",
                   "ST-D1 does not observe actor packet routing across the delayed local commit");
 
@@ -1195,11 +1196,10 @@ int main ()
                   "E2E-CP-18", "SM-E1 does not assert send message-flow error evidence");
 
     /* E2E-CP-19 — SM-F4 executes request + one-way send from a source Spot to
-     * a closed target route and proves the dispatch failure count grows.
-     * spot_rid is the current identifier field name (RoutingId-typed, not a plain "id"). */
+     * a closed target route and proves the dispatch failure count grows. */
     gate.require (spot_service_f4.find ("/spot/to-spot/negative") != std::string::npos
-                    && spot_service_f4.find ("source_spot_rid") != std::string::npos
-                    && spot_service_f4.find ("target_spot_rid") != std::string::npos,
+                    && spot_service_f4.find ("source_spot_id") != std::string::npos
+                    && spot_service_f4.find ("target_spot_id") != std::string::npos,
                   "E2E-CP-19", "SM-F4 does not route request and send from a source Spot");
     gate.require (spot_service_f4.find ("dispatch_failures_before") != std::string::npos
                     && spot_service_f4.find ("dispatch_failures_after") != std::string::npos,

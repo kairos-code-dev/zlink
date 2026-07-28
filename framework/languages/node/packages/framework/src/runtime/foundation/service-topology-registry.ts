@@ -55,6 +55,7 @@ export class ServiceTopologyRegistry {
   private local: ServiceNodeDescriptor;
   private readonly peersByRid = new Map<string, AdmittedServicePeer>();
   private readonly notRequiredByRid = new Map<string, ServiceNodeDescriptor>();
+  private readonly knownByRid = new Map<string, ServiceNodeDescriptor>();
   private readonly selectionCursor = new Map<string, bigint>();
 
   constructor(local: ServiceNodeDescriptor) {
@@ -97,10 +98,8 @@ export class ServiceTopologyRegistry {
     if (descriptor.nodeRoutingId === this.local.nodeRoutingId) return 'invalidDescriptor';
     if (descriptorConnectionNotRequired(this.local, descriptor)) {
       this.peersByRid.delete(descriptor.nodeRoutingId);
-      this.notRequiredByRid.set(
-        descriptor.nodeRoutingId,
-        cloneDescriptor(descriptor)
-      );
+      this.remember(descriptor);
+      this.notRequiredByRid.set(descriptor.nodeRoutingId, cloneDescriptor(descriptor));
       return 'notRequired';
     }
     this.notRequiredByRid.delete(descriptor.nodeRoutingId);
@@ -123,6 +122,7 @@ export class ServiceTopologyRegistry {
       descriptor: cloneDescriptor(descriptor),
       connectionId
     });
+    this.remember(descriptor);
     return 'admitted';
   }
 
@@ -167,6 +167,7 @@ export class ServiceTopologyRegistry {
     this.notRequiredByRid.clear();
     for (const [nodeRoutingId, descriptor] of next) {
       this.notRequiredByRid.set(nodeRoutingId, descriptor);
+      this.remember(descriptor);
     }
   }
 
@@ -180,10 +181,8 @@ export class ServiceTopologyRegistry {
       return;
     }
     this.peersByRid.delete(descriptor.nodeRoutingId);
-    this.notRequiredByRid.set(
-      descriptor.nodeRoutingId,
-      cloneDescriptor(descriptor)
-    );
+    this.remember(descriptor);
+    this.notRequiredByRid.set(descriptor.nodeRoutingId, cloneDescriptor(descriptor));
   }
 
   forgetNotRequired(nodeRoutingId: string): void {
@@ -192,8 +191,24 @@ export class ServiceTopologyRegistry {
 
   knownDescriptor(nodeRoutingId: string): ServiceNodeDescriptor | undefined {
     const admitted = this.peersByRid.get(nodeRoutingId)?.descriptor;
-    const descriptor = admitted ?? this.notRequiredByRid.get(nodeRoutingId);
+    const descriptor = admitted
+      ?? this.notRequiredByRid.get(nodeRoutingId)
+      ?? this.knownByRid.get(nodeRoutingId);
     return descriptor === undefined ? undefined : cloneDescriptor(descriptor);
+  }
+
+  private remember(descriptor: ServiceNodeDescriptor): void {
+    const current = this.knownByRid.get(descriptor.nodeRoutingId);
+    if (
+      current === undefined
+      || descriptor.lifecycleGeneration > current.lifecycleGeneration
+      || (
+        descriptor.lifecycleGeneration === current.lifecycleGeneration
+        && descriptor.descriptorRevision >= current.descriptorRevision
+      )
+    ) {
+      this.knownByRid.set(descriptor.nodeRoutingId, cloneDescriptor(descriptor));
+    }
   }
 
   selectChannel(channelName: string): AdmittedServicePeer | undefined {

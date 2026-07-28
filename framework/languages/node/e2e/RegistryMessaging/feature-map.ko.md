@@ -6,6 +6,7 @@
 |----------|------|------|
 | RM-A1 | done | Redis location store의 MeshNode descriptor와 두 provider가 실제로 처리한 request evidence를 함께 검증한다. |
 | RM-A2 | done | 수동 endpoint request를 검증한다. |
+| RM-A3 | done | Object Client pair의 Automatic·Manual `NotRequired`, Manual endpoint별 connection 1회, weight 0 RouteMesh Server의 `Ready`, 연결 종료 뒤 `NotConnected`, Node direct Send·Request의 typed `RequestTargetNotFound`를 실제 process로 검증한다. |
 | RM-A4 | done | 같은 rid provider 교체를 검증한다. |
 | RM-A6 | done | profile/workflow channel 독립성을 검증한다. |
 | RM-B1 | done | provider scale-out 후 양쪽 provider 처리 evidence를 검증한다. |
@@ -36,6 +37,14 @@
 - `./run_e2e.sh RM-B2`, `./run_e2e.sh RM-B3`, `./run_e2e.sh RM-C2`
   - 결과: 세 실행 모두 scenario와 registry-messaging result가 passed
   - 로그: `log/20260716-102802-3465779`, `log/20260716-102825-3468701`, `log/20260716-102852-3471852`
+- `./run_e2e.sh RM-A3`
+  - 결과: `scenario RM-A3 passed`, `RM-A3.result=result=passed`
+  - Automatic·Manual 단계는 각각 20초 동안 212회·213회 연속 `NotRequired`를
+    관측했다. 각 peer RID의 public row가 정확히 하나인지 함께 검증했다.
+  - Manual TCP proxy가 기록한 connection 수는 endpoint별 1회다.
+  - weight 0 RouteMesh Server는 `Ready`였고, 상대 process 종료 뒤 public peer 상태가
+    `NotConnected`로 바뀌었다.
+  - 로그: `log/20260729-025247-2423445`
 
 후속 계약 판정:
 

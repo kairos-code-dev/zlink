@@ -491,6 +491,24 @@ class evidence_handler_t
             json["peerRowsError"] = error.what ();
         }
         json["peerRows"] = peer_rows;
+        auto owner_leases = nlohmann::json::array ();
+        try {
+            const auto status = _locations.get_status ().result ().value ();
+            nlohmann::json lease{
+              {"healthy", status.owner_lease_healthy},
+              {"renewedAtUnixMs", nullptr}};
+            if (status.owner_lease_renewed_at) {
+                lease["renewedAtUnixMs"] =
+                  std::chrono::duration_cast<std::chrono::milliseconds> (
+                    status.owner_lease_renewed_at->time_since_epoch ())
+                    .count ();
+            }
+            owner_leases.push_back (std::move (lease));
+        }
+        catch (const std::exception &error) {
+            json["ownerLeasesError"] = error.what ();
+        }
+        json["ownerLeases"] = std::move (owner_leases);
         try {
             json["ready"] = _drain.is_ready ? _drain.is_ready () : true;
         }

@@ -960,10 +960,12 @@ class DefaultMeshChannelBuilder implements ZLinkMeshChannelBuilder {
   constructor(private readonly channel: MutableMeshChannelOptions) {}
 
   client(): ZLinkMeshChannelClientBuilder {
+    this.channel.client = true;
     return new DefaultMeshChannelClientBuilder();
   }
 
   server(): ZLinkMeshChannelServerBuilder {
+    this.channel.server = true;
     return new DefaultMeshChannelServerBuilder(this.channel);
   }
 }
@@ -1242,6 +1244,8 @@ interface MutableObjectFactoryRegistration<T, TImplementation = T, TOptions = un
 }
 
 interface MutableMeshChannelOptions {
+  client?: boolean;
+  server?: boolean;
   weight?: number;
   handlerGroups?: string[];
   sendHandlers?: Array<{ packetName: string; handlerType: Type }>;

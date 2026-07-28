@@ -80,6 +80,13 @@ artifact provenance만 검증한다.
   response는 처음 고정한 exact request·plan만 재실행하고 authority를 다시 읽어 새 reservation을 만들지 않는다.
   Target live record와 terminal tombstone은 각각 1,024개로 제한했다. `npm run lint`·`build`·`typecheck`, focused
   host relocation 2/2와 M6C 62/62가 통과했다. Active process의 Session route ACK와 mixed-language E2E는 남아 있다.
+- Node.js Config 2 `SM-F6`은 같은 MeshName의 Object Server 두 process에서 실제 Redis Location Store와
+  Relocation Store를 사용한다. Runtime placement weight로 source와 target을 분리한 뒤 source User Spot의
+  global SpotId request·send와 Entry Spot Actor의 deferred join을 실행했다. Request·send handler,
+  target admission·membership와 join completion evidence는 target process에만 남았다. Actor factory는
+  Snapshot relocation policy와 adapter를 등록하며 호출자는 owner RID, endpoint, generation과 route frame을
+  만들지 않는다. MultiNode·Client focused build와 actual process가 통과했고 증거는
+  `framework/languages/node/e2e/SpotService/log/20260729-050702-1863756/`에 있다.
 - C++은 application ingress에서 exact owner lease와 128-bit operation ID를 mailbox·accepted journal까지
   보존하고 command 31 typed capture를 production path에 연결 중이다. Lifecycle generation과 correlation으로
   operation ID를 다시 만드는 기존 dispatch 코드는 제거 대상이다.

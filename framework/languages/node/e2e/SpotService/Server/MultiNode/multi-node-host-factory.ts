@@ -1,9 +1,30 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkMessageFlowLogMode, type ZLinkActorClient, type ZLinkActorManager, type ZLinkLocationRuntimeQuery, type ZLinkSpotManager, type ZLinkSpotOutbound } from '@zlink-systems/framework';
-import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
-import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER, ZLINK_LOCATION_RUNTIME_QUERY, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import {
+  ZLinkMessageFlowLogMode,
+  zlinkDisabledRelocation,
+  zlinkSnapshotRelocation,
+  type ZLinkActorClient,
+  type ZLinkActorManager,
+  type ZLinkLocationRuntimeQuery,
+  type ZLinkSpotManager,
+  type ZLinkSpotOutbound
+} from '@zlink-systems/framework';
+import {
+  ZLinkRedisLocationStore,
+  ZLinkRedisRelocationStore
+} from '@zlink-systems/framework-locations-redis';
+import {
+  ZLINK_ACTOR_CLIENT,
+  ZLINK_ACTOR_MANAGER,
+  ZLINK_LOCATION_RUNTIME_QUERY,
+  ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
+  ZLINK_SPOT_MANAGER,
+  ZLINK_SPOT_OUTBOUND,
+  ZLinkModule,
+  zlinkFramework
+} from '@zlink-systems/nestjs';
 import { SpotServiceNames } from '../../Shared/messages';
 import { createSpotServiceConfigurationModule } from '../../configuration';
 import { validateMultiNodeOptions } from './Configuration/multi-node-options';
@@ -14,6 +35,8 @@ import {
   MultiNodeCreateSpotAHandler,
   MultiNodeCreateSpotBHandler,
   MultiNodeEntrySpot,
+  MultiNodeScenarioActorRelocationAdapter,
+  MultiNodeScenarioActorTransferAdapter,
   MultiNodeScenarioActorFactory,
   ScaleOutActorProbeHandler,
   MultiNodeSpotOnlyJoinHandler,
@@ -61,13 +84,16 @@ export async function startMultiNodeHost(): Promise<void> {
           if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
             builder.addLocationStore(new ZLinkRedisLocationStore({
               url: `redis://${options.redisEndpoint}`,
-              keyPrefix: options.redisKeyPrefix
+              keyPrefix: `${options.redisKeyPrefix}:location`
             }));
-            Object.assign(builder.configureLocations(), {
-              pollingIntervalMs: 100,
-              heartbeatIntervalMs: 1000,
-              ownerLeaseTtlMs: 5000
-            });
+            builder.addRelocationStore(new ZLinkRedisRelocationStore({
+              url: `redis://${options.redisEndpoint}`,
+              keyPrefix: `${options.redisKeyPrefix}:relocation`
+            }));
+            builder.configureLocations()
+              .pollingIntervalMs(100)
+              .heartbeatIntervalMs(1000)
+              .ownerLeaseTtlMs(5000);
           } else {
             throw new Error('MultiNode SpotService requires the Redis location store configuration.');
           }
@@ -76,15 +102,30 @@ export async function startMultiNodeHost(): Promise<void> {
             : builder.addRouteMesh(routeChannel)
               .listen(options.routeEndpoint)
               .routingId(options.rid);
-          route?.channelName(routeChannel);
+          route?.channel(routeChannel).server();
           route?.peerConnections().connect(options.routeEndpoint);
           const spot = builder.addRouteMesh(options.spotOnly ? SpotServiceNames.spotOnlyMesh : options.rid)
             .routingId(options.rid)
-            .listen(options.spotRouterEndpoint)
-            .addEntrySpot(MultiNodeEntrySpot)
-            .actorFactory(SpotServiceNames.actorType, MultiNodeScenarioActorFactory)
-            .addSpotFactory(SpotOnlyUserSpot);
-          spot.channelName(options.spotOnly ? SpotServiceNames.spotOnlyMesh : options.rid);
+            .listen(options.spotRouterEndpoint);
+          const objects = spot.objects().server();
+          objects.addEntrySpot(MultiNodeEntrySpot);
+          objects.addActorFactory(
+            SpotServiceNames.actorType,
+            MultiNodeScenarioActorFactory,
+            undefined,
+            zlinkSnapshotRelocation(MultiNodeScenarioActorRelocationAdapter)
+          );
+          objects.addSpotFactory(
+            SpotOnlyUserSpot.name,
+            SpotOnlyUserSpot,
+            undefined,
+            zlinkDisabledRelocation()
+          );
+          spot.addActorTransferAdapter(
+            SpotServiceNames.actorType,
+            MultiNodeScenarioActorTransferAdapter
+          );
+          spot.channel(options.spotOnly ? SpotServiceNames.spotOnlyMesh : options.rid).server();
           if (options.peerSpotRouterEndpoint !== undefined) {
             spot.peerConnections().connect(
               isNodeA ? SpotServiceNames.multiSpotNodeB : SpotServiceNames.multiSpotNodeA,
@@ -93,10 +134,20 @@ export async function startMultiNodeHost(): Promise<void> {
           }
           if (isNodeA) {
             route?.addRequestHandler('MultiNodeCreateSpotReq', MultiNodeCreateSpotAHandler);
-            spot.addSpotFactory(MultiNodeSpotA);
+            objects.addSpotFactory(
+              MultiNodeSpotA.name,
+              MultiNodeSpotA,
+              undefined,
+              zlinkDisabledRelocation()
+            );
           } else {
             route?.addRequestHandler('MultiNodeCreateSpotReq', MultiNodeCreateSpotBHandler);
-            spot.addSpotFactory(MultiNodeSpotB);
+            objects.addSpotFactory(
+              MultiNodeSpotB.name,
+              MultiNodeSpotB,
+              undefined,
+              zlinkDisabledRelocation()
+            );
           }
           return builder.build();
         }
@@ -107,16 +158,15 @@ export async function startMultiNodeHost(): Promise<void> {
       MultiNodeCreateSpotAHandler,
       MultiNodeCreateSpotBHandler,
       MultiNodeEntrySpot,
+      MultiNodeScenarioActorRelocationAdapter,
+      MultiNodeScenarioActorTransferAdapter,
       MultiNodeScenarioActorFactory,
       ScaleOutActorProbeHandler,
       MultiNodeSpotOnlyJoinHandler,
-      MultiNodeSpotA,
-      MultiNodeSpotB,
       MultiNodeStateAHandler,
       MultiNodeStateBHandler,
       SpotOnlyStateMsgHandler,
-      SpotOnlyStateReqHandler,
-      SpotOnlyUserSpot
+      SpotOnlyStateReqHandler
     ]
   })(MultiNodeModule);
 
@@ -128,6 +178,10 @@ export async function startMultiNodeHost(): Promise<void> {
   const actors = app.get(ZLINK_ACTOR_MANAGER, { strict: false }) as ZLinkActorManager;
   const actorClient = app.get(ZLINK_ACTOR_CLIENT, { strict: false }) as ZLinkActorClient;
   const locations = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
+  const runtimeOptions = app.get(
+    ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
+    { strict: false }
+  ) as import('@zlink-systems/framework').ZLinkRouteMeshRuntimeOptions;
   SpotOnlyUserSpot.configureDependencies(evidence, spots);
   const server = await startHttpServer(options.httpUrl, createMultiNodeEndpoints(
     evidence,
@@ -137,6 +191,7 @@ export async function startMultiNodeHost(): Promise<void> {
     actors,
     actorClient,
     locations,
+    runtimeOptions,
     options.spotOnly ? SpotServiceNames.spotOnlyMesh : options.rid,
     () => { stopping = true; }
   ));

@@ -185,6 +185,9 @@ case "$SCENARIO" in
   SM-F3|SM-F4|SM-F5)
     build_package "$ROOT_DIR/Server/Play"
     ;;
+  SM-F6|SM-G2|SM-G2-PREPARE|SM-G2-VERIFY)
+    build_package "$ROOT_DIR/Server/MultiNode"
+    ;;
   *)
     build_package "$ROOT_DIR/Server/Play"
     build_package "$ROOT_DIR/Server/Session"
@@ -402,17 +405,17 @@ wait_named_server() {
       wait_health "$MULTI_A_URL" multi-node-a "${pid_by_name[multi-node-a]:-}"
       if [[ "$SCENARIO" != "SM-F6" && "$SCENARIO" != "SM-G2" ]]; then
         wait_port multi-node-a-route "$MULTI_A_ROUTE"
+        wait_port multi-node-a-spot-pub "$MULTI_A_SPOT_PUB"
       fi
       wait_port multi-node-a-spot-router "$MULTI_A_SPOT_ROUTER"
-      wait_port multi-node-a-spot-pub "$MULTI_A_SPOT_PUB"
       ;;
     multi-node-b)
       wait_health "$MULTI_B_URL" multi-node-b "${pid_by_name[multi-node-b]:-}"
       if [[ "$SCENARIO" != "SM-F6" && "$SCENARIO" != "SM-G2" ]]; then
         wait_port multi-node-b-route "$MULTI_B_ROUTE"
+        wait_port multi-node-b-spot-pub "$MULTI_B_SPOT_PUB"
       fi
       wait_port multi-node-b-spot-router "$MULTI_B_SPOT_ROUTER"
-      wait_port multi-node-b-spot-pub "$MULTI_B_SPOT_PUB"
       ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac

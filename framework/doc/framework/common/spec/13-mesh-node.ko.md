@@ -181,6 +181,11 @@ Actor, User Spot과 Instance Spot factory를 등록할 때는 다음 두 값을 
 - UTF-8 `1..255` bytes의 [stable type](01-glossary.ko.md#stable-type)
 - `DisableRelocation`, `RecreateOnRelocation`, `PreserveStateWith` 중 하나의 relocation 방식
 
+Framework는 factory 등록 호출 안에서 configure callback을 동기적으로 한 번 실행한다.
+Callback이 정상 반환하면 구성을 고정하며, 이후 보관해 둔 builder를 다시 호출하면
+configuration error다. Callback이 예외를 던지면 해당 factory를 등록하지 않고 그 예외를
+호출자에게 전달한다.
+
 Stable type은 대소문자를 구분하는 exact value다. Framework는 normalization을
 적용하지 않으며 언어의 class FQN을 wire나 Store identity로 사용하지 않는다. 같은
 `(object kind, stable type)` 조합을 두 번 등록하면 startup 오류다.

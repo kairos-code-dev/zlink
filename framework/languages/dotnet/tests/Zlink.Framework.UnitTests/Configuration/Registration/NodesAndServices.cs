@@ -95,6 +95,36 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                             .DisableRelocation()
                             .RecreateOnRelocation())));
         Assert.Contains("exactly one relocation policy", duplicate.Message);
+
+        IZLinkUserSpotFactoryBuilder<TestSpot>? escaped = null;
+        new ServiceCollection().AddZLinkFramework(options =>
+        {
+            options.UseTestLocationStore();
+            options.AddRouteMesh("sealed-node")
+                .Listen("inproc://sealed-node")
+                .Objects()
+                .Server()
+                .AddSpotFactory<TestSpot>(
+                    "spot",
+                    factory =>
+                    {
+                        escaped = factory;
+                        factory.DisableRelocation();
+                    });
+        });
+        Assert.Throws<ZLinkConfigurationException>(
+            () => escaped!.StableTypeLimit(8));
+
+        var callbackFailure = new InvalidOperationException("configure failed");
+        var propagated = Assert.Throws<InvalidOperationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+                options.AddRouteMesh("failed-node")
+                    .Objects()
+                    .Server()
+                    .AddSpotFactory<TestSpot>(
+                        "spot",
+                        _ => throw callbackFailure)));
+        Assert.Same(callbackFailure, propagated);
     }
 
     [Fact]

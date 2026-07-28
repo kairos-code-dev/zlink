@@ -196,7 +196,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         ArgumentNullException.ThrowIfNull(configure);
         var factory = new ZLinkUserSpotFactoryBuilder<TSpot>();
         configure(factory);
-        factory.EnsureRelocationConfigured();
+        factory.CompleteConfiguration();
         var effectiveOptions = factory.Configuration;
         ValidateUserSpotFactoryOptions(effectiveOptions);
         if (effectiveOptions.ExecutionMode == ZLinkUserSpotExecutionMode.PerActor
@@ -230,7 +230,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         ArgumentNullException.ThrowIfNull(configure);
         var factory = new ZLinkInstanceSpotFactoryBuilder<TSpot>();
         configure(factory);
-        factory.EnsureRelocationConfigured();
+        factory.CompleteConfiguration();
         if (!registration.InstanceSpotFactories.TryAdd(
                 instanceSpotType,
                 new ZLinkInstanceSpotFactoryRegistration(
@@ -270,7 +270,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         ArgumentNullException.ThrowIfNull(configure);
         var factory = new ZLinkActorFactoryBuilder<TActor>();
         configure(factory);
-        factory.EnsureRelocationConfigured();
+        factory.CompleteConfiguration();
         ZLinkRegistrationBuilderGuard.AddUnique(
             registration.ActorFactories,
             actorType,
@@ -428,19 +428,32 @@ internal sealed record ZLinkRelocationFactoryConfiguration(
 internal abstract class ZLinkFactoryBuilderBase
 {
     private ZLinkRelocationFactoryConfiguration? _relocation;
+    private bool _configurationComplete;
 
     internal ZLinkRelocationFactoryConfiguration Relocation =>
         _relocation
         ?? throw new ZLinkConfigurationException(
             "A factory must configure exactly one relocation policy.");
 
-    internal void EnsureRelocationConfigured() => _ = Relocation;
+    internal void CompleteConfiguration()
+    {
+        _ = Relocation;
+        _configurationComplete = true;
+    }
+
+    protected void EnsureConfigurationIsOpen()
+    {
+        if (_configurationComplete)
+            throw new ZLinkConfigurationException(
+                "A factory builder cannot be changed after its configure callback returns.");
+    }
 
     protected void SelectRelocation(
         byte policyKind,
         Type? adapterType = null,
         IZLinkRelocationAdapterInvoker? adapterInvoker = null)
     {
+        EnsureConfigurationIsOpen();
         if (_relocation is not null)
             throw new ZLinkConfigurationException(
                 "A factory must configure exactly one relocation policy.");
@@ -493,6 +506,7 @@ internal sealed class ZLinkUserSpotFactoryBuilder<TSpot>
 
     public IZLinkUserSpotFactoryBuilder<TSpot> StableTypeLimit(int limit)
     {
+        EnsureConfigurationIsOpen();
         _stableTypeLimit = limit;
         return this;
     }
@@ -500,6 +514,7 @@ internal sealed class ZLinkUserSpotFactoryBuilder<TSpot>
     public IZLinkUserSpotFactoryBuilder<TSpot> ExecutionMode(
         ZLinkUserSpotExecutionMode mode)
     {
+        EnsureConfigurationIsOpen();
         _executionMode = mode;
         return this;
     }
@@ -507,6 +522,7 @@ internal sealed class ZLinkUserSpotFactoryBuilder<TSpot>
     public IZLinkUserSpotFactoryBuilder<TSpot> RelocationReadiness(
         ZLinkSpotRelocationReadinessMode mode)
     {
+        EnsureConfigurationIsOpen();
         _relocationReadiness = mode;
         return this;
     }
@@ -545,6 +561,7 @@ internal sealed class ZLinkInstanceSpotFactoryBuilder<TSpot>
 
     public IZLinkInstanceSpotFactoryBuilder<TSpot> StableTypeLimit(int limit)
     {
+        EnsureConfigurationIsOpen();
         _stableTypeLimit = limit;
         return this;
     }

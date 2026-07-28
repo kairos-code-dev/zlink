@@ -7065,8 +7065,10 @@ public Snapshot policy factory를 제거했다.
 - 기존 Node.js NestJS manual ClientServer DI: 57/58
 - 기존 C++ Store resolver RouteMesh role gap: 32/37
 
-마지막 두 실패는 factory builder 변경과 무관한 기존 gap이다. Factory builder gap §12.59는
-다섯 언어 구현, sample과 집중 contract test가 목표 계약에 도달했으므로 닫았다. Redis
+마지막 두 실패는 factory builder 변경과 무관한 기존 gap이다. 후속 high review에서 C++의
+Spot state 보존 adapter가 runtime capture·restore에 연결되지 않은 문제, exact interface 밖의
+duck-typed Actor factory overload와 이전 placement option 선언을 확인했다. `.NET`, Java, Kotlin과
+Node.js는 builder gate를 통과했으며 C++는 implementation gap §12.59로 다시 열었다. Redis
 `AddRelocationStore` SPI와 Store 동작은 변경하지 않았다.
 
 ## 2026-07-29 .NET Config 10 target completion crash window 수정
@@ -7101,3 +7103,34 @@ recovery가 소유하는 root로 판정하는지 확인한다. 두 cursor에서 
 process의 User Spot owner도 함께 종료하므로 Actor completion journal만의 회귀와 분리되지
 않는다. Target process crash와 Spot aggregate recovery를 묶은 actual-process 시나리오는
 별도 gap으로 남긴다.
+
+## 2026-07-29 .NET Remote Join recovery payload bound 수정
+
+Remote Actor Join의 durable recovery가 request와 reply를 JSON으로 합쳐 source fence의
+1 MiB field에 저장하던 문제를 수정했다. Request와 reply는 공개 계약상 각각 최대
+1 MiB이므로 두 payload를 합친 내부 제한을 적용하지 않는다.
+
+새 root는 canonical participant recovery v2의 `OperationRecovery` component를 사용한다.
+Metadata는 작은 JSON record로 유지하지만 request, reply와 accepted handoff journal은
+metadata에서 제외한다. Request와 reply bytes는 binary section에 각각 기록하며 각
+section에 1 MiB 제한을 독립적으로 적용한다. Source fence에는 source owner, lease,
+Node RID와 lifecycle generation만 기록한다. Relocation Store의 기존 chunked root 저장
+경로가 전체 component를 저장하므로 Location Store value 제한은 바꾸지 않았다.
+
+Rolling restart 중인 root도 복구할 수 있다. Canonical participant recovery v1과 source
+fence v2 조합은 legacy JSON recovery를 읽는다. 새 `OperationRecovery`와 legacy payload가
+동시에 있으면 모호한 root로 거부한다. Completion journal의 `Prepared`, `Committed`,
+`Delivered` root 교체에서도 legacy payload와 새 component를 byte-exact하게 유지한다.
+
+Completion callback gate도 보강했다. Process-local phase가 없을 때 steady authority
+payload의 decode 성공만으로 callback을 시작하지 않는다. Canonical authority가 exact
+root reference, `Completed` phase와 source cleanup state `1`을 모두 만족해야 한다.
+
+- `ActorRemoteJoinRecoveryCodecBoundaryTests`: 9/9
+- `ActorRelocationProtocolTests`: 6/6
+- `DeferredActorJoinDurabilityTests`: 6/6
+- `StandaloneActorRelocationRuntimeTests`: 37/37
+- `RelocationRuntimeTests`: 153/153
+- .NET UnitTests: 1,262/1,262
+- .NET ContractTests: 70/70
+- .NET solution build: warning 0, error 0

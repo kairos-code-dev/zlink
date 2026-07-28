@@ -375,7 +375,7 @@ public abstract class RegistrationValidationSupport
         }
     }
 
-    protected sealed class TestActorTransferAdapter : IZLinkActorRelocationAdapter<TestActor>
+    protected sealed class TestActorRelocationAdapter : IZLinkActorRelocationAdapter<TestActor>
     {
         public ValueTask<byte[]> CaptureAsync(
             TestActor actor,

@@ -489,12 +489,12 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:6202");
             node.Channel("actor-node").Server();
             node.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                "warrior", factory => factory.PreserveStateWith<TestActorTransferAdapter>());
+                "warrior", factory => factory.PreserveStateWith<TestActorRelocationAdapter>());
         });
 
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
-        Assert.NotNull(scope.ServiceProvider.GetService<TestActorTransferAdapter>());
+        Assert.NotNull(scope.ServiceProvider.GetService<TestActorRelocationAdapter>());
     }
 
     [Fact]
@@ -510,12 +510,12 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:6201");
             first.Channel("actor-node-a").Server();
             first.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                "warrior", factory => factory.PreserveStateWith<TestActorTransferAdapter>());
+                "warrior", factory => factory.PreserveStateWith<TestActorRelocationAdapter>());
             var second = options.AddRouteMesh("actor-node-b")
                 .Listen("tcp://127.0.0.1:6202");
             second.Channel("actor-node-b").Server();
             second.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                "warrior", factory => factory.PreserveStateWith<TestActorTransferAdapter>());
+                "warrior", factory => factory.PreserveStateWith<TestActorRelocationAdapter>());
         });
 
         using var provider = services.BuildServiceProvider();
@@ -535,7 +535,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:6203");
             node.Channel("actor-node-a").Server();
             node.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                "warrior", factory => factory.PreserveStateWith<TestActorTransferAdapter>());
+                "warrior", factory => factory.PreserveStateWith<TestActorRelocationAdapter>());
         });
 
         var registration = services.BuildServiceProvider()

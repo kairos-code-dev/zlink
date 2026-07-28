@@ -749,8 +749,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         sourceFence.OwnerId,
                         sourceFence.LeaseGeneration,
                         sourceFence.NodeRid,
-                        sourceFence.NodeGeneration,
-                        remoteJoinRecovery))));
+                        sourceFence.NodeGeneration)),
+                remoteJoinRecovery));
         var participant = new ZLinkRelocationParticipantEnvelope(
             ZLinkActorAuthorityPayloadCodec.AuthorityKey(sourceAuthority.ActorId),
             ZLinkPlacementObjectKind.Actor,
@@ -1606,7 +1606,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                     handoffId,
                     cancellationToken,
                     normalizeSteady:
-                    sourceFence.RemoteJoinRecovery.IsEmpty)
+                    recovery.OperationRecovery.IsEmpty
+                    && sourceFence.LegacyRemoteJoinRecovery.IsEmpty)
                 .ConfigureAwait(false);
         }
         catch

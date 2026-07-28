@@ -638,8 +638,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                     ? ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(
                         requestTemplate)
                     : default,
-                System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
-                    recovery));
+                ZLinkActorRemoteJoinRecoveryCodec.Encode(recovery));
         var publication = new ZLinkRelocationPublicationCoordinator(
             authorityStore,
             relocationStore);

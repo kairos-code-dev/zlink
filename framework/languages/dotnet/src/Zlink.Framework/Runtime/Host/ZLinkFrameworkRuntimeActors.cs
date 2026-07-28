@@ -788,16 +788,9 @@ internal sealed partial class ZLinkFrameworkRuntime
                     .ConfigureAwait(false);
                 authorityWasNormalized =
                     normalizedRead is ZLinkAuthorityReadResult.Found normalized
-                    && ZLinkRelocationAuthorityPayloadCodec.TryDecode(
-                        normalized.Snapshot.Payload.Span,
-                        out var normalizedPublication)
-                    && string.Equals(
-                        normalizedPublication.Reference,
-                        publishedReference,
-                        StringComparison.Ordinal)
-                    && ZLinkActorAuthorityPayloadCodec.TryDecode(
-                        normalizedPublication.ApplicationPayload.Span,
-                        out _);
+                    && IsCompletedCanonicalActorRelocation(
+                        normalized.Snapshot,
+                        publishedReference);
                 if (authorityWasNormalized
                     && normalizedRead is ZLinkAuthorityReadResult.Found found)
                     normalizedSnapshot = found.Snapshot;
@@ -995,6 +988,23 @@ internal sealed partial class ZLinkFrameworkRuntime
             throw;
         }
     }
+
+    internal static bool IsCompletedCanonicalActorRelocation(
+        ZLinkAuthoritySnapshot snapshot,
+        string expectedReference) =>
+        ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+            snapshot.Payload.Span,
+            out var publication)
+        && publication.Phase
+           == (byte)ZLinkStandaloneActorCanonicalPhase.Completed
+        && publication.SourceCleanupState == 1
+        && string.Equals(
+            publication.RelocationReference,
+            expectedReference,
+            StringComparison.Ordinal)
+        && ZLinkActorAuthorityPayloadCodec.TryDecode(
+            publication.SteadyAuthorityPayload.Span,
+            out _);
 
     private async ValueTask<(
         ZLinkSessionRouteCommitRequest Request,
@@ -1236,19 +1246,17 @@ internal sealed partial class ZLinkFrameworkRuntime
             participant.RecoveryPayload.Span);
         var sourceFence = ZLinkActorRelocationSourceFenceCodec.Decode(
             canonical.MembershipMutation.Span);
-        if (sourceFence.RemoteJoinRecovery.IsEmpty)
+        if (canonical.OperationRecovery.IsEmpty
+            && sourceFence.LegacyRemoteJoinRecovery.IsEmpty)
             return;
         ZLinkActorRelocationRecoveryRecord recovery;
         try
         {
-            recovery = System.Text.Json.JsonSerializer.Deserialize<
-                           ZLinkActorRelocationRecoveryRecord>(
-                           sourceFence.RemoteJoinRecovery.Span)
-                       ?? throw new System.Text.Json.JsonException();
+            recovery = ZLinkActorRemoteJoinRecoveryCodec.Decode(
+                canonical.OperationRecovery.Span,
+                sourceFence.LegacyRemoteJoinRecovery.Span);
         }
-        catch (Exception error) when (error
-                                      is System.Text.Json.JsonException
-                                      or NotSupportedException)
+        catch (Exception error) when (error is InvalidDataException)
         {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.DataLost,

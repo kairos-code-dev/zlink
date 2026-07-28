@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.Runtime.Actors;
@@ -56,13 +55,9 @@ internal static class ZLinkActorRelocationRoot
                     participant.RecoveryPayload.Span);
             var sourceFence = ZLinkActorRelocationSourceFenceCodec.Decode(
                 canonical.MembershipMutation.Span);
-            if (sourceFence.RemoteJoinRecovery.IsEmpty)
-                throw new InvalidDataException(
-                    "Canonical Actor Join recovery metadata is unavailable.");
-            recovery = JsonSerializer.Deserialize<
-                           ZLinkActorRelocationRecoveryRecord>(
-                           sourceFence.RemoteJoinRecovery.Span)
-                       ?? throw new JsonException();
+            recovery = ZLinkActorRemoteJoinRecoveryCodec.Decode(
+                canonical.OperationRecovery.Span,
+                sourceFence.LegacyRemoteJoinRecovery.Span);
             frames = participant.AcceptedJobs
                 .OrderBy(static job => job.AcceptedSequence)
                 .Select((job, index) =>
@@ -71,9 +66,7 @@ internal static class ZLinkActorRelocationRoot
                         checked((long)index)).Frame)
                 .ToArray();
         }
-        catch (Exception error) when (error is JsonException
-                                      or NotSupportedException
-                                      or InvalidDataException
+        catch (Exception error) when (error is InvalidDataException
                                       or EndOfStreamException)
         {
             throw new ZLinkFrameworkException(

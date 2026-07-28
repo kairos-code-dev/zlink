@@ -7,14 +7,15 @@ internal sealed record ZLinkActorRelocationSourceFence(
     string OwnerId,
     ulong OwnerLeaseGeneration,
     RoutingId NodeRid,
-    ulong NodeGeneration,
-    ReadOnlyMemory<byte> RemoteJoinRecovery = default);
+    ulong NodeGeneration)
+{
+    internal ReadOnlyMemory<byte> LegacyRemoteJoinRecovery { get; init; }
+}
 
 internal static class ZLinkActorRelocationSourceFenceCodec
 {
     private const uint Magic = 0x5a4c5346; // ZLSF
-    private const byte Version = 2;
-    private const int MaximumRecoveryBytes = 1024 * 1024;
+    private const byte Version = 1;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     internal static byte[] Encode(ZLinkActorRelocationSourceFence value)
@@ -24,8 +25,7 @@ internal static class ZLinkActorRelocationSourceFenceCodec
             || value.OwnerId.Contains('\0')
             || value.OwnerLeaseGeneration == 0
             || value.NodeRid.IsEmpty
-            || value.NodeGeneration == 0
-            || value.RemoteJoinRecovery.Length > MaximumRecoveryBytes)
+            || value.NodeGeneration == 0)
             throw new ArgumentOutOfRangeException(nameof(value));
         var owner = StrictUtf8.GetBytes(value.OwnerId);
         var node = value.NodeRid.ToBytes();
@@ -33,8 +33,7 @@ internal static class ZLinkActorRelocationSourceFenceCodec
             throw new ArgumentOutOfRangeException(nameof(value));
 
         var encoded = new byte[checked(4 + 1 + 2 + owner.Length + 8 + 1
-                                       + node.Length + 8 + 4
-                                       + value.RemoteJoinRecovery.Length)];
+                                       + node.Length + 8)];
         var offset = 0;
         WriteU32(encoded, ref offset, Magic);
         encoded[offset++] = Version;
@@ -46,10 +45,6 @@ internal static class ZLinkActorRelocationSourceFenceCodec
         node.CopyTo(encoded.AsSpan(offset));
         offset += node.Length;
         WriteU64(encoded, ref offset, value.NodeGeneration);
-        WriteU32(encoded, ref offset,
-            checked((uint)value.RemoteJoinRecovery.Length));
-        value.RemoteJoinRecovery.Span.CopyTo(encoded.AsSpan(offset));
-        offset += value.RemoteJoinRecovery.Length;
         if (offset != encoded.Length)
             throw new InvalidOperationException(
                 "The standalone Actor source fence length is inconsistent.");
@@ -65,7 +60,7 @@ internal static class ZLinkActorRelocationSourceFenceCodec
             if (ReadU32(encoded, ref offset) != Magic)
                 throw new InvalidDataException();
             var version = ReadU8(encoded, ref offset);
-            if (version is not (1 or Version))
+            if (version is not (1 or 2))
                 throw new InvalidDataException();
             var ownerLength = ReadU16(encoded, ref offset);
             var owner = StrictUtf8.GetString(Read(encoded, ref offset,
@@ -74,14 +69,16 @@ internal static class ZLinkActorRelocationSourceFenceCodec
             var nodeLength = ReadU8(encoded, ref offset);
             var nodeRid = RoutingId.From(Read(encoded, ref offset, nodeLength));
             var nodeGeneration = ReadU64(encoded, ref offset);
-            var recoveryLength = version == 1
-                ? 0
-                : checked((int)ReadU32(encoded, ref offset));
-            if (recoveryLength > MaximumRecoveryBytes)
-                throw new InvalidDataException();
-            var remoteJoinRecovery = version == 1
-                ? ReadOnlyMemory<byte>.Empty
-                : Read(encoded, ref offset, recoveryLength).ToArray();
+            ReadOnlyMemory<byte> legacyRemoteJoinRecovery = default;
+            if (version == 2)
+            {
+                var legacyRecoveryLength =
+                    checked((int)ReadU32(encoded, ref offset));
+                if (legacyRecoveryLength > 1024 * 1024)
+                    throw new InvalidDataException();
+                legacyRemoteJoinRecovery =
+                    Read(encoded, ref offset, legacyRecoveryLength).ToArray();
+            }
             if (offset != encoded.Length
                 || string.IsNullOrWhiteSpace(owner)
                 || owner.Contains('\0')
@@ -90,8 +87,10 @@ internal static class ZLinkActorRelocationSourceFenceCodec
                 || nodeGeneration == 0)
                 throw new InvalidDataException();
             return new ZLinkActorRelocationSourceFence(
-                owner, ownerLease, nodeRid, nodeGeneration,
-                remoteJoinRecovery);
+                owner, ownerLease, nodeRid, nodeGeneration)
+            {
+                LegacyRemoteJoinRecovery = legacyRemoteJoinRecovery
+            };
         }
         catch (Exception exception) when (exception is ArgumentException
                                           or DecoderFallbackException

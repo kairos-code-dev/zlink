@@ -111,6 +111,33 @@ public sealed class DeferredActorJoinDurabilityTests
             [],
             default,
             new byte[] { 1 });
+        var rootParticipant = Assert.Single(root.Participants);
+        var rootRecovery = ZLinkCanonicalParticipantRecoveryCodec.Decode(
+            rootParticipant.RecoveryPayload.Span);
+        var sourceFence = ZLinkActorRelocationSourceFenceCodec.Decode(
+            rootRecovery.MembershipMutation.Span);
+        var legacySourceFence = EncodeLegacySourceFence(
+            sourceFence,
+            new byte[] { 1 });
+        var versionTwoRecovery =
+            ZLinkCanonicalParticipantRecoveryCodec.Encode(
+                rootRecovery with
+                {
+                    MembershipMutation = legacySourceFence,
+                    OperationRecovery = ReadOnlyMemory<byte>.Empty
+                });
+        var versionOneRecovery = versionTwoRecovery[..^sizeof(uint)];
+        versionOneRecovery[4] = 1;
+        root = root with
+        {
+            Participants =
+            [
+                rootParticipant with
+                {
+                    RecoveryPayload = versionOneRecovery
+                }
+            ]
+        };
         var stored = await ZLinkRelocationTreeStore.PutAsync(
             relocation,
             root,
@@ -146,6 +173,27 @@ public sealed class DeferredActorJoinDurabilityTests
                     1),
                 root);
         authority.ReplacePayload(canonicalPayload);
+        Assert.True(
+            ZLinkFrameworkRuntime.IsCompletedCanonicalActorRelocation(
+                authority.Snapshot,
+                stored.Root.Reference));
+        Assert.True(ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+            authority.Snapshot.Payload.Span,
+            out var completedProjection));
+        var activatedPayload =
+            ZLinkCanonicalRelocationAuthorityStateCodec.ReplaceRelocationState(
+                authority.Snapshot.Payload.Span,
+                completedProjection.State with
+                {
+                    Phase =
+                        (byte)ZLinkStandaloneActorCanonicalPhase.Activated,
+                    SourceCleanupState = 0
+                },
+                root);
+        Assert.False(
+            ZLinkFrameworkRuntime.IsCompletedCanonicalActorRelocation(
+                authority.Snapshot with { Payload = activatedPayload },
+                stored.Root.Reference));
 
         var actor = new ActorRef(
             actorAuthority.ActorId,
@@ -245,8 +293,38 @@ public sealed class DeferredActorJoinDurabilityTests
             Assert.Equal(operation, recovered.Completion.OperationId);
             Assert.Equal(cursor, recovered.Completion.Cursor);
             Assert.Equal(expected.Reference, recovered.Reference);
+            var recoveredParticipant =
+                Assert.Single(recovered.Envelope.Participants);
+            var recoveredParticipantState =
+                ZLinkCanonicalParticipantRecoveryCodec.Decode(
+                    recoveredParticipant.RecoveryPayload.Span);
+            Assert.True(recoveredParticipantState.OperationRecovery.IsEmpty);
+            var recoveredSourceFence =
+                ZLinkActorRelocationSourceFenceCodec.Decode(
+                    recoveredParticipantState.MembershipMutation.Span);
+            Assert.Equal(
+                new byte[] { 1 },
+                recoveredSourceFence.LegacyRemoteJoinRecovery.ToArray());
             return recovered;
         }
+    }
+
+    private static byte[] EncodeLegacySourceFence(
+        ZLinkActorRelocationSourceFence sourceFence,
+        byte[] recovery)
+    {
+        var versionOne =
+            ZLinkActorRelocationSourceFenceCodec.Encode(sourceFence);
+        var versionTwo = new byte[
+            versionOne.Length + sizeof(uint) + recovery.Length];
+        versionOne.CopyTo(versionTwo, 0);
+        versionTwo[4] = 2;
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(
+            versionTwo.AsSpan(versionOne.Length, sizeof(uint)),
+            checked((uint)recovery.Length));
+        recovery.CopyTo(
+            versionTwo.AsSpan(versionOne.Length + sizeof(uint)));
+        return versionTwo;
     }
 
     [Fact]

@@ -122,6 +122,10 @@ deadline을 계산한다. Timeout 기본값은 5초이며, 명시한 값은 mill
 `1..INT_MAX` 범위의 유한한 값이어야 한다. 제한을 넘긴 현재 registration은 일부
 record를 남기지 않고 동기 startup configuration error로 실패한다.
 
+Cross-node Join의 application reply도 최대 1 MiB다. Request와 reply의 크기 제한은
+서로 독립적이다. Crash recovery를 위해 둘을 저장할 때도 하나의 1 MiB 제한으로
+합치지 않는다.
+
 Actor send/request handler와 User·Entry Spot의 packet·request·subscription·timer handler에서 local member
 Actor의 Join을 등록할 수 있다. Factory, `Configure`, lifecycle callback, relocation adapter, detached task,
 Instance Spot handler와 Framework가 관리하지 않는 thread에서는 `InvalidOperation`이다. 같은 call의

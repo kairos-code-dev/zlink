@@ -5,8 +5,18 @@ export interface ServiceMailboxRecord {
   readonly domain: ServiceMailboxDomain;
   readonly parts: readonly Uint8Array[];
   readonly sourceRoutingId?: string;
+  readonly sourceRoute?: Uint8Array;
   readonly requestSequence?: bigint;
   readonly correlation?: bigint;
+  readonly localReply?: (
+    terminalResult: number,
+    failureCode: number,
+    payload?: {
+      readonly packetName: string;
+      readonly contentType: string;
+      readonly payload: Uint8Array;
+    }
+  ) => void;
   readonly stateful?: unknown;
 }
 
@@ -250,6 +260,9 @@ function clearDomain(domain: DomainState): void {
 function retainRecord(record: ServiceMailboxRecord): ServiceMailboxRecord {
   return {
     ...record,
+    ...(record.sourceRoute === undefined
+      ? {}
+      : { sourceRoute: Buffer.from(record.sourceRoute) }),
     parts: record.parts.map(part => Buffer.from(part))
   };
 }

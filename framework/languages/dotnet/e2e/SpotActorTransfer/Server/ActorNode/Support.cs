@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging;
 using SpotActorTransfer.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Runtime.Actors;
 
 namespace SpotActorTransfer.ActorNode;
 
@@ -20,7 +19,8 @@ internal sealed record ServerOptions(
     string RouterAdvertiseHost,
     string EvidenceFile,
     string LogDir,
-    int RequestTimeoutMilliseconds)
+    int RequestTimeoutMilliseconds,
+    bool CallerOnly = false)
 {
     public static ServerOptions Parse(string[] args, string role)
         => E2eConfiguration.Load<ServerOptions>(args);
@@ -241,208 +241,6 @@ internal sealed class RelocationMessageFlowEvidenceStore : IDisposable
             "Send" or "ActorSend" => "send",
             _ => messageKind?.ToLowerInvariant() ?? ""
         };
-}
-
-internal sealed class TransportDeliveryGate
-    : IZLinkActorTransportDeliveryGate
-{
-    private readonly ConcurrentDictionary<string, Entry> _entries =
-        new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, ReplyAdmissionEntry>
-        _replyAdmissions = new(StringComparer.Ordinal);
-
-    public TransportDeliveryGateRes Arm(
-        string operationId,
-        TransportDeliveryArmReq request)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(operationId);
-        if (!Guid.TryParseExact(operationId, "N", out var parsed)
-            || !string.Equals(
-                operationId,
-                parsed.ToString("N"),
-                StringComparison.Ordinal))
-            throw new ArgumentException(
-                "Transport delivery operation ID must be a 128-bit lowercase GUID.",
-                nameof(operationId));
-        ArgumentException.ThrowIfNullOrWhiteSpace(request.ActorId);
-        var expectedKind = Enum.Parse<ZLinkActorTransportOperationKind>(
-            request.Kind,
-            ignoreCase: true);
-        var entry = new Entry(request.ActorId, expectedKind);
-        if (!_entries.TryAdd(operationId, entry))
-            throw new InvalidOperationException(
-                $"Transport delivery operation '{operationId}' is already armed.");
-        return Snapshot(operationId, entry);
-    }
-
-    public async ValueTask<TransportDeliveryGateRes> WaitCapturedAsync(
-        string operationId,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        var entry = Get(operationId);
-        await entry.Captured.Task
-            .WaitAsync(timeout, cancellationToken)
-            .ConfigureAwait(false);
-        return Snapshot(operationId, entry);
-    }
-
-    public TransportDeliveryGateRes Release(string operationId)
-    {
-        var entry = Get(operationId);
-        entry.Release.TrySetResult();
-        Volatile.Write(ref entry.Released, 1);
-        return Snapshot(operationId, entry);
-    }
-
-    public TransportDeliveryGateRes GetSnapshot(string operationId)
-    {
-        var entry = Get(operationId);
-        return Snapshot(operationId, entry);
-    }
-
-    public ReplyAdmissionGateRes ArmReplyAdmission(string actorId)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
-        var entry = new ReplyAdmissionEntry();
-        if (!_replyAdmissions.TryAdd(actorId, entry))
-            throw new InvalidOperationException(
-                $"Reply admission for Actor '{actorId}' is already armed.");
-        return SnapshotReplyAdmission(actorId, entry);
-    }
-
-    public async ValueTask<ReplyAdmissionGateRes>
-        WaitReplyAdmissionCapturedAsync(
-        string actorId,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        var entry = GetReplyAdmission(actorId);
-        await entry.Captured.Task
-            .WaitAsync(timeout, cancellationToken)
-            .ConfigureAwait(false);
-        return SnapshotReplyAdmission(actorId, entry);
-    }
-
-    public ReplyAdmissionGateRes ReleaseReplyAdmission(string actorId)
-    {
-        var entry = GetReplyAdmission(actorId);
-        Volatile.Write(ref entry.Released, 1);
-        return SnapshotReplyAdmission(actorId, entry);
-    }
-
-    public ReplyAdmissionGateRes GetReplyAdmissionSnapshot(string actorId) =>
-        SnapshotReplyAdmission(actorId, GetReplyAdmission(actorId));
-
-    // The runtime calls this transport-fixture hook immediately before it
-    // submits a preserved Message Follow reply to the source caller. A null
-    // result means "use the real transport"; Backpressured asks the runtime
-    // to retry without changing the pending request or reply capability.
-    public SubmitResult? OverrideReplyAdmission(
-        string actorId,
-        ulong requestId,
-        ulong deadlineUnixMs)
-    {
-        _ = deadlineUnixMs;
-        if (!_replyAdmissions.TryGetValue(actorId, out var entry))
-            return null;
-        Interlocked.Increment(ref entry.CapturedCount);
-        entry.RequestIds.TryAdd(requestId, 0);
-        entry.Captured.TrySetResult();
-        if (Volatile.Read(ref entry.Released) == 0)
-        {
-            Interlocked.Increment(ref entry.BackpressuredCount);
-            return SubmitResult.Backpressured;
-        }
-        Interlocked.Increment(ref entry.ReleasedAdmissionCount);
-        return null;
-    }
-
-    public async ValueTask WaitAsync(
-        ZLinkActorTransportDelivery delivery,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrEmpty(delivery.OperationId)
-            || !_entries.TryGetValue(delivery.OperationId, out var entry))
-            return;
-        if (!string.Equals(
-                entry.ActorId,
-                delivery.ActorId,
-                StringComparison.Ordinal)
-            || entry.Kind != delivery.Kind)
-            throw new InvalidOperationException(
-                $"Transport delivery operation '{delivery.OperationId}' "
-                + "did not match its armed Actor and operation kind.");
-
-        Interlocked.Increment(ref entry.CapturedCount);
-        entry.Captured.TrySetResult();
-        await entry.Release.Task
-            .WaitAsync(cancellationToken)
-            .ConfigureAwait(false);
-        Interlocked.Increment(ref entry.ReleasedCount);
-    }
-
-    private Entry Get(string operationId) =>
-        _entries.TryGetValue(operationId, out var entry)
-            ? entry
-            : throw new KeyNotFoundException(
-                $"Transport delivery operation '{operationId}' is not armed.");
-
-    private ReplyAdmissionEntry GetReplyAdmission(string actorId) =>
-        _replyAdmissions.TryGetValue(actorId, out var entry)
-            ? entry
-            : throw new KeyNotFoundException(
-                $"Reply admission for Actor '{actorId}' is not armed.");
-
-    private static TransportDeliveryGateRes Snapshot(
-        string operationId,
-        Entry entry) =>
-        new(
-            operationId,
-            entry.ActorId,
-            entry.Kind.ToString(),
-            Volatile.Read(ref entry.CapturedCount),
-            Volatile.Read(ref entry.ReleasedCount),
-            true,
-            Volatile.Read(ref entry.Released) != 0);
-
-    private static ReplyAdmissionGateRes SnapshotReplyAdmission(
-        string actorId,
-        ReplyAdmissionEntry entry) =>
-        new(
-            actorId,
-            Volatile.Read(ref entry.CapturedCount),
-            Volatile.Read(ref entry.BackpressuredCount),
-            Volatile.Read(ref entry.ReleasedAdmissionCount),
-            entry.RequestIds.Count,
-            true,
-            Volatile.Read(ref entry.Released) != 0);
-
-    private sealed class Entry(
-        string actorId,
-        ZLinkActorTransportOperationKind kind)
-    {
-        internal string ActorId { get; } = actorId;
-        internal ZLinkActorTransportOperationKind Kind { get; } = kind;
-        internal TaskCompletionSource Captured { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource Release { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal int CapturedCount;
-        internal int ReleasedCount;
-        internal int Released;
-    }
-
-    private sealed class ReplyAdmissionEntry
-    {
-        internal TaskCompletionSource Captured { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal ConcurrentDictionary<ulong, byte> RequestIds { get; } = new();
-        internal int CapturedCount;
-        internal int BackpressuredCount;
-        internal int ReleasedAdmissionCount;
-        internal int Released;
-    }
 }
 
 internal sealed class ActorHandoffEvidenceLoggerProvider(

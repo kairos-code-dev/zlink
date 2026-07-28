@@ -31,6 +31,7 @@ internal sealed class ZLinkActorHandoffState(
     private int _sourceCommittedHoldCount;
     private bool _sourceTrailingImported;
     private bool _sourceCaptureSealed;
+    private bool _deferredJoinCapture;
     private bool _abortRestoreAdmissionsReleased;
     private TaskCompletionSource<ZLinkRemoteActorJoinReply>? _preparation;
     private TaskCompletionSource? _sourceCompletion;
@@ -50,6 +51,28 @@ internal sealed class ZLinkActorHandoffState(
                     or ZLinkActorTargetHandoffPhase.Quarantined)
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' already has an active handoff transaction.");
+
+            if (_deferredJoinCapture)
+            {
+                _deferredJoinCapture = false;
+                _handoffId = null;
+                _joinRequest = null;
+                _preparation = null;
+                _canonicalMaintenanceDrain = null;
+                _targetPhase = ZLinkActorTargetHandoffPhase.Idle;
+                _sourceTrailingImported = false;
+                _sourceCaptureSealed = false;
+                _sourceCommittedFrameCount = -1;
+                _sourceCommittedHoldCount = 0;
+                _abortRestoreAdmissionsReleased = false;
+                _sourcePhase = ZLinkActorSourceHandoffPhase.Capturing;
+                _sourceCompletion = new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                _sourceHoldAdmission.ReleaseAll();
+                _targetIngressAdmission.ReleaseAll();
+                _sourceHoldFrames.Clear();
+                return;
+            }
 
             _handoffId = null;
             _joinRequest = null;
@@ -73,6 +96,51 @@ internal sealed class ZLinkActorHandoffState(
         }
     }
 
+    public void BeginDeferredJoinCapture()
+    {
+        lock (_gate)
+        {
+            if (_deferredJoinCapture
+                || _sourcePhase != ZLinkActorSourceHandoffPhase.Idle
+                || _targetPhase is ZLinkActorTargetHandoffPhase.Importing
+                    or ZLinkActorTargetHandoffPhase.Replaying
+                    or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
+                    or ZLinkActorTargetHandoffPhase.Quarantined)
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' already has an active handoff transaction.");
+
+            _sourceIngressAdmission.ReleaseAll();
+            _sourceHoldAdmission.ReleaseAll();
+            _targetIngressAdmission.ReleaseAll();
+            _frames.Clear();
+            _sourceHoldFrames.Clear();
+            _arrivalIndex = 0;
+            _deferredJoinCapture = true;
+        }
+    }
+
+    public IReadOnlyList<ZLinkActorHandoffFrame> EndDeferredJoinCapture()
+    {
+        lock (_gate)
+        {
+            if (!_deferredJoinCapture
+                || _sourcePhase != ZLinkActorSourceHandoffPhase.Idle)
+                return [];
+
+            var frames = _frames
+                .OrderBy(static frame => frame.ArrivalIndex)
+                .ToArray();
+            _deferredJoinCapture = false;
+            _sourceIngressAdmission.ReleaseAll();
+            _sourceHoldAdmission.ReleaseAll();
+            _targetIngressAdmission.ReleaseAll();
+            _frames.Clear();
+            _sourceHoldFrames.Clear();
+            _arrivalIndex = 0;
+            return frames;
+        }
+    }
+
     public bool IsSourceMigrationInProgress
     {
         get
@@ -90,7 +158,8 @@ internal sealed class ZLinkActorHandoffState(
         get
         {
             lock (_gate)
-                return _sourcePhase == ZLinkActorSourceHandoffPhase.Capturing;
+                return _deferredJoinCapture
+                       || _sourcePhase == ZLinkActorSourceHandoffPhase.Capturing;
         }
     }
 
@@ -158,7 +227,8 @@ internal sealed class ZLinkActorHandoffState(
         lock (_gate)
         {
             var capturesSourceIngress =
-                _sourcePhase == ZLinkActorSourceHandoffPhase.Capturing;
+                _deferredJoinCapture
+                || _sourcePhase == ZLinkActorSourceHandoffPhase.Capturing;
             var capturesSourceHold = capturesSourceIngress
                                      && _sourceCaptureSealed;
             var capturesTargetIngress =

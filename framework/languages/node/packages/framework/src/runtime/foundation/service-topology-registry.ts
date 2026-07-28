@@ -213,7 +213,11 @@ export class ServiceTopologyRegistry {
 
   selectChannel(channelName: string): AdmittedServicePeer | undefined {
     requireText(channelName, 'channelName');
-    const eligible = this.peers()
+    const local: AdmittedServicePeer = {
+      descriptor: this.localDescriptor(),
+      connectionId: 'local'
+    };
+    const eligible = [local, ...this.peers()]
       .map(peer => ({ peer, channel: findChannel(peer.descriptor, channelName) }))
       .filter((value): value is {
         peer: AdmittedServicePeer;

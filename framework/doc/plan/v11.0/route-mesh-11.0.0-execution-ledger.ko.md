@@ -6388,6 +6388,45 @@ Message Follow 만료 뒤 request의 public `Unavailable` terminal을 외부 tra
 해당 selector를 외부 fixture로 바꾸거나 제거하고 내부 hook을 삭제하기 전에는 Config 10
 전체와 `.NET` final reference row를 완료로 전환하지 않는다.
 
+## 2026-07-29 .NET Config 10 internal delivery hook 제거 checkpoint
+
+`ST-I4~I6`도 process 밖 TCP proxy로 교체했다. 기존 fixture가 사용하던 production
+`IZLinkActorTransportDeliveryGate`, operation ID metadata, reply admission override와
+ActorNode friend assembly를 삭제했다. E2E의 `/transport-delivery/*`와
+`/reply-admission/*` endpoint, response DTO와 service 등록도 함께 제거했다.
+
+네 번째 ActorNode는 Object Client role만 등록한다. Actor·Spot placement 후보가 아니며
+application delivery를 보류해도 세 Object Server 사이의 relocation control traffic을
+차단하지 않는다. Proxy는 다음 두 동작만 수행한다.
+
+- application marker가 포함된 TCP delivery를 보류하고 release한다.
+- marker를 포함한 delivery와 같은 connection의 reverse bytes를 별도 gate로 보류한다.
+
+Proxy는 Framework protocol, authority, generation과 reply capability를 해석하지 않는다.
+ST-I5의 두 correlation request는 서로 다른 Object Client connection에 보류한다. TCP
+stream 안에서 불가능한 byte 재정렬을 fixture가 흉내 내지 않고, 두 connection의 release
+순서만 바꾼다.
+
+Actual-process 최종 증거는 다음과 같다.
+
+- `ST-I4`: `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-035557-3692122`
+- `ST-I5`: `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-035615-3693303`
+- `ST-I6`: `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-035538-3690993`
+- `ST-F4` 회귀:
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-035740-3699697`
+- `ST-F5` 회귀:
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-035809-3700993`
+
+다섯 selector의 runner terminal은 모두 `result=passed`다. Timeout과 assertion budget은
+늘리지 않았다. Internal gate 제거 뒤에도 Actor request는 Location Store 조회에 사용한
+시간을 전체 timeout에서 차감한다. 느린 authority read 회귀 test 1개와
+`DeferredActorJoinContractTests` 2개가 통과했다.
+
+이 checkpoint는 현재 연결한 Actor Message Follow case의 public-only 완료 증거다.
+Spot·recovery·duplicate·generation·loop·hop·bounded-capacity case는 feature map에
+별도 gap으로 유지한다. 따라서 Config 10 전체와 `.NET` final reference row는 아직
+완료로 전환하지 않는다.
+
 ## 2026-07-29 JVM·C++ RM-A3와 C++ DeliveryDispatch checkpoint
 
 JVM과 C++의 RouteMesh Channel registration을 Client와 Server role로 분리했다. Descriptor와
@@ -6398,12 +6437,217 @@ Automatic과 Manual 연결에 같은 판정을 적용하고 `NotRequired`와 `No
 
 - JVM core 602/602, RM-A3 focused 89/89, Spring monitoring focused test가 통과했다.
 - Kotlin·Spring과 JVM ObjectClient fixture compile이 통과했다.
-- C++ Framework, ObjectClient, M6A policy·manual, mesh-node vertical, layout·target contract가
-  통과했다.
-- C++ Registry Provider target은 이번 변경 범위를 지난 뒤 기존 `route_handler_context_t`와
-  이전 ClientServer API compile gap에서 실패한다. RM-A3 완료 증거로 사용하지 않는다.
+- C++ Registry Provider의 route handler를 exact `route_message_context_t`로 맞췄다.
+  ClientServer 구성은 `client()`와 `server()` role builder를 사용한다. 제거된 parent builder API나
+  새 public API는 추가하지 않았다.
+- C++ Registry Provider와 ObjectClient target, `test_cpp_framework_m6a_runtime`,
+  `test_cpp_framework_contract_headers` build와 실행이 통과했다.
+- Config 1 `RM-A3` actual-process runner도
+  `framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-033513-3283717`에서
+  exit code 0으로 통과했다. Automatic과 Manual pair를 각각 80회 조회하는 동안
+  `NotRequired`, ready peer 0과 failure 0을 유지했다. Manual TCP proxy는 양방향 connection open을
+  각각 한 번 기록했다. Weight 0 Server를 중지하면 `NotConnected`가 되고 재개하면 ready connection
+  하나로 복구됐다.
+- Config 1 `RM-C8`은 public ClientServer channel builder가 listener의 `MaxMessageSize`를
+  설정하도록 요구한다. 현재 .NET·C++ exact ClientServer role builder에는 이 설정이 없다.
+  C++ `mesh_node_socket_config_t`는 RouteMesh ROUTER listener의 설정이므로 별도 ClientServer
+  DEALER·ROUTER topology에 재사용할 수 없다. 이는 C++ 구현 한 건이 아니라 공통 E2E와 다섯 언어
+  exact interface 사이의 public contract gap이다.
+- C++ Provider와 Consumer에서 socket에 적용되지 않던 `maxMessageSize`·`clientMaxMessageSize`
+  fixture 입력을 제거했다. Runner도 max-size 하위 흐름을 default socket으로 실행해 통과한 것처럼
+  보고하지 않고 contract gap에서 명시적으로 중단한다. 제거된 per-role API나 새 public API는
+  추가하지 않았다.
+- Consumer와 Workflow의 legacy ClientServer builder를 exact `client()`·`server()`·`connect()`로,
+  RegistryMessaging Client의 제거된 HTTP `.async<T>()` terminal을 `submit<T>()`로 이관했다.
+  Provider·Consumer·Workflow·Client 네 target은 build에 통과했다.
+- 최초 actual
+  `framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-034652-3516691`의 HTTP 500은
+  Consumer 내부 ClientServer request가 `TimeoutException`으로 끝난 결과였다. RM-C8 Consumer가
+  Config 1의 Location Store automatic discovery 대신 manual endpoint를 사용했지만, current
+  ClientServer location runtime은 이 endpoint를 ready target으로 만들지 않았다.
+- RM-C8 fixture를 Config 1의 Redis Location Store automatic discovery 구성으로 되돌렸다.
+  Actual `framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-035646-3695165`에서
+  1 B, 4 KiB, 256 KiB와 1 MiB payload의 length·SHA-256 왕복 및 후속 정상 request가
+  재시도 없이 통과했다. Client stdout은 `scenario RM-C8 passed`와
+  `registry-messaging e2e result=passed`를 기록한다.
+- Runner는 정상 payload 하위 흐름 뒤 ClientServer listener `MaxMessageSize` contract gap을
+  명시하고 non-zero로 끝난다. 따라서 정상 request precondition만 actual-process로 고정했으며
+  전체 RM-C8 완료로 세지 않는다. 공통 spec과 다섯 exact interface에서 ClientServer listener
+  제한의 단일 공개 설정 경계를 정한 뒤 max-size runtime과 actual process를 함께 고정해야 한다.
 
 C++ DeliveryDispatch도 공통 sample 계약에 맞췄다. Client JSON wire에서 `ActorRef`, `NodeRid`와
 session route를 제거했고 낡은 Actor 조회·생성용 route packet과 handler를 삭제했다.
 `ActorManager.GetOrCreate`가 반환한 Ready ActorRef는 Framework session binding 내부에서만
 사용한다. Sample parity 54/54와 DeliveryDispatch executable 6개 build가 통과했다.
+
+## 2026-07-29 JVM RM-A3 actual-process 재고정
+
+HEAD `40a937e67b2146a75ac4f23b77b55d1b166eee5c`의 public Channel role 변경을 포함한
+working tree에서 Java Config 1 `RM-A3`를 production runtime과 실제 Redis Location Store로
+다시 실행했다. 증거는
+`framework/languages/java/e2e/RegistryMessaging/logs/20260729-033208-3236609`이다.
+
+- Automatic Object Client pair는 Client-only Channel을 각각 등록한 상태에서도 20초 동안
+  79회 연속 `NotRequired`, Ready peer 0과 failure 0을 유지했다.
+- Manual pair도 같은 조건으로 20초 동안 79회 연속 같은 상태를 유지했다. endpoint 앞의
+  TCP proxy가 기록한 connection은 양쪽 각각 1회다.
+- Object Client RID를 대상으로 한 Node direct Send와 Request는 모두 typed
+  `REQUEST_TARGET_NOT_FOUND`로 끝났다.
+- weight `0` RouteMesh Server Channel을 한쪽에 등록하면 pair는 `Ready`가 됐다. 상대
+  process를 종료한 뒤 public peer 상태는 `NotConnected`로 바뀌었다.
+- `RM-A3.result`는 `result=passed`이고 runner exit code는 0이다. 종료 뒤 ObjectClient와
+  TCP proxy process는 남지 않았다.
+
+따라서 JVM Config 1 `RM-A3` actual-process row는 최신 public contract 기준으로 완료했다.
+JVM 전체 aggregate의 다른 scenario gap은 별도 row에서 계속 추적한다.
+
+## 2026-07-29 C++ RM-C2 actual-process 증거
+
+Config 1의 미완료 P0 중 C++ exact RouteMesh Node direct API와 public topology snapshot으로
+검증할 수 있는 `RM-C2`를 먼저 완료했다. `RM-A1`은 public monitoring 구현과 fixture 구조,
+`RM-A2`·`RM-C3`은 manual ClientServer ready-target runtime, `RM-B3`은 crash fixture가
+선행되어야 하므로 이 bounded 작업보다 범위가 크다.
+
+- 이전 scenario는 topology Ready를 확인한 뒤에도 의미 request를 30초 동안 반복했다.
+  이를 제거하고 public topology를 최대 3초 polling한 뒤 targeted request를 한 번만 제출한다.
+- Target `api-b`의 reply와 evidence가 일치하고 `api-a`에는 같은 marker가 기록되지 않는다.
+- 미등록 RID는 이전 fixture 기대값 `RouteNotConnected`가 아니라 current public contract의
+  `RequestTargetNotFound`로 끝난다.
+- Actual 증거는
+  `framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-040050-3900121`이다.
+  Client는 `scenario RM-C2 passed`와 `registry-messaging e2e result=passed`를 기록했고
+  runner exit code는 0이다.
+- Provider·Client와 test Redis container는 runner 종료 뒤 남지 않았다. Public API,
+  compatibility helper, skip과 timeout 확대는 추가하지 않았다.
+
+따라서 C++ Config 1 `RM-C2` actual-process gap은 해소됐다.
+
+## 2026-07-29 C++ RM-A1 automatic request와 monitoring gap
+
+C++ Config 1 `RM-A1`에서 current public API로 구현할 수 있는 automatic discovery request를
+actual process로 고정했다. Runner는 두 Provider와 endpoint를 지정하지 않은 Consumer에 같은
+Redis Location Store와 key prefix를 등록한다. Client는 Consumer HTTP endpoint를 통해 첫 의미
+request를 한 번만 제출한다.
+
+- Forward:
+  `framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-040424-3961146`
+- Reverse:
+  `framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-040454-3963029`
+- Fixed shuffle `1701`:
+  `framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-040458-3963605`
+- 세 실행 모두 선택된 `api-a` 또는 `api-b`의 reply와 Provider evidence를 확인하고
+  `scenario RM-A1 passed`, `registry-messaging e2e result=passed`와 exit code 0을 기록했다.
+  Request retry, skip, settle sleep과 timeout 확대는 없다.
+
+공통 RM-A1 전체 완료 조건은 아직 남아 있다.
+
+- C++ fixture의 profile channel은 ClientServer topology를 사용한다. Exact 문서에는
+  `client_server_runtime_t`와 ready Server snapshot이 있지만 current C++ source에는 구현이 없다.
+  RouteMesh status나 Location Store provider query는 다른 topology 또는 저장소 내부 상태이므로
+  대체 evidence로 사용하지 않았다.
+- 공통 RM-A1은 lifecycle별 automatic RID prefix를 요구한다. Exact 문서의
+  `set_automatic_routing_id_prefix(...)`도 current C++ source에 구현되어 있지 않다.
+
+따라서 automatic discovery request 경로는 완료했지만 row 상태는 public contract 구현 gap으로
+유지한다. 두 exact public surface를 구현하고 ready Server 2개와 automatic RID를 public snapshot으로
+확인하기 전에는 C++ RM-A1 전체 완료로 전환하지 않는다.
+
+## 2026-07-29 .NET Config 10 ST-H1 Actor handler checkpoint
+
+Config 10의 남은 P0 가운데 Deferred Join의 request snapshot과 Actor queue 순서를 먼저
+검증했다. E2E는 production hook이나 내부 frame을 사용하지 않는다. Actor handler가 public
+`JoinSpot(...).Timeout(...).Defer()`를 호출한 뒤 application request 객체를 변경하고,
+Object Client-only process가 같은 Actor에 public one-way message를 제출한다.
+
+- Cross-node target의 joined callback을 application gate로 막는 동안 source와 target의
+  후속 Actor handler는 모두 실행되지 않는다.
+- Handler terminal 전 target admission은 0건이다. 따라서 target I/O는 handler의 마지막
+  continuation보다 먼저 시작되지 않는다.
+- `Defer()` 등록 시점부터 후속 direct frame을 capture하고, cross-node Handoff가 시작되면
+  해당 frame을 기존 accepted journal로 승격한다. 이전 owner에서는 실행하지 않는다.
+- Target은 completion callback이 성공할 때까지 imported journal을 dispatch하지 않는다.
+  Evidence 순서는 `success_reply → handoff_packet`이며 target에서 정확히 한 번 실행된다.
+- Target admission에는 변경 전 scenario·SpotId·mode만 전달된다. `Defer()` 뒤 변경한
+  `ST-H1-MUTATED`, `mutated-target`, `reject`는 관찰되지 않는다.
+- ActorNode와 Client build는 warning 0, error 0이다. Deferred Join focused test 7/7과
+  Actor Handoff focused test 63/63이 통과했다. Actual-process 증거는
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-041951-5242`이다.
+
+Actor handler의 cross-node ST-H1 핵심 경로는 완료했다. User·Entry Spot의 Spot·Timer handler,
+absolute deadline과 다른 Actor·Spot lane 진행 반복은 같은 ST-H1 matrix의 남은 항목으로
+feature map에서 계속 추적한다.
+
+## 2026-07-29 .NET Config 10 ST-A2 Deferred Join rejection checkpoint
+
+ST-A2를 current Deferred Join terminal 계약으로 전환했다. Actor request handler의 HTTP
+응답은 Join 결과가 아니라 `Defer()` registration 성공만 나타낸다. Target admission의 typed
+거절은 Actor의 public `OnJoinCompletedAsync` callback에서 `Rejected`와 application reply로
+관찰한다.
+
+- Same-node target은 `reject` mode로 admission을 실행하고 typed reply의
+  `Accepted=false`와 target SpotId를 callback에 전달한다.
+- Rejected terminal 뒤 Actor의 ObjectGeneration과 owner node는 생성 시점과 같다.
+- Source leave, target joined, authority commit, Capture, Restore와 User Spot Actor handler는
+  모두 0건이다.
+- Public global Actor one-way는 source Entry Spot Actor handler에서 state 12로 정확히 한 번
+  실행된다. Evidence 순서는 `admission → reject_reply → entry_handoff_packet`이다.
+- ActorNode와 Client build는 warning 0, error 0이다. Actual-process 증거는
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-042702-217477`이다.
+
+ST-A3의 joined callback 대기와 moving dispatch 계약은 이 checkpoint에 포함하지 않았다.
+
+## 2026-07-29 Node.js Config 2 SM-F5 actual-process 증거
+
+Node.js SpotService의 Play fixture를 current SpotId·manager·handler context·RouteMesh Channel role
+계약으로 전환했다. In-memory Spot route store와 fixed owner assertion은 제거했다. User Spot owner는
+Location Store와 node-wide placement가 선택한다.
+
+- Actual 증거는
+  `framework/languages/node/e2e/SpotService/log/20260729-041927-3968`이다.
+- User Spot owner는 `play-b`였다. Client는 owner를 응답에서 확인한 뒤 반대 node인 `play-a`에서
+  global SpotId request를 제출했다. `play-b`의 state handler가 값 `13`을 기록했다.
+- `play-a`의 같은-process Channel Server도 remote Server와 같은 weight 후보에 포함했다. Handler를
+  직접 호출하지 않고 application mailbox를 거쳐 request와 reply를 처리했다.
+- Spot을 owner에서 닫은 뒤 global SpotId request는 typed failure로 끝났다. 같은 caller의
+  ChannelName request는 계속 성공했고 `sm-f5-after-close` evidence가 남았다.
+- Binary transport reply route를 Node RID 문자열로 바꾸지 않고 raw bytes로 mailbox에 보존했다.
+  Remote Channel reply가 원래 request operation으로 돌아오는 것을 actual process로 확인했다.
+- Location Store가 commit한 remote Spot authority는 polling을 기다리지 않는다. 첫 public Spot
+  request가 전달한 current fence를 source stateful runtime에 즉시 연결한다. peer lifecycle과 더
+  최신 authority fence는 계속 검증한다.
+
+검증은 Node workspace build, M6A focused test 12/12, M6B focused test 39/39와 `SM-F5` actual-process
+PASS다. Runner 종료 뒤 Play·Client process와 test Redis container는 남지 않았다.
+
+## 2026-07-29 C++ Config 1 RM-A2 checkpoint
+
+C++ ClientServer runtime이 exact `client().connect(endpoint)`를 ready target으로 만들지 않던 gap을
+수정했다. Manual endpoint는 최초 handshake에서 Server RID와 lifecycle generation을 고정한다.
+Location Store에서 같은 endpoint의 descriptor를 발견하면 기존 연결을 automatic key로 옮겨
+중복 연결을 만들지 않는다. Manual endpoint가 있는 client role도 location auto-connect host가
+ClientServer runtime을 시작한다.
+
+- `test_cpp_framework_m6a_runtime`은 manual handshake에서 identity를 고정한 뒤 send와 request/reply를
+  완료한다.
+- RegistryMessaging Client·Consumer·Provider target build는 통과했다.
+- Actual `framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-042414-96804`에서 최초 manual
+  request와 topology 변경 중 in-flight request는 통과했고, consumer는 `api-a`와 `api-b`
+  descriptor를 모두 발견했다.
+- 두 ready target 사용 assertion은 아직 실패한다. 기존 weighted selector는 같은 weight를 연속
+  구간으로 선택하므로 16개 continuity request가 한 target만 선택했다.
+
+검증하지 않은 smooth weighted selector 변경은 제외했다. `RM-A2`를 완료하려면 100:300 비율,
+weight 0 제외, draining 제외와 bounded selector state를 focused test로 먼저 고정한 뒤
+두 target actual assertion을 다시 통과해야 한다. 이 checkpoint를 actual 완료로 판정하지 않는다.
+
+## 2026-07-29 Node.js Config 2 SM-F3 전환 checkpoint
+
+`SM-F3` fixture를 fixed Node RID 대신 Spot 생성 결과의 owner RID를 사용하는 current public
+호출로 이관했다. Play와 Client는 build되지만 actual
+`framework/languages/node/e2e/SpotService/log/20260729-042802-225540`은 완료되지 않았다.
+
+Node direct request가 Mesh Channel에 등록한 `ChannelEchoReq`를 route dispatcher에서 찾지 못해
+typed handler-missing error로 끝났다. Retry, timeout 확대나 별도 handler 우회는 추가하지 않았다.
+Mesh Channel handler를 Node direct dispatch에도 연결하는 것이 public contract인지 확인하고
+registration owner를 정렬한 뒤 ChannelName, Node direct와 SpotId direct의 exactly-once evidence를
+다시 실행해야 한다. 따라서 `SM-F3`은 계속 `전환 필요`다.

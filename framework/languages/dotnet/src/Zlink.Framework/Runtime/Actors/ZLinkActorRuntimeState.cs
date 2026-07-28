@@ -86,10 +86,12 @@ internal sealed class ZLinkActorRuntimeState(
 
         try
         {
+            Handoff.BeginDeferredJoinCapture();
             return _dispatchMailbox.ReserveBarrier();
         }
         catch
         {
+            _ = Handoff.EndDeferredJoinCapture();
             Volatile.Write(ref _deferredJoinPending, 0);
             throw;
         }

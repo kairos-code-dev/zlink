@@ -65,6 +65,13 @@ public sealed record JoinTargetReq(
     string TargetSpotId,
     string ExpectedMode = "accept");
 
+public sealed class MutableJoinTargetReq
+{
+    public required string Scenario { get; set; }
+    public required string TargetSpotId { get; set; }
+    public required string ExpectedMode { get; set; }
+}
+
 public sealed record JoinTargetRes(
     string Scenario,
     string ActorId,
@@ -75,7 +82,8 @@ public sealed record JoinTargetRes(
 
 public sealed record ProbeReq(
     string Scenario,
-    string Marker);
+    string Marker,
+    string? ReplyMarker = null);
 
 public sealed record HandoffPacket(
     string Scenario,
@@ -93,7 +101,7 @@ public sealed record NodeActorCallReq(
     string Scenario,
     string Marker,
     int TimeoutMs = 5000,
-    string? TransportOperationId = null);
+    string? ReplyMarker = null);
 
 public sealed record NodeActorProbeRes(
     bool Succeeded,
@@ -300,25 +308,3 @@ public sealed record RelocationBulkSpotCreateRes(
     string[] SpotIds,
     string[] NodeRids,
     string[] ActorIds);
-
-public sealed record TransportDeliveryArmReq(
-    string ActorId,
-    string Kind);
-
-public sealed record TransportDeliveryGateRes(
-    string OperationId,
-    string ActorId,
-    string Kind,
-    int CapturedCount,
-    int ReleasedCount,
-    bool Armed,
-    bool Released);
-
-public sealed record ReplyAdmissionGateRes(
-    string ActorId,
-    int CapturedCount,
-    int BackpressuredCount,
-    int ReleasedAdmissionCount,
-    int DistinctRequestCount,
-    bool Armed,
-    bool Released);

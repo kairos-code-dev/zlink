@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { ZLinkHandlerContext, ZLinkSpotPacketHandler, ZLinkSpotSubscriptionHandler } from '@zlink-systems/framework';
+import type {
+  ZLinkMessageContext,
+  ZLinkPublishMessageContext,
+  ZLinkSpotPacketHandler,
+  ZLinkSpotSubscriptionHandler
+} from '@zlink-systems/framework';
 import { ZLinkPacket } from '@zlink-systems/framework';
 import type {
   ChannelEchoRes,
@@ -26,7 +31,7 @@ export class SpotOutboundHandler implements ZLinkSpotPacketHandler<ScenarioUserS
   async handle(
     spot: ScenarioUserSpot,
     request: SpotOutboundMsg,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<void> {
     void context;
     const echo = await spot.context.outbound
@@ -57,7 +62,7 @@ export class SpotOutboundNegativeHandler implements ZLinkSpotPacketHandler<Scena
   async handle(
     spot: ScenarioUserSpot,
     request: SpotOutboundNegativeMsg,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<void> {
     void context;
     let requestFailed = false;
@@ -84,7 +89,7 @@ export class SpotOutboundNegativeHandler implements ZLinkSpotPacketHandler<Scena
 export class SpotMsgHandler implements ZLinkSpotSubscriptionHandler<ScenarioUserSpot, SpotMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: ScenarioUserSpot, event: SpotMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: ScenarioUserSpot, event: SpotMsg, context: ZLinkPublishMessageContext): Promise<void> {
     void context;
     this.evidence.add(`spot-msg|rid=${this.evidence.rid}|spot=${spot.context.spotId}|marker=${event.marker}`);
   }

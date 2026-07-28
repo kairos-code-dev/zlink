@@ -28,28 +28,28 @@ C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터�
 | `Client/Support/ClientOptions.cs` | `Client/Support/client_support.hpp` | client-support | done | env parsing helper가 C++ support header에 있다. |
 | `Client/Support/DynamicClusterLauncher.cs` | `run_e2e.sh` | runner-support | done | 프로세스 시작, stop, scenario별 cluster 조작은 shell runner가 담당한다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/client_support.hpp` | client-support | done | `ensure` helper가 C++ support header에 있다. |
-| `Client/Scenarios/RmA1LocationStoreAutoConnectScenario.cs` | `Client/Scenarios/rm_a1_discovery_request_scenario.hpp` | scenario | done | RM-A1 location store 자동 연결과 peer location row 조회를 provider HTTP endpoint로 검증한다. |
-| `Client/Scenarios/RmA2ManualEndpointScenario.cs` | `Client/Scenarios/rm_a2_manual_endpoint_scenario.hpp` | scenario | done | RM-A2 manual endpoint request를 provider HTTP endpoint를 통해 검증한다. |
+| `Client/Scenarios/RmA1LocationStoreAutoConnectScenario.cs` | `Client/Scenarios/rm_a1_discovery_request_scenario.hpp` | scenario | partial | Endpoint 없는 Redis automatic discovery의 첫 request, reply와 선택된 Provider evidence는 forward·reverse·shuffle actual에서 통과했다. Ready Server 2개 public snapshot은 C++ `client_server_runtime_t` 구현이 없어 남아 있다. |
+| `Client/Scenarios/RmA2ManualEndpointScenario.cs` | `Client/Scenarios/rm_a2_manual_endpoint_scenario.hpp` | scenario | partial | 최초 manual request와 in-flight 보존은 actual-process에서 통과했다. Manual target handshake와 automatic descriptor 병합 runtime은 구현했지만, 두 ready target 선택 완료 증거는 아직 남아 있다. |
 | `Client/Scenarios/RmA4SameRidFailoverScenario.cs` | `Client/Scenarios/rm_a4_same_rid_failover_scenario.hpp` | scenario | done | RM-A4 same-rid failover request flow를 provider HTTP endpoint와 runner barrier로 검증한다. |
 | `Client/Scenarios/RmA6MultipleChannelsScenario.cs` | `Client/Scenarios/rm_a6_multiple_channels_scenario.hpp` | scenario | done | RM-A6 api/workflow channel 분리 검증을 provider/workflow HTTP endpoint로 실행한다. |
 | `Client/Scenarios/RmB1ScaleOutScenario.cs` | `Client/Scenarios/rm_b1_scale_out_scenario.hpp` | scenario | done | RM-B1 scale-out barrier와 post-scale 검증을 provider HTTP endpoint로 실행한다. |
 | `Client/Scenarios/RmB2ScaleInScenario.cs` | `Client/Scenarios/rm_b2_scale_in_scenario.hpp` | scenario | done | RM-B2 scale-in barrier와 stale 회피 검증을 provider HTTP endpoint로 실행한다. |
 | `Client/Scenarios/RmC1RequestSendScenario.cs` | `Client/Scenarios/rm_c1_request_send_scenario.hpp` | scenario | done | RM-C1 request/send happy path를 provider HTTP endpoint로 실행한다. |
-| `Client/Scenarios/RmC2TargetedRouteScenario.cs` | `Client/Scenarios/rm_c2_targeted_route_scenario.hpp` | scenario | done | RM-C2 route mesh targeted request를 provider HTTP endpoint로 실행한다. |
+| `Client/Scenarios/RmC2TargetedRouteScenario.cs` | `Client/Scenarios/rm_c2_targeted_route_scenario.hpp` | scenario | done | Public topology에서 target Ready를 확인한 뒤 exact Node direct request를 한 번 제출한다. `api-b` 단독 처리와 미등록 RID의 `RequestTargetNotFound`를 actual process에서 검증한다. |
 | `Client/Scenarios/RmC3MultiProviderDistributionScenario.cs` | `Client/Scenarios/rm_c3_multi_provider_distribution_scenario.hpp` | scenario | done | direct consumer HTTP role을 거쳐 RM-C3 multi-provider distribution을 검증한다. C++ HTTP array body binding 차이 때문에 `.NET`의 batch endpoint 대신 같은 consumer의 단건 request endpoint를 반복 호출한다. |
 | `Client/Scenarios/RmC4TimeoutIsolationScenario.cs` | `Client/Scenarios/rm_c4_timeout_isolation_scenario.hpp` | scenario | done | store consumer HTTP role을 거쳐 RM-C4 timeout/late-reply isolation을 검증한다. |
 | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/Scenarios/rm_c5_missing_packet_scenario.hpp` | scenario | done | store consumer HTTP role을 거쳐 RM-C5 missing packet negative path를 검증한다. |
 | `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/Scenarios/rm_c7_weighted_provider_scenario.hpp` | scenario | done | RM-C7 weighted provider distribution을 provider HTTP endpoint로 실행하고 high-weight provider 선호를 검증한다. |
-| `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm_c8_payload_round_trip_scenario.hpp` | scenario | done | single consumer HTTP role을 거쳐 RM-C8 payload round-trip과 max-size subflow를 검증한다. |
+| `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm_c8_payload_round_trip_scenario.hpp` | scenario | blocked | Payload round-trip과 max-size oracle은 작성되어 있다. 공통 E2E가 요구하는 ClientServer listener `MaxMessageSize` 설정 경계가 .NET·C++ exact interface에 없어 max-size 하위 흐름을 완료 증거로 실행하지 않는다. |
 | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm_c9_backpressure_scenario.hpp` | scenario | done | one-way send pressure 제출과 recovery evidence를 검증한다. public send는 bounded-failure oracle을 노출하지 않는다. |
-| `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/Configuration/consumer_options.hpp` | consumer-role | done | consumer HTTP endpoint, Redis location store endpoint/key prefix, direct provider endpoints를 env에서 읽는다. |
-| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/main.cpp` | consumer-role | done | C++ consumer role이 direct, single, store, backpressure 구성의 framework client와 HTTP endpoint를 구성한다. payload scenario의 JSON wrapper 크기를 받기 위해 public HTTP server option으로 request body limit을 높인다. |
+| `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/Configuration/consumer_options.hpp` | consumer-role | done | consumer HTTP endpoint, Redis location store endpoint/key prefix, direct provider endpoints를 env에서 읽는다. 미적용 `clientMaxMessageSize` 입력은 제거했다. |
+| `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/main.cpp` | consumer-role | done | C++ consumer role은 exact ClientServer `client()`를 한 번 등록한다. Config 1의 기본 consumer는 Redis Location Store automatic discovery를 사용하고, manual topology 시나리오만 endpoint마다 `connect()`를 사용한다. |
 | `Server/Consumer/Endpoints/ConsumerEndpoints.cs` | `Server/Consumer/Endpoints/consumer_endpoints.hpp` | consumer-role | done | profile request, slow/missing request, missing command, payload, backpressure endpoint가 scenario 검증 경로에 쓰인다. RM-C3은 같은 consumer public request 경로를 반복 호출해 multi-provider distribution을 검증한다. C++ HTTP array body binding 차이는 scenario/public messaging 동작 차이로 보지 않는다. |
 | `Server/Consumer/Program.cs` | `Server/Consumer/main.cpp` | consumer-role | done | consumer role executable 진입점이 있다. |
 | `Server/Consumer/RegistryMessaging.Consumer.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_registry_messaging_consumer` target이 대응한다. |
-| `Server/Provider/Configuration/ServerOptions.cs` | `Server/Provider/Configuration/provider_options.hpp` | server-role | done | provider rid, endpoints, weight, max message size, log dir를 env에서 읽는다. |
+| `Server/Provider/Configuration/ServerOptions.cs` | `Server/Provider/Configuration/provider_options.hpp` | server-role | done | provider endpoint, weight와 log dir를 env에서 읽는다. Socket에 적용되지 않던 `maxMessageSize` 입력은 제거했다. |
 | `Server/Provider/Endpoints/ProviderEndpoints.cs` | `Server/Provider/Endpoints/provider_endpoints.hpp` | endpoint | done | health/evidence와 profile request/manual/send, route request/missing, peer location list HTTP endpoint를 제공한다. 이 endpoint들이 public framework client/store를 호출하고 C++ E2E client는 HTTP로만 운전한다. |
-| `Server/Provider/Handlers/ProviderHandlers.cs` | `Server/Provider/Handlers/provider_handlers.hpp`; `Server/Provider/main.cpp` | handler | done | profile, payload, send, route ping handler는 handler header에 있고 dispatch error observer는 framework 구성 lambda에 있다. |
+| `Server/Provider/Handlers/ProviderHandlers.cs` | `Server/Provider/Handlers/provider_handlers.hpp`; `Server/Provider/main.cpp` | handler | done | route handler는 exact `route_message_context_t`를 받는다. ClientServer는 `client()`와 `server()` role builder로 구성하며 제거된 parent builder API를 사용하지 않는다. Provider와 ObjectClient target, contract headers와 M6A runtime focused test가 통과했다. |
 | `Server/Provider/Infrastructure/EvidenceStore.cs` | `Server/Provider/Infrastructure/scenario_state.hpp` | infrastructure | done | evidence snapshot 저장소가 대응한다. |
 | `Server/Provider/Program.cs` | `Server/Provider/main.cpp` | server-entry | done | provider role 진입점과 framework 구성을 수행한다. |
 | `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/main.cpp` | server-role | done | C++ app 구성은 provider main에 직접 노출한다. |
@@ -59,7 +59,7 @@ C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터�
 | `Server/Workflow/Endpoints/WorkflowEndpoints.cs` | `Server/Workflow/Endpoints/workflow_endpoints.hpp`; `Server/Workflow/main.cpp` | endpoint | done | C++ workflow role은 health/evidence와 workflow request HTTP endpoint를 제공하고 runner가 HTTP readiness도 확인한다. |
 | `Server/Workflow/Handlers/WorkflowHandlers.cs` | `Server/Workflow/Handlers/workflow_handlers.hpp` | handler | done | workflow request handler가 대응한다. |
 | `Server/Workflow/Infrastructure/EvidenceStore.cs` | `Server/Workflow/Infrastructure/scenario_state.hpp` | infrastructure | done | workflow evidence snapshot 저장소가 대응한다. |
-| `Server/Workflow/Program.cs` | `Server/Workflow/main.cpp` | server-entry | done | workflow role 진입점이다. |
+| `Server/Workflow/Program.cs` | `Server/Workflow/main.cpp` | server-entry | done | workflow role은 exact ClientServer `client()`·`server()` builder와 공통 TCP endpoint parser를 사용한다. |
 | `Server/Workflow/WorkflowHostFactory.cs` | `Server/Workflow/main.cpp` | server-role | done | C++ app 구성은 workflow main에 직접 노출한다. |
 | `Server/Workflow/RegistryMessaging.Workflow.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | `zlink_cpp_e2e_registry_messaging_workflow` target이 대응한다. |
 
@@ -67,14 +67,14 @@ C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터�
 
 | Scenario ID | C++ 대응 파일 | 상태 | 비고 |
 |-------------|---------------|------|------|
-| `RM-A1` | `Client/Scenarios/rm_a1_discovery_request_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
+| `RM-A1` | `Client/Scenarios/rm_a1_discovery_request_scenario.hpp` | partial | Automatic request actual 세 축은 통과했다. ClientServer public snapshot과 automatic RID prefix의 exact source 구현이 필요하다. |
 | `RM-A2` | `Client/Scenarios/rm_a2_manual_endpoint_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-A4` | `Client/Scenarios/rm_a4_same_rid_failover_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-A6` | `Client/Scenarios/rm_a6_multiple_channels_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-B1` | `Client/Scenarios/rm_b1_scale_out_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-B2` | `Client/Scenarios/rm_b2_scale_in_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-C1` | `Client/Scenarios/rm_c1_request_send_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
-| `RM-C2` | `Client/Scenarios/rm_c2_targeted_route_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
+| `RM-C2` | `Client/Scenarios/rm_c2_targeted_route_scenario.hpp` | done | Actual `logs/20260729-040050-3900121`에서 target 단독 처리, 반대 provider evidence 부재와 `RequestTargetNotFound`를 검증했다. |
 | `RM-C3` | `Client/Scenarios/rm_c3_multi_provider_distribution_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-C4` | `Client/Scenarios/rm_c4_timeout_isolation_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-C5` | `Client/Scenarios/rm_c5_missing_packet_scenario.hpp` | done | scenario 파일이 직접 검증한다. |

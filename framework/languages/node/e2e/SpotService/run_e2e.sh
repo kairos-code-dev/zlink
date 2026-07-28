@@ -181,10 +181,17 @@ REDIS_KEY_PREFIX="spot-service:node:${RUN_ID}:location"
 wait_port redis "tcp://$REDIS_ENDPOINT"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
-build_package "$ROOT_DIR/Server/Play"
-build_package "$ROOT_DIR/Server/Session"
-build_package "$ROOT_DIR/Server/Gateway"
-build_package "$ROOT_DIR/Server/MultiNode"
+case "$SCENARIO" in
+  SM-F3|SM-F5)
+    build_package "$ROOT_DIR/Server/Play"
+    ;;
+  *)
+    build_package "$ROOT_DIR/Server/Play"
+    build_package "$ROOT_DIR/Server/Session"
+    build_package "$ROOT_DIR/Server/Gateway"
+    build_package "$ROOT_DIR/Server/MultiNode"
+    ;;
+esac
 build_package "$ROOT_DIR/Client"
 
 PLAY_A_HTTP_PORT="$(allocate_port)"
@@ -279,6 +286,7 @@ write_config play-a \
   --string spotRouterEndpoint "$PLAY_A_ROUTER" --string spotPubEndpoint "$PLAY_A_SPOT_PUB" \
   --array clientSpotPubEndpoints "$GATEWAY_SPOT_PUB,$PLAY_B_SPOT_PUB" \
   --string externalClientEndpoint "$PLAY_A_EXTERNAL_CLIENT" \
+  --string redisEndpoint "$REDIS_ENDPOINT" --string redisKeyPrefix "$REDIS_KEY_PREFIX" \
   --string evidenceFile "$LOG_DIR/play-a.evidence.log" --string logDir "$LOG_DIR"
 write_config play-b \
   --string rid play-b --string httpUrl "$PLAY_B_URL" \
@@ -287,6 +295,7 @@ write_config play-b \
   --string spotRouterEndpoint "$PLAY_B_ROUTER" --string spotPubEndpoint "$PLAY_B_SPOT_PUB" \
   --array clientSpotPubEndpoints "$GATEWAY_SPOT_PUB,$PLAY_A_SPOT_PUB" \
   --string externalClientEndpoint "$PLAY_B_EXTERNAL_CLIENT" \
+  --string redisEndpoint "$REDIS_ENDPOINT" --string redisKeyPrefix "$REDIS_KEY_PREFIX" \
   --string evidenceFile "$LOG_DIR/play-b.evidence.log" --string logDir "$LOG_DIR"
 write_config session-a \
   --string rid session-a --string httpUrl "$SESSION_A_URL" \
@@ -362,7 +371,6 @@ wait_named_server() {
       wait_port play-a-control "$PLAY_A_CONTROL"
       wait_port play-a-external-spot "$PLAY_A_EXTERNAL_SPOT"
       wait_port play-a-spot-router "$PLAY_A_ROUTER"
-      wait_port play-a-spot-pub "$PLAY_A_SPOT_PUB"
       wait_port play-a-external-client "$PLAY_A_EXTERNAL_CLIENT"
       ;;
     play-b)
@@ -370,7 +378,6 @@ wait_named_server() {
       wait_port play-b-control "$PLAY_B_CONTROL"
       wait_port play-b-external-spot "$PLAY_B_EXTERNAL_SPOT"
       wait_port play-b-spot-router "$PLAY_B_ROUTER"
-      wait_port play-b-spot-pub "$PLAY_B_SPOT_PUB"
       wait_port play-b-external-client "$PLAY_B_EXTERNAL_CLIENT"
       ;;
     session-a)
@@ -436,6 +443,24 @@ wait_topology_routes() {
   if [[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "SM-G2" || "$SCENARIO" == "SM-Q9" ]]; then
     return 0
   fi
+  if [[ "$SCENARIO" == "SM-F3" ]]; then
+    return 0
+  fi
+  if [[ "$SCENARIO" == "SM-F5" ]]; then
+    local body='{"value":"route-ready"}'
+    for _ in $(seq 1 "$((ROUTE_SETTLE_TIMEOUT_SECONDS * 10))"); do
+      if curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS \
+        -H 'content-type: application/json' \
+        -d "$body" \
+        "$PLAY_B_URL/channel/route/request" 2>/dev/null \
+        | grep -F '"value":"echo-route-ready"' >/dev/null 2>&1; then
+        return 0
+      fi
+      sleep "${LOCAL_READINESS_POLL_SECONDS}"
+    done
+    echo "Timed out waiting for play-b to play-a ChannelName route" >&2
+    return 1
+  fi
   wait_control_route "$SESSION_A_URL" play-a session-a-to-play-a
   wait_control_route "$SESSION_A_URL" play-b session-a-to-play-b
   wait_control_route "$SESSION_B_URL" play-a session-b-to-play-a
@@ -445,6 +470,8 @@ wait_topology_routes() {
 case "$SCENARIO" in
   SM-G2) SERVER_ROLES=(multi-node-a) ;;
   SM-F6|SM-Q9) SERVER_ROLES=(multi-node-a multi-node-b) ;;
+  SM-F3) SERVER_ROLES=(play-a) ;;
+  SM-F5) SERVER_ROLES=(play-a play-b) ;;
   *) SERVER_ROLES=(play-a play-b session-a session-b gateway multi-node-a multi-node-b) ;;
 esac
 mapfile -t ORDERED_SERVER_ROLES < <(ordered_e2e_roles "$E2E_START_ORDER" "${SERVER_ROLES[@]}")

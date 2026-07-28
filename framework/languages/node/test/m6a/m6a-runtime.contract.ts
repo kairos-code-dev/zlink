@@ -431,7 +431,13 @@ test('raw admission keeps Object Client-only pairs out of liveness and records N
 
 test('raw runtime admits peers and completes node/channel requests once', async () => {
   const endpointNonce = `${process.pid}-${Date.now()}`;
-  const leftDescriptor = descriptor('m6a-left', `ipc:///tmp/zlink-m6a-left-${endpointNonce}.sock`);
+  const leftDescriptor = {
+    ...descriptor('m6a-left', `ipc:///tmp/zlink-m6a-left-${endpointNonce}.sock`),
+    channels: [
+      { name: 'alpha', weight: 0 },
+      { name: 'beta', weight: 50 }
+    ]
+  };
   const rightDescriptor = descriptor('m6a-right', `ipc:///tmp/zlink-m6a-right-${endpointNonce}.sock`);
   const left = new RawServiceMeshRuntime({ descriptor: leftDescriptor });
   const right = new RawServiceMeshRuntime({ descriptor: rightDescriptor });
@@ -504,6 +510,57 @@ test('raw runtime admits peers and completes node/channel requests once', async 
     publisher.close();
   } finally {
     backend.close();
+  }
+});
+
+test('local channel requests preserve successful and failed terminal results', async () => {
+  const local = new RawServiceMeshRuntime({
+    descriptor: descriptor(
+      'm6a-local-channel',
+      `ipc:///tmp/zlink-m6a-local-channel-${process.pid}-${Date.now()}.sock`
+    )
+  });
+  local.start();
+  try {
+    const success = local.requestToChannel('alpha', {
+      packetName: 'Question',
+      contentType: 'application/json',
+      payload: Buffer.from('request')
+    }, 2_000)!;
+    const successClaim = local.mailbox.tryClaim('application', 1, 4096)!;
+    local.reply(successClaim.records[0]!, {
+      packetName: 'Answer',
+      contentType: 'application/json',
+      payload: Buffer.from('reply')
+    });
+    assert.equal(local.mailbox.release(successClaim), true);
+    const successResult = await success.promise;
+    assert.equal(successResult.terminalResult, 0);
+    assert.equal(Buffer.from(successResult.payload!.payload).toString(), 'reply');
+
+    const failure = local.requestToChannel('alpha', {
+      packetName: 'MissingHandler',
+      contentType: 'application/json',
+      payload: Buffer.from('request')
+    }, 2_000)!;
+    const failureClaim = local.mailbox.tryClaim('application', 1, 4096)!;
+    local.reply(
+      failureClaim.records[0]!,
+      {
+        packetName: 'Ignored',
+        contentType: 'application/json',
+        payload: Buffer.from('must-not-be-returned')
+      },
+      102,
+      7
+    );
+    assert.equal(local.mailbox.release(failureClaim), true);
+    const failureResult = await failure.promise;
+    assert.equal(failureResult.terminalResult, 102);
+    assert.equal(failureResult.failureCode, 7);
+    assert.equal(failureResult.payload, undefined);
+  } finally {
+    local.close();
   }
 });
 

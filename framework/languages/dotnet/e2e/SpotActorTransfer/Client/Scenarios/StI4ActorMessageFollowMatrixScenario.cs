@@ -1,4 +1,4 @@
-// Verifies Actor Message Follow for one-way, request, timeout, and cancellation paths.
+// Verifies Actor Message Follow with process-external TCP delivery gates.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;
@@ -10,11 +10,9 @@ internal static class StI4ActorMessageFollowMatrixScenario
     public static async Task RunAsync(
         SpotActorTransferScenarioContext context)
     {
-        var scenario = "ST-I4";
-        var actorId =
-            $"actor-message-follow-matrix-{Guid.NewGuid():N}";
-        var spotId =
-            $"spot-message-follow-matrix-{Guid.NewGuid():N}";
+        const string scenario = "ST-I4";
+        var actorId = $"actor-message-follow-matrix-{Guid.NewGuid():N}";
+        var spotId = $"spot-message-follow-matrix-{Guid.NewGuid():N}";
         var created = await context.CreateActorAsync(
             context.NodeA,
             actorId,
@@ -24,52 +22,59 @@ internal static class StI4ActorMessageFollowMatrixScenario
         var source = context.NodeForRid(created.NodeRid);
         var (target, targetPrefix) =
             context.OtherActorNode(created.NodeRid);
+        var caller = context.NodeD;
         var targetSpot = await context.CreateSpotAsync(target, spotId);
 
-        var queueOperation = Guid.NewGuid().ToString("N");
-        await context.ArmTransportDeliveryAsync(
-            source,
-            queueOperation,
+        var baselineGate = Guid.NewGuid().ToString("N");
+        var baselineMarker = $"actor-one-way-source-baseline-{baselineGate}";
+        await context.ArmExternalTransportDeliveryAsync(
+            baselineGate,
+            baselineMarker);
+        var baseline = context.SendFromNodeAsync(
+            caller,
             actorId,
-            "OneWay");
-        var queued = context.SendFromNodeAsync(
-            source,
-            actorId,
-            new HandoffPacket(scenario, "actor-one-way-source-baseline"),
-            queueOperation);
-        await context.WaitTransportDeliveryAsync(source, queueOperation);
-        await context.ReleaseTransportDeliveryAsync(source, queueOperation);
-        await queued;
+            new HandoffPacket(scenario, baselineMarker));
+        await context.WaitExternalTransportDeliveryAsync(baselineGate);
+        await context.ReleaseExternalTransportDeliveryAsync(baselineGate);
+        await baseline;
         await context.WaitEvidenceAsync(
             source,
-            [$"{scenario}|{actorId}|handoff_packet|actor-one-way-source-baseline"]);
+            [$"{scenario}|{actorId}|handoff_packet|{baselineMarker}"]);
 
-        var oneWayOperation = Guid.NewGuid().ToString("N");
-        var requestOperation = Guid.NewGuid().ToString("N");
-        await context.ArmTransportDeliveryAsync(
-            source, oneWayOperation, actorId, "OneWay");
-        await context.ArmTransportDeliveryAsync(
-            source, requestOperation, actorId, "Request");
+        var oneWayGate = Guid.NewGuid().ToString("N");
+        var requestGate = Guid.NewGuid().ToString("N");
+        var replyGate = Guid.NewGuid().ToString("N");
+        var oneWayMarker = $"actor-one-way-follow-{oneWayGate}";
+        var requestMarker = $"actor-request-follow-{requestGate}";
+        var replyMarker = $"actor-request-reply-{replyGate}";
+        await context.ArmExternalTransportDeliveryAsync(
+            oneWayGate,
+            oneWayMarker);
+        await context.ArmExternalTransportDeliveryAsync(
+            requestGate,
+            requestMarker);
+        await context.ArmExternalTransportDeliveryAsync(
+            replyGate,
+            string.Empty,
+            afterGateId: requestGate);
+
         var oneWay = context.SendFromNodeAsync(
-            source,
+            caller,
             actorId,
-            new HandoffPacket(scenario, "actor-one-way-follow"),
-            oneWayOperation);
+            new HandoffPacket(scenario, oneWayMarker));
         var request = context.ProbeFromNodeAsync(
-            source,
+            caller,
             actorId,
-            new ProbeReq(scenario, "actor-request-follow"),
-            TimeSpan.FromSeconds(10),
-            requestOperation);
-        await context.WaitTransportDeliveryAsync(source, oneWayOperation);
-        await context.WaitTransportDeliveryAsync(source, requestOperation);
+            new ProbeReq(scenario, requestMarker, replyMarker),
+            TimeSpan.FromSeconds(10));
+        await context.WaitExternalTransportDeliveryAsync(oneWayGate);
+        await context.WaitExternalTransportDeliveryAsync(requestGate);
 
-        var joined = await context.JoinAsync(
-            source,
-            actorId,
-            new JoinTargetReq(scenario, spotId));
         ZlinkStreamAssert.Ensure(
-            joined.Accepted,
+            (await context.JoinAsync(
+                source,
+                actorId,
+                new JoinTargetReq(scenario, spotId))).Accepted,
             $"{scenario} relocation was rejected.");
         await context.WaitEvidenceAsync(
             target,
@@ -79,25 +84,15 @@ internal static class StI4ActorMessageFollowMatrixScenario
             actorId,
             targetSpot.NodeRid);
 
-        await context.ReleaseTransportDeliveryAsync(
-            source, oneWayOperation);
-        await context.ArmReplyAdmissionAsync(source, actorId);
-        await context.ReleaseTransportDeliveryAsync(
-            source, requestOperation);
+        await context.ReleaseExternalTransportDeliveryAsync(oneWayGate);
+        await context.ReleaseExternalTransportDeliveryAsync(requestGate);
         await oneWay;
-        var capturedReplyAdmission =
-            await context.WaitReplyAdmissionAsync(source, actorId);
-        ZlinkStreamAssert.Ensure(
-            capturedReplyAdmission.BackpressuredCount > 0
-            && capturedReplyAdmission.DistinctRequestCount == 1,
-            $"{scenario} did not force exactly one followed request reply "
-            + "through source transport backpressure.");
+        await context.WaitExternalTransportDeliveryAsync(replyGate);
         await Task.Delay(TimeSpan.FromMilliseconds(200));
         ZlinkStreamAssert.Ensure(
             !request.IsCompleted,
-            $"{scenario} request completed while its source reply transport "
-            + "was still backpressured.");
-        await context.ReleaseReplyAdmissionAsync(source, actorId);
+            $"{scenario} request completed while its TCP reply was held.");
+        await context.ReleaseExternalTransportDeliveryAsync(replyGate);
         var result = await request;
         ZlinkStreamAssert.Ensure(
             result.Succeeded && result.Reply is not null,
@@ -111,26 +106,29 @@ internal static class StI4ActorMessageFollowMatrixScenario
         ZlinkStreamAssert.Ensure(
             reply.StateVersion == 404,
             $"{scenario} request lost restored Actor state.");
+        ZlinkStreamAssert.Ensure(
+            reply.Marker == replyMarker,
+            $"{scenario} request reply marker changed.");
 
         var targetEvidence = await context.WaitEvidenceAsync(
             target,
             [
-                $"{scenario}|{actorId}|handoff_packet|actor-one-way-follow",
-                $"{scenario}|{actorId}|packet_handler|actor-request-follow"
+                $"{scenario}|{actorId}|handoff_packet|{oneWayMarker}",
+                $"{scenario}|{actorId}|packet_handler|{requestMarker}"
             ]);
         ZlinkStreamAssert.Ensure(
             targetEvidence.Count(item =>
                 item.Scenario == scenario
                 && item.ActorId == actorId
                 && item.Kind == "handoff_packet"
-                && item.Value == "actor-one-way-follow") == 1,
+                && item.Value == oneWayMarker) == 1,
             $"{scenario} one-way was not handled exactly once.");
         ZlinkStreamAssert.Ensure(
             targetEvidence.Count(item =>
                 item.Scenario == scenario
                 && item.ActorId == actorId
                 && item.Kind == "packet_handler"
-                && item.Value == "actor-request-follow") == 1,
+                && item.Value == requestMarker) == 1,
             $"{scenario} request was not handled exactly once.");
         ZlinkStreamAssert.Ensure(
             !(await context.GetEvidenceAsync(source)).Any(item =>
@@ -138,23 +136,15 @@ internal static class StI4ActorMessageFollowMatrixScenario
                 && item.ActorId == actorId
                 && (item.Kind == "handoff_packet"
                     || item.Kind == "packet_handler")
-                && item.Value.Contains(
-                    "follow",
-                    StringComparison.Ordinal)),
+                && (item.Value == oneWayMarker
+                    || item.Value == requestMarker)),
             $"{scenario} source application handler processed followed work.");
-        ZlinkStreamAssert.Ensure(
-            (await context.GetTransportDeliveryAsync(
-                source, oneWayOperation)).ReleasedCount == 1
-            && (await context.GetTransportDeliveryAsync(
-                source, requestOperation)).ReleasedCount == 1,
-            $"{scenario} delivery fixture did not preserve both operations.");
-        var replyAdmission =
-            await context.GetReplyAdmissionAsync(source, actorId);
-        ZlinkStreamAssert.Ensure(
-            replyAdmission.Released
-            && replyAdmission.ReleasedAdmissionCount == 1
-            && replyAdmission.DistinctRequestCount == 1,
-            $"{scenario} source reply admission did not complete exactly once "
-            + "after backpressure release.");
+        foreach (var gate in new[] { oneWayGate, requestGate, replyGate })
+        {
+            ZlinkStreamAssert.Ensure(
+                (await context.GetExternalTransportDeliveryAsync(gate))
+                    .ReleasedCount == 1,
+                $"{scenario} external gate '{gate}' was not released once.");
+        }
     }
 }

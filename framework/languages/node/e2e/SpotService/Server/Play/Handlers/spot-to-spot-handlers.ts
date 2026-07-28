@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { ZLinkHandlerContext, ZLinkSpotRequestHandler } from '@zlink-systems/framework';
+import type { ZLinkMessageContext, ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import { ZLinkPacket } from '@zlink-systems/framework';
 import type {
   SlowSpotRes,
@@ -32,14 +32,14 @@ export class SpotToSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSp
   async handle(
     spot: ScenarioUserSpot,
     request: SpotToSpotReq,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<SpotToSpotRes> {
     void context;
     const reply = await spot.context.outbound
-      .requestToSpot(request.targetSpot, spotServicePacket(StateReq, { operation: 'add', delta: 3 }))
+      .requestToSpot(request.targetSpotId, spotServicePacket(StateReq, { operation: 'add', delta: 3 }))
       .submit<StateRes>();
     await spot.context.outbound
-      .sendToSpot(request.targetSpot,
+      .sendToSpot(request.targetSpotId,
         spotServicePacket(StateMsg, { marker: `sm-c3-send-${request.marker}` }))
       .submit();
     await spot.context.outbound
@@ -67,13 +67,13 @@ export class SpotToSpotTimeoutHandler
   async handle(
     spot: ScenarioUserSpot,
     request: SpotToSpotTimeoutReq,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<SpotToSpotTimeoutRes> {
     void context;
     let failed = false;
     try {
       await spot.context.outbound
-        .requestToSpot(request.targetSpot,
+        .requestToSpot(request.targetSpotId,
           spotServicePacket(SlowSpotReq, { marker: request.marker, delayMs: 1500 }))
         .timeout(100)
         .submit<SlowSpotRes>();
@@ -101,13 +101,13 @@ export class SpotToSpotNegativeHandler
   async handle(
     spot: ScenarioUserSpot,
     request: SpotToSpotNegativeReq,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<SpotToSpotNegativeRes> {
     void context;
     let requestFailed = false;
     try {
       await spot.context.outbound
-        .requestToSpot(request.targetSpot,
+        .requestToSpot(request.targetSpotId,
           spotServicePacket(MissingSpotReq, { operation: 'noop', delta: 0 }))
         .timeout(2000)
         .submit<StateRes>();
@@ -115,7 +115,7 @@ export class SpotToSpotNegativeHandler
       requestFailed = true;
     }
     await spot.context.outbound
-      .sendToSpot(request.targetSpot,
+      .sendToSpot(request.targetSpotId,
         spotServicePacket(MissingSpotMsg, { marker: `missing-${request.marker}` }))
       .submit();
     this.evidence.add(

@@ -21,7 +21,7 @@ internal static class StF5MessageFollowRouteRemovalScenario
         var source = context.NodeForRid(created.NodeRid);
         var (firstTarget, _) = context.OtherActorNode(created.NodeRid);
         var finalTarget = context.ThirdActorNode(source, firstTarget);
-        var caller = finalTarget;
+        var caller = context.NodeD;
         var firstSpotRef = await context.CreateSpotAsync(
             firstTarget,
             firstSpot);

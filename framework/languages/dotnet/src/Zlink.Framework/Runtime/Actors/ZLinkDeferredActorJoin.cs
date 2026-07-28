@@ -155,7 +155,9 @@ internal sealed class ZLinkDeferredActorJoin(
     {
         var barrier = Interlocked.Exchange(ref _barrier, null);
         barrier?.Discard();
+        var replay = actorState.Handoff.EndDeferredJoinCapture();
         actorState.ReleaseDeferredJoinBarrier();
+        ReplayDeferredJoinFrames(replay);
     }
 
     private async ValueTask RunAsync(CancellationToken cancellationToken)
@@ -239,8 +241,29 @@ internal sealed class ZLinkDeferredActorJoin(
         }
         finally
         {
+            var replay = actorState.Handoff.EndDeferredJoinCapture();
             actorState.ReleaseDeferredJoinBarrier();
+            ReplayDeferredJoinFrames(replay);
         }
+    }
+
+    private void ReplayDeferredJoinFrames(
+        IReadOnlyList<ZLinkActorHandoffFrame> frames)
+    {
+        if (frames.Count == 0) return;
+
+        var actorRef = actorState.NativeActorRef
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.NotFound,
+                           $"Actor '{actorState.ActorId}' has no local Actor reference for Deferred Join replay.");
+        var batch = ZLinkActorHandoffFrames.Restore(actorRef, frames);
+        if (!runtime.TryRunDetached(
+                "actor-deferred-join-source-replay",
+                cancellationToken => new ZLinkActorInboundPipeline(
+                        runtime,
+                        new ZLinkEntrySpotActorInboundEndpoint(runtime))
+                    .DispatchAsync(batch, cancellationToken)))
+            batch.Dispose();
     }
 
     private ValueTask NotifySourceAsync(

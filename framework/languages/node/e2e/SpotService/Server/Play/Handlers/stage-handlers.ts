@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type {
-  ZLinkHandlerContext,
+  ZLinkMessageContext,
   ZLinkSpotPacketHandler,
   ZLinkSpotRequestHandler,
   ZLinkSpotTimerHandler,
@@ -40,7 +40,7 @@ export class StageProbeHandler implements ZLinkSpotRequestHandler<ScenarioUserSp
   async handle(
     spot: ScenarioUserSpot,
     request: StageProbeReq,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<StateRes> {
     void context;
     return new ScenarioStage(spot).apply(request, this.evidence);
@@ -53,7 +53,7 @@ export class StageTimerStartHandler implements ZLinkSpotPacketHandler<ScenarioUs
   async handle(
     spot: ScenarioUserSpot,
     message: StageTimerStartMsg,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<void> {
     void context;
     await new ScenarioStage(spot).startTimer(message);

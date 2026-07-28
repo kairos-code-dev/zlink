@@ -852,12 +852,10 @@ internal sealed partial class ZLinkFrameworkRuntime
                         request.Reply ?? [],
                         cancellationToken)
                     .ConfigureAwait(false);
-            await ReplayTransferredActorHandoffAsync(
-                    target,
-                    actorState,
-                    request.Frames,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            // Import the accepted journal while target admission remains
+            // closed. Application dispatch starts only after the durable Join
+            // completion callback succeeds.
+            actorState.Handoff.PrepareImportedReplay(request.Frames);
             if (completionRoot is
                 {
                     Completion.Cursor: ZLinkDeferredJoinCompletionCursor.Prepared
@@ -877,11 +875,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                         request.HandoffId,
                         cancellationToken)
                     .ConfigureAwait(false);
-            await ReplayFinalTransferredActorHandoffAsync(
-                    target,
-                    actorState,
-                    cancellationToken)
-                .ConfigureAwait(false);
             if (completionRoot is
                 {
                     Completion.Cursor: ZLinkDeferredJoinCompletionCursor.Delivered
@@ -922,6 +915,11 @@ internal sealed partial class ZLinkFrameworkRuntime
                             cancellationToken)
                         .ConfigureAwait(false);
             }
+            await ReplayFinalTransferredActorHandoffAsync(
+                    target,
+                    actorState,
+                    cancellationToken)
+                .ConfigureAwait(false);
             if (!authorityWasSteady)
                 await actorLocations.AdvanceTransferredActorAuthorityPhaseAsync(
                         request.ActorId,

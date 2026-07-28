@@ -15,19 +15,18 @@ import type {
   ZLinkActorClient,
   ZLinkActorManager,
   ZLinkSpotManager,
-  ZLinkRouteRequestContext,
+  ZLinkRouteMessageContext,
   ZLinkRouteRequestHandler
 } from '@zlink-systems/framework';
 import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
-import { InMemorySpotRouteStore } from '../Infrastructure/spot-route-store';
 import { ScenarioUserSpot } from '../Spots/scenario-spots';
 
 @Injectable()
 export class ControlPingHandler implements ZLinkRouteRequestHandler<ControlPingReq, ControlPingRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: ControlPingReq, context: ZLinkRouteRequestContext): Promise<ControlPingRes> {
+  async handle(request: ControlPingReq, context: ZLinkRouteMessageContext): Promise<ControlPingRes> {
     void context;
     this.evidence.add(`control-pingMsg|rid=${this.evidence.rid}|value=${request.value}`);
     return {
@@ -44,20 +43,23 @@ export class EnsureActorHandler implements ZLinkRouteRequestHandler<EnsureActorR
     private readonly evidence: EvidenceStore
   ) {}
 
-  async handle(request: EnsureActorReq, context: ZLinkRouteRequestContext): Promise<EnsureActorRes> {
+  async handle(request: EnsureActorReq, context: ZLinkRouteMessageContext): Promise<EnsureActorRes> {
     void context;
-    const actorRef = await this.actors.getOrCreate(
-      SpotServiceNames.spotChannel,
-      request.actorId,
-      SpotServiceNames.actorType,
-      request
-    );
+    const created = await this.actors
+      .getOrCreate(request.actorId, SpotServiceNames.actorType)
+      .inMesh(SpotServiceNames.spotChannel)
+      .request(request)
+      .submit();
+    if (created.status === 'rejected') {
+      throw new Error(`Actor '${request.actorId}' creation was rejected.`);
+    }
+    const actorRef = created.actor;
     this.evidence.add(`ensure-actor|rid=${this.evidence.rid}|actor=${request.actorId}`);
     this.evidence.add(`entry-joined|rid=${this.evidence.rid}|actor=${request.actorId}`);
     return {
       actorId: actorRef.actorId,
       nodeRid: String(actorRef.nodeRid),
-      generation: actorRef.generation.toString()
+      generation: actorRef.objectGeneration.toString()
     };
   }
 }
@@ -72,15 +74,11 @@ export class CrossRoleActorPushHandler
 
   async handle(
     request: CrossRoleActorPushReq,
-    context: ZLinkRouteRequestContext
+    context: ZLinkRouteMessageContext
   ): Promise<CrossRoleActorPushRes> {
     void context;
     const reply = await this.actors
-      .requestToActor(SpotServiceNames.spotChannel, {
-        actorId: request.actorId,
-        nodeRid: request.nodeRid,
-        generation: BigInt(request.generation)
-      }, new ActorPushReq(request.value))
+      .requestToActor(request.actorId, new ActorPushReq(request.value))
       .timeout(5000)
       .submit<ActorPingRes>();
     this.evidence.add(
@@ -102,19 +100,17 @@ export class CreateSpotHandler implements ZLinkRouteRequestHandler<CreateSpotReq
     private readonly evidence: EvidenceStore
   ) {}
 
-  async handle(request: CreateSpotReq, context: ZLinkRouteRequestContext): Promise<CreateSpotRes> {
+  async handle(request: CreateSpotReq, context: ZLinkRouteMessageContext): Promise<CreateSpotRes> {
     void context;
-    const created = await this.spots.getOrCreate(
-      SpotServiceNames.spotChannel,
-      ScenarioUserSpot,
-      request.spotId
-    );
+    const created = await this.spots
+      .getOrCreate(request.spotId, ScenarioUserSpot.name)
+      .inMesh(SpotServiceNames.spotChannel)
+      .submit();
     const state = typeof created.state === 'string' ? created.state : String(created.state);
-    InMemorySpotRouteStore.recordUserSpot(String(created.spotId), this.evidence.rid);
-    this.evidence.add(`create-spot|rid=${this.evidence.rid}|spot=${created.spotId}|state=${state}`);
+    this.evidence.add(`create-spot|rid=${this.evidence.rid}|spot=${created.spot.spotId}|state=${state}`);
     return {
-      spotId: String(created.spotId),
-      nodeRid: this.evidence.rid,
+      spotId: String(created.spot.spotId),
+      nodeRid: String(created.spot.nodeRid),
       state
     };
   }

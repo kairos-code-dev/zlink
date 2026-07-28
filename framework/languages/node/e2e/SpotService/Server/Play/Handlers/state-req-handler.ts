@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { ZLinkHandlerContext, ZLinkSpotPacketHandler, ZLinkSpotRequestHandler } from '@zlink-systems/framework';
+import type { ZLinkMessageContext, ZLinkSpotPacketHandler, ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import { ZLinkPacket } from '@zlink-systems/framework';
 import type { SlowSpotRes, SlowSpotReq, StateMsg, StateRes, StateReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
@@ -13,7 +13,7 @@ export class StateReqHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot
   async handle(
     spot: ScenarioUserSpot,
     request: StateReq,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<StateRes> {
     void context;
     const delta = request.operation === 'add' ? request.delta : 0;
@@ -35,7 +35,7 @@ export class StateCommandHandler implements ZLinkSpotPacketHandler<ScenarioUserS
   async handle(
     spot: ScenarioUserSpot,
     message: StateMsg,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<void> {
     void context;
     this.evidence.add(
@@ -52,7 +52,7 @@ export class SlowSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot
   async handle(
     spot: ScenarioUserSpot,
     request: SlowSpotReq,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<SlowSpotRes> {
     void context;
     await new Promise((resolve) => setTimeout(resolve, request.delayMs));

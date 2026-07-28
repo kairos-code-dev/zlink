@@ -57,6 +57,13 @@ namespace SpotActorTransfer.ActorNode
                 ? failed.Kind.ToString()
                 : targetSpotId;
             evidence.Add(scenario, ActorId, kind, terminalValue);
+            if (scenario == "ST-A2"
+                && completion is ZLinkActorJoinCompletion.Rejected)
+                evidence.Add(
+                    scenario,
+                    ActorId,
+                    "typed_reject_reply",
+                    $"accepted={reply?.Accepted};spot={targetSpotId}");
             return ValueTask.CompletedTask;
         }
     }
@@ -481,24 +488,60 @@ namespace SpotActorTransfer.ActorNode
 
     internal sealed class ActorJoinTargetUseCase(EvidenceStore evidence)
     {
-        public ValueTask<JoinTargetRes> ExecuteAsync(
+        public async ValueTask<JoinTargetRes> ExecuteAsync(
             TransferActor actor,
             JoinTargetReq request,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             actor.RecordDeferredJoin(request);
-            actor.Context.JoinSpot(request.TargetSpotId, request)
-                .Timeout(TimeSpan.FromSeconds(10))
-                .Defer();
+            if (request.Scenario == "ST-H1")
+            {
+                var mutableRequest = new MutableJoinTargetReq
+                {
+                    Scenario = request.Scenario,
+                    TargetSpotId = request.TargetSpotId,
+                    ExpectedMode = request.ExpectedMode
+                };
+                actor.Context.JoinSpot(request.TargetSpotId, mutableRequest)
+                    .Timeout(TimeSpan.FromSeconds(10))
+                    .Defer();
+                evidence.Add(
+                    request.Scenario,
+                    actor.ActorId,
+                    "defer_registered",
+                    request.TargetSpotId);
+
+                // Defer must snapshot the request synchronously. Mutating the
+                // application object after registration cannot change target
+                // admission or completion.
+                mutableRequest.Scenario = "ST-H1-MUTATED";
+                mutableRequest.TargetSpotId = "mutated-target";
+                mutableRequest.ExpectedMode = "reject";
+                await Task.Delay(
+                        TimeSpan.FromMilliseconds(300),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                evidence.Add(
+                    request.Scenario,
+                    actor.ActorId,
+                    "defer_handler_completed",
+                    request.TargetSpotId);
+            }
+            else
+            {
+                actor.Context.JoinSpot(request.TargetSpotId, request)
+                    .Timeout(TimeSpan.FromSeconds(10))
+                    .Defer();
+            }
             evidence.Add(request.Scenario, actor.ActorId, "commit_request", request.TargetSpotId);
-            return ValueTask.FromResult(new JoinTargetRes(
+            return new JoinTargetRes(
                 request.Scenario,
                 actor.ActorId,
                 true,
                 evidence.NodeRid,
                 request.TargetSpotId,
-                actor.StateVersion));
+                actor.StateVersion);
         }
     }
 
@@ -554,7 +597,9 @@ namespace SpotActorTransfer.ActorNode
             if ((request.Scenario == "ST-F6"
                     && request.Marker == "late-reply")
                 || (request.Scenario == "ST-I5"
-                    && request.Marker == "deadline"))
+                    && request.Marker.StartsWith(
+                        "deadline-",
+                        StringComparison.Ordinal)))
             {
                 var delay = request.Scenario == "ST-I5"
                     ? TimeSpan.FromSeconds(7)
@@ -568,7 +613,7 @@ namespace SpotActorTransfer.ActorNode
                 spot.Context.SpotId,
                 spot.Context.NodeRid.ToString(),
                 actor.StateVersion,
-                request.Marker);
+                request.ReplyMarker ?? request.Marker);
         }
     }
 
@@ -587,6 +632,12 @@ namespace SpotActorTransfer.ActorNode
             _ = context;
             cancellationToken.ThrowIfCancellationRequested();
             evidence.Add(message.Scenario, actor.ActorId, "handoff_packet", message.Marker);
+            if (message.Scenario == "ST-A2")
+                evidence.Add(
+                    message.Scenario,
+                    actor.ActorId,
+                    "user_handoff_packet",
+                    $"{message.Marker}:state={actor.StateVersion}");
             return ValueTask.CompletedTask;
         }
     }
@@ -606,6 +657,12 @@ namespace SpotActorTransfer.ActorNode
             _ = context;
             cancellationToken.ThrowIfCancellationRequested();
             evidence.Add(message.Scenario, actor.ActorId, "handoff_packet", message.Marker);
+            if (message.Scenario == "ST-A2")
+                evidence.Add(
+                    message.Scenario,
+                    actor.ActorId,
+                    "entry_handoff_packet",
+                    $"{message.Marker}:state={actor.StateVersion}");
             return ValueTask.CompletedTask;
         }
     }

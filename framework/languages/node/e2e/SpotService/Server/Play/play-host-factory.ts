@@ -1,15 +1,16 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
+import { ZLinkMessageFlowLogMode, zlinkDisabledRelocation } from '@zlink-systems/framework';
 import type { ZLinkRouteClient, ZLinkSpotManager, ZLinkSpotOutbound } from '@zlink-systems/framework';
+import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SpotServiceNames } from '../../Shared/messages';
 import { createSpotServiceConfigurationModule } from '../../configuration';
 import { validatePlayOptions } from './Configuration/play-options';
 import type { PlayOptions } from './Configuration/play-options';
 import { createPlayEndpoints } from './Endpoints/play-endpoints';
-import { ChannelEchoHandler, ChannelNotifyHandler } from './Handlers/channel-handlers';
+import { ChannelEchoHandler, ChannelNotifyHandler, NodeEchoHandler } from './Handlers/channel-handlers';
 import { ControlPingHandler, CreateSpotHandler, CrossRoleActorPushHandler, EnsureActorHandler } from './Handlers/control-handlers';
 import { EvidenceDispatchErrorObserver } from './Handlers/dispatch-error-observer';
 import { SpotMsgHandler, SpotOutboundHandler, SpotOutboundNegativeHandler } from './Handlers/spot-outbound-handlers';
@@ -69,6 +70,15 @@ export async function startPlayHost(): Promise<void> {
         useFactory: (value: unknown) => {
           const options = value as PlayOptions;
           const builder = zlinkFramework();
+          builder.addLocationStore(new ZLinkRedisLocationStore({
+            url: `redis://${options.redisEndpoint}`,
+            keyPrefix: options.redisKeyPrefix
+          }));
+          builder.configureLocations()
+            .pollingIntervalMs(100)
+            .heartbeatIntervalMs(1000)
+            .ownerLeaseTtlMs(3000)
+            .routeCacheMaxAgeMs(500);
           builder
             .configureDispatch()
               .setMessageFlowObserver(EvidenceDispatchErrorObserver)
@@ -76,44 +86,65 @@ export async function startPlayHost(): Promise<void> {
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
 
-          builder.addRouteMesh(SpotServiceNames.controlChannel)
+          const control = builder.addRouteMesh(SpotServiceNames.controlChannel)
             .listen(options.controlRouterEndpoint)
-            .routingId(options.rid)
+            .routingId(options.rid);
+          control
+            .channel(SpotServiceNames.controlChannel)
+            .server()
             .addRequestHandler('ControlPingReq', ControlPingHandler)
             .addRequestHandler('EnsureActorReq', EnsureActorHandler)
             .addRequestHandler('CrossRoleActorPushReq', CrossRoleActorPushHandler)
-            .addRequestHandler('CreateSpotReq', CreateSpotHandler)
-            .channelName(SpotServiceNames.controlChannel);
+            .addRequestHandler('CreateSpotReq', CreateSpotHandler);
           const externalSpotChannel = options.rid === 'play-b'
             ? SpotServiceNames.externalSpotChannelB
             : SpotServiceNames.externalSpotChannel;
-          builder.addRouteMesh(externalSpotChannel)
+          const externalSpot = builder.addRouteMesh(externalSpotChannel)
             .listen(options.externalSpotEndpoint)
-            .routingId(options.rid)
+            .routingId(options.rid);
+          externalSpot.addRequestHandler('ChannelEchoReq', NodeEchoHandler);
+          externalSpot
+            .channel(externalSpotChannel)
+            .server()
             .addRequestHandler('ChannelEchoReq', ChannelEchoHandler)
-            .addRequestHandler('CrossRoleActorPushReq', CrossRoleActorPushHandler)
-            .channelName(externalSpotChannel);
+            .addRequestHandler('CrossRoleActorPushReq', CrossRoleActorPushHandler);
           if (options.rid === 'play-b' && options.playAExternalSpotEndpoint !== undefined) {
             const externalMesh = builder.addRouteMesh(SpotServiceNames.externalSpotChannel)
               .listen(`inproc://spot-service-${options.rid}-external`)
               .routingId(`${options.rid}-external`);
-            externalMesh.channelName(SpotServiceNames.externalSpotChannel);
-            externalMesh.peerConnections().connect(options.playAExternalSpotEndpoint);
+            externalMesh.channel(SpotServiceNames.externalSpotChannel).client();
+            externalMesh.peerConnections().connect('play-a', options.playAExternalSpotEndpoint);
           }
           const spot = builder.addRouteMesh(SpotServiceNames.spotChannel)
             .routingId(options.rid)
-            .listen(options.spotRouterEndpoint)
-                        .addEntrySpot(ScenarioEntrySpot)
-            .addSpotFactory(ScenarioUserSpot)
-            .addSpotFactory(ScenarioAlternateSpot)
-            .actorFactory(SpotServiceNames.actorType, ScenarioActorFactory);
-          spot.channelName(SpotServiceNames.spotChannel);
+            .listen(options.spotRouterEndpoint);
+          const objects = spot.objects().server();
+          objects.addEntrySpot(ScenarioEntrySpot);
+          objects.addSpotFactory(
+            ScenarioUserSpot.name,
+            ScenarioUserSpot,
+            undefined,
+            zlinkDisabledRelocation()
+          );
+          objects.addSpotFactory(
+            ScenarioAlternateSpot.name,
+            ScenarioAlternateSpot,
+            undefined,
+            zlinkDisabledRelocation()
+          );
+          objects.addActorFactory(
+            SpotServiceNames.actorType,
+            ScenarioActorFactory,
+            undefined,
+            zlinkDisabledRelocation()
+          );
+          spot.channel(SpotServiceNames.spotChannel).server();
           if (options.externalClientEndpoint !== undefined) {
             const external = builder.addRouteMesh(SpotServiceNames.externalClientChannel)
               .listen(options.externalClientEndpoint)
               .routingId(options.rid);
-            external.peerConnections().connect(options.externalClientEndpoint);
-            external.channelName(SpotServiceNames.externalClientChannel)
+            external.channel(SpotServiceNames.externalClientChannel)
+              .server()
               .addRequestHandler('ChannelEchoReq', ChannelEchoHandler)
               .addSendHandler('ChannelNotify', ChannelNotifyHandler);
           }
@@ -126,6 +157,7 @@ export async function startPlayHost(): Promise<void> {
       { provide: EvidenceStore, inject: [PLAY_OPTIONS], useFactory: createEvidence },
       EvidenceDispatchErrorObserver,
       ChannelEchoHandler,
+      NodeEchoHandler,
       ChannelNotifyHandler,
       ControlPingHandler,
       CrossRoleActorPushHandler,

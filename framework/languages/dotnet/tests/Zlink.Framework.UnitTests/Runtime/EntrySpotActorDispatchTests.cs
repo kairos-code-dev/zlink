@@ -3090,6 +3090,62 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task Actor_Request_Subtracts_Location_Read_From_Total_Timeout()
+    {
+        var node = new CapturingSpotNode
+        {
+            ActorRequestHandler = parts =>
+            {
+                var requestHeader =
+                    ZLinkStreamProtocolDefaults.DecodeHeader(
+                        parts[0].AsReadOnlyMemory());
+                return
+                [
+                    Message.From(
+                        ZLinkStreamProtocolDefaults.EncodeHeader(
+                            requestHeader with
+                            {
+                                Kind = ZlinkStreamMessageKind.Response,
+                                Name = string.Empty
+                            }).Span),
+                    Message.From(
+                        ZLinkEnvelopeCodec.EncodeJsonBytes(
+                            new ProbeReply("reply")))
+                ];
+            }
+        };
+        var (runtime, actor) = await CreateStartedRuntimeAsync(
+            node,
+            locationStoreWrapper: inner =>
+                new DelayedAuthorityLocationStore(
+                    inner,
+                    TimeSpan.FromMilliseconds(120)));
+        try
+        {
+            var rows = runtime.Services
+                .GetRequiredService<ZLinkStoreLocationResolvers>();
+            rows.InvalidateActorRoute(
+                new ZLinkActorLocationKey(actor.ActorId));
+            var reply = await new ZLinkActorClient(runtime)
+                .RequestToActor(
+                    actor.ActorId,
+                    new ProbeRouteMessage("request"))
+                .Timeout(TimeSpan.FromMilliseconds(500))
+                .Async<ProbeReply>();
+
+            Assert.Equal("reply", reply.Value);
+            Assert.InRange(
+                node.LastActorRequestTimeout!.Value,
+                TimeSpan.FromMilliseconds(200),
+                TimeSpan.FromMilliseconds(450));
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task Retained_BoundSession_First_Application_Send_Creates_One_Wire_Flow_And_Emits_Sent()
     {
         var node = new CapturingSpotNode();
@@ -4868,11 +4924,15 @@ public sealed partial class EntrySpotActorDispatchTests
         bool preseedActorOwnership = true,
         TimeSpan? defaultRequestTimeout = null,
         ZLinkUserSpotExecutionMode userSpotExecutionMode =
-            ZLinkUserSpotExecutionMode.SpotWide)
+            ZLinkUserSpotExecutionMode.SpotWide,
+        Func<IZLinkLocationRepository, IZLinkLocationRepository>?
+            locationStoreWrapper = null)
     {
         const string locationOwnerId = "entry-spot-dispatch-owner";
         var locationTime = new ManualTimeProvider();
         var locationStore = new ZLinkInMemoryLocationStore(locationTime);
+        var runtimeLocationStore =
+            locationStoreWrapper?.Invoke(locationStore) ?? locationStore;
         await locationStore.ClaimLiveOwnerAsync(
             locationOwnerId,
             TimeSpan.FromMinutes(5));
@@ -4881,16 +4941,16 @@ public sealed partial class EntrySpotActorDispatchTests
             PollingInterval = TimeSpan.Zero
         };
         var locationResolvers = new ZLinkStoreLocationResolvers(
-            locationStore,
+            runtimeLocationStore,
             new ZLinkOwnerLeaseTracker(
-                locationStore,
+                runtimeLocationStore,
                 locationOptions,
                 locationTime),
             new ZLinkObservedLocationGenerations(),
             options: locationOptions);
         var locationRuntime = new ZLinkLocationRuntime(
             locationOptions,
-            locationStore,
+            runtimeLocationStore,
             locationTime);
         Assert.True(await locationRuntime.RenewOwnerLeaseOnceAsync());
         var locationLifecycle = new ZLinkLocationLifecycle(
@@ -4925,7 +4985,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 defaultRequestTimeout ?? TimeSpan.FromSeconds(1),
             ImplicitHandlerAutoRegistrationEnabled = false
         };
-        registration.Locations.SetTestRepository(locationStore);
+        registration.Locations.SetTestRepository(runtimeLocationStore);
         if (messageFlowMode is { } mode)
             registration.DispatchOptions.Diagnostics.SetLevel(mode);
         else if (messageFlowObserver is not null)
@@ -6343,6 +6403,164 @@ public sealed partial class EntrySpotActorDispatchTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
+    private sealed class DelayedAuthorityLocationStore(
+        IZLinkLocationRepository inner,
+        TimeSpan delay)
+        : Zlink.Framework.UnitTests.ZLinkLocationStoreTestDouble
+    {
+        public override ValueTask<ZLinkLocationWriteResult>
+            UpdateMeshNodeAsync(
+                ZLinkMeshNodeDescriptor descriptor,
+                ZLinkLocationWriteIntent intent,
+                CancellationToken cancellationToken = default) =>
+            inner.UpdateMeshNodeAsync(descriptor, intent, cancellationToken);
+
+        public override ValueTask<ZLinkLocationWriteStatus>
+            RemoveMeshNodeAsync(
+                ZLinkMeshNodeDescriptorKey key,
+                ZLinkLocationOwnerToken owner,
+                CancellationToken cancellationToken = default) =>
+            inner.RemoveMeshNodeAsync(key, owner, cancellationToken);
+
+        public override ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>>
+            ListMeshNodesAsync(
+                string meshName,
+                ZLinkPageRequest page,
+                CancellationToken cancellationToken = default) =>
+            inner.ListMeshNodesAsync(meshName, page, cancellationToken);
+
+        public override ValueTask<ZLinkOwnerLeaseClaimResult>
+            ClaimOwnerLeaseAsync(
+                string ownerId,
+                TimeSpan leaseTtl,
+                CancellationToken cancellationToken = default) =>
+            inner.ClaimOwnerLeaseAsync(ownerId, leaseTtl, cancellationToken);
+
+        public override ValueTask<ZLinkOwnerLeaseReadResult>
+            ReadOwnerLeaseAsync(
+                string ownerId,
+                CancellationToken cancellationToken = default) =>
+            inner.ReadOwnerLeaseAsync(ownerId, cancellationToken);
+
+        public override ValueTask<ZLinkOwnerLeaseRenewResult>
+            RenewOwnerLeaseAsync(
+                ZLinkLocationOwnerToken token,
+                TimeSpan leaseTtl,
+                CancellationToken cancellationToken = default) =>
+            inner.RenewOwnerLeaseAsync(token, leaseTtl, cancellationToken);
+
+        public override ValueTask<ZLinkOwnerLeaseReleaseResult>
+            ReleaseOwnerLeaseAsync(
+                ZLinkLocationOwnerToken token,
+                CancellationToken cancellationToken = default) =>
+            inner.ReleaseOwnerLeaseAsync(token, cancellationToken);
+
+        public override async ValueTask<ZLinkAuthorityReadResult>
+            ReadAuthorityAsync(
+                ZLinkAuthorityKey key,
+                CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(delay, cancellationToken);
+            return await inner.ReadAuthorityAsync(key, cancellationToken);
+        }
+
+        public override ValueTask<ZLinkAuthorityCompareExchangeResult>
+            CompareExchangeAuthorityAsync(
+                ZLinkAuthorityKey key,
+                string expectedStoreVersion,
+                ZLinkAuthorityMutation mutation,
+                CancellationToken cancellationToken = default) =>
+            inner.CompareExchangeAuthorityAsync(
+                key,
+                expectedStoreVersion,
+                mutation,
+                cancellationToken);
+
+        public override ValueTask<ZLinkAuthorityScanResult>
+            ListAuthoritiesAsync(
+                string prefix,
+                ZLinkAuthorityScanCursor? cursor,
+                int limit,
+                CancellationToken cancellationToken = default) =>
+            inner.ListAuthoritiesAsync(
+                prefix,
+                cursor,
+                limit,
+                cancellationToken);
+
+        public override ValueTask<ZLinkObjectReserveResult> ReserveAsync(
+            ZLinkObjectReservationRequest request,
+            CancellationToken cancellationToken = default) =>
+            inner.ReserveAsync(request, cancellationToken);
+
+        public override ValueTask<ZLinkObjectCommitResult> CommitAsync(
+            ZLinkObjectReservation reservation,
+            ReadOnlyMemory<byte> readyPayload,
+            CancellationToken cancellationToken = default) =>
+            inner.CommitAsync(reservation, readyPayload, cancellationToken);
+
+        public override ValueTask<ZLinkObjectCreationCompleteResult>
+            CompleteCreationAsync(
+                ZLinkObjectReservation reservation,
+                ZLinkObjectCreationCompletion completion,
+                CancellationToken cancellationToken = default) =>
+            inner.CompleteCreationAsync(
+                reservation,
+                completion,
+                cancellationToken);
+
+        public override ValueTask<ZLinkCreationTerminalReadResult>
+            ReadCreationTerminalAsync(
+                ZLinkCreationOperationId operation,
+                CancellationToken cancellationToken = default) =>
+            inner.ReadCreationTerminalAsync(operation, cancellationToken);
+
+        public override ValueTask<ZLinkObjectAbortResult> AbortAsync(
+            ZLinkObjectReservation reservation,
+            CancellationToken cancellationToken = default) =>
+            inner.AbortAsync(reservation, cancellationToken);
+
+        public override ValueTask<ZLinkRelocationCapacityReserveResult>
+            ReserveRelocationCapacityAsync(
+                ZLinkRelocationCapacityReservationRequest request,
+                CancellationToken cancellationToken = default) =>
+            inner.ReserveRelocationCapacityAsync(request, cancellationToken);
+
+        public override ValueTask<ZLinkRelocationCapacityAbortResult>
+            AbortRelocationCapacityAsync(
+                ZLinkRelocationCapacityFence fence,
+                CancellationToken cancellationToken = default) =>
+            inner.AbortRelocationCapacityAsync(fence, cancellationToken);
+
+        public override ValueTask<ZLinkAggregatePrepareResult>
+            PrepareAggregateAsync(
+                ZLinkAggregatePrepareRequest request,
+                CancellationToken cancellationToken = default) =>
+            inner.PrepareAggregateAsync(request, cancellationToken);
+
+        public override ValueTask<ZLinkAggregateCommitResult>
+            CommitAggregateAsync(
+                ZLinkAggregateFence fence,
+                CancellationToken cancellationToken = default) =>
+            inner.CommitAggregateAsync(fence, cancellationToken);
+
+        public override ValueTask<ZLinkAggregateAbortResult>
+            AbortAggregateAsync(
+                ZLinkAggregateFence fence,
+                CancellationToken cancellationToken = default) =>
+            inner.AbortAggregateAsync(fence, cancellationToken);
+
+        public override ValueTask<long> RemoveAllByOwnerAsync(
+            ZLinkLocationOwnerToken owner,
+            CancellationToken cancellationToken = default) =>
+            inner.RemoveAllByOwnerAsync(owner, cancellationToken);
+
+        public override ValueTask<ulong?> GetMeshNodeChangeStampAsync(
+            string meshName,
+            CancellationToken cancellationToken = default) =>
+            inner.GetMeshNodeChangeStampAsync(meshName, cancellationToken);
+    }
+
     private sealed class CapturingSpotNode :
         IZLinkBackendSpotNode,
         IZLinkBackendAuthorityObserver,
@@ -6395,6 +6613,8 @@ public sealed partial class EntrySpotActorDispatchTests
         public int RouterHighWaterMark { get; private set; }
 
         public TimeSpan? RouterSendTimeout { get; private set; }
+
+        public TimeSpan? LastActorRequestTimeout { get; private set; }
 
         public CapturingSpot EntrySpotBackend => _entrySpot;
 
@@ -6933,7 +7153,7 @@ public sealed partial class EntrySpotActorDispatchTests
             TimeSpan? timeout,
             CancellationToken cancellationToken)
         {
-            _ = timeout;
+            LastActorRequestTimeout = timeout;
             cancellationToken.ThrowIfCancellationRequested();
             ActorRequests.Add((actor, CopyParts(parts)));
             return ValueTask.FromResult(

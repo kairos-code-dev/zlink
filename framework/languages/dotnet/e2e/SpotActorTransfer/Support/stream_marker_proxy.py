@@ -17,6 +17,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 @dataclass
 class Gate:
     marker: bytes
+    after_gate_id: str | None = None
+    target_flow: "Flow | None" = None
     captured_count: int = 0
     released_count: int = 0
     released: bool = False
@@ -25,13 +27,18 @@ class Gate:
 class Flow:
     PARTIAL_MARKER_GRACE_SECONDS = 0.05
 
-    def __init__(self, owner: "GateState", destination: socket.socket) -> None:
+    def __init__(
+        self,
+        owner: "GateState",
+        destination: socket.socket,
+    ) -> None:
         self.owner = owner
         self.destination = destination
         self.pending = bytearray()
         self.offsets: dict[str, int] = {}
         self.closed = False
         self.partial_generation = 0
+        self.peer: "Flow | None" = None
 
     def accept(self, data: bytes) -> None:
         with self.owner.condition:
@@ -61,7 +68,21 @@ class Flow:
 
     def _capture_markers(self) -> None:
         for gate_id, gate in self.owner.gates.items():
-            if gate.released or gate_id in self.offsets:
+            if (
+                gate.after_gate_id is not None
+                and gate.target_flow is self
+                and gate_id not in self.offsets
+                and self.pending
+            ):
+                self.offsets[gate_id] = 0
+                gate.captured_count += 1
+                self.owner.condition.notify_all()
+                continue
+            if (
+                gate.released
+                or gate.after_gate_id is not None
+                or gate_id in self.offsets
+            ):
                 continue
             offset = self.pending.find(gate.marker)
             if offset < 0:
@@ -79,7 +100,11 @@ class Flow:
             uncaptured = [
                 gate.marker
                 for gate_id, gate in self.owner.gates.items()
-                if not gate.released and gate_id not in self.offsets
+                if (
+                    not gate.released
+                    and gate.after_gate_id is None
+                    and gate_id not in self.offsets
+                )
             ]
             retained = self._partial_marker_suffix(uncaptured)
             count = max(0, len(self.pending) - retained)
@@ -147,20 +172,47 @@ class GateState:
         self.gates: dict[str, Gate] = {}
         self.flows: set[Flow] = set()
 
-    def arm(self, gate_id: str, marker: str) -> dict[str, object]:
+    def arm(
+        self,
+        gate_id: str,
+        marker: str,
+        after_gate_id: str | None,
+    ) -> dict[str, object]:
         encoded = marker.encode("utf-8")
-        if not gate_id or not encoded:
-            raise ValueError("gateId and marker must not be empty")
+        if not gate_id or (not encoded and not after_gate_id):
+            raise ValueError(
+                "gateId and either marker or afterGateId are required")
         with self.condition:
             if gate_id in self.gates:
                 raise ValueError(f"gate '{gate_id}' is already armed")
-            self.gates[gate_id] = Gate(encoded)
+            if after_gate_id and after_gate_id not in self.gates:
+                raise ValueError(
+                    f"parent gate '{after_gate_id}' is not armed")
+            self.gates[gate_id] = Gate(
+                encoded,
+                after_gate_id=after_gate_id,
+            )
             return self.snapshot(gate_id)
 
     def release(self, gate_id: str) -> dict[str, object]:
         with self.condition:
             gate = self._gate(gate_id)
             gate.released = True
+            for child in self.gates.values():
+                if (
+                    child.after_gate_id == gate_id
+                    and child.target_flow is None
+                ):
+                    parent_flow = next(
+                        (
+                            flow
+                            for flow in self.flows
+                            if gate_id in flow.offsets
+                        ),
+                        None,
+                    )
+                    if parent_flow is not None:
+                        child.target_flow = parent_flow.peer
             flows = list(self.flows)
         for flow in flows:
             flow.release()
@@ -182,6 +234,7 @@ class GateState:
         gate = self._gate(gate_id)
         return {
             "gateId": gate_id,
+            "afterGateId": gate.after_gate_id,
             "capturedCount": gate.captured_count,
             "releasedCount": gate.released_count,
             "released": gate.released,
@@ -203,6 +256,8 @@ class ProxyHandler(socketserver.BaseRequestHandler):
         self.request.settimeout(None)
         left_to_right = Flow(server.state, upstream)
         right_to_left = Flow(server.state, self.request)
+        left_to_right.peer = right_to_left
+        right_to_left.peer = left_to_right
         with server.state.condition:
             server.state.flows.update((left_to_right, right_to_left))
 
@@ -266,6 +321,11 @@ class AdminHandler(BaseHTTPRequestHandler):
                 result = self._state().arm(
                     str(body.get("gateId", "")),
                     str(body.get("marker", "")),
+                    (
+                        str(body["afterGateId"])
+                        if body.get("afterGateId")
+                        else None
+                    ),
                 )
             elif path == "/wait":
                 result = self._state().wait(

@@ -22,20 +22,23 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         NodeA = CreateClient(options.NodeAUrl);
         NodeB = CreateClient(options.NodeBUrl);
         NodeC = CreateClient(options.NodeCUrl);
+        NodeD = CreateClient(options.NodeDUrl);
     }
 
     public ClientOptions Options { get; }
     public ZLinkHttpClient NodeA { get; }
     public ZLinkHttpClient NodeB { get; }
     public ZLinkHttpClient NodeC { get; }
+    public ZLinkHttpClient NodeD { get; }
 
     public async Task WaitMeshReadyAsync()
     {
         var expected = new[]
         {
-            (Node: NodeA, Peers: new[] { "actor-b", "actor-c", "session-a", "session-b" }),
-            (Node: NodeB, Peers: new[] { "actor-a", "actor-c", "session-a", "session-b" }),
-            (Node: NodeC, Peers: new[] { "actor-a", "actor-b", "session-a", "session-b" })
+            (Node: NodeA, Peers: new[] { "actor-b", "actor-c", "actor-d", "session-a", "session-b" }),
+            (Node: NodeB, Peers: new[] { "actor-a", "actor-c", "actor-d", "session-a", "session-b" }),
+            (Node: NodeC, Peers: new[] { "actor-a", "actor-b", "actor-d", "session-a", "session-b" }),
+            (Node: NodeD, Peers: new[] { "actor-a", "actor-b", "actor-c" })
         };
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
         var observed = new List<string>();
@@ -78,6 +81,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         NodeA.Dispose();
         NodeB.Dispose();
         NodeC.Dispose();
+        NodeD.Dispose();
     }
 
     public static bool IsNode(string actualRid, string diagnosticPrefix) =>
@@ -675,8 +679,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         ZLinkHttpClient client,
         string actorId,
         ProbeReq request,
-        TimeSpan? timeout = null,
-        string? transportOperationId = null)
+        TimeSpan? timeout = null)
     {
         // Selecting the HTTP client selects the submitting process. The
         // framework call itself carries only the public global Actor ID.
@@ -685,7 +688,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                        request.Scenario,
                        request.Marker,
                        checked((int)(timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds),
-                       transportOperationId))
+                       request.ReplyMarker))
                    .Async<NodeActorProbeRes>()).Body
                ?? throw new InvalidOperationException(
                    "Node Actor probe response was null.");
@@ -694,91 +697,30 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
     public async Task SendFromNodeAsync(
         ZLinkHttpClient client,
         string actorId,
-        HandoffPacket packet,
-        string? transportOperationId = null)
+        HandoffPacket packet)
     {
         // The selected process may have a stale bounded route. No owner RID
         // or ObjectGeneration is supplied by application code.
         await client.Post($"/actors/{actorId}/send-from-node")
             .Body(new NodeActorCallReq(
                 packet.Scenario,
-                packet.Marker,
-                TransportOperationId: transportOperationId))
+                packet.Marker))
             .AsyncRaw();
     }
 
-    public async Task ArmTransportDeliveryAsync(
-        ZLinkHttpClient client,
-        string operationId,
-        string actorId,
-        string kind)
-    {
-        var response = (await client
-                .Post($"/transport-delivery/{operationId}/arm")
-                .Body(new TransportDeliveryArmReq(actorId, kind))
-                .Async<TransportDeliveryGateRes>())
-            .Body
-            ?? throw new InvalidOperationException(
-                "Transport delivery arm response was null.");
-        ZlinkStreamAssert.Ensure(
-            response.Armed
-            && response.ActorId == actorId
-            && response.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase),
-            $"Transport delivery '{operationId}' was not armed.");
-    }
-
-    public async Task<TransportDeliveryGateRes> WaitTransportDeliveryAsync(
-        ZLinkHttpClient client,
-        string operationId)
-    {
-        var response = (await client
-                .Post($"/transport-delivery/{operationId}/wait")
-                .Async<TransportDeliveryGateRes>())
-            .Body
-            ?? throw new InvalidOperationException(
-                "Transport delivery wait response was null.");
-        ZlinkStreamAssert.Ensure(
-            response.CapturedCount == 1,
-            $"Transport delivery '{operationId}' capture count was "
-            + $"{response.CapturedCount}, expected 1.");
-        return response;
-    }
-
-    public async Task<TransportDeliveryGateRes> ReleaseTransportDeliveryAsync(
-        ZLinkHttpClient client,
-        string operationId)
-    {
-        var response = (await client
-                .Post($"/transport-delivery/{operationId}/release")
-                .Async<TransportDeliveryGateRes>())
-            .Body
-            ?? throw new InvalidOperationException(
-                "Transport delivery release response was null.");
-        ZlinkStreamAssert.Ensure(
-            response.Released,
-            $"Transport delivery '{operationId}' was not released.");
-        return response;
-    }
-
-    public async Task<TransportDeliveryGateRes> GetTransportDeliveryAsync(
-        ZLinkHttpClient client,
-        string operationId) =>
-        (await client
-                .Get($"/transport-delivery/{operationId}")
-                .Async<TransportDeliveryGateRes>())
-            .Body
-        ?? throw new InvalidOperationException(
-            "Transport delivery snapshot response was null.");
-
     public async Task ArmExternalTransportDeliveryAsync(
         string gateId,
-        string marker)
+        string marker,
+        string? afterGateId = null)
     {
         foreach (var admin in TransportProxyAdmins())
         {
             using var response = await _transportProxyClient.PostAsJsonAsync(
                 $"{admin}/arm",
-                new ExternalTransportGateArm(gateId, marker));
+                new ExternalTransportGateArm(
+                    gateId,
+                    marker,
+                    afterGateId));
             await EnsureProxySuccessAsync(response, admin, "arm");
         }
     }
@@ -804,7 +746,9 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
     }
 
     public async Task<ExternalTransportGateRes>
-        ReleaseExternalTransportDeliveryAsync(string gateId)
+        ReleaseExternalTransportDeliveryAsync(
+            string gateId,
+            bool requireForwarded = true)
     {
         foreach (var admin in TransportProxyAdmins())
         {
@@ -813,6 +757,9 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                 null);
             await EnsureProxySuccessAsync(response, admin, "release");
         }
+
+        if (!requireForwarded)
+            return await GetExternalTransportDeliveryAsync(gateId);
 
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
         do
@@ -859,46 +806,6 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             $"External transport proxy {operation} failed at {admin}: "
             + $"{(int)response.StatusCode} {detail}");
     }
-
-    public async Task<ReplyAdmissionGateRes> ArmReplyAdmissionAsync(
-        ZLinkHttpClient client,
-        string actorId) =>
-        (await client
-                .Post($"/reply-admission/{actorId}/arm")
-                .Async<ReplyAdmissionGateRes>())
-            .Body
-        ?? throw new InvalidOperationException(
-            "Reply admission arm response was null.");
-
-    public async Task<ReplyAdmissionGateRes> WaitReplyAdmissionAsync(
-        ZLinkHttpClient client,
-        string actorId) =>
-        (await client
-                .Post($"/reply-admission/{actorId}/wait")
-                .Async<ReplyAdmissionGateRes>())
-            .Body
-        ?? throw new InvalidOperationException(
-            "Reply admission wait response was null.");
-
-    public async Task<ReplyAdmissionGateRes> ReleaseReplyAdmissionAsync(
-        ZLinkHttpClient client,
-        string actorId) =>
-        (await client
-                .Post($"/reply-admission/{actorId}/release")
-                .Async<ReplyAdmissionGateRes>())
-            .Body
-        ?? throw new InvalidOperationException(
-            "Reply admission release response was null.");
-
-    public async Task<ReplyAdmissionGateRes> GetReplyAdmissionAsync(
-        ZLinkHttpClient client,
-        string actorId) =>
-        (await client
-                .Get($"/reply-admission/{actorId}")
-                .Async<ReplyAdmissionGateRes>())
-            .Body
-        ?? throw new InvalidOperationException(
-            "Reply admission snapshot response was null.");
 
     public async Task<BoundPushRes> BoundPushAsync(
         ZLinkHttpClient client,
@@ -1049,6 +956,7 @@ internal sealed record ClientOptions(
     int NodeAPid,
     string NodeBUrl,
     string NodeCUrl,
+    string NodeDUrl,
     string NodeAStreamEndpoint,
     string NodeBStreamEndpoint,
     string[] TransportProxyAdmins,
@@ -1060,7 +968,8 @@ internal sealed record ClientOptions(
 
 internal sealed record ExternalTransportGateArm(
     string GateId,
-    string Marker);
+    string Marker,
+    string? AfterGateId);
 
 internal sealed record ExternalTransportGateRes(
     string GateId,

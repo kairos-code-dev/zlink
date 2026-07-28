@@ -95,13 +95,14 @@ public HTTP client만 사용한다.
   검증했다.
 - Automatic과 Manual Object Client pair는 양쪽에 RouteMesh Channel Server membership이 없으면
   `NotRequired`이며 Ready peer 수는 `0`이다. 20초 동안 다시 연결하거나 liveness probe를
-  시작하지 않았다.
+  시작하지 않았다. 최신 fixture는 Client-only Channel을 양쪽에 명시하고도 같은 결과를
+  Automatic 79회, Manual 79회 연속 관측했다.
 - Manual pair 앞에 둔 TCP proxy는 양방향에서 각각 연결 한 번만 관측했다. 반복 연결은 없었다.
 - Object Client RID로 보낸 Node direct Send와 Request는 모두
   `REQUEST_TARGET_NOT_FOUND`로 끝났다.
 - RouteMesh Channel Server membership의 weight가 `0`이어도 연결은 필요하다. Ready 상태에서
   한 process를 `SIGKILL`한 뒤 다른 process의 public 상태는 `NotConnected`로 바뀌었다.
-- 증거: `logs/20260729-015634-1430590/`
+- 증거: `logs/20260729-033208-3236609/`
 
 ## 공통 scenario parity gap — 2026-07-29
 

@@ -39,6 +39,23 @@ std::string stable_key (
     return descriptor.server_rid.to_hex ();
 }
 
+std::string manual_connection_key (std::string_view endpoint)
+{
+    return "manual|" + std::string (endpoint);
+}
+
+client_server_server_descriptor_t manual_descriptor (
+  std::string_view channel_name,
+  std::string_view endpoint)
+{
+    return client_server_server_descriptor_t{
+      .channel_name = std::string (channel_name),
+      .endpoint = std::string (endpoint),
+      .weight = 100,
+      .state = framework_runtime_state_t::serving,
+      .security_identity = std::string (default_security_identity)};
+}
+
 framework_runtime_state_t current_state (
   const location_runtime_t &locations)
 {
@@ -147,7 +164,9 @@ bool client_server_location_runtime_t::empty () const noexcept
     return std::none_of (
       _channels.begin (), _channels.end (), [] (const auto &channel) {
           return (channel.server.enabled && channel.server.discovery)
-                 || (channel.client.enabled && channel.client.discovery);
+                 || (channel.client.enabled
+                     && (channel.client.discovery
+                         || !channel.client.connect_endpoints.empty ()));
       });
 }
 
@@ -165,7 +184,9 @@ void client_server_location_runtime_t::start ()
         for (const auto &channel : _channels) {
             if (channel.server.enabled && channel.server.discovery)
                 start_server (channel, *owner);
-            if (channel.client.enabled && channel.client.discovery)
+            if (channel.client.enabled
+                && (channel.client.discovery
+                    || !channel.client.connect_endpoints.empty ()))
                 start_client (channel);
         }
         reconcile ();
@@ -353,6 +374,19 @@ void client_server_location_runtime_t::reconcile_channel (
         page.continuation_token = listed.continuation_token;
     } while (page.continuation_token);
 
+    for (const auto &endpoint :
+         channel.snapshot.client.connect_endpoints) {
+        const auto discovered = std::find_if (
+          desired.begin (), desired.end (),
+          [&] (const auto &entry) {
+              return entry.second.endpoint == endpoint;
+          });
+        if (discovered == desired.end ()) {
+            desired.emplace (
+              manual_connection_key (endpoint),
+              manual_descriptor (channel.snapshot.name, endpoint));
+        }
+    }
     std::vector<std::shared_ptr<raw_client_server_client_t>> close;
     for (const auto &[key, descriptor] : desired) {
         bool exists = false;
@@ -362,6 +396,17 @@ void client_server_location_runtime_t::reconcile_channel (
             if (found != channel.connections.end ()) {
                 found->second.descriptor = descriptor;
                 exists = true;
+            } else if (!key.starts_with ("manual|")) {
+                const auto manual = channel.connections.find (
+                  manual_connection_key (descriptor.endpoint));
+                if (manual != channel.connections.end ()) {
+                    auto connection = std::move (manual->second);
+                    channel.connections.erase (manual);
+                    connection.descriptor = descriptor;
+                    channel.connections.emplace (
+                      key, std::move (connection));
+                    exists = true;
+                }
             }
         }
         if (exists)
@@ -372,13 +417,25 @@ void client_server_location_runtime_t::reconcile_channel (
           std::string (default_security_identity);
         admission.effective_max_message_bytes =
           effective_max_message_bytes (channel.snapshot.client);
+        auto expected = key.starts_with ("manual|")
+                          ? protocol::client_server_server_admission_t{
+                              .channel_name =
+                                channel.snapshot.name,
+                              .security_identity =
+                                std::string (
+                                  default_security_identity),
+                              .effective_max_message_bytes =
+                                admission.effective_max_message_bytes,
+                              .advertised_endpoint =
+                                descriptor.endpoint}
+                          : to_admission (
+                              descriptor,
+                              admission.effective_max_message_bytes);
         auto raw = std::make_shared<raw_client_server_client_t> (
           raw_client_server_client_options_t{
             channel.routing_id,
             admission,
-            to_admission (
-              descriptor,
-              admission.effective_max_message_bytes)});
+            std::move (expected)});
         raw->start ();
         std::lock_guard lock (_gate);
         channel.connections.emplace (

@@ -11,6 +11,47 @@ namespace Zlink.Framework.UnitTests.Runtime;
 public sealed class ActorHandoffTests
 {
     [Fact]
+    public void DeferredJoinCapture_PromotesQueuedFrameIntoCrossNodeJournal()
+    {
+        var handoff = new ZLinkActorHandoffState(
+            "actor-1",
+            TimeProvider.System);
+        handoff.BeginDeferredJoinCapture();
+        using var body = Message.From("queued-after-defer");
+        using var frame = Frame(body, ActorRef("node-a", 1), "session-1");
+
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.Captured,
+            handoff.TryCapture(frame));
+
+        handoff.BeginCapture();
+        var journal = handoff.SnapshotFrames();
+        Assert.Single(journal);
+        Assert.Equal("queued-after-defer", DecodeBody(journal[0]));
+        _ = handoff.AbortCapture();
+    }
+
+    [Fact]
+    public void DeferredJoinCapture_ReleasesQueuedFrameForLocalReplay()
+    {
+        var handoff = new ZLinkActorHandoffState(
+            "actor-1",
+            TimeProvider.System);
+        handoff.BeginDeferredJoinCapture();
+        using var body = Message.From("queued-after-defer");
+        using var frame = Frame(body, ActorRef("node-a", 1), "session-1");
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.Captured,
+            handoff.TryCapture(frame));
+
+        var replay = handoff.EndDeferredJoinCapture();
+
+        Assert.Single(replay);
+        Assert.Equal("queued-after-defer", DecodeBody(replay[0]));
+        Assert.Empty(handoff.EndDeferredJoinCapture());
+    }
+
+    [Fact]
     public void BoundSessionFrameDuringCapture_IsRejectedBeforeDurableJournalAdmission()
     {
         var state = new ZLinkActorRuntimeState("actor-bound-session");

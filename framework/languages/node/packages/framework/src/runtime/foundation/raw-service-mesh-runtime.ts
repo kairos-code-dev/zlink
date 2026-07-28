@@ -54,6 +54,7 @@ export interface RawServiceIngressRecord {
   readonly command: number;
   readonly flags: number;
   readonly sourceRoutingId: string;
+  readonly sourceRoute?: Uint8Array;
   readonly requestSequence?: bigint;
   readonly parts: readonly Buffer[];
 }
@@ -232,10 +233,19 @@ export class RawServiceMeshRuntime {
 
   sendToChannel(channelName: string, payload: ServiceApplicationPayload): boolean {
     const selected = this.topology.selectChannel(channelName);
-    return selected !== undefined && this.trySend(
-      selected.descriptor.nodeRoutingId,
-      [encodeChannelSendHeader(channelName), encodeApplicationPayload(payload)]
-    );
+    if (selected === undefined) return false;
+    if (selected.descriptor.nodeRoutingId === this.descriptor.nodeRoutingId) {
+      return this.mailbox.tryEnqueue({
+        owner: `channel:${channelName}`,
+        domain: 'application',
+        parts: [encodeChannelSendHeader(channelName), encodeApplicationPayload(payload)],
+        sourceRoutingId: this.descriptor.nodeRoutingId
+      });
+    }
+    return this.trySend(selected.descriptor.nodeRoutingId, [
+      encodeChannelSendHeader(channelName),
+      encodeApplicationPayload(payload)
+    ]);
   }
 
   requestToNode(
@@ -277,13 +287,17 @@ export class RawServiceMeshRuntime {
   }
 
   replyService(
-    record: Pick<RawServiceIngressRecord, 'sourceRoutingId' | 'requestSequence'>,
+    record: Pick<RawServiceIngressRecord, 'sourceRoutingId' | 'sourceRoute' | 'requestSequence'>,
     parts: readonly Uint8Array[]
   ): void {
     if (record.requestSequence === undefined) {
       throw new TypeError('Service reply requires a request sequence.');
     }
-    this.requireStarted().reply(record.sourceRoutingId, record.requestSequence, parts);
+    this.requireStarted().reply(
+      record.sourceRoute ?? record.sourceRoutingId,
+      record.requestSequence,
+      parts
+    );
   }
 
   reply(
@@ -292,6 +306,14 @@ export class RawServiceMeshRuntime {
     terminalResult = 0,
     failureCode = 0
   ): void {
+    if (request.localReply !== undefined) {
+      request.localReply(
+        terminalResult,
+        failureCode,
+        terminalResult === 0 ? payload : undefined
+      );
+      return;
+    }
     if (
       request.sourceRoutingId === undefined
       || request.requestSequence === undefined
@@ -300,7 +322,7 @@ export class RawServiceMeshRuntime {
       throw new TypeError('Reply requires a request mailbox record.');
     }
     this.requireStarted().reply(
-      request.sourceRoutingId,
+      request.sourceRoute ?? request.sourceRoutingId,
       request.requestSequence,
       [
         encodeReplyHeader(request.correlation, terminalResult, failureCode),
@@ -413,6 +435,7 @@ export class RawServiceMeshRuntime {
         command: header.command,
         flags: header.flags,
         sourceRoutingId: received.sourceRid,
+        sourceRoute: received.sourceRoute,
         ...(received.requestSeq === undefined ? {} : { requestSequence: received.requestSeq }),
         parts: received.parts
       });
@@ -449,6 +472,7 @@ export class RawServiceMeshRuntime {
         domain: 'application',
         parts: received.parts,
         sourceRoutingId: received.sourceRid,
+        sourceRoute: received.sourceRoute,
         requestSequence: received.requestSeq,
         ...(correlation === undefined ? {} : { correlation })
       })
@@ -519,6 +543,30 @@ export class RawServiceMeshRuntime {
     const header = channelName === undefined
       ? encodeNodeRequestHeader(correlation)
       : encodeChannelRequestHeader(correlation, channelName);
+    if (targetNodeRoutingId === this.descriptor.nodeRoutingId) {
+      const accepted = this.mailbox.tryEnqueue({
+        owner: channelName === undefined
+          ? `node:${this.descriptor.nodeRoutingId}`
+          : `channel:${channelName}`,
+        domain: 'application',
+        parts: [header, encodeApplicationPayload(payload)],
+        sourceRoutingId: this.descriptor.nodeRoutingId,
+        correlation,
+        localReply: (terminalResult, failureCode, reply) =>
+          this.operations.complete(pending.id, {
+            terminalResult,
+            failureCode,
+            ...(reply === undefined ? {} : { payload: reply })
+          })
+      });
+      if (!accepted) {
+        this.operations.complete(pending.id, {
+          terminalResult: 109,
+          failureCode: 0
+        });
+      }
+      return pending;
+    }
     void this.requireStarted().request(
       targetNodeRoutingId,
       [header, encodeApplicationPayload(payload)],

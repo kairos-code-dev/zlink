@@ -35,7 +35,7 @@ inline void run_rm_a4_same_rid_failover_scenario (const client_options_t &option
     bool replacement_row_ready = false;
     const auto row_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
     do {
-        const auto rows = location_client.get ("/locations/peers").async<nlohmann::json> ().result ().value ().body;
+        const auto rows = location_client.get ("/locations/peers").submit<nlohmann::json> ().result ().value ().body;
         int matching_rows = 0;
         bool replacement_endpoint_found = false;
         for (const auto &row : rows) {

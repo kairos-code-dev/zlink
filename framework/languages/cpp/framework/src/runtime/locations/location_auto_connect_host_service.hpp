@@ -70,7 +70,9 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         const auto needs_client_server =
           std::any_of (_channels.begin (), _channels.end (), [] (const auto &channel) {
               return (channel.server.enabled && channel.server.discovery)
-                     || (channel.client.enabled && channel.client.discovery);
+                     || (channel.client.enabled
+                         && (channel.client.discovery
+                             || !channel.client.connect_endpoints.empty ()));
           });
         if (needs_client_server) {
             _client_server =

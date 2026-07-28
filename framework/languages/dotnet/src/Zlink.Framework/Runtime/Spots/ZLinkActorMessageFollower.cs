@@ -517,29 +517,20 @@ internal sealed class ZLinkActorMessageFollower
         IReadOnlyList<byte[]> frames,
         CancellationToken cancellationToken)
     {
-        var gate = _runtime.Services.GetService(
-            typeof(IZLinkActorTransportDeliveryGate))
-            as IZLinkActorTransportDeliveryGate;
         while (!pending.IsExpired)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var result = gate?.OverrideReplyAdmission(
-                actorId,
-                requestId,
-                pending.DeadlineUnixMs);
-            if (result is null)
+            SubmitResult result;
+            var messages = frames
+                .Select(static frame => Message.From(frame))
+                .ToArray();
+            try
             {
-                var messages = frames
-                    .Select(static frame => Message.From(frame))
-                    .ToArray();
-                try
-                {
-                    result = pending.Reply(messages, SendFlags.DontWait);
-                }
-                finally
-                {
-                    ZLinkMessageParts.DisposeAll(messages);
-                }
+                result = pending.Reply(messages, SendFlags.DontWait);
+            }
+            finally
+            {
+                ZLinkMessageParts.DisposeAll(messages);
             }
             if (result == SubmitResult.Ok)
                 return DirectReplyDeliveryResult.Submitted;

@@ -7,6 +7,7 @@
 
 #include "../../Shared/location_store_registration.hpp"
 #include "../../Shared/registry_messaging_contracts.hpp"
+#include "../../Shared/tcp_endpoint.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -46,11 +47,14 @@ int main (int argc, char **argv)
           std::make_unique<rm_workflow::scenario_state_t> (options.rid, options.instance_id));
         configure_common_codecs (framework.codecs ());
         e2e::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
-        framework.add_client_server_channel (e2e::workflow_channel)
-          .enable_server (options.workflow_endpoint)
-          .enable_client ()
-          .set_routing_id (zlink::routing_id_t::from (options.rid))
-          .use_handler_group (e2e::handler_group);
+        const auto endpoint = e2e::parse_tcp_endpoint (options.workflow_endpoint);
+        auto channel = framework.add_client_server_channel (e2e::workflow_channel);
+        channel.client ();
+        channel.server ()
+          .set_bind_host (endpoint.host)
+          .set_advertise_host (endpoint.host)
+          .listen (endpoint.port)
+          .add_handler_group (e2e::handler_group);
         framework.handlers ()
           .group (e2e::handler_group)
           .add<rm_workflow::workflow_request_handler_t> ();

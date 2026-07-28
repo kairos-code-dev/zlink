@@ -8,7 +8,6 @@ using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Runtime.Actors;
 
 namespace SpotActorTransfer.ActorNode;
 
@@ -387,47 +386,6 @@ internal static class ActorNodeEndpoints
             Results.Ok(new CleanupGateRes(actorId, gates.AllowAttempt(actorId))));
         app.MapPost("/cleanup-gates/{actorId}/release", (string actorId, ActorCleanupGateStore gates) =>
             Results.Ok(new CleanupGateRes(actorId, gates.Release(actorId))));
-        app.MapPost("/transport-delivery/{operationId}/arm", (
-            string operationId,
-            TransportDeliveryArmReq request,
-            TransportDeliveryGate gate) =>
-            Results.Ok(gate.Arm(operationId, request)));
-        app.MapPost("/transport-delivery/{operationId}/wait", async (
-            string operationId,
-            TransportDeliveryGate gate,
-            CancellationToken cancellationToken) =>
-            Results.Ok(await gate.WaitCapturedAsync(
-                operationId,
-                TimeSpan.FromSeconds(10),
-                cancellationToken)));
-        app.MapPost("/transport-delivery/{operationId}/release", (
-            string operationId,
-            TransportDeliveryGate gate) =>
-            Results.Ok(gate.Release(operationId)));
-        app.MapGet("/transport-delivery/{operationId}", (
-            string operationId,
-            TransportDeliveryGate gate) =>
-            Results.Ok(gate.GetSnapshot(operationId)));
-        app.MapPost("/reply-admission/{actorId}/arm", (
-            string actorId,
-            TransportDeliveryGate gate) =>
-            Results.Ok(gate.ArmReplyAdmission(actorId)));
-        app.MapPost("/reply-admission/{actorId}/wait", async (
-            string actorId,
-            TransportDeliveryGate gate,
-            CancellationToken cancellationToken) =>
-            Results.Ok(await gate.WaitReplyAdmissionCapturedAsync(
-                actorId,
-                TimeSpan.FromSeconds(10),
-                cancellationToken)));
-        app.MapPost("/reply-admission/{actorId}/release", (
-            string actorId,
-            TransportDeliveryGate gate) =>
-            Results.Ok(gate.ReleaseReplyAdmission(actorId)));
-        app.MapGet("/reply-admission/{actorId}", (
-            string actorId,
-            TransportDeliveryGate gate) =>
-            Results.Ok(gate.GetReplyAdmissionSnapshot(actorId)));
         app.MapPost("/spots", async (CreateSpotReq request, IZLinkSpotManager spots,
             CancellationToken cancellationToken) =>
         {
@@ -528,15 +486,14 @@ internal static class ActorNodeEndpoints
             // Framework routing still uses only the public global Actor ID.
             try
             {
-                var call = actorClient.RequestToActor(
+                var response = await actorClient.RequestToActor(
                         actorId,
-                        new ProbeReq(request.Scenario, request.Marker))
-                    .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs));
-                if (request.TransportOperationId is { Length: > 0 })
-                    call.Metadata(
-                        ZLinkActorTransportDeliveryMetadata.OperationId,
-                        request.TransportOperationId);
-                var response = await call.Async<ProbeRes>(cancellationToken);
+                        new ProbeReq(
+                            request.Scenario,
+                            request.Marker,
+                            request.ReplyMarker))
+                    .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs))
+                    .Async<ProbeRes>(cancellationToken);
                 return Results.Ok(new NodeActorProbeRes(true, response, null));
             }
             catch (ZLinkFrameworkException error)
@@ -555,13 +512,10 @@ internal static class ActorNodeEndpoints
         {
             // The selected process may hold a stale bounded route. The
             // application does not supply an owner RID or ObjectGeneration.
-            var call = actorClient.SendToActor(actorId,
-                new HandoffPacket(request.Scenario, request.Marker));
-            if (request.TransportOperationId is { Length: > 0 })
-                call.Metadata(
-                    ZLinkActorTransportDeliveryMetadata.OperationId,
-                    request.TransportOperationId);
-            await call.Async(cancellationToken);
+            await actorClient.SendToActor(
+                    actorId,
+                    new HandoffPacket(request.Scenario, request.Marker))
+                .Async(cancellationToken);
             return Results.Ok();
         });
         app.MapPost("/workload/actors/request", async (

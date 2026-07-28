@@ -530,10 +530,14 @@ void verify_client_server_independent_raw_path ()
       {{server_descriptor}});
     server.start ();
     auto expected_server = server.descriptor ();
+    auto manual_server = expected_server;
+    manual_server.server_routing_id.clear ();
+    manual_server.lifecycle_generation = 0;
+    manual_server.descriptor_revision = 0;
     client_server::raw_client_server_client_options_t client_options{
       bytes ("client-a"),
       {expected_server.channel_name, "security-a", 1024 * 1024},
-      expected_server};
+      std::move (manual_server)};
     client_server::raw_client_server_client_t client (
       std::move (client_options));
     client.start ();

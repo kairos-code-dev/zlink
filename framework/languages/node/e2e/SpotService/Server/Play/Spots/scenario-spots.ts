@@ -1,14 +1,13 @@
 import type {
-  ZLinkActorJoinRequest,
-  ZLinkActorMembership,
   ZLinkSpot,
   ZLinkMessage,
+  ZLinkMessageContext,
   ZLinkSpotActorJoinResponse,
-  ZLinkSpotActorRequestContext,
   ZLinkSpotActorRequestHandler,
   ZLinkSpotContext
 } from '@zlink-systems/framework';
 import { ZLinkSpotActorRequest } from '@zlink-systems/framework';
+import { zlinkSpotActorRequestHandler } from '@zlink-systems/nestjs';
 import type {
   ActorPingRes,
   ActorPingReq,
@@ -26,9 +25,9 @@ import { SlowSpotHandler, StateCommandHandler, StateReqHandler } from '../Handle
 import { SpotAdminHandler } from '../Handlers/spot-admin-handler';
 import { ScenarioActor } from './scenario-actors';
 
-export class ScenarioUserSpot implements ZLinkSpot {
+export class ScenarioUserSpot implements ZLinkSpot<ScenarioActor> {
   private static evidence?: EvidenceStore;
-  readonly context!: ZLinkSpotContext;
+  readonly context!: ZLinkSpotContext<ScenarioActor, ScenarioUserSpot>;
   value = 0;
 
   static useEvidence(evidence: EvidenceStore): void {
@@ -69,8 +68,7 @@ export class ScenarioUserSpot implements ZLinkSpot {
     return this.value;
   }
 
-  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
-    const actorId = actor.actor.actorId;
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     const payload = request.decode<Partial<{ readonly actorId: string }>>(Object as never);
     if (payload.actorId?.includes('reject') === true) {
       const evidence = ScenarioUserSpot.requireEvidence();
@@ -82,24 +80,24 @@ export class ScenarioUserSpot implements ZLinkSpot {
     return { accepted: true };
   }
 
-  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
+  async onJoinedActor(actor: ScenarioActor): Promise<void> {
     const evidence = ScenarioUserSpot.requireEvidence();
     evidence.add(
-      `spot-actor-joined|rid=${this.context.nodeRid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`
+      `spot-actor-joined|rid=${this.context.nodeRid}|spot=${this.context.spotId}|actor=${actor.actorId}`
     );
   }
 
-  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
+  async onLeaveActor(actor: ScenarioActor): Promise<void> {
     const evidence = ScenarioUserSpot.requireEvidence();
     evidence.add(
-      `spot-actor-left|rid=${this.context.nodeRid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`
+      `spot-actor-left|rid=${this.context.nodeRid}|spot=${this.context.spotId}|actor=${actor.actorId}`
     );
   }
 
-  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
+  async onDisconnectActor(actor: ScenarioActor): Promise<void> {
     const evidence = ScenarioUserSpot.requireEvidence();
     evidence.add(
-      `spot-actor-disconnected|rid=${this.context.nodeRid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`
+      `spot-actor-disconnected|rid=${this.context.nodeRid}|spot=${this.context.spotId}|actor=${actor.actorId}`
     );
   }
 
@@ -111,12 +109,18 @@ export class ScenarioUserSpot implements ZLinkSpot {
   }
 }
 
+@zlinkSpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  spot: () => ScenarioUserSpot,
+  packetName: 'UserActorPingReq'
+})
 export class UserActorPingHandler
-  implements ZLinkSpotActorRequestHandler<ScenarioActor, ActorPingReq, ActorPingRes> {
+  implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPingReq, ActorPingRes> {
   @ZLinkSpotActorRequest('UserActorPingReq')
   async handle(
+    _spot: ScenarioUserSpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorPingReq
   ): Promise<ActorPingRes> {
     void context;
@@ -136,12 +140,18 @@ export class UserActorPingHandler
   }
 }
 
+@zlinkSpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  spot: () => ScenarioUserSpot,
+  packetName: 'UserActorPushReq'
+})
 export class UserActorPushHandler
-  implements ZLinkSpotActorRequestHandler<ScenarioActor, ActorPushReq, ActorPingRes> {
+  implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPushReq, ActorPingRes> {
   @ZLinkSpotActorRequest('UserActorPushReq')
   async handle(
+    _spot: ScenarioUserSpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorPushReq
   ): Promise<ActorPingRes> {
     void context;
@@ -160,18 +170,24 @@ export class UserActorPushHandler
   }
 }
 
+@zlinkSpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  spot: () => ScenarioUserSpot,
+  packetName: 'LeaveReq'
+})
 export class UserActorLeaveHandler
-  implements ZLinkSpotActorRequestHandler<ScenarioActor, LeaveReq, LeaveRes> {
+  implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, LeaveReq, LeaveRes> {
   @ZLinkSpotActorRequest('LeaveReq')
   async handle(
+    _spot: ScenarioUserSpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: LeaveReq
   ): Promise<LeaveRes> {
     if (request.actorId !== actor.actorId) {
       throw new Error('Leave request actor does not match dispatched actor.');
     }
-    await actor.context.leaveSpot(context.connectionAborted);
+    actor.context.joinEntrySpot(request).timeout(5000).defer();
     return {
       actorId: actor.actorId,
       accepted: true
@@ -179,8 +195,8 @@ export class UserActorLeaveHandler
   }
 }
 
-export class ScenarioAlternateSpot implements ZLinkSpot {
-  readonly context!: ZLinkSpotContext;
+export class ScenarioAlternateSpot implements ZLinkSpot<ScenarioActor> {
+  readonly context!: ZLinkSpotContext<ScenarioActor, ScenarioAlternateSpot>;
   async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
   async onJoinedActor(): Promise<void> {}
   async onLeaveActor(): Promise<void> {}

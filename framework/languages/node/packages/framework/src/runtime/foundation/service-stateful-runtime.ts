@@ -763,11 +763,16 @@ export class ServiceStatefulRuntime {
     sourceSpotId: string,
     targetNodeRid: string,
     targetSpot: ServiceSpotRef,
-    _targetNodeGeneration: bigint,
-    _authorityOwnerGeneration: bigint,
+    targetNodeGeneration: bigint,
+    authorityOwnerGeneration: bigint,
     payload: ServiceApplicationPayload
   ): number {
-    const target = this.trySpotFence(targetNodeRid, targetSpot);
+    const target = this.acceptSpotAuthority(
+      targetNodeRid,
+      targetSpot,
+      targetNodeGeneration,
+      authorityOwnerGeneration
+    );
     if (target === undefined) return SubmitResult.NotFound;
     const header = encodeSpotHeader('spotSend', sourceSpotId, target);
     return this.submitOneWay(targetNodeRid, [header, encodeApplicationPayload(payload)]);
@@ -777,13 +782,18 @@ export class ServiceStatefulRuntime {
     sourceSpotId: string,
     targetNodeRid: string,
     targetSpot: ServiceSpotRef,
-    _targetNodeGeneration: bigint,
-    _authorityOwnerGeneration: bigint,
+    targetNodeGeneration: bigint,
+    authorityOwnerGeneration: bigint,
     payload: ServiceApplicationPayload,
     timeoutMs: number
   ): ServiceStatefulPendingOperation {
     const pending = this.operations.reserve(timeoutMs);
-    const target = this.trySpotFence(targetNodeRid, targetSpot);
+    const target = this.acceptSpotAuthority(
+      targetNodeRid,
+      targetSpot,
+      targetNodeGeneration,
+      authorityOwnerGeneration
+    );
     if (target === undefined) {
       this.operations.reply(pending.id, {
         terminalResult: RequestResult.NotFound,
@@ -1987,6 +1997,7 @@ export class ServiceStatefulRuntime {
       domain: 'application',
       parts: [ingress.parts[0]!, encodeApplicationPayload(payload)],
       sourceRoutingId: ingress.sourceRoutingId,
+      sourceRoute: ingress.sourceRoute,
       ...(ingress.requestSequence === undefined ? {} : { requestSequence: ingress.requestSequence }),
       ...(stateful.correlation === undefined ? {} : { correlation: stateful.correlation }),
       stateful
@@ -2673,6 +2684,39 @@ export class ServiceStatefulRuntime {
       && sameSpotRef(route.spot, spot)
       ? route
       : undefined;
+  }
+
+  private acceptSpotAuthority(
+    targetNodeRid: string,
+    spot: ServiceSpotRef,
+    targetNodeGeneration: bigint,
+    authorityOwnerGeneration: bigint
+  ): ServiceSpotRouteFence | undefined {
+    if (targetNodeRid === this.nodeRid) {
+      const local = this.registry.spot(spot.spotId);
+      return local !== undefined
+        && sameSpotRef(local.ref, spot)
+        && targetNodeGeneration === this.nodeGeneration
+        && authorityOwnerGeneration === local.authorityOwnerGeneration
+        ? {
+            spot,
+            targetNodeRid,
+            targetNodeGeneration,
+            authorityOwnerGeneration
+          }
+        : undefined;
+    }
+    const peer = this.raw.topology.peer(targetNodeRid);
+    if (peer?.descriptor.lifecycleGeneration !== targetNodeGeneration) {
+      return undefined;
+    }
+    this.rememberSpotRoute({
+      spot,
+      targetNodeRid,
+      targetNodeGeneration,
+      authorityOwnerGeneration
+    });
+    return this.trySpotFence(targetNodeRid, spot);
   }
 
   private peerGeneration(nodeRid: string): bigint {

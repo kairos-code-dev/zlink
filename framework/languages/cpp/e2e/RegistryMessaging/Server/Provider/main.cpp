@@ -7,11 +7,11 @@
 
 #include "../../Shared/location_store_registration.hpp"
 #include "../../Shared/registry_messaging_contracts.hpp"
+#include "../../Shared/tcp_endpoint.hpp"
 #include "../Shared/peer_locations_handler.hpp"
 
 #include <zlink/framework.hpp>
 
-#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -96,19 +96,17 @@ int main (int argc, char **argv)
         configure_common_codecs (framework.codecs ());
         e2e::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
         if (!options.api_endpoint.empty ()) {
+            const auto endpoint = e2e::parse_tcp_endpoint (options.api_endpoint);
             auto channel = framework.add_client_server_channel (e2e::api_channel);
-            channel.enable_server (options.api_endpoint)
-              .enable_client ()
-              .set_routing_id (zlink::routing_id_t::from (options.rid));
+            channel.client ();
+            auto server = channel.server ();
+            server.set_bind_host (endpoint.host)
+              .set_advertise_host (endpoint.host)
+              .listen (endpoint.port)
+              .add_handler_group (e2e::handler_group);
             if (options.server_weight) {
-                channel.server_peer_weight (
-                  zlink::peer_weight_t::value (static_cast<std::uint32_t> (*options.server_weight)));
+                server.set_weight (*options.server_weight);
             }
-            if (options.max_message_size) {
-                channel.server_max_message_size (
-                  zlink::byte_size_t::bytes (static_cast<std::int64_t> (*options.max_message_size)));
-            }
-            channel.use_handler_group (e2e::handler_group);
         }
         if (!options.route_endpoint.empty ()) {
             auto route = framework.add_route_mesh (e2e::route_channel);

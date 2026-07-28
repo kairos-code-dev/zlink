@@ -22,6 +22,7 @@ import {
 
 export interface ZLinkRawReceivedRecord {
   readonly sourceRid: string;
+  readonly sourceRoute: Uint8Array;
   readonly requestSeq?: bigint;
   readonly parts: readonly Buffer[];
 }
@@ -59,7 +60,7 @@ export interface ZLinkRawRouterPort extends ZLinkRawSocketPort {
   ): Promise<readonly Buffer[]>;
   receive(dontWait?: boolean): ZLinkRawReceivedRecord | undefined;
   reply(
-    targetRid: string,
+    targetRid: string | Uint8Array,
     requestSeq: bigint,
     parts: readonly Uint8Array[]
   ): void;
@@ -266,7 +267,7 @@ class NodeRawRouterPort extends NodeRawSocketPort<RouterSocket> implements ZLink
     return receiveRecord(this.socket, dontWait);
   }
 
-  reply(targetRid: string, requestSeq: bigint, parts: readonly Uint8Array[]): void {
+  reply(targetRid: string | Uint8Array, requestSeq: bigint, parts: readonly Uint8Array[]): void {
     this.requireOpen();
     appendReplyParts(this.socket.reply(bindingRoutingId(targetRid), requestSeq), parts).submit();
   }
@@ -369,6 +370,7 @@ function receiveRecord(
   try {
     return {
       sourceRid: received.routingId?.toString() ?? '',
+      sourceRoute: received.routingId?.toBytes() ?? Buffer.alloc(0),
       ...(received.requestSeq === null ? {} : { requestSeq: received.requestSeq }),
       parts: received.parts.map(part => part.toBytes())
     };
@@ -385,7 +387,7 @@ function copyAndClose(messages: readonly Message[]): readonly Buffer[] {
   }
 }
 
-function bindingRoutingId(routingId: string): BindingRoutingId {
+function bindingRoutingId(routingId: string | Uint8Array): BindingRoutingId {
   return BindingRoutingId.from(routingId);
 }
 

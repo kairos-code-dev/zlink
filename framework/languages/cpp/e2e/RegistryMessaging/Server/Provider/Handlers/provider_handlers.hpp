@@ -91,7 +91,7 @@ class route_ping_handler_t
     explicit route_ping_handler_t (scenario_state_t &state) : _state (state) {}
 
     scenario_route_res_t handle (const scenario_route_req_t &request,
-                         const zlink::framework::route_handler_context_t &context)
+                                 const zlink::framework::route_message_context_t &context)
     {
         _state.record ("ScenarioRouteReq", request.value);
         return {.value = "route:" + request.value,

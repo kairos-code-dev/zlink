@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   ZLinkPacket,
   ZLinkTimerOverrunPolicy,
-  type ZLinkHandlerContext,
+  type ZLinkMessageContext,
   type ZLinkSpotRequestHandler
 } from '@zlink-systems/framework';
 import {
@@ -21,7 +21,7 @@ import { BasicTimerHandler, IdleCloseTimerHandler, OverrunTimerHandler } from '.
 export class SpotAdminHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot, SpotAdminReq, SpotAdminRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: ScenarioUserSpot, request: SpotAdminReq, _context: ZLinkHandlerContext): Promise<SpotAdminRes> {
+  async handle(spot: ScenarioUserSpot, request: SpotAdminReq, _context: ZLinkMessageContext): Promise<SpotAdminRes> {
     const periodMs = request.periodMs ?? 10;
     switch (request.operation) {
       case 'publish':

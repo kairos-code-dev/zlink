@@ -1,5 +1,3 @@
-import type { SpotHandle } from '@zlink-systems/framework';
-
 export const SpotServiceNames = {
   spotChannel: 'spot.service',
   controlChannel: 'spot.control',
@@ -25,7 +23,7 @@ export interface CreateSpotReq {
 
 export interface CreateSpotRes {
   readonly spotId: string;
-  readonly nodeRid: string;
+  readonly nodeRid?: string;
   readonly state: string;
 }
 
@@ -157,7 +155,6 @@ export interface SpotOutboundRouteRes {
 
 export interface SpotToSpotReq {
   readonly targetSpotId: string;
-  readonly targetSpot: SpotHandle;
   readonly marker: string;
 }
 
@@ -175,7 +172,6 @@ export interface SpotToSpotRouteReq {
 
 export interface SpotToSpotTimeoutReq {
   readonly targetSpotId: string;
-  readonly targetSpot: SpotHandle;
   readonly marker: string;
 }
 
@@ -193,7 +189,6 @@ export interface SpotToSpotTimeoutRouteReq {
 
 export interface SpotToSpotNegativeReq {
   readonly targetSpotId: string;
-  readonly targetSpot: SpotHandle;
   readonly marker: string;
 }
 
@@ -243,7 +238,6 @@ export interface ChannelNotify {
 }
 
 export interface ChannelRouteReq {
-  readonly targetNodeRid: string;
   readonly value: string;
 }
 
@@ -253,14 +247,16 @@ export interface ChannelRouteRes {
 
 export interface SpotMixedRouteReq {
   readonly spotId: string;
-  readonly targetNodeRid: string;
+  readonly nodeRid: string;
   readonly channelValue: string;
+  readonly nodeValue?: string;
   readonly delta: number;
 }
 
 export interface SpotMixedRouteRes {
   readonly spotId: string;
   readonly channelReply: string;
+  readonly nodeReply?: string;
   readonly spotValue: number;
 }
 

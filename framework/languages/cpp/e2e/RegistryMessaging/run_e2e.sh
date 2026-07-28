@@ -281,7 +281,7 @@ config = {"rid": rid, "instanceId": instance, "apiEndpoint": api,
     "routeEndpoint": route, "httpEndpoint": http, "routePeers": route_peers,
     "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
     "logDir": log_dir}
-allowed = {"serverWeight", "maxMessageSize"}
+allowed = {"serverWeight"}
 for override in overrides:
     key, separator, value = override.partition("=")
     if not separator or key not in allowed:
@@ -364,11 +364,10 @@ import sys
 config = {"httpEndpoint": http, "providerEndpoints": endpoints,
     "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
     "traceLabel": name, "logDir": log_dir}
-for override in overrides:
-    key, separator, value = override.partition("=")
-    if not separator or key != "clientMaxMessageSize":
-        raise SystemExit(f"unknown consumer configuration override: {override}")
-    config[key] = value
+if overrides:
+    raise SystemExit(
+        "consumer configuration overrides are not defined by the current exact public interface: "
+        + ", ".join(overrides))
 with open(path, "w", encoding="utf-8") as file:
     json.dump({"e2e": config}, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
@@ -686,6 +685,8 @@ fi
 
 if [[ "$SCENARIO" == "RM-A1" || "$SCENARIO" == "rm-a1" ]]; then
   start_standard_provider_pair
+  start_consumer store-consumer "$HTTP_STORE_CONSUMER" "" "$REDIS_ENDPOINT"
+  STORE_CONSUMER_PID="$LAST_PID"
   run_client rm-a1 rm-a1
   cat "$LOG_DIR/client-rm-a1.stdout.log"
   exit 0
@@ -927,7 +928,7 @@ if [[ "$SCENARIO" == "RM-C8" || "$SCENARIO" == "rm-c8" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
-  start_consumer single-consumer "$HTTP_SINGLE_CONSUMER" "$API_A" ""
+  start_consumer single-consumer "$HTTP_SINGLE_CONSUMER" "" "$REDIS_ENDPOINT"
   SINGLE_CONSUMER_PID="$LAST_PID"
   run_client rm-c8 rm-c8
   cat "$LOG_DIR/client-rm-c8.stdout.log"
@@ -935,14 +936,9 @@ if [[ "$SCENARIO" == "RM-C8" || "$SCENARIO" == "rm-c8" ]]; then
   stop_pid "$API_A_PID"
   stop_pid "$API_B_PID"
 
-  start_provider api-a "$API_A2" "$ROUTE_A2" "$HTTP_A2" api-a maxMessageSize=2097152
-  API_A_PID="$LAST_PID"
-  start_consumer single-consumer-max "$HTTP_STORE_CONSUMER" "$API_A2" "" \
-    clientMaxMessageSize=2097152
-  SINGLE_CONSUMER_PID="$LAST_PID"
-  run_client rm-c8-max rm-c8-max singleConsumerUrl="$HTTP_STORE_CONSUMER"
-  cat "$LOG_DIR/client-rm-c8-max.stdout.log"
-  exit 0
+  echo "RM-C8 max-size subflow requires a ClientServer listener MaxMessageSize contract." >&2
+  echo "The current exact C++ public interface only configures RouteMesh ROUTER sockets." >&2
+  exit 2
 fi
 
 if [[ "$SCENARIO" == "RM-C9" || "$SCENARIO" == "rm-c9" ]]; then

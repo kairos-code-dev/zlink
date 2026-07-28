@@ -1,4 +1,4 @@
-// Verifies Message Follow rejects unsafe loops, stale ownership, and exhausted bounds.
+// Verifies Message Follow correlation, deadlines, and expiry through TCP.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;
@@ -10,11 +10,9 @@ internal static class StI5MessageFollowSafetyScenario
     public static async Task RunAsync(
         SpotActorTransferScenarioContext context)
     {
-        var scenario = "ST-I5";
-        var actorId =
-            $"actor-message-follow-safety-{Guid.NewGuid():N}";
-        var spotId =
-            $"spot-message-follow-safety-{Guid.NewGuid():N}";
+        const string scenario = "ST-I5";
+        var actorId = $"actor-message-follow-safety-{Guid.NewGuid():N}";
+        var spotId = $"spot-message-follow-safety-{Guid.NewGuid():N}";
         var created = await context.CreateActorAsync(
             context.NodeA,
             actorId,
@@ -24,65 +22,78 @@ internal static class StI5MessageFollowSafetyScenario
         var source = context.NodeForRid(created.NodeRid);
         var (target, targetPrefix) =
             context.OtherActorNode(created.NodeRid);
+        var firstCaller = context.ThirdActorNode(source, target);
+        var secondCaller = context.NodeD;
         var targetSpot = await context.CreateSpotAsync(target, spotId);
 
-        var correlationA = Guid.NewGuid().ToString("N");
-        var correlationB = Guid.NewGuid().ToString("N");
-        var expiredOperation = Guid.NewGuid().ToString("N");
-        var deadlineOperation = Guid.NewGuid().ToString("N");
-        var replyBackpressureDeadlineOperation =
-            Guid.NewGuid().ToString("N");
-        await context.ArmTransportDeliveryAsync(
-            source, correlationA, actorId, "Request");
-        await context.ArmTransportDeliveryAsync(
-            source, correlationB, actorId, "Request");
-        await context.ArmTransportDeliveryAsync(
-            source, expiredOperation, actorId, "Request");
-        await context.ArmTransportDeliveryAsync(
-            source, deadlineOperation, actorId, "Request");
-        await context.ArmTransportDeliveryAsync(
-            source,
-            replyBackpressureDeadlineOperation,
-            actorId,
-            "Request");
+        var correlationAGate = Guid.NewGuid().ToString("N");
+        var correlationBGate = Guid.NewGuid().ToString("N");
+        var deadlineGate = Guid.NewGuid().ToString("N");
+        var expiredGate = Guid.NewGuid().ToString("N");
+        var replyDeadlineGate = Guid.NewGuid().ToString("N");
+        var heldReplyGate = Guid.NewGuid().ToString("N");
+        var correlationA = $"correlation-a-{correlationAGate}";
+        var correlationB = $"correlation-b-{correlationBGate}";
+        var correlationAReply = $"correlation-a-reply-{correlationAGate}";
+        var correlationBReply = $"correlation-b-reply-{correlationBGate}";
+        var deadlineMarker = $"deadline-{deadlineGate}";
+        var expiredMarker = $"expired-{expiredGate}";
+        var replyDeadlineMarker =
+            $"reply-backpressure-deadline-{replyDeadlineGate}";
+        var heldReplyMarker = $"held-reply-{heldReplyGate}";
 
-        var first = context.ProbeFromNodeAsync(
-            source,
+        var first = await StartHeldRequestAsync(
+            context,
+            firstCaller,
             actorId,
-            new ProbeReq(scenario, "correlation-a"),
-            TimeSpan.FromSeconds(15),
-            correlationA);
-        var second = context.ProbeFromNodeAsync(
-            source,
+            scenario,
+            correlationA,
+            correlationAReply,
+            correlationAGate,
+            TimeSpan.FromSeconds(15));
+        var deadline = await StartHeldRequestAsync(
+            context,
+            firstCaller,
             actorId,
-            new ProbeReq(scenario, "correlation-b"),
-            TimeSpan.FromSeconds(15),
-            correlationB);
-        var expired = context.ProbeFromNodeAsync(
-            source,
+            scenario,
+            deadlineMarker,
+            null,
+            deadlineGate,
+            TimeSpan.FromSeconds(5));
+        var expired = await StartHeldRequestAsync(
+            context,
+            firstCaller,
             actorId,
-            new ProbeReq(scenario, "expired"),
-            TimeSpan.FromSeconds(15),
-            expiredOperation);
-        var deadline = context.ProbeFromNodeAsync(
-            source,
+            scenario,
+            expiredMarker,
+            null,
+            expiredGate,
+            TimeSpan.FromSeconds(15));
+        var second = await StartHeldRequestAsync(
+            context,
+            secondCaller,
             actorId,
-            new ProbeReq(scenario, "deadline"),
-            TimeSpan.FromSeconds(5),
-            deadlineOperation);
-        var replyBackpressureDeadline = context.ProbeFromNodeAsync(
-            source,
+            scenario,
+            correlationB,
+            correlationBReply,
+            correlationBGate,
+            TimeSpan.FromSeconds(15));
+        await context.ArmExternalTransportDeliveryAsync(
+            replyDeadlineGate,
+            replyDeadlineMarker);
+        await context.ArmExternalTransportDeliveryAsync(
+            heldReplyGate,
+            string.Empty,
+            afterGateId: replyDeadlineGate);
+        var replyDeadline = context.ProbeFromNodeAsync(
+            secondCaller,
             actorId,
-            new ProbeReq(scenario, "reply-backpressure-deadline"),
-            TimeSpan.FromSeconds(2),
-            replyBackpressureDeadlineOperation);
-        await context.WaitTransportDeliveryAsync(source, correlationA);
-        await context.WaitTransportDeliveryAsync(source, correlationB);
-        await context.WaitTransportDeliveryAsync(source, expiredOperation);
-        await context.WaitTransportDeliveryAsync(source, deadlineOperation);
-        await context.WaitTransportDeliveryAsync(
-            source,
-            replyBackpressureDeadlineOperation);
+            new ProbeReq(
+                scenario,
+                replyDeadlineMarker,
+                heldReplyMarker),
+            TimeSpan.FromSeconds(2));
+        await context.WaitExternalTransportDeliveryAsync(replyDeadlineGate);
 
         ZlinkStreamAssert.Ensure(
             (await context.JoinAsync(
@@ -97,183 +108,155 @@ internal static class StI5MessageFollowSafetyScenario
             target,
             actorId,
             targetSpot.NodeRid);
+        var messageFollowExpiry =
+            DateTimeOffset.UtcNow + TimeSpan.FromSeconds(8);
 
-        // Release the two stale requests in reverse order and verify each
-        // terminal before admitting the deadline probe. This keeps the
-        // correlation assertion independent from the Actor's serial handler
-        // queue while still proving that Message Follow does not exchange
-        // reply capabilities.
-        await context.ReleaseTransportDeliveryAsync(source, correlationB);
+        // The requests use two physical peer connections. Releasing B before
+        // A proves correlation without relying on a production operation-ID
+        // hook or attempting impossible reordering within one TCP stream.
+        await context.ReleaseExternalTransportDeliveryAsync(correlationBGate);
         var secondReply = await second;
-        await context.ReleaseTransportDeliveryAsync(source, correlationA);
+        await context.ReleaseExternalTransportDeliveryAsync(correlationAGate);
         var firstReply = await first;
         var replies = new[] { firstReply, secondReply };
         ZlinkStreamAssert.Ensure(
             replies[0].Succeeded
             && replies[1].Succeeded
-            && replies[0].Reply?.Marker == "correlation-a"
-            && replies[1].Reply?.Marker == "correlation-b"
+            && replies[0].Reply?.Marker == correlationAReply
+            && replies[1].Reply?.Marker == correlationBReply
             && replies.All(result =>
                 result.Reply is not null
-                &&
-                SpotActorTransferScenarioContext.IsNode(
+                && SpotActorTransferScenarioContext.IsNode(
                     result.Reply.NodeRid,
                     targetPrefix)),
-            $"{scenario} request correlation crossed between followed calls: "
-            + string.Join(
-                ";",
-                replies.Select(result =>
-                    $"success={result.Succeeded},error={result.ErrorKind},"
-                    + $"marker={result.Reply?.Marker},node={result.Reply?.NodeRid}")));
-        var correlationEvidence = await context.WaitEvidenceAsync(
-            target,
-            [
-                $"{scenario}|{actorId}|packet_handler|correlation-a",
-                $"{scenario}|{actorId}|packet_handler|correlation-b"
-            ]);
-        foreach (var marker in new[] { "correlation-a", "correlation-b" })
-        {
-            ZlinkStreamAssert.Ensure(
-                correlationEvidence.Count(item =>
-                    item.Scenario == scenario
-                    && item.ActorId == actorId
-                    && item.Kind == "packet_handler"
-                    && item.Value == marker) == 1,
-                $"{scenario} request '{marker}' was not handled exactly once.");
-        }
+            $"{scenario} correlation crossed between followed requests.");
 
-        await context.ArmReplyAdmissionAsync(source, actorId);
-        await context.ReleaseTransportDeliveryAsync(
-            source,
-            replyBackpressureDeadlineOperation);
-        var capturedReplyAdmission =
-            await context.WaitReplyAdmissionAsync(source, actorId);
+        await context.ReleaseExternalTransportDeliveryAsync(
+            replyDeadlineGate);
+        await context.WaitExternalTransportDeliveryAsync(heldReplyGate);
+        var heldReplyDeadlineResult = await replyDeadline;
         ZlinkStreamAssert.Ensure(
-            capturedReplyAdmission.BackpressuredCount > 0
-            && capturedReplyAdmission.DistinctRequestCount == 1,
-            $"{scenario} reply deadline case did not enter source transport "
-            + "backpressure exactly once.");
-        var backpressuredDeadlineResult = await replyBackpressureDeadline;
-        ZlinkStreamAssert.Ensure(
-            !backpressuredDeadlineResult.Succeeded
-            && backpressuredDeadlineResult.ErrorKind
+            !heldReplyDeadlineResult.Succeeded
+            && heldReplyDeadlineResult.ErrorKind
                 == nameof(TimeoutException),
-            $"{scenario} backpressured reply did not preserve the original "
-            + $"deadline: {backpressuredDeadlineResult.ErrorKind}");
-        var admissionAtDeadline =
-            await context.GetReplyAdmissionAsync(source, actorId);
-        ZlinkStreamAssert.Ensure(
-            admissionAtDeadline.BackpressuredCount > 0
-            && admissionAtDeadline.ReleasedAdmissionCount == 0,
-            $"{scenario} admitted a followed reply while transport remained "
-            + "backpressured.");
-        await context.ReleaseReplyAdmissionAsync(source, actorId);
+            $"{scenario} held reply did not preserve the original deadline: "
+            + heldReplyDeadlineResult.ErrorKind);
+        await context.ReleaseExternalTransportDeliveryAsync(
+            heldReplyGate,
+            requireForwarded: false);
         await Task.Delay(TimeSpan.FromMilliseconds(250));
         ZlinkStreamAssert.Ensure(
-            !backpressuredDeadlineResult.Succeeded
-            && backpressuredDeadlineResult.ErrorKind
+            !heldReplyDeadlineResult.Succeeded
+            && heldReplyDeadlineResult.ErrorKind
                 == nameof(TimeoutException),
-            $"{scenario} late reply changed the completed timeout terminal.");
-        var backpressureEvidence = await context.WaitEvidenceAsync(
-            target,
-            [
-                $"{scenario}|{actorId}|packet_handler|"
-                + "reply-backpressure-deadline"
-            ]);
-        ZlinkStreamAssert.Ensure(
-            backpressureEvidence.Count(item =>
-                item.Scenario == scenario
-                && item.ActorId == actorId
-                && item.Kind == "packet_handler"
-                && item.Value == "reply-backpressure-deadline") == 1,
-            $"{scenario} backpressured request handler did not execute "
-            + "exactly once.");
+            $"{scenario} late TCP reply changed the timeout terminal.");
 
-        await context.ReleaseTransportDeliveryAsync(
-            source, deadlineOperation);
+        await context.ReleaseExternalTransportDeliveryAsync(deadlineGate);
         var deadlineResult = await deadline;
         ZlinkStreamAssert.Ensure(
             !deadlineResult.Succeeded
             && deadlineResult.ErrorKind == nameof(TimeoutException),
-            $"{scenario} followed request extended its original deadline: "
+            $"{scenario} followed request extended its deadline: "
             + deadlineResult.ErrorKind);
         var deadlineEvidence = await context.WaitEvidenceAsync(
             target,
-            [$"{scenario}|{actorId}|packet_handler|deadline"]);
+            [$"{scenario}|{actorId}|packet_handler|{deadlineMarker}"]);
         ZlinkStreamAssert.Ensure(
             deadlineEvidence.Count(item =>
                 item.Scenario == scenario
                 && item.ActorId == actorId
                 && item.Kind == "packet_handler"
-                && item.Value == "deadline") == 1,
-            $"{scenario} deadline request did not enter Message Follow exactly once.");
-        // The test topology uses a seven-second Message Follow duration.
-        // Releasing a delivery after this bounded wait proves the public stale
-        // terminal without consulting private route cleanup markers.
-        await Task.Delay(TimeSpan.FromSeconds(8));
-        ZlinkStreamAssert.Ensure(
-            (await context.GetEvidenceAsync(target)).Count(item =>
-                item.Scenario == scenario
-                && item.ActorId == actorId
-                && item.Kind == "late_reply_created"
-                && item.Value == "deadline") == 1,
-            $"{scenario} did not exercise exactly one reply created after the original deadline.");
-        ZlinkStreamAssert.Ensure(
-            !deadlineResult.Succeeded
-            && deadlineResult.ErrorKind == nameof(TimeoutException),
-            $"{scenario} changed the completed timeout after the late reply.");
-        await context.ReleaseTransportDeliveryAsync(
-            source, expiredOperation);
+                && item.Value == deadlineMarker) == 1,
+            $"{scenario} deadline handler did not execute exactly once.");
+
+        // Message Follow lasts seven seconds in this topology. Exceeding that
+        // duration must reject the held stale route before application dispatch.
+        var untilExpiry = messageFollowExpiry - DateTimeOffset.UtcNow;
+        if (untilExpiry > TimeSpan.Zero)
+            await Task.Delay(untilExpiry);
+        await context.ReleaseExternalTransportDeliveryAsync(expiredGate);
         var expiredResult = await expired;
         ZlinkStreamAssert.Ensure(
             !expiredResult.Succeeded
-            && expiredResult.ErrorKind == "InvalidOperation",
-            $"{scenario} expired delivery was not rejected as stale: "
+            && expiredResult.ErrorKind == "Unavailable",
+            $"{scenario} expired delivery was not unavailable: "
             + expiredResult.ErrorKind);
-        ZlinkStreamAssert.Ensure(
-            !(await context.GetEvidenceAsync(target)).Any(item =>
-                item.Scenario == scenario
-                && item.ActorId == actorId
-                && item.Kind == "packet_handler"
-                && item.Value == "expired"),
-            $"{scenario} expired request reached the target application handler.");
-        var sourceEvidence = await context.GetEvidenceAsync(source);
+
+        var targetEvidence = await context.GetEvidenceAsync(target);
         foreach (var marker in new[]
-                 {
-                     "correlation-a",
-                     "correlation-b",
-                     "reply-backpressure-deadline",
-                     "deadline",
-                     "expired"
-                 })
-        {
-            ZlinkStreamAssert.Ensure(
-                !sourceEvidence.Any(item =>
-                    item.Scenario == scenario
-                    && item.ActorId == actorId
-                    && item.Kind == "packet_handler"
-                    && item.Value == marker),
-                $"{scenario} source handler processed followed request '{marker}'.");
-        }
-        foreach (var operationId in new[]
                  {
                      correlationA,
                      correlationB,
-                     replyBackpressureDeadlineOperation,
-                     expiredOperation,
-                     deadlineOperation
+                     replyDeadlineMarker,
+                     deadlineMarker
                  })
         {
             ZlinkStreamAssert.Ensure(
-                (await context.GetTransportDeliveryAsync(
-                    source,
-                    operationId)).ReleasedCount == 1,
-                $"{scenario} operation '{operationId}' was not released exactly once.");
+                targetEvidence.Count(item =>
+                    item.Scenario == scenario
+                    && item.ActorId == actorId
+                    && item.Kind == "packet_handler"
+                    && item.Value == marker) == 1,
+                $"{scenario} request '{marker}' was not handled once.");
         }
+        ZlinkStreamAssert.Ensure(
+            !targetEvidence.Any(item =>
+                item.Scenario == scenario
+                && item.ActorId == actorId
+                && item.Kind == "packet_handler"
+                && item.Value == expiredMarker),
+            $"{scenario} expired request reached the target handler.");
+        var sourceEvidence = await context.GetEvidenceAsync(source);
+        ZlinkStreamAssert.Ensure(
+            !sourceEvidence.Any(item =>
+                item.Scenario == scenario
+                && item.ActorId == actorId
+                && item.Kind == "packet_handler"),
+            $"{scenario} source handler processed followed work.");
 
-        // MF-DUP, MF-GEN, MF-LOOP, MF-HOP and MF-BOUND remain partial. They
-        // require controlled duplicate delivery or additional committed
-        // generations; this gate deliberately does not mutate or synthesize
-        // private routes.
+        foreach (var gate in new[]
+                 {
+                     correlationAGate,
+                     correlationBGate,
+                     deadlineGate,
+                     expiredGate,
+                     replyDeadlineGate
+                 })
+        {
+            ZlinkStreamAssert.Ensure(
+                (await context.GetExternalTransportDeliveryAsync(gate))
+                    .ReleasedCount == 1,
+                $"{scenario} external gate '{gate}' was not released once.");
+        }
+        ZlinkStreamAssert.Ensure(
+            (await context.GetExternalTransportDeliveryAsync(heldReplyGate))
+                .Released,
+            $"{scenario} held reply gate was not released after timeout.");
+
+        // Duplicate, generation, loop, hop and bounded-capacity cases remain
+        // separate gaps because a black-box TCP fixture must not synthesize
+        // private route frames.
+    }
+
+    private static async Task<Task<NodeActorProbeRes>> StartHeldRequestAsync(
+        SpotActorTransferScenarioContext context,
+        ZLinkHttpClient caller,
+        string actorId,
+        string scenario,
+        string marker,
+        string? replyMarker,
+        string gateId,
+        TimeSpan timeout)
+    {
+        await context.ArmExternalTransportDeliveryAsync(
+            gateId,
+            marker);
+        var request = context.ProbeFromNodeAsync(
+            caller,
+            actorId,
+            new ProbeReq(scenario, marker, replyMarker),
+            timeout);
+        await context.WaitExternalTransportDeliveryAsync(gateId);
+        return request;
     }
 }

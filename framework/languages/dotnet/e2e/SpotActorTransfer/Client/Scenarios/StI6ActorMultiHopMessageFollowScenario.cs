@@ -1,4 +1,4 @@
-// Verifies Actor Message Follow across multiple relocation hops without duplicate handling.
+// Verifies Actor Message Follow across two relocations through external TCP.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;
@@ -10,13 +10,10 @@ internal static class StI6ActorMultiHopMessageFollowScenario
     public static async Task RunAsync(
         SpotActorTransferScenarioContext context)
     {
-        var scenario = "ST-I6";
-        var actorId =
-            $"actor-message-follow-multi-hop-{Guid.NewGuid():N}";
-        var firstSpotId =
-            $"spot-message-follow-hop-one-{Guid.NewGuid():N}";
-        var secondSpotId =
-            $"spot-message-follow-hop-two-{Guid.NewGuid():N}";
+        const string scenario = "ST-I6";
+        var actorId = $"actor-message-follow-multi-hop-{Guid.NewGuid():N}";
+        var firstSpotId = $"spot-message-follow-hop-one-{Guid.NewGuid():N}";
+        var secondSpotId = $"spot-message-follow-hop-two-{Guid.NewGuid():N}";
         var created = await context.CreateActorAsync(
             context.NodeA,
             actorId,
@@ -24,10 +21,8 @@ internal static class StI6ActorMultiHopMessageFollowScenario
             stateVersion: 606,
             applicationStateBytes: 4 * 1024);
         var source = context.NodeForRid(created.NodeRid);
-        var (firstTarget, _) =
-            context.OtherActorNode(created.NodeRid);
-        var secondTarget =
-            context.ThirdActorNode(source, firstTarget);
+        var (firstTarget, _) = context.OtherActorNode(created.NodeRid);
+        var secondTarget = context.ThirdActorNode(source, firstTarget);
         var secondTargetPrefix =
             ReferenceEquals(secondTarget, context.NodeA)
                 ? "actor-a"
@@ -35,25 +30,19 @@ internal static class StI6ActorMultiHopMessageFollowScenario
                     ? "actor-b"
                     : "actor-c";
 
-        var firstSpot = await context.CreateSpotAsync(
-            firstTarget,
-            firstSpotId);
-        var secondSpot = await context.CreateSpotAsync(
-            secondTarget,
-            secondSpotId);
-        var operationId = Guid.NewGuid().ToString("N");
-        await context.ArmTransportDeliveryAsync(
-            source,
-            operationId,
-            actorId,
-            "Request");
+        var firstSpot = await context.CreateSpotAsync(firstTarget, firstSpotId);
+        var secondSpot = await context.CreateSpotAsync(secondTarget, secondSpotId);
+        var gateId = Guid.NewGuid().ToString("N");
+        var marker = $"multi-hop-request-{gateId}";
+        await context.ArmExternalTransportDeliveryAsync(
+            gateId,
+            marker);
         var delayedRequest = context.ProbeFromNodeAsync(
-            source,
+            context.NodeD,
             actorId,
-            new ProbeReq(scenario, "multi-hop-request"),
-            TimeSpan.FromSeconds(15),
-            operationId);
-        await context.WaitTransportDeliveryAsync(source, operationId);
+            new ProbeReq(scenario, marker),
+            TimeSpan.FromSeconds(15));
+        await context.WaitExternalTransportDeliveryAsync(gateId);
 
         ZlinkStreamAssert.Ensure(
             (await context.JoinAsync(
@@ -82,7 +71,7 @@ internal static class StI6ActorMultiHopMessageFollowScenario
             actorId,
             secondSpot.NodeRid);
 
-        await context.ReleaseTransportDeliveryAsync(source, operationId);
+        await context.ReleaseExternalTransportDeliveryAsync(gateId);
         var delayedResult = await delayedRequest;
         ZlinkStreamAssert.Ensure(
             delayedResult.Succeeded && delayedResult.Reply is not null,
@@ -99,13 +88,13 @@ internal static class StI6ActorMultiHopMessageFollowScenario
 
         var targetEvidence = await context.WaitEvidenceAsync(
             secondTarget,
-            [$"{scenario}|{actorId}|packet_handler|multi-hop-request"]);
+            [$"{scenario}|{actorId}|packet_handler|{marker}"]);
         ZlinkStreamAssert.Ensure(
             targetEvidence.Count(item =>
                 item.Scenario == scenario
                 && item.ActorId == actorId
                 && item.Kind == "packet_handler"
-                && item.Value == "multi-hop-request") == 1,
+                && item.Value == marker) == 1,
             $"{scenario} multi-hop request was not handled exactly once.");
         foreach (var previousOwner in new[] { source, firstTarget })
         {
@@ -114,13 +103,12 @@ internal static class StI6ActorMultiHopMessageFollowScenario
                     item.Scenario == scenario
                     && item.ActorId == actorId
                     && item.Kind == "packet_handler"
-                    && item.Value == "multi-hop-request"),
-                $"{scenario} previous-owner application handler processed followed work.");
+                    && item.Value == marker),
+                $"{scenario} previous owner processed followed work.");
         }
         ZlinkStreamAssert.Ensure(
-            (await context.GetTransportDeliveryAsync(
-                source,
-                operationId)).ReleasedCount == 1,
-            $"{scenario} pre-resolved operation was not released exactly once.");
+            (await context.GetExternalTransportDeliveryAsync(gateId))
+                .ReleasedCount == 1,
+            $"{scenario} delayed request was not released exactly once.");
     }
 }

@@ -67,7 +67,8 @@ var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreC
         StI3BulkSpotRelocationScenario.RunSpotWideAsync(context),
     ["ST-I4"] = () => StI4ActorMessageFollowMatrixScenario.RunAsync(context),
     ["ST-I5"] = () => StI5MessageFollowSafetyScenario.RunAsync(context),
-    ["ST-I6"] = () => StI6ActorMultiHopMessageFollowScenario.RunAsync(context)
+    ["ST-I6"] = () => StI6ActorMultiHopMessageFollowScenario.RunAsync(context),
+    ["ST-H1"] = () => StH1DeferredJoinBarrierScenario.RunAsync(context)
 };
 
 var excludedFromAll = new HashSet<string>(
@@ -93,7 +94,8 @@ var excludedFromAll = new HashSet<string>(
         "ST-I3-SPOTWIDE",
         "ST-I4",
         "ST-I5",
-        "ST-I6"
+        "ST-I6",
+        "ST-H1"
     ],
     StringComparer.OrdinalIgnoreCase);
 var selected = (string.Equals(options.Scenario, "all", StringComparison.OrdinalIgnoreCase)
@@ -159,9 +161,6 @@ static bool IsDiagnosticOnly(string name)
         // diagnostic until its separate publication and stale-route cases
         // are observable through public contracts.
         "ST-G5-SPOT-WIDE-ACTORS-100" => true,
-        // These selectors cover only the currently connected Actor cases.
-        // Spot, duplicate, bound, recovery, and route-cleanup cases remain.
-        "ST-I4" or "ST-I5" or "ST-I6" => true,
         _ => false
     };
 }

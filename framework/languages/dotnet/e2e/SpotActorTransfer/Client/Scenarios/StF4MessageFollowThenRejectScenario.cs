@@ -19,7 +19,7 @@ internal static class StF4MessageFollowThenRejectScenario
             104);
         var source = context.NodeForRid(created.NodeRid);
         var (target, _) = context.OtherActorNode(created.NodeRid);
-        var caller = context.ThirdActorNode(source, target);
+        var caller = context.NodeD;
         var targetSpot = await context.CreateSpotAsync(target, spotId);
 
         var g1 = Guid.NewGuid().ToString("N");

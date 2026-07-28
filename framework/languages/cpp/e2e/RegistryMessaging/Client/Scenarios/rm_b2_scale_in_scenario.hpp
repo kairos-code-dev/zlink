@@ -85,7 +85,7 @@ inline void run_rm_b2_scale_in_scenario (const client_options_t &options)
 
     bool api_b_removed = false;
     for (int attempt = 0; attempt < 150 && !api_b_removed; ++attempt) {
-        const auto peers = location_client.get ("/locations/peers").async<nlohmann::json> ().result ().value ().body;
+        const auto peers = location_client.get ("/locations/peers").submit<nlohmann::json> ().result ().value ().body;
         api_b_removed = true;
         for (const auto &entry : peers) {
             if (entry.value ("mesh_name", "") == api_channel

@@ -607,16 +607,24 @@ client_server_pump_result_t raw_client_server_client_t::pump_one (
             std::vector<std::uint8_t> connection;
             {
                 std::lock_guard lock (_mutex);
+                const auto identity_is_not_pinned =
+                  _options.expected_server.server_routing_id.empty ()
+                  && _options.expected_server.lifecycle_generation == 0;
                 if (server.channel_name
                       != _options.expected_server.channel_name
-                    || server.server_routing_id
-                         != _options.expected_server.server_routing_id
-                    || server.lifecycle_generation
-                         != _options.expected_server.lifecycle_generation
+                    || (!identity_is_not_pinned
+                        && (server.server_routing_id
+                              != _options.expected_server.server_routing_id
+                            || server.lifecycle_generation
+                                 != _options.expected_server.lifecycle_generation))
                     || server.security_identity
                          != _options.expected_server.security_identity
+                    || server.advertised_endpoint
+                         != _options.expected_server.advertised_endpoint
                     || server.descriptor_revision
                          < _options.expected_server.descriptor_revision
+                    || server.server_routing_id.empty ()
+                    || server.lifecycle_generation == 0
                     || _connection_id.empty ()) {
                     return client_server_pump_result_t::protocol_error;
                 }

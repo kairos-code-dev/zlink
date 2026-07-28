@@ -7,7 +7,6 @@ using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Locations.Redis;
-using Zlink.Framework.Runtime.Actors;
 
 namespace SpotActorTransfer.ActorNode;
 
@@ -45,9 +44,6 @@ internal static class ActorNodeHostFactory
         builder.Services.AddSingleton(new DomainStateStore(options.LogDir));
         builder.Services.AddSingleton<JoinedGateStore>();
         builder.Services.AddSingleton<TransferGateStore>();
-        builder.Services.AddSingleton<TransportDeliveryGate>();
-        builder.Services.AddSingleton<IZLinkActorTransportDeliveryGate>(
-            services => services.GetRequiredService<TransportDeliveryGate>());
         builder.Services.AddSingleton(cleanupGates);
         builder.Services.AddSingleton<ActorJoinTargetUseCase>();
         builder.Services.AddZLinkFramework(framework =>
@@ -92,6 +88,11 @@ internal static class ActorNodeHostFactory
                 .SetRoutingIdPrefix(options.Rid)
                 .SetActorLimit(30_000)
                 .SetSpotLimit(5_000);
+            if (options.CallerOnly)
+            {
+                mesh28.Objects().Client();
+                return;
+            }
             mesh28.Objects().Server()
                 .AddEntrySpot<TransferEntrySpot>()
                 .AddActorFactory<TransferActor, TransferActorFactory>(

@@ -8,6 +8,8 @@ export interface PlayOptions {
   readonly clientSpotPubEndpoints: readonly string[];
   readonly playAExternalSpotEndpoint?: string;
   readonly externalClientEndpoint?: string;
+  readonly redisEndpoint: string;
+  readonly redisKeyPrefix: string;
   readonly evidenceFile?: string;
   readonly logDir: string;
 }
@@ -24,6 +26,8 @@ export function validatePlayOptions(value: unknown): PlayOptions {
     clientSpotPubEndpoints: stringList(values, 'clientSpotPubEndpoints'),
     playAExternalSpotEndpoint: optionalString(values, 'playAExternalSpotEndpoint'),
     externalClientEndpoint: optionalString(values, 'externalClientEndpoint'),
+    redisEndpoint: requiredString(values, 'redisEndpoint'),
+    redisKeyPrefix: requiredString(values, 'redisKeyPrefix'),
     evidenceFile: optionalString(values, 'evidenceFile'),
     logDir: requiredString(values, 'logDir')
   };

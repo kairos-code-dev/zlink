@@ -149,7 +149,7 @@ inline TReply post_json (const std::string &base_url,
                     .base_url (base_url)
                     .timeout (timeout)
                     .build ();
-    return client.post (path).body (request).template async<TReply> ().result ().value ().body;
+    return client.post (path).body (request).template submit<TReply> ().result ().value ().body;
 }
 
 inline void post_raw (const std::string &base_url,

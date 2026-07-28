@@ -45,7 +45,6 @@ struct provider_options_t
     std::vector<std::string> route_peers;
     std::string log_dir;
     std::optional<int> server_weight;
-    std::optional<int> max_message_size;
     static provider_options_t bind (const configuration_section_t &section)
     {
         const auto rid = section.get ("rid").value_or ("api-a");
@@ -58,8 +57,7 @@ struct provider_options_t
                 .redis_key_prefix = section.require ("redis.keyPrefix"),
                 .route_peers = split_csv (section.get ("routePeers").value_or ("")),
                 .log_dir = section.require ("logDir"),
-                .server_weight = parse_optional_int (section, "serverWeight"),
-                .max_message_size = parse_optional_int (section, "maxMessageSize")};
+                .server_weight = parse_optional_int (section, "serverWeight")};
     }
 };
 

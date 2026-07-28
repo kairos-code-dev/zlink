@@ -68,14 +68,6 @@ internal sealed class ZLinkActorClient(
                 authorityOwnerGeneration,
                 ownerLeaseGeneration);
         EnsureRouteAvailable(nodeRuntime, actor);
-        await WaitForTransportDeliveryAsync(
-                actorId,
-                ZLinkActorTransportOperationKind.OneWay,
-                metadata,
-                null,
-                0,
-                cancellationToken)
-            .ConfigureAwait(false);
         var parts = CreatePacketParts(
             ZlinkStreamMessageKind.Send,
             null,
@@ -134,14 +126,7 @@ internal sealed class ZLinkActorClient(
                 ownerLeaseGeneration);
         EnsureRouteAvailable(nodeRuntime, actor);
         var node = nodeRuntime.Node;
-        var remainingTimeout = await WaitForTransportDeliveryAsync(
-                actorId,
-                ZLinkActorTransportOperationKind.Request,
-                metadata,
-                timeout,
-                started,
-                cancellationToken)
-            .ConfigureAwait(false);
+        var remainingTimeout = RemainingTimeout(timeout, started);
         var parts = CreatePacketParts(
             ZlinkStreamMessageKind.Request,
             new ZlinkStreamRequestSeq(1),
@@ -189,61 +174,6 @@ internal sealed class ZLinkActorClient(
             row.OwnerNodeGeneration,
             row.AuthorityOwnerGeneration,
             checked((ulong)row.LeaseGeneration));
-    }
-
-    private async ValueTask<TimeSpan?> WaitForTransportDeliveryAsync(
-        string actorId,
-        ZLinkActorTransportOperationKind kind,
-        ZLinkCallMetadata metadata,
-        TimeSpan? timeout,
-        long started,
-        CancellationToken cancellationToken)
-    {
-        var gate = runtime.Services.GetService(
-            typeof(IZLinkActorTransportDeliveryGate))
-            as IZLinkActorTransportDeliveryGate;
-        if (gate is null)
-            return RemainingTimeout(timeout, started);
-
-        var operationId = metadata.Snapshot().TryGetValue(
-            ZLinkActorTransportDeliveryMetadata.OperationId,
-            out var configured)
-            ? configured
-            : string.Empty;
-        var remaining = RemainingTimeout(timeout, started);
-        if (remaining is null)
-        {
-            await gate.WaitAsync(
-                    new ZLinkActorTransportDelivery(
-                        operationId,
-                        actorId,
-                        kind),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            return null;
-        }
-
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken);
-        deadline.CancelAfter(remaining.Value);
-        try
-        {
-            await gate.WaitAsync(
-                    new ZLinkActorTransportDelivery(
-                        operationId,
-                        actorId,
-                        kind),
-                    deadline.Token)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (
-            !cancellationToken.IsCancellationRequested)
-        {
-            throw new TimeoutException(
-                "Actor request timed out before transport delivery.");
-        }
-
-        return RemainingTimeout(timeout, started);
     }
 
     private static TimeSpan? RemainingTimeout(

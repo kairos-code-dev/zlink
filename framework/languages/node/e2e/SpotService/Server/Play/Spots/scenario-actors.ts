@@ -16,22 +16,25 @@ import type {
   SnapshotRes,
   SnapshotReq
 } from '../../../Shared/messages';
-import { ActorPushNotify, SpotServiceNames } from '../../../Shared/messages';
+import { ActorPushNotify } from '../../../Shared/messages';
 import type {
   ZLinkActor,
   ZLinkActorClient,
+  ZLinkActorCreateResponse,
   ZLinkActorContext,
   ZLinkActorFactory,
-  ZLinkActorJoinRequest,
-  ZLinkActorMembership,
   ZLinkEntrySpot,
+  ZLinkEntrySpotActorSendHandler,
   ZLinkEntrySpotContext,
   ZLinkMessage,
-  ZLinkSpotActorJoinResponse,
-  ZLinkSpotActorRequestContext
+  ZLinkMessageContext
 } from '@zlink-systems/framework';
 import { ZLinkSpotActorRequest, ZLinkSpotActorSend } from '@zlink-systems/framework';
-import { ZLINK_ACTOR_CLIENT, zlinkEntrySpotActorRequestHandler } from '@zlink-systems/nestjs';
+import {
+  ZLINK_ACTOR_CLIENT,
+  zlinkEntrySpotActorRequestHandler,
+  zlinkEntrySpotActorSendHandler
+} from '@zlink-systems/nestjs';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import { InMemoryActorSpotStore } from '../Infrastructure/actor-spot-store';
 
@@ -42,35 +45,33 @@ export class ScenarioActor implements ZLinkActor {
   constructor(readonly actorId: string, readonly context: ZLinkActorContext) {
     this.displayName = actorId;
   }
-
-  configure(): void {
-    this.context.handlers.addHandler(EntryActorPingHandler);
-    this.context.handlers.addHandler(EntrySlowActorPingHandler);
-    this.context.handlers.addHandler(ActorPushHandler);
-    this.context.handlers.addHandler(EntryUserActorPingHandler);
-    this.context.handlers.addHandler(EntryUserActorPushHandler);
-    this.context.handlers.addHandler(ComplexActorHandler);
-    this.context.handlers.addHandler(EntryUserSpotActorJoinHandler);
-    this.context.handlers.addHandler(EntryActorLeaveHandler);
-    this.context.handlers.addHandler(EntryActorSnapshotHandler);
-    this.context.handlers.addHandler(InitializeScenarioActorHandler);
-  }
 }
 
 class InitializeScenarioActor {
   constructor(readonly displayName: string) {}
 }
 
-export class InitializeScenarioActorHandler {
+@zlinkEntrySpotActorSendHandler({
+  actor: () => ScenarioActor,
+  entrySpot: () => ScenarioEntrySpot,
+  packetName: 'InitializeScenarioActor'
+})
+export class InitializeScenarioActorHandler
+  implements ZLinkEntrySpotActorSendHandler<ScenarioEntrySpot, ScenarioActor, InitializeScenarioActor> {
   @ZLinkSpotActorSend('InitializeScenarioActor')
-  async handle(actor: ScenarioActor, _context: unknown, message: InitializeScenarioActor): Promise<void> {
+  async handle(
+    _spot: ZLinkEntrySpot<ScenarioActor>,
+    actor: ScenarioActor,
+    _context: ZLinkMessageContext,
+    message: InitializeScenarioActor
+  ): Promise<void> {
     actor.displayName = message.displayName;
   }
 }
 
 export class ScenarioActorFactory implements ZLinkActorFactory {
-  async create(actorId: string, context: ZLinkActorContext): Promise<ScenarioActor> {
-    return new ScenarioActor(actorId, context);
+  async create(context: ZLinkActorContext): Promise<ScenarioActor> {
+    return new ScenarioActor(context.actorId, context);
   }
 }
 
@@ -84,36 +85,32 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
     this.evidence = evidence;
   }
 
-  async onCreateActor(actor: ZLinkActorMembership, createRequest: ZLinkMessage): Promise<void> {
+  async onCreateActor(actor: ScenarioActor, createRequest: ZLinkMessage): Promise<ZLinkActorCreateResponse> {
     const request = createRequest.decode<Partial<EnsureActorReq>>(Object as never);
     if (typeof request.displayName === 'string') {
       await this.actors
-        .sendToActor(SpotServiceNames.spotChannel, actor.actor, new InitializeScenarioActor(request.displayName))
+        .sendToActor(actor.actorId, new InitializeScenarioActor(request.displayName))
         .submit();
     }
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-created|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
+    evidence.add(`entry-created|rid=${evidence.rid}|actor=${actor.actorId}`);
+    return { accepted: true };
   }
 
-  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
-    void actor;
-    return { accepted: true, reply: request.decode() };
-  }
-
-  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
+  async onJoinedActor(actor: ScenarioActor): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-joined|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
+    evidence.add(`entry-joined|rid=${evidence.rid}|actor=${actor.actorId}`);
   }
 
-  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
+  async onLeaveActor(actor: ScenarioActor): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-left|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
+    evidence.add(`entry-left|rid=${evidence.rid}|actor=${actor.actorId}`);
   }
 
-  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
+  async onDisconnectActor(actor: ScenarioActor): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-disconnected|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
-    if (actor.actor.actorId.startsWith('actor-sm-d5-fail-')) {
+    evidence.add(`entry-disconnected|rid=${evidence.rid}|actor=${actor.actorId}`);
+    if (actor.actorId.startsWith('actor-sm-d5-fail-')) {
       throw new Error('SM-D5 injected disconnect callback failure.');
     }
   }
@@ -145,8 +142,12 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
   }
 }
 
-export class EntryActorPingHandler
-{
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  entrySpot: () => ScenarioEntrySpot,
+  packetName: 'ActorPingReq'
+})
+export class EntryActorPingHandler {
   private static evidence?: EvidenceStore;
 
   static useEvidence(evidence: EvidenceStore): void {
@@ -155,8 +156,9 @@ export class EntryActorPingHandler
 
   @ZLinkSpotActorRequest('ActorPingReq')
   async handle(
+    _spot: ScenarioEntrySpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorPingReq
   ): Promise<ActorPingRes> {
     void context;
@@ -183,8 +185,12 @@ export class EntryActorPingHandler
   }
 }
 
-export class EntrySlowActorPingHandler
-{
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  entrySpot: () => ScenarioEntrySpot,
+  packetName: 'SlowActorPingReq'
+})
+export class EntrySlowActorPingHandler {
   private static evidence?: EvidenceStore;
 
   static useEvidence(evidence: EvidenceStore): void {
@@ -193,8 +199,9 @@ export class EntrySlowActorPingHandler
 
   @ZLinkSpotActorRequest('SlowActorPingReq')
   async handle(
+    _spot: ScenarioEntrySpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: SlowActorPingReq
   ): Promise<ActorPingRes> {
     void context;
@@ -226,8 +233,12 @@ export class EntrySlowActorPingHandler
   }
 }
 
-export class EntryUserActorPingHandler
-{
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  entrySpot: () => ScenarioEntrySpot,
+  packetName: 'UserActorPingReq'
+})
+export class EntryUserActorPingHandler {
   private static evidence?: EvidenceStore;
 
   static useEvidence(evidence: EvidenceStore): void {
@@ -236,8 +247,9 @@ export class EntryUserActorPingHandler
 
   @ZLinkSpotActorRequest('UserActorPingReq')
   async handle(
+    _spot: ScenarioEntrySpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorPingReq
   ): Promise<ActorPingRes> {
     void context;
@@ -265,14 +277,19 @@ export class EntryUserActorPingHandler
   }
 }
 
-export class ActorPushHandler
-{
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  entrySpot: () => ScenarioEntrySpot,
+  packetName: 'ActorPushReq'
+})
+export class ActorPushHandler {
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorRequest('ActorPushReq')
   async handle(
+    _spot: ScenarioEntrySpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorPushReq
   ): Promise<ActorPingRes> {
     void context;
@@ -290,14 +307,19 @@ export class ActorPushHandler
   }
 }
 
-export class EntryUserActorPushHandler
-{
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  entrySpot: () => ScenarioEntrySpot,
+  packetName: 'UserActorPushReq'
+})
+export class EntryUserActorPushHandler {
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorRequest('UserActorPushReq')
   async handle(
+    _spot: ScenarioEntrySpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorPushReq
   ): Promise<ActorPingRes> {
     void context;
@@ -316,8 +338,12 @@ export class EntryUserActorPushHandler
   }
 }
 
-export class ComplexActorHandler
-{
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  entrySpot: () => ScenarioEntrySpot,
+  packetName: 'ComplexActorReq'
+})
+export class ComplexActorHandler {
   private static evidence?: EvidenceStore;
 
   static useEvidence(evidence: EvidenceStore): void {
@@ -326,8 +352,9 @@ export class ComplexActorHandler
 
   @ZLinkSpotActorRequest('ComplexActorReq')
   async handle(
+    _spot: ScenarioEntrySpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ComplexActorReq
   ): Promise<ComplexActorRes> {
     void context;
@@ -358,8 +385,12 @@ export class ComplexActorHandler
   }
 }
 
-export class EntryActorLeaveHandler
-{
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  entrySpot: () => ScenarioEntrySpot,
+  packetName: 'LeaveReq'
+})
+export class EntryActorLeaveHandler {
   private static evidence?: EvidenceStore;
 
   static useEvidence(evidence: EvidenceStore): void {
@@ -368,8 +399,9 @@ export class EntryActorLeaveHandler
 
   @ZLinkSpotActorRequest('LeaveReq')
   async handle(
+    _spot: ScenarioEntrySpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: LeaveReq
   ): Promise<LeaveRes> {
     void context;
@@ -381,7 +413,7 @@ export class EntryActorLeaveHandler
     evidence.add(
       `spot-actor-left|rid=${evidence.rid}|spot=${spotId}|actor=${actor.actorId}`
     );
-    await actor.context.leaveSpot(context.connectionAborted);
+    actor.context.joinEntrySpot(request).timeout(5000).defer();
     return {
       actorId: actor.actorId,
       accepted: true
@@ -396,45 +428,47 @@ export class EntryActorLeaveHandler
   }
 }
 
-export class EntryUserSpotActorJoinHandler
-{
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  entrySpot: () => ScenarioEntrySpot,
+  packetName: 'JoinUserSpotActorReq'
+})
+export class EntryUserSpotActorJoinHandler {
   @ZLinkSpotActorRequest('JoinUserSpotActorReq')
   async handle(
+    _spot: ScenarioEntrySpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: JoinUserSpotActorReq
   ): Promise<JoinUserSpotActorRes> {
     if (request.actorId !== actor.actorId) {
       throw new Error('Join request actor does not match dispatched actor.');
     }
-    const result = await actor.context
+    actor.context
       .joinSpot(request.spotId, request)
       .timeout(5000)
-      .submit(context.connectionAborted);
-    if (result.status === 'rejected') {
-      return {
-        spotId: request.spotId,
-        actorId: actor.actorId,
-        accepted: false,
-        generation: '0'
-      };
-    }
+      .defer();
     InMemoryActorSpotStore.record(actor.actorId, request.spotId);
     return {
       spotId: request.spotId,
       actorId: actor.actorId,
       accepted: true,
-      generation: result.actor.generation.toString()
+      generation: actor.context.objectGeneration.toString()
     };
   }
 }
 
-export class EntryActorSnapshotHandler
-{
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  entrySpot: () => ScenarioEntrySpot,
+  packetName: 'SnapshotReq'
+})
+export class EntryActorSnapshotHandler {
   @ZLinkSpotActorRequest('SnapshotReq')
   async handle(
+    _spot: ScenarioEntrySpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: SnapshotReq
   ): Promise<SnapshotRes> {
     void context;
@@ -458,7 +492,7 @@ export class EntryActorDestroyHandler
   async handle(
     spot: ScenarioEntrySpot,
     actor: ScenarioActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: DestroyActorReq
   ): Promise<DestroyActorRes> {
     void context;

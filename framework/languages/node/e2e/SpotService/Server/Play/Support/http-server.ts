@@ -1,5 +1,6 @@
 import * as http from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
+import { ZLinkFrameworkException } from '@zlink-systems/framework';
 
 export interface HttpRoute {
   readonly method: string;
@@ -21,8 +22,19 @@ export async function startHttpServer(endpoint: string, routes: readonly HttpRou
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify(result));
     } catch (error) {
+      console.error(
+        `HTTP ${request.method ?? 'UNKNOWN'} ${request.url ?? '/'} failed:`,
+        error instanceof Error ? error.stack ?? error.message : String(error)
+      );
       response.writeHead(500, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+      response.end(JSON.stringify(error instanceof ZLinkFrameworkException
+        ? {
+            error: error.message,
+            kind: error.kind,
+            code: error.code,
+            isRetriable: error.isRetriable
+          }
+        : { error: error instanceof Error ? error.message : String(error) }));
     }
   });
   const url = new URL(endpoint);

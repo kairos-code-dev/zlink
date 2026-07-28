@@ -124,11 +124,11 @@ function createDiscoveredMeshChannelOptions(
       : Object.fromEntries((Object.entries(mesh.meshChannels) as Array<[string, ZLinkMeshChannelOptions]>).map(([channelName, channel]) => [channelName, {
         ...channel,
         requestHandlers: [
-          ...(channel.requestHandlers ?? []),
+          ...createManualRequestHandlers(channel.requestHandlers, moduleRef),
           ...createDiscoveredRequestHandlers(providerRefs, channel.handlerGroups, moduleRef) as never
         ],
         sendHandlers: [
-          ...(channel.sendHandlers ?? []),
+          ...createManualSendHandlers(channel.sendHandlers, moduleRef),
           ...createDiscoveredSendHandlers(providerRefs, channel.handlerGroups, moduleRef) as never
         ]
       }]))

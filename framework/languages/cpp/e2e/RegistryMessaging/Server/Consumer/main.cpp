@@ -31,17 +31,12 @@ int main (int argc, char **argv)
           .trace_log_file (options.log_dir + "/" + options.trace_label + "-flow.log")
           .trace_label (options.trace_label);
         auto channel = framework.add_client_server_channel (rm::api_channel);
-        if (options.client_max_message_size) {
-            channel.client_max_message_size (
-              zlink::byte_size_t::bytes (
-                static_cast<std::int64_t> (*options.client_max_message_size)));
-        }
+        auto client = channel.client ();
         if (!options.redis_endpoint.empty ()) {
             rm::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
-            channel.enable_client ();
         }
         for (const auto &endpoint : options.provider_endpoints) {
-            channel.enable_client (endpoint);
+            client.connect (endpoint);
         }
         if (!options.http_endpoint.empty ()) {
             framework.http ()

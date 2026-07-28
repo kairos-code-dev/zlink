@@ -6,6 +6,7 @@
 
 #include <future>
 #include <iostream>
+#include <map>
 #include <set>
 #include <thread>
 
@@ -33,39 +34,28 @@ inline void run_rm_a2_manual_endpoint_scenario (const client_options_t &options)
     ensure (inflight_reply.provider_rid == "api-a" && inflight_reply.value == "profile:slow",
             "RM-A2 manual in-flight request was disrupted by auto reconcile");
 
-    auto location_client = zlink::http_client::client_t::create ()
-                             .base_url (consumer_url)
-                             .timeout (std::chrono::milliseconds (1000))
-                             .build ();
-    std::set<std::string> location_rids;
-    const auto row_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
-    do {
-        location_rids.clear ();
-        const auto rows = location_client.get ("/locations/peers").async<nlohmann::json> ().result ().value ().body;
-        for (const auto &row : rows) {
-            if (row.value ("mesh_name", "") == api_channel
-                && row.value ("role", "") == "router") {
-                location_rids.insert (row.value ("node_rid", ""));
-            }
-        }
-        if (!(location_rids.contains ("api-a") && location_rids.contains ("api-b"))) {
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
-        }
-    } while (!(location_rids.contains ("api-a") && location_rids.contains ("api-b"))
-             && std::chrono::steady_clock::now () < row_deadline);
-    ensure (location_rids.contains ("api-a") && location_rids.contains ("api-b"),
-            "RM-A2 auto reconcile did not discover both providers");
-
     std::set<std::string> routed_rids;
-    for (int index = 0; index < 80 && routed_rids.size () < 2; ++index) {
+    std::map<std::string, std::string> routed_values;
+    for (int index = 0; index < 16; ++index) {
+        const auto value =
+          "rm-a2-after-" + std::to_string (index);
         const auto routed = post_json<profile_req_t, profile_res_t> (
           consumer_url, "/profile/request",
-          profile_req_t{.value = "rm-a2-after-" + std::to_string (index)});
+          profile_req_t{.value = value});
         routed_rids.insert (routed.provider_rid);
+        routed_values.try_emplace (routed.provider_rid, value);
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
     }
+    std::cout << "RM-A2 routed providers";
+    for (const auto &rid : routed_rids)
+        std::cout << " " << rid;
+    std::cout << std::endl;
     ensure (routed_rids.contains ("api-a") && routed_rids.contains ("api-b"),
             "RM-A2 manual and auto endpoints were not both retained");
     wait_evidence_contains (provider_a_url, "ProfileReq", "rm-a2", std::chrono::seconds (10));
+    wait_evidence_contains (
+      options.http_b_endpoint, "ProfileReq", routed_values.at ("api-b"),
+      std::chrono::seconds (10));
     std::cout << "scenario RM-A2 passed\n";
 }
 

@@ -729,7 +729,13 @@ test('outbound stateful routes use resolved authority generations and never obje
   }
 
   const spot = { spotId: 'spot-a', generation: 6n };
-  assert.equal(runtime.sendToSpot('source', 'node-b', spot, 7n, spot.generation, payload), SubmitResult.NotFound);
+  assert.equal(runtime.sendToSpot('source', 'node-b', spot, 8n, spot.generation, payload), SubmitResult.NotFound);
+  assert.equal(runtime.sendToSpot('source', 'node-b', spot, 7n, spot.generation, payload), SubmitResult.Ok);
+  const firstSpotHeader = decodeStatefulHeader(sent.at(-1)!.parts[0]!);
+  assert.equal(firstSpotHeader.kind, 'spotSend');
+  if (firstSpotHeader.kind === 'spotSend') {
+    assert.equal(firstSpotHeader.target.authorityOwnerGeneration, spot.generation);
+  }
   runtime.rememberSpotRoute({
     spot,
     targetNodeRid: 'node-b',

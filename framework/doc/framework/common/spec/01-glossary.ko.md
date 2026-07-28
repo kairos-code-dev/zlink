@@ -1027,7 +1027,6 @@ Spot Logical Multicast와 물리 연결이나 subscription 상태를 공유하�
 | Monitoring | 조회한 시점의 node, channel, connection과 capacity 상태 |
 | Publish target | publish를 시작할 때 고정한 수신 대상 집합 |
 | Metadata | handler 또는 전송 call에 전달한 시점의 변경 불가능한 metadata 복사본 |
-| `Snapshot` relocation policy | 위 조회 결과와 다른 개념이다. Application state를 byte sequence로 capture하고 target에서 restore하는 정책 이름이다. |
 
 <a id="spot-application-queue"></a>
 ### Spot application queue

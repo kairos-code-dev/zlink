@@ -147,10 +147,18 @@ public interface IZLinkMeshObjectServerBuilder
         where TEntrySpot : class, IZLinkEntrySpot;
     IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
         string actorType,
-        ZLinkActorFactoryOptions? options,
-        ZLinkRelocationPolicy<TActor> relocation)
+        Action<IZLinkActorFactoryBuilder<TActor>> configure)
         where TActor : class, IZLinkActor
         where TFactory : class, IZLinkActorFactory<TActor>;
+}
+
+public interface IZLinkActorFactoryBuilder<TActor>
+    where TActor : class, IZLinkActor
+{
+    IZLinkActorFactoryBuilder<TActor> DisableRelocation();
+    IZLinkActorFactoryBuilder<TActor> RecreateOnRelocation();
+    IZLinkActorFactoryBuilder<TActor> PreserveStateWith<TAdapter>()
+        where TAdapter : class, IZLinkActorRelocationAdapter<TActor>;
 }
 ```
 
@@ -163,16 +171,15 @@ mesh.Objects()
     .Server()
     .AddActorFactory<PlayerActor, PlayerActorFactory>(
         "player",
-        options: null,
-        relocation: ZLinkRelocationPolicy<PlayerActor>.Recreate);
-        // Stable type, factory와 relocation policy를 한 등록에 함께 고정한다.
+        factory => factory.RecreateOnRelocation());
+        // Stable type, factory와 relocation 방식을 한 등록에 함께 고정한다.
 ```
 
 Actor, User Spot과 Instance Spot factory를 등록할 때는 다음 두 값을 반드시 함께
 지정한다.
 
 - UTF-8 `1..255` bytes의 [stable type](01-glossary.ko.md#stable-type)
-- `Disabled`, `Recreate`, `Snapshot` 중 하나의 relocation policy
+- `DisableRelocation`, `RecreateOnRelocation`, `PreserveStateWith` 중 하나의 relocation 방식
 
 Stable type은 대소문자를 구분하는 exact value다. Framework는 normalization을
 적용하지 않으며 언어의 class FQN을 wire나 Store identity로 사용하지 않는다. 같은

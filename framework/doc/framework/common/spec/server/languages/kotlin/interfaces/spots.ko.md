@@ -105,12 +105,12 @@ authority 경쟁만 보여 준다. Handler의 terminal completion 또는 reply�
 
 Kotlin은 Java `ZLinkSpotRelocationAdapter<TSpot>`를 그대로 구현한다. Opaque `byte[]`는 `ByteArray`로 보이고
 `capture`와 `restore`는 Java 계약과 같은 `CompletionStage`를 반환한다. 별도 suspending Spot adapter,
-`TState`, `stateContractId`, state class와 `ZLinkMessage` relocation surface는 제공하지 않는다. Snapshot policy는
+`TState`, `stateContractId`, state class와 `ZLinkMessage` relocation surface는 제공하지 않는다. State 보존 factory는
 `preserveStateWith(SpotAdapter::class.java)`를 사용하고 factory target과 adapter type은 socket bind
 전에 검증한다.
 
-Snapshot whole User Spot relocation은 Spot 자체에 Spot adapter를, member Actor마다 Actor adapter를 사용한다.
-Snapshot Instance Spot relocation은 Spot adapter를 사용한다. Same-node operation, `Disabled`와 `Recreate`에서는
+State를 보존하는 whole User Spot relocation은 Spot 자체에 Spot adapter를, member Actor마다 Actor adapter를 사용한다.
+State를 보존하는 Instance Spot relocation은 Spot adapter를 사용한다. Same-node operation, `disableRelocation`과 `recreateOnRelocation`에서는
 adapter를 호출하지 않는다. Capture `ByteArray`는 최대 64 MiB이며 adapter가 completion까지 소유한다. Java
 runtime은 completion에서 복사한다.
 Restore는 호출마다 fresh defensive copy를 받고 completion 뒤 보관하지 않는다. Empty `ByteArray`도 유효한

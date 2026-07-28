@@ -510,7 +510,7 @@ factory에는 `spot_relocation_adapter_t<TSpot>`가 필요하다. Factory 종류
 일치하지 않으면 socket bind 전에 configuration error로 실패한다.
 
 `user_spot_execution_mode_t::per_actor`는 recreate Spot policy만 허용한다. Disabled나
-Snapshot Spot policy를 함께 등록하면 socket bind 전에 configuration error다.
+state 보존 Spot policy를 함께 등록하면 socket bind 전에 configuration error다.
 PerActor Spot은 stateless execution shell이며 Actor policy와
 `actor_relocation_adapter_t<TActor>`가 Actor state를 각각 처리한다.
 

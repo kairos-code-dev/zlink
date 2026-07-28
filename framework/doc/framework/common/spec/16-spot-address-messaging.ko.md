@@ -429,11 +429,11 @@ generation과 moving conflict는 typed failure다. Source는 current ref를 다�
 ## 8. Maintenance materialization
 
 이미 존재하는 Spot owner의 이동은 명시적인 host `Relocate` transaction만 시작한다. [Object Server](01-glossary.ko.md#object-client와-object-server-role) factory는
-`Disabled`, `Recreate`, `Snapshot` 중 하나의 policy를 반드시 등록한다. 생략 overload와 compatibility
-default는 제공하지 않는다. [Snapshot](01-glossary.ko.md#relocation-policy)은 Spot type에 맞는 `SpotRelocationAdapter`를 요구한다. Adapter는
+`DisableRelocation`, `RecreateOnRelocation`, `PreserveStateWith` 중 하나를 반드시 선택한다. 생략 overload와 compatibility
+default는 제공하지 않는다. `PreserveStateWith`는 Spot type에 맞는 `SpotRelocationAdapter`를 요구한다. Adapter는
 application이 형식과 version을 관리하는 opaque byte sequence를 capture·restore한다.
 
-`PerActor` User Spot은 `Recreate`만 허용하고 Spot adapter를 사용하지 않는다.
+`PerActor` User Spot은 `RecreateOnRelocation`만 허용하고 Spot adapter를 사용하지 않는다.
 Target Spot shell은 같은 public SpotId와 ObjectGeneration을 유지하지만 Location
 Store authority가 target으로 바뀌기 전까지 resolver와 application handler에
 노출하지 않는다. 임시 public SpotId를 만들거나 생성 뒤 SpotId를 바꾸지 않는다.

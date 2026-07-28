@@ -197,12 +197,12 @@ type을 사용한다. Missing authority라면 placement가 선택한 Mesh에서 
 [owner](../../../../01-glossary.ko.md#owner)로 재배치하지 않으며 일반 User Spot messaging에도 적용하지 않는다. 이 option과
 Instance marker는 한 번만 설정할 수 있고 terminal `submit`도 한 번만 호출할 수 있다.
 
-User·Instance Spot factory의 `Snapshot` policy는 factory type에 맞는
+User·Instance Spot factory의 `preserveStateWith` 등록은 factory type에 맞는
 `ZLinkSpotRelocationAdapter<TSpot>` class를 받는다. Adapter는 application state를 최대 64 MiB의 opaque `byte[]`로
 capture·restore하며 `TState`, `stateContractId`, state class와 `ZLinkMessage`를 사용하지 않는다. Framework는
 capture 결과를 즉시 복사한다. Capture 배열은 adapter가 계속 소유하며 completion 뒤 변경해도 저장 payload가
 바뀌지 않는다. Restore에는 호출마다 fresh defensive copy를 전달하고 adapter는 stage가 끝난 뒤 배열을 보관하지
-않는다. 길이가 0인 배열도 유효한 Snapshot state이며 Restore를 생략하거나 `Recreate`로 해석하지 않는다.
+않는다. 길이가 0인 배열도 유효한 application state이며 Restore를 생략하거나 `recreateOnRelocation`으로 해석하지 않는다.
 Whole User Spot relocation에서는 Spot 자체에 Spot adapter를 사용하고 각 Actor participant에는 해당 Actor type의
 `ZLinkActorRelocationAdapter`를 사용한다.
 Instance Spot relocation에는 Spot adapter를 사용한다. Same-node operation과 `Disabled` policy에서는 adapter를

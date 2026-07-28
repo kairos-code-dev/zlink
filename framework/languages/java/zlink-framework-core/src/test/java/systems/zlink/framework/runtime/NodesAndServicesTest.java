@@ -26,11 +26,12 @@ import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
-import systems.zlink.framework.actors.ZLinkRelocationPolicy;
 import systems.zlink.framework.runtime.InMemoryRelocationStore;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
+import systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode;
+import systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -45,6 +46,72 @@ import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class NodesAndServicesTest {
+    @Test
+    void factoryBuilderRequiresOneRelocationChoiceAndKeepsDocumentedDefaults() {
+        var missing = new DefaultZLinkFrameworkOptions();
+        var missingObjects = missing.addRouteMesh("missing-policy")
+            .objects()
+            .server();
+        assertThrows(
+            ZLinkConfigurationException.class,
+            () -> missingObjects.addSpotFactory(
+                "room",
+                RoomSpot.class,
+                factory -> factory.stableTypeLimit(12)));
+
+        var duplicate = new DefaultZLinkFrameworkOptions();
+        var duplicateObjects = duplicate.addRouteMesh("duplicate-policy")
+            .objects()
+            .server();
+        assertThrows(
+            ZLinkConfigurationException.class,
+            () -> duplicateObjects.addSpotFactory(
+                "room",
+                RoomSpot.class,
+                factory -> {
+                    factory.disableRelocation();
+                    factory.recreateOnRelocation();
+                }));
+
+        var perActor = new DefaultZLinkFrameworkOptions();
+        var perActorObjects = perActor.addRouteMesh("per-actor-readiness")
+            .objects()
+            .server();
+        assertThrows(
+            ZLinkConfigurationException.class,
+            () -> perActorObjects.addSpotFactory(
+                "room",
+                RoomSpot.class,
+                factory -> {
+                    factory.executionMode(ZLinkUserSpotExecutionMode.PER_ACTOR);
+                    factory.relocationReadiness(
+                        ZLinkSpotRelocationReadinessMode.APPLICATION_SIGNALED);
+                    factory.disableRelocation();
+                }));
+
+        var defaults = new DefaultZLinkFrameworkOptions();
+        defaults.addRouteMesh("factory-defaults")
+            .objects()
+            .server()
+            .addSpotFactory(
+                "room",
+                RoomSpot.class,
+                factory -> factory.disableRelocation());
+        var configuration = defaults.registration()
+            .meshNodes()
+            .getFirst()
+            .relocatableSpotFactories()
+            .get("room")
+            .options();
+        assertEquals(0, configuration.stableTypeLimit());
+        assertEquals(
+            ZLinkUserSpotExecutionMode.SPOT_WIDE,
+            configuration.executionMode());
+        assertEquals(
+            ZLinkSpotRelocationReadinessMode.ANY_TURN_BOUNDARY,
+            configuration.relocationReadiness());
+    }
+
     @Test
     void addZLinkFramework_throws_whenSpotFactoryTypeIsDuplicatedOnMeshNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
@@ -179,15 +246,11 @@ final class NodesAndServicesTest {
             .addSpotFactory(
                 "room",
                 RoomSpot.class,
-                new systems.zlink.framework.configuration
-                    .ZLinkUserSpotFactoryOptions(0),
-                ZLinkRelocationPolicy.disabled())
+                factory -> factory.disableRelocation())
             .addSpotFactory(
                 "client",
                 ClientSpot.class,
-                new systems.zlink.framework.configuration
-                    .ZLinkUserSpotFactoryOptions(0),
-                ZLinkRelocationPolicy.disabled());
+                factory -> factory.disableRelocation());
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {

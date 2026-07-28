@@ -3,6 +3,8 @@ package systems.zlink.framework.kotlin
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorDirectory
+import systems.zlink.framework.actors.ZLinkActor
+import systems.zlink.framework.actors.ZLinkActorFactory
 import systems.zlink.framework.actors.ZLinkActorClient
 import systems.zlink.framework.actors.ZLinkActorRequestCall
 import systems.zlink.framework.actors.ActorRef
@@ -13,7 +15,9 @@ import systems.zlink.framework.channels.ZLinkFanoutPublishCall
 import systems.zlink.framework.channels.ZLinkRequestCall
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkSendCall
+import systems.zlink.framework.configuration.ZLinkActorFactoryBuilder
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions
+import systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder
 import systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder
 import systems.zlink.framework.locations.ZLinkLocationReadiness
 import systems.zlink.framework.locations.ZLinkLocationRole
@@ -148,3 +152,16 @@ fun ZLinkFrameworkOptions.configureStreamCompression(
     configureStreamCompression().configure()
     return this
 }
+
+inline fun <reified TActor, reified TFactory>
+    ZLinkMeshObjectServerBuilder.actorFactory(
+        actorType: String,
+        noinline configure: ZLinkActorFactoryBuilder<TActor>.() -> Unit,
+    ): ZLinkMeshObjectServerBuilder
+    where TActor : ZLinkActor,
+          TFactory : ZLinkActorFactory =
+    addActorFactory(
+        actorType,
+        TActor::class.java,
+        TFactory::class.java,
+    ) { factory -> factory.configure() }

@@ -11,12 +11,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.spotactortransfer.shared.Contracts;
-import systems.zlink.framework.actors.ZLinkRelocationPolicy;
-import systems.zlink.framework.configuration.ZLinkActorFactoryOptions;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder;
-import systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions;
@@ -123,8 +120,7 @@ public final class Program {
             objects.addSpotFactory(
                 TransferComponents.TransferUserSpot.class.getName(),
                 TransferComponents.TransferUserSpot.class,
-                new ZLinkUserSpotFactoryOptions(0),
-                ZLinkRelocationPolicy.disabled());
+                factory -> factory.disableRelocation());
             options.addStreamNode("spot-transfer-session-" + nodeRid)
                 .bind(config.streamEndpoint())
                 .enableActorDispatch(Contracts.MESH)
@@ -140,11 +136,14 @@ public final class Program {
             actorType,
             TransferComponents.TransferActor.class,
             TransferComponents.TransferActorFactory.class,
-            new ZLinkActorFactoryOptions(),
-            adapter
-                ? ZLinkRelocationPolicy.snapshot(
-                    TransferComponents.TransferActorAdapter.class)
-                : ZLinkRelocationPolicy.recreate());
+            factory -> {
+                if (adapter) {
+                    factory.preserveStateWith(
+                        TransferComponents.TransferActorAdapter.class);
+                } else {
+                    factory.recreateOnRelocation();
+                }
+            });
     }
 
     @Bean

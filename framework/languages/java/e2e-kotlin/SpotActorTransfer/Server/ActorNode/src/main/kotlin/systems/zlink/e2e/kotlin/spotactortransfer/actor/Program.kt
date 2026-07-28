@@ -11,11 +11,8 @@ import org.springframework.context.annotation.Bean
 import org.springframework.core.env.StandardEnvironment
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.e2e.spotactortransfer.shared.Contracts
-import systems.zlink.framework.actors.ZLinkRelocationPolicy
-import systems.zlink.framework.configuration.ZLinkActorFactoryOptions
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder
-import systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions
@@ -105,9 +102,7 @@ class Application {
         objects.addSpotFactory(
             TransferUserSpot::class.java.name,
             TransferUserSpot::class.java,
-            ZLinkUserSpotFactoryOptions(0),
-            ZLinkRelocationPolicy.disabled(),
-        )
+        ) { factory -> factory.disableRelocation() }
         options.addStreamNode("spot-transfer-session-$nodeRid")
             .bind(config.streamEndpoint)
             .enableActorDispatch(Contracts.MESH)
@@ -123,10 +118,10 @@ class Application {
             actorType,
             TransferActor::class.java,
             TransferActorFactory::class.java,
-            ZLinkActorFactoryOptions(),
-            if (adapter) ZLinkRelocationPolicy.snapshot(TransferActorAdapter::class.java)
-            else ZLinkRelocationPolicy.recreate(),
-        )
+        ) { factory ->
+            if (adapter) factory.preserveStateWith(TransferActorAdapter::class.java)
+            else factory.recreateOnRelocation()
+        }
     }
 
     @Bean

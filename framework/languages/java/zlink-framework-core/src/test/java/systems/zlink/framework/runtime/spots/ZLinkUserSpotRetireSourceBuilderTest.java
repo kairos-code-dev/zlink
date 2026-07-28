@@ -14,8 +14,6 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkRelocationCancellation;
-import systems.zlink.framework.actors.ZLinkRelocationPolicy;
-import systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions;
 import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.InMemoryRelocationStore;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
@@ -161,8 +159,7 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
         mesh.objects().server().addSpotFactory(
             STABLE_TYPE,
             LiveSpot.class,
-            new ZLinkUserSpotFactoryOptions(0),
-            ZLinkRelocationPolicy.snapshot(SnapshotAdapter.class));
+            factory -> factory.preserveStateWith(SnapshotAdapter.class));
         options.validate();
         return options;
     }

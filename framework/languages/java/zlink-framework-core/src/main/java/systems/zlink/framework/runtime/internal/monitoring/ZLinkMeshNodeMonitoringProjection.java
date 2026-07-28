@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import systems.zlink.framework.actors.ZLinkRelocationPolicy;
 import systems.zlink.framework.locations.ZLinkCapacityUsage;
 import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
 import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
@@ -115,16 +114,19 @@ public record ZLinkMeshNodeMonitoringProjection(
         ZLinkPlacementObjectKind kind,
         String stableType,
         int stableTypeLimit,
-        ZLinkRelocationPolicy<?> policy) {
+        MeshNodeRegistration.RelocationPolicy policy) {
         return new ZLinkObjectCapability(
             kind,
             stableType,
-            policy instanceof ZLinkRelocationPolicy.Snapshot<?>
+            policy
+                instanceof MeshNodeRegistration.RelocationPolicy.PreserveState
                 ? ZLinkObjectMaintenancePolicyKind.SNAPSHOT
-                : policy instanceof ZLinkRelocationPolicy.Recreate<?>
+                : policy
+                    instanceof MeshNodeRegistration.RelocationPolicy.Recreate
                     ? ZLinkObjectMaintenancePolicyKind.RECREATE
                     : ZLinkObjectMaintenancePolicyKind.DISABLED,
-            policy instanceof ZLinkRelocationPolicy.Snapshot<?>,
+            policy
+                instanceof MeshNodeRegistration.RelocationPolicy.PreserveState,
             kind == ZLinkPlacementObjectKind.ACTOR ? 0 : stableTypeLimit);
     }
 }

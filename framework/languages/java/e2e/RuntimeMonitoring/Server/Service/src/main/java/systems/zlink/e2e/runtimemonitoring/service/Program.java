@@ -20,10 +20,8 @@ import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceHttpServer;
 import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceState;
 import systems.zlink.e2e.runtimemonitoring.service.support.ObserverIsolationProbe;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
-import systems.zlink.framework.actors.ZLinkRelocationPolicy;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
-import systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -150,13 +148,11 @@ public final class Program {
                 objects.addSpotFactory(
                     Contracts.MONITORING_SPOT_TYPE,
                     MonitoringSpot.class,
-                    new ZLinkUserSpotFactoryOptions(0),
-                    ZLinkRelocationPolicy.disabled());
+                    factory -> factory.disableRelocation());
                 objects.addSpotFactory(
                     Contracts.TRIGGERED_MONITORING_SPOT_TYPE,
                     TriggeredMonitoringSpot.class,
-                    new ZLinkUserSpotFactoryOptions(0),
-                    ZLinkRelocationPolicy.disabled());
+                    factory -> factory.disableRelocation());
             }
         };
     }

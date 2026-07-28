@@ -13,7 +13,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkRelocationCancellation;
-import systems.zlink.framework.actors.ZLinkRelocationPolicy;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
@@ -199,7 +198,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
             var factory = factories.get(stableType);
             if (factory == null
                 || factory.relocationPolicy()
-                    instanceof ZLinkRelocationPolicy.Disabled<?>) {
+                    instanceof MeshNodeRegistration.RelocationPolicy.Disabled) {
                 return failed(new IllegalStateException(
                     "Actor relocation policy is unavailable: " + stableType));
             }
@@ -220,7 +219,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
                 stableType,
                 snapshot,
                 factory.relocationPolicy()
-                    instanceof ZLinkRelocationPolicy.Snapshot<?>));
+                    instanceof MeshNodeRegistration.RelocationPolicy.PreserveState));
         });
     }
 
@@ -294,7 +293,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
         var factory = factories.get(actor.stableType());
         ZLinkObjectMaintenancePolicyKind policy =
             factory.relocationPolicy()
-                instanceof ZLinkRelocationPolicy.Snapshot<?>
+                instanceof MeshNodeRegistration.RelocationPolicy.PreserveState
                 ? ZLinkObjectMaintenancePolicyKind.SNAPSHOT
                 : ZLinkObjectMaintenancePolicyKind.RECREATE;
         return candidate.objectCapabilities().stream().anyMatch(capability ->

@@ -15,7 +15,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.*;
-import systems.zlink.framework.configuration.ZLinkActorFactoryOptions;
 import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.InMemoryRelocationStore;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
@@ -253,8 +252,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
             ACTOR_TYPE,
             TestActor.class,
             TestActorFactory.class,
-            new ZLinkActorFactoryOptions(),
-            ZLinkRelocationPolicy.snapshot(SnapshotAdapter.class));
+            factory -> factory.preserveStateWith(SnapshotAdapter.class));
         options.validate();
         return options;
     }

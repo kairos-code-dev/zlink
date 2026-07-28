@@ -12,8 +12,6 @@ import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorRelocationAdapter;
 import systems.zlink.framework.actors.ZLinkRelocationCancellation;
-import systems.zlink.framework.actors.ZLinkRelocationPolicy;
-import systems.zlink.framework.configuration.ZLinkActorFactoryOptions;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
@@ -29,8 +27,7 @@ final class ZLinkRelocationAdapterRegistryTest {
             "player",
             TestActor.class,
             TestActorFactory.class,
-            new ZLinkActorFactoryOptions(),
-            ZLinkRelocationPolicy.snapshot(TestActorAdapter.class));
+            factory -> factory.preserveStateWith(TestActorAdapter.class));
         node.validate();
         registration.meshNodes().add(node);
 

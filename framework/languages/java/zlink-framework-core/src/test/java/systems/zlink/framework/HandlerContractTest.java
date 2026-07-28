@@ -291,12 +291,6 @@ final class HandlerContractTest {
                 .getModifiers()));
         assertFalse(hasMethod(ZLinkActorJoinCall.class, "yield"));
 
-        var defaults = new systems.zlink.framework.configuration
-            .ZLinkUserSpotFactoryOptions(0);
-        assertEquals(
-            systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode
-                .SPOT_WIDE,
-            defaults.executionMode());
         assertEquals(
             1,
             systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode

@@ -20,9 +20,6 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
-import systems.zlink.framework.actors.ZLinkRelocationPolicy;
-import systems.zlink.framework.configuration.ZLinkActorFactoryOptions;
-import systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -99,8 +96,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         mesh.objects().server().addSpotFactory(
             "location-spot",
             LocationSpot.class,
-            new ZLinkUserSpotFactoryOptions(0),
-            ZLinkRelocationPolicy.disabled());
+            factory -> factory.disableRelocation());
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -143,8 +139,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         mesh.objects().server().addSpotFactory(
             "location-spot",
             LocationSpot.class,
-            new ZLinkUserSpotFactoryOptions(0),
-            ZLinkRelocationPolicy.disabled());
+            factory -> factory.disableRelocation());
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(
@@ -212,9 +207,7 @@ class ZLinkFrameworkLocationRuntimeTest {
             "player",
             LocationActor.class,
             LocationActorFactory.class,
-            new ZLinkActorFactoryOptions(),
-            systems.zlink.framework.actors.ZLinkRelocationPolicy
-                .<LocationActor>disabled());
+            factory -> factory.disableRelocation());
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(
@@ -264,9 +257,7 @@ class ZLinkFrameworkLocationRuntimeTest {
             "player",
             LocationActor.class,
             BlockingLocationActorFactory.class,
-            new ZLinkActorFactoryOptions(),
-            systems.zlink.framework.actors.ZLinkRelocationPolicy
-                .<LocationActor>disabled());
+            factory -> factory.disableRelocation());
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(
@@ -321,13 +312,11 @@ class ZLinkFrameworkLocationRuntimeTest {
             "player",
             LocationActor.class,
             LocationActorFactory.class,
-            new ZLinkActorFactoryOptions(),
-            ZLinkRelocationPolicy.<LocationActor>disabled());
+            factory -> factory.disableRelocation());
         mesh.objects().server().addSpotFactory(
             "location-spot",
             LocationSpot.class,
-            new ZLinkUserSpotFactoryOptions(0),
-            ZLinkRelocationPolicy.disabled());
+            factory -> factory.disableRelocation());
         RoutingId actualNodeRid = options.registration().meshNodes().getFirst().routingId();
 
         try (ZLinkFrameworkRuntime runtime =

@@ -195,7 +195,7 @@ class KotlinPublicSurfaceContractTest {
         // interfaces (actors.ko.md:213-216, spots.ko.md:345-348), which the Kotlin module does
         // not declare yet, so they are tracked as a contract gap rather than asserted here.
         val expectedFunctionNames = setOf(
-            "actorRef", "addHandler", "actors", "asFlow", "await", "awaitReply",
+            "actorFactory", "actorRef", "addHandler", "actors", "asFlow", "await", "awaitReply",
             "bindOrGetActor", "changes",
             "configureStreamCompression", "configureDispatch", "decode",
             "ensureActor", "errors", "findActor", "isPeerReady", "kotlin",
@@ -251,6 +251,7 @@ class KotlinPublicSurfaceContractTest {
                 "sendToSpotCall" to 1, "requestToSpotAwait" to 1,
                 "publishToTopic" to 1,
                 "configureStreamCompression" to 1,
+                "actorFactory" to 1,
             ),
         )
         assertFacadeMethodCounts(
@@ -349,7 +350,7 @@ class KotlinPublicSurfaceContractTest {
             "ZLinkCoroutineHandlerOptionsKt" to "67fda6a26015bcd374098db883ec13f012b2536da914e6b3e8fb0f6aea9e86f4",
             "ZLinkCoroutineTurnAwaitKt" to "0e58ca9d82f2e14d26e4763e955296534d7ce8e863c8fdd5b5231148a5661d5f",
             "ZLinkDispatchOptionsExtensionsKt" to "eb26c767da350a140c90c974e5485a3ba7af9265bb0f6badec8a381efb591443",
-            "ZLinkFrameworkExtensionsKt" to "70879a004d357017503c6c3ed9824fb4cdd75875969631d054c2b857c1bd118c",
+            "ZLinkFrameworkExtensionsKt" to "269802638a1b53095e969d738fbf4789b295cc3e388e03729f82f7523e5b5bfb",
             "ZLinkLocationExtensionsKt" to "46e8044eb9e9cfb26fb9f97aaf78dd537574d00ddc7f53ffd0ebde3c1ae80873",
             "ZLinkMessageExtensionsKt" to "836b0c8038be8ee1beae9f8cf1f59cbd7e0811e936d1a4d47e7625b37abdaa9e",
             "ZLinkSpotHandlerRegistryExtensionsKt" to "0cc8a319eb99070b97332cab96c480fc74c14b9b160b022fa8d60ab4de814196",

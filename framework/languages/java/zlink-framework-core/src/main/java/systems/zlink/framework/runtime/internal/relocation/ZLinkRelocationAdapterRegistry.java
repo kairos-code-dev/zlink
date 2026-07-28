@@ -6,7 +6,6 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorRelocationAdapter;
 import systems.zlink.framework.actors.ZLinkRelocationCancellation;
-import systems.zlink.framework.actors.ZLinkRelocationPolicy;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
@@ -25,11 +24,11 @@ public final class ZLinkRelocationAdapterRegistry {
         Map<String, Class<?>> spots = new LinkedHashMap<>();
         for (MeshNodeRegistration node : registration.meshNodes()) {
             node.relocatableActorFactories().forEach((stableType, factory) ->
-                addSnapshot(actors, stableType, factory.relocationPolicy()));
+                addPreservedState(actors, stableType, factory.relocationPolicy()));
             node.relocatableSpotFactories().forEach((stableType, factory) ->
-                addSnapshot(spots, stableType, factory.relocationPolicy()));
+                addPreservedState(spots, stableType, factory.relocationPolicy()));
             node.relocatableInstanceSpotFactories().forEach((stableType, factory) ->
-                addSnapshot(spots, stableType, factory.relocationPolicy()));
+                addPreservedState(spots, stableType, factory.relocationPolicy()));
         }
         actorAdapters = Map.copyOf(actors);
         spotAdapters = Map.copyOf(spots);
@@ -113,12 +112,14 @@ public final class ZLinkRelocationAdapterRegistry {
         return activator.create(adapterType);
     }
 
-    private static void addSnapshot(
+    private static void addPreservedState(
         Map<String, Class<?>> adapters,
         String stableType,
-        ZLinkRelocationPolicy<?> policy) {
-        if (policy instanceof ZLinkRelocationPolicy.Snapshot<?> snapshot) {
-            adapters.put(stableType, snapshot.adapterClass());
+        MeshNodeRegistration.RelocationPolicy policy) {
+        if (policy
+            instanceof MeshNodeRegistration.RelocationPolicy.PreserveState
+                preserveState) {
+            adapters.put(stableType, preserveState.adapterClass());
         }
     }
 }

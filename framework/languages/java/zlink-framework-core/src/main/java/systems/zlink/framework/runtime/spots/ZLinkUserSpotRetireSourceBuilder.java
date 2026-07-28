@@ -16,7 +16,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkRelocationCancellation;
-import systems.zlink.framework.actors.ZLinkRelocationPolicy;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
@@ -386,12 +385,13 @@ final class ZLinkUserSpotRetireSourceBuilder {
 
     private static CompletionStage<byte[]> captureState(
         String stableType,
-        ZLinkRelocationPolicy<?> policy,
+        MeshNodeRegistration.RelocationPolicy policy,
         java.util.function.Supplier<CompletionStage<byte[]>> capture) {
-        if (policy instanceof ZLinkRelocationPolicy.Recreate<?>) {
+        if (policy instanceof MeshNodeRegistration.RelocationPolicy.Recreate) {
             return CompletableFuture.completedFuture(new byte[0]);
         }
-        if (policy instanceof ZLinkRelocationPolicy.Snapshot<?>) {
+        if (policy
+            instanceof MeshNodeRegistration.RelocationPolicy.PreserveState) {
             return Objects.requireNonNull(
                     capture.get(),
                     "Capture returned null")
@@ -461,7 +461,7 @@ final class ZLinkUserSpotRetireSourceBuilder {
     }
 
     private Owned withPolicy(Owned owned) {
-        ZLinkRelocationPolicy<?> policy;
+        MeshNodeRegistration.RelocationPolicy policy;
         if (owned.snapshot().allocation().objectKind()
             == ZLinkPlacementObjectKind.USER_SPOT) {
             var factory = spotFactories.get(owned.stableType());
@@ -471,7 +471,8 @@ final class ZLinkUserSpotRetireSourceBuilder {
             policy = factory == null ? null : factory.relocationPolicy();
         }
         if (policy == null
-            || policy instanceof ZLinkRelocationPolicy.Disabled<?>) {
+            || policy
+                instanceof MeshNodeRegistration.RelocationPolicy.Disabled) {
             throw new IllegalStateException(
                 "relocation policy is unavailable: " + owned.stableType());
         }
@@ -692,18 +693,21 @@ final class ZLinkUserSpotRetireSourceBuilder {
     }
 
     private static ZLinkObjectMaintenancePolicyKind policyKind(
-        ZLinkRelocationPolicy<?> policy) {
-        if (policy instanceof ZLinkRelocationPolicy.Snapshot<?>) {
+        MeshNodeRegistration.RelocationPolicy policy) {
+        if (policy
+            instanceof MeshNodeRegistration.RelocationPolicy.PreserveState) {
             return ZLinkObjectMaintenancePolicyKind.SNAPSHOT;
         }
-        if (policy instanceof ZLinkRelocationPolicy.Recreate<?>) {
+        if (policy instanceof MeshNodeRegistration.RelocationPolicy.Recreate) {
             return ZLinkObjectMaintenancePolicyKind.RECREATE;
         }
         return ZLinkObjectMaintenancePolicyKind.DISABLED;
     }
 
-    private static boolean isSnapshot(ZLinkRelocationPolicy<?> policy) {
-        return policy instanceof ZLinkRelocationPolicy.Snapshot<?>;
+    private static boolean isSnapshot(
+        MeshNodeRegistration.RelocationPolicy policy) {
+        return policy
+            instanceof MeshNodeRegistration.RelocationPolicy.PreserveState;
     }
 
     private static ZLinkAggregateRelocationCoordinator.Request
@@ -1079,7 +1083,7 @@ final class ZLinkUserSpotRetireSourceBuilder {
         String id,
         String stableType,
         ZLinkAuthoritySnapshot snapshot,
-        ZLinkRelocationPolicy<?> policy) {
+        MeshNodeRegistration.RelocationPolicy policy) {
     }
 
     private record Captured(

@@ -92,13 +92,6 @@ enum class object_role_t : std::uint8_t {
     server = 2
 };
 
-struct actor_placement_options_t {
-};
-
-struct spot_placement_options_t {
-    std::int32_t stable_type_limit = 0;
-};
-
 enum class user_spot_execution_mode_t {
     spot_wide = 0,
     per_actor = 1
@@ -489,9 +482,10 @@ manager, factory와 hidden local object runtime을 만들지 않는다. Placemen
 0은 새 create·relocation target에서만 제외한다. 범위 밖 값은 startup 설정과 runtime 변경에서
 configuration error다. Node Actor limit과 Node Spot limit의 기본값은 `0`이며 제한 없음을 뜻한다.
 `set_actor_limit(...)`은 Entry Spot과 User Spot에 존재하는 모든 Actor를 계산하고,
-`set_spot_limit(...)`은 User·Instance Spot을 계산하지만 Entry Spot은 제외한다. 두 limit과
-`spot_placement_options_t::stable_type_limit`은 `0..2147483647`만 허용하며 음수는 socket bind 전에
-configuration error다. Actor stable type별 limit은 제공하지 않는다.
+`set_spot_limit(...)`은 User·Instance Spot을 계산하지만 Entry Spot은 제외한다. 두 node limit은
+`0..2147483647`을 허용하며 `0`은 제한 없음을 뜻한다. User·Instance Spot factory의 stable type limit을
+명시하면 범위는 `1..2147483647`이다. 생략하면 해당 stable type에 별도 제한을 두지 않는다.
+Actor stable type별 limit은 제공하지 않는다.
 
 `set_activation_concurrency(...)`는 factory와 initialization의 process-local 동시 실행 gate를 설정하며
 기본값은 `128`이고 양수만 허용한다. `0`이나 음수는 socket bind 전에 configuration error다. Population

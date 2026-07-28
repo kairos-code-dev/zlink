@@ -277,20 +277,30 @@ void room_timer_handler_t::handle (room_spot_t &spot, const fw::timer_tick_t &) 
     spot.publish_timer_marker ();
 }
 
-struct obs_actor_t
+struct obs_actor_t : fw::actor_t
 {
-    explicit obs_actor_t (std::string id) : actor_id (std::move (id)) {}
-
-    void set_actor_ref (const fw::actor_ref_t &value) { actor_ref = value; }
+    explicit obs_actor_t (fw::actor_context_t value) :
+        actor_id (value.actor_ref ().actor_id ()),
+        actor_ref (value.actor_ref ()),
+        actor_context (std::move (value))
+    {
+    }
+    fw::actor_context_t &context () noexcept override { return actor_context; }
+    const fw::actor_context_t &context () const noexcept override { return actor_context; }
 
     std::string actor_id;
     int total = 0;
     fw::actor_ref_t actor_ref;
+    fw::actor_context_t actor_context;
 };
 
-struct obs_actor_factory_t
+struct obs_actor_factory_t final : fw::actor_factory_t<obs_actor_t>
 {
-    obs_actor_t create (std::string actor_id) const { return obs_actor_t (std::move (actor_id)); }
+    fw::task_t<std::shared_ptr<obs_actor_t>>
+    create (fw::actor_context_t context, std::stop_token) override
+    {
+        co_return std::make_shared<obs_actor_t> (std::move (context));
+    }
 };
 
 /* Entry spot hosts the player actors: admission accepts every join and the
@@ -754,8 +764,9 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
                     [] (auto &factory) {
                         factory.disable_relocation ();
                     })
-                  .add_actor_factory<obs_actor_factory_t> (
+                  .add_actor_factory<obs_actor_t, obs_actor_factory_t> (
                     obs::actor_type,
+                    std::make_shared<obs_actor_factory_t> (),
                     [] (auto &factory) {
                         factory.disable_relocation ();
                     });

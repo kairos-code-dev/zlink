@@ -14,10 +14,10 @@ using namespace framework;
 using framework::actor_ref_t;
 using framework::message_t;
 
-struct player_actor_t
+struct player_actor_t : framework::actor_t
 {
     mutable actor_ref_snapshot_t actor;
-    mutable std::unique_ptr<actor_context_t> context;
+    mutable std::unique_ptr<actor_context_t> actor_context;
     std::string display_name;
     mutable bool destroy_after_entry_spot_join = false;
     mutable bool disconnected = false;
@@ -36,7 +36,7 @@ struct player_actor_t
             display_name = other.display_name;
             destroy_after_entry_spot_join = other.destroy_after_entry_spot_join;
             disconnected = other.disconnected;
-            context.reset ();
+            actor_context.reset ();
         }
         return *this;
     }
@@ -52,8 +52,12 @@ struct player_actor_t
 
     void set_actor_context (actor_context_t actor_context) const
     {
-        context = std::make_unique<actor_context_t> (std::move (actor_context));
+        this->actor_context =
+          std::make_unique<actor_context_t> (std::move (actor_context));
     }
+
+    actor_context_t &context () noexcept override { return *actor_context; }
+    const actor_context_t &context () const noexcept override { return *actor_context; }
 
     void mark_for_destroy_after_room_leave () const { destroy_after_entry_spot_join = true; }
 
@@ -61,7 +65,7 @@ struct player_actor_t
 
     template <typename TNotify> void push (const TNotify &notify) const
     {
-        context->bound_session ().send (notify).submit ();
+        actor_context->bound_session ().send (notify).submit ();
     }
 };
 

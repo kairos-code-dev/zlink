@@ -912,6 +912,20 @@ struct contract_context_spot_relocation_adapter_t
     : public zlink::framework::spot_relocation_adapter_t<
         contract_context_spot_t>
 {
+    zlink::framework::task_t<std::vector<std::byte>>
+    capture (contract_context_spot_t &,
+             std::stop_token) override
+    {
+        co_return std::vector<std::byte>{};
+    }
+
+    zlink::framework::task_t<void>
+    restore (contract_context_spot_t &,
+             std::vector<std::byte>,
+             std::stop_token) override
+    {
+        co_return;
+    }
 };
 
 struct contract_context_entry_spot_t : public zlink::framework::entry_spot_t
@@ -1548,7 +1562,9 @@ static_assert (std::variant_size_v<
 static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
-                .add_actor_factory<contract_exact_actor_t> (
+                .add_actor_factory<
+                  contract_exact_actor_t,
+                  contract_exact_actor_factory_t> (
                   "actor",
                   std::declval<std::shared_ptr<
                     contract_exact_actor_factory_t>> (),

@@ -38,7 +38,7 @@ class tictactoe_entry_spot_t : public entry_spot_t
           sample_names_t::player_milestone_topic);
     }
 
-    task_t<join_game_res_t> join_game (const player_actor_t &actor,
+    task_t<join_game_res_t> join_game (player_actor_t &actor,
                                        message_context_t &,
                                        const join_game_req_t &request);
 

@@ -567,6 +567,10 @@ struct factory_relocation_configuration_t
 {
     factory_relocation_kind_t kind{factory_relocation_kind_t::unspecified};
     std::type_index adapter_type{typeid (void)};
+    std::function<task_t<std::vector<std::byte>> (
+      void *, std::stop_token)> capture;
+    std::function<task_t<void> (
+      void *, std::vector<std::byte>, std::stop_token)> restore;
 };
 } // namespace detail
 
@@ -632,8 +636,31 @@ class user_spot_factory_builder_t
     void preserve_state_with ()
     {
         ensure_mutable ();
+        static_assert (
+          std::is_default_constructible_v<TAdapter>,
+          "C++ Spot relocation adapters must be default constructible");
         select (detail::factory_relocation_kind_t::preserve_state,
                 typeid (TAdapter));
+        _relocation.capture = [] (
+          void *spot,
+          std::stop_token operation_cancellation)
+          -> task_t<std::vector<std::byte>> {
+            auto adapter = std::make_shared<TAdapter> ();
+            co_return co_await adapter->capture (
+              *static_cast<TSpot *> (spot),
+              operation_cancellation);
+        };
+        _relocation.restore = [] (
+          void *spot,
+          std::vector<std::byte> payload,
+          std::stop_token operation_cancellation)
+          -> task_t<void> {
+            auto adapter = std::make_shared<TAdapter> ();
+            co_await adapter->restore (
+              *static_cast<TSpot *> (spot),
+              std::move (payload),
+              operation_cancellation);
+        };
     }
 
   private:
@@ -728,8 +755,31 @@ class instance_spot_factory_builder_t
     void preserve_state_with ()
     {
         ensure_mutable ();
+        static_assert (
+          std::is_default_constructible_v<TAdapter>,
+          "C++ Spot relocation adapters must be default constructible");
         select (detail::factory_relocation_kind_t::preserve_state,
                 typeid (TAdapter));
+        _relocation.capture = [] (
+          void *spot,
+          std::stop_token operation_cancellation)
+          -> task_t<std::vector<std::byte>> {
+            auto adapter = std::make_shared<TAdapter> ();
+            co_return co_await adapter->capture (
+              *static_cast<TSpot *> (spot),
+              operation_cancellation);
+        };
+        _relocation.restore = [] (
+          void *spot,
+          std::vector<std::byte> payload,
+          std::stop_token operation_cancellation)
+          -> task_t<void> {
+            auto adapter = std::make_shared<TAdapter> ();
+            co_await adapter->restore (
+              *static_cast<TSpot *> (spot),
+              std::move (payload),
+              operation_cancellation);
+        };
     }
 
   private:
@@ -1840,156 +1890,6 @@ class spot_node_builder_t
           relocation);
         register_context_lifecycle<TSpot> (registered_type, std::move (factory));
         return builder;
-    }
-
-    template <typename TActorFactory, typename TConfigure>
-    spot_node_builder_t &add_actor_factory (std::string actor_type,
-                                            TConfigure configure)
-    {
-        static_assert (std::is_default_constructible_v<TActorFactory>,
-                       "C++ actor factories must be default constructible");
-        if constexpr (requires (TActorFactory & factory, std::string actor_id) {
-                          factory.create (std::move (actor_id));
-                      }) {
-            using actor_type_t =
-              std::remove_cvref_t<decltype (std::declval<TActorFactory &> ().create (
-                std::declval<std::string> ()))>;
-            auto factory_builder =
-              std::make_shared<actor_factory_builder_t<actor_type_t>> ();
-            retain_factory_builder (factory_builder);
-            try {
-                configure (*factory_builder);
-                factory_builder->validate ();
-            }
-            catch (...) {
-                factory_builder->seal ();
-                throw;
-            }
-            const auto relocation = factory_builder->_relocation;
-            auto capture = factory_builder->_capture;
-            auto restore = factory_builder->_restore;
-            factory_builder->seal ();
-            return add_actor_factory_erased (
-              std::move (actor_type), std::type_index (typeid (actor_type_t)),
-              [] (std::string actor_id) -> std::shared_ptr<void> {
-                  TActorFactory factory;
-                  return std::static_pointer_cast<void> (
-                    std::make_shared<actor_type_t> (factory.create (std::move (actor_id))));
-              },
-              [] (void *actor, const actor_ref_t &actor_ref, void *actor_context) {
-                  auto &typed_actor = *static_cast<actor_type_t *> (actor);
-                  if constexpr (requires { typed_actor.set_actor_ref (actor_ref); }) {
-                      typed_actor.set_actor_ref (actor_ref);
-                  }
-                  if constexpr (requires {
-                                    typed_actor.set_actor_context (
-                                      std::move (*static_cast<actor_context_t *> (actor_context)));
-                                }) {
-                      if (actor_context != nullptr) {
-                          typed_actor.set_actor_context (
-                            std::move (*static_cast<actor_context_t *> (actor_context)));
-                      }
-                  }
-              },
-              [] (void *actor,
-                  serializer_registry_t &serializers) -> std::optional<zlink::message_t> {
-                  if constexpr (!std::is_default_constructible_v<actor_type_t>
-                                || !std::is_assignable_v<actor_type_t &, actor_type_t>) {
-                      return std::nullopt;
-                  } else {
-                      try {
-                          return detail::encoded_payload_to_raw (
-                            serializers.get<actor_type_t> ().serialize (
-                              *static_cast<actor_type_t *> (actor)));
-                      }
-                      catch (const framework_exception_t &error) {
-                          if (error.kind () == framework_error_kind_t::payload_decode_failed) {
-                              return std::nullopt;
-                          }
-                          throw;
-                      }
-                  }
-              },
-              [] (void *actor, const zlink::message_t &snapshot,
-                  serializer_registry_t &serializers) {
-                  if constexpr (std::is_default_constructible_v<actor_type_t>
-                                && std::is_assignable_v<actor_type_t &, actor_type_t>) {
-                      *static_cast<actor_type_t *> (actor) =
-                        serializers.get<actor_type_t> ().deserialize (
-                          detail::encoded_payload_from_raw (snapshot));
-                  }
-              },
-              {},
-              {},
-              relocation, std::move (capture), std::move (restore));
-        } else {
-            auto factory_builder =
-              std::make_shared<actor_factory_builder_t<TActorFactory>> ();
-            retain_factory_builder (factory_builder);
-            try {
-                configure (*factory_builder);
-                factory_builder->validate ();
-            }
-            catch (...) {
-                factory_builder->seal ();
-                throw;
-            }
-            const auto relocation = factory_builder->_relocation;
-            auto capture = factory_builder->_capture;
-            auto restore = factory_builder->_restore;
-            factory_builder->seal ();
-            return add_actor_factory_erased (
-              std::move (actor_type), std::type_index (typeid (TActorFactory)),
-              [] (std::string) -> std::shared_ptr<void> {
-                  return std::static_pointer_cast<void> (std::make_shared<TActorFactory> ());
-              },
-              [] (void *actor, const actor_ref_t &actor_ref, void *actor_context) {
-                  auto &typed_actor = *static_cast<TActorFactory *> (actor);
-                  if constexpr (requires { typed_actor.set_actor_ref (actor_ref); }) {
-                      typed_actor.set_actor_ref (actor_ref);
-                  }
-                  if constexpr (requires {
-                                    typed_actor.set_actor_context (
-                                      std::move (*static_cast<actor_context_t *> (actor_context)));
-                                }) {
-                      if (actor_context != nullptr) {
-                          typed_actor.set_actor_context (
-                            std::move (*static_cast<actor_context_t *> (actor_context)));
-                      }
-                  }
-              },
-              [] (void *actor,
-                  serializer_registry_t &serializers) -> std::optional<zlink::message_t> {
-                  if constexpr (!std::is_default_constructible_v<TActorFactory>
-                                || !std::is_assignable_v<TActorFactory &, TActorFactory>) {
-                      return std::nullopt;
-                  } else {
-                      try {
-                          return detail::encoded_payload_to_raw (
-                            serializers.get<TActorFactory> ().serialize (
-                              *static_cast<TActorFactory *> (actor)));
-                      }
-                      catch (const framework_exception_t &error) {
-                          if (error.kind () == framework_error_kind_t::payload_decode_failed) {
-                              return std::nullopt;
-                          }
-                          throw;
-                      }
-                  }
-              },
-              [] (void *actor, const zlink::message_t &snapshot,
-                  serializer_registry_t &serializers) {
-                  if constexpr (std::is_default_constructible_v<TActorFactory>
-                                && std::is_assignable_v<TActorFactory &, TActorFactory>) {
-                      *static_cast<TActorFactory *> (actor) =
-                        serializers.get<TActorFactory> ().deserialize (
-                          detail::encoded_payload_from_raw (snapshot));
-                  }
-              },
-              {},
-              {},
-              relocation, std::move (capture), std::move (restore));
-        }
     }
 
     template <typename TActor, typename TActorFactory>

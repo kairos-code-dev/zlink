@@ -68,27 +68,30 @@ class customer_session_directory_t
     std::map<std::string, subscription_t> _subscriptions;
 };
 
-class customer_actor_t
+class customer_actor_t : public actor_t
 {
   public:
-    explicit customer_actor_t (std::string actor_id) : actor_id (std::move (actor_id)) {}
-
-    void set_actor_ref (const zlink::framework::actor_ref_t &value)
+    explicit customer_actor_t (actor_context_t context) :
+        actor_id (context.actor_ref ().actor_id ()),
+        _context (std::move (context))
     {
-        actor_id = std::string (value.actor_id ());
     }
 
-    void set_actor_context (actor_context_t &value) { context = &value; }
+    actor_context_t &context () noexcept override { return _context; }
+    const actor_context_t &context () const noexcept override { return _context; }
 
     std::string actor_id;
-    actor_context_t *context = nullptr;
+    actor_context_t _context;
 };
 
-struct customer_actor_factory_t
+struct customer_actor_factory_t final
+    : public actor_factory_t<customer_actor_t>
 {
-    customer_actor_t create (std::string actor_id) const
+    task_t<std::shared_ptr<customer_actor_t>>
+    create (actor_context_t context, std::stop_token) override
     {
-        return customer_actor_t (std::move (actor_id));
+        co_return std::make_shared<customer_actor_t> (
+          std::move (context));
     }
 };
 
@@ -140,7 +143,7 @@ class customer_entry_spot_t : public entry_spot_t
         }
         std::cerr << "deliverydispatch customer-entry: push status delivery="
                   << status.delivery_id << " status=" << status.status << "\n";
-        actor.context->bound_session ()
+        actor.context ().bound_session ()
           .send (delivery_status_notify_t{status.delivery_id, status.status, status.courier_id,
                                           status.occurred_at})
           .submit ();
@@ -274,8 +277,9 @@ int main (int argc, char **argv)
               return std::make_shared<customer_entry_spot_t> (
                 std::move (context), *sessions_ptr);
           })
-          .add_actor_factory<customer_actor_factory_t> (
+          .add_actor_factory<customer_actor_t, customer_actor_factory_t> (
             sample_names_t::customer_actor_type,
+            std::make_shared<customer_actor_factory_t> (),
             [] (auto &factory) { factory.disable_relocation (); });
         options.add_stream_node (sample_names_t::customer_stream_node)
           .bind (topology.customer_stream_endpoint)

@@ -17,7 +17,7 @@ using namespace framework;
 using framework::actor_ref_t;
 using framework::message_t;
 
-struct player_actor_t
+struct player_actor_t : framework::actor_t
 {
     std::string actor_id;
     mutable std::string node_rid;
@@ -25,7 +25,7 @@ struct player_actor_t
     mutable bool destroy_after_entry_spot_join = false;
     mutable bool disconnected = false;
     mutable player_info_t player;
-    mutable std::unique_ptr<actor_context_t> context;
+    mutable std::unique_ptr<actor_context_t> actor_context;
 
     player_actor_t () = default;
     explicit player_actor_t (std::string value) : actor_id (std::move (value)) {}
@@ -44,7 +44,7 @@ struct player_actor_t
             destroy_after_entry_spot_join = other.destroy_after_entry_spot_join;
             disconnected = other.disconnected;
             player = other.player;
-            context.reset ();
+            actor_context.reset ();
         }
         return *this;
     }
@@ -59,8 +59,12 @@ struct player_actor_t
 
     void set_actor_context (actor_context_t actor_context) const
     {
-        context = std::make_unique<actor_context_t> (std::move (actor_context));
+        this->actor_context =
+          std::make_unique<actor_context_t> (std::move (actor_context));
     }
+
+    actor_context_t &context () noexcept override { return *actor_context; }
+    const actor_context_t &context () const noexcept override { return *actor_context; }
 
     void mark_for_destroy_after_room_leave () const { destroy_after_entry_spot_join = true; }
 
@@ -70,7 +74,7 @@ struct player_actor_t
 
     template <typename TNotify> void push (const TNotify &notify) const
     {
-        context->bound_session ().send (notify).submit ();
+        actor_context->bound_session ().send (notify).submit ();
     }
 
     player_info_t require_player () const
@@ -104,11 +108,23 @@ inline void from_json (const nlohmann::json &json, player_actor_t &value)
     value.player = json.value ("player", player_info_t{});
 }
 
-struct player_actor_factory_t
+struct player_actor_factory_t final
+    : framework::actor_factory_t<player_actor_t>
 {
     player_actor_t create (std::string actor_id) const
     {
         return player_actor_t (std::move (actor_id));
+    }
+
+    framework::task_t<std::shared_ptr<player_actor_t>>
+    create (actor_context_t context,
+            std::stop_token) override
+    {
+        auto actor = std::make_shared<player_actor_t> (
+          std::string (context.actor_ref ().actor_id ()));
+        actor->set_actor_ref (context.actor_ref ());
+        actor->set_actor_context (std::move (context));
+        co_return actor;
     }
 };
 

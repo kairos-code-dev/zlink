@@ -8,7 +8,7 @@ namespace zlink::samples::bingo
 
 inline task_t<observe_bingo_events_res_t>
 bingo_entry_spot_t::observe_bingo_events (
-  const player_actor_t &actor,
+  player_actor_t &actor,
   message_context_t &,
   const observe_bingo_events_req_t &request)
 {
@@ -24,7 +24,7 @@ bingo_entry_spot_t::observe_bingo_events (
       .submit ();
     const auto join_request = bingo_room_join_req_t{
       request.room_id, actor.actor.actor_id, display_name, true};
-    actor.context->join_spot (observer_id, join_request).defer ();
+    actor.context ().join_spot (observer_id, join_request).defer ();
     co_return observe_bingo_events_res_t{true};
 }
 

@@ -26,25 +26,25 @@ inline constexpr const char *supportchat_support_channel_rid = "supportchat-supp
 inline constexpr const char *support_user_actor_type = "support-user";
 inline constexpr const char *support_conversation_spot = "supportchat.conversation";
 
-class support_user_actor_t
+class support_user_actor_t : public actor_t
 {
   public:
-    explicit support_user_actor_t (std::string id) : actor_id (std::move (id)) {}
-
-    void set_actor_ref (const zlink::framework::actor_ref_t &value)
+    explicit support_user_actor_t (actor_context_t value) :
+        actor_id (value.actor_ref ().actor_id ()),
+        actor_ref (value.actor_ref ()),
+        actor_context (std::move (value))
     {
-        actor_ref = value;
-        actor_id = std::string (value.actor_id ());
     }
 
-    void set_actor_context (actor_context_t value) { context = std::move (value); }
+    actor_context_t &context () noexcept override { return actor_context; }
+    const actor_context_t &context () const noexcept override { return actor_context; }
 
     std::string actor_id;
     std::string display_name;
     std::string role;
     std::string participant_id;
     zlink::framework::actor_ref_t actor_ref;
-    actor_context_t context;
+    actor_context_t actor_context;
 };
 
 struct support_user_actor_relocation_state_t
@@ -476,11 +476,14 @@ class conversation_spot_t : public spot_t
     std::map<std::string, std::string> _pending_agent_assignments;
 };
 
-struct support_user_actor_factory_t
+struct support_user_actor_factory_t final
+    : public actor_factory_t<support_user_actor_t>
 {
-    support_user_actor_t create (std::string actor_id) const
+    task_t<std::shared_ptr<support_user_actor_t>>
+    create (actor_context_t context, std::stop_token) override
     {
-        return support_user_actor_t (std::move (actor_id));
+        co_return std::make_shared<support_user_actor_t> (
+          std::move (context));
     }
 };
 
@@ -572,7 +575,7 @@ class support_entry_spot_t : public entry_spot_t
         const auto participant_id = actor.participant_id.empty () ? actor.actor_id
                                                                    : actor.participant_id;
         auto joined =
-          co_await actor.context
+          co_await actor.context ()
             .join_spot (spot_rid, join_conversation_req_t{participant_id, actor.role,
                                                           actor.display_name})
             .submit<join_conversation_res_t> ();
@@ -936,8 +939,11 @@ int main (int argc, char **argv)
             [] (auto &factory) {
                 factory.disable_relocation ();
             })
-          .add_actor_factory<support_user_actor_factory_t> (
+          .add_actor_factory<
+            support_user_actor_t,
+            support_user_actor_factory_t> (
             support_user_actor_type,
+            std::make_shared<support_user_actor_factory_t> (),
             [] (auto &factory) {
                 factory
                   .template preserve_state_with<

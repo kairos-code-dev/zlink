@@ -51,18 +51,40 @@ class evidence_store_t
     std::vector<e2e::actor_evidence_t> _entries;
 };
 
-class to_actor_e2e_actor_t
+class to_actor_e2e_actor_t : public zlink::framework::actor_t
 {
   public:
-    void set_actor_ref (const zlink::framework::actor_ref_t &actor_ref)
+    explicit to_actor_e2e_actor_t (
+      zlink::framework::actor_context_t context) :
+        _actor_id (context.actor_ref ().actor_id ()),
+        _context (std::move (context))
     {
-        _actor_id = std::string (actor_ref.actor_id ());
     }
+    zlink::framework::actor_context_t &context () noexcept override
+    { return _context; }
+    const zlink::framework::actor_context_t &context () const noexcept override
+    { return _context; }
 
     const std::string &actor_id () const { return _actor_id; }
 
   private:
     std::string _actor_id;
+    zlink::framework::actor_context_t _context;
+};
+
+class to_actor_e2e_actor_factory_t final
+    : public zlink::framework::actor_factory_t<
+        to_actor_e2e_actor_t>
+{
+  public:
+    zlink::framework::task_t<std::shared_ptr<
+      to_actor_e2e_actor_t>>
+    create (zlink::framework::actor_context_t context,
+            std::stop_token) override
+    {
+        co_return std::make_shared<to_actor_e2e_actor_t> (
+          std::move (context));
+    }
 };
 
 class to_actor_e2e_spot_t : public zlink::framework::entry_spot_t
@@ -241,8 +263,11 @@ int main (int argc, char **argv)
           .set_routing_id (zlink::routing_id_t::from (configuration.node_rid))
           .add_entry_spot<to_actor_e2e_spot_t> (
             [evidence_ptr] { return std::make_shared<to_actor_e2e_spot_t> (*evidence_ptr); })
-          .add_actor_factory<to_actor_e2e_actor_t> (
+          .add_actor_factory<
+            to_actor_e2e_actor_t,
+            to_actor_e2e_actor_factory_t> (
             e2e::actor_type_name,
+            std::make_shared<to_actor_e2e_actor_factory_t> (),
             [] (auto &factory) { factory.disable_relocation (); });
         if (!configuration.caller_spot_endpoint.empty ()) {
             mesh.peer_connections ().connect (

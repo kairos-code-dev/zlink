@@ -73,8 +73,9 @@ class play_server_host_factory_t
                 [] (auto &factory) {
                     factory.disable_relocation ();
                 })
-              .add_actor_factory<player_actor_factory_t> (
+              .add_actor_factory<player_actor_t, player_actor_factory_t> (
                 sample_names_t::actor_type,
+                std::make_shared<player_actor_factory_t> (),
                 [] (auto &factory) {
                     factory
                       .template preserve_state_with<

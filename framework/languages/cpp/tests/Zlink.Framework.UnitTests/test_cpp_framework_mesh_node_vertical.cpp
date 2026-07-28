@@ -151,8 +151,30 @@ struct contract_entry_spot_t;
 struct contract_spot_t : zlink::framework::spot_t
 {
 };
-struct contract_actor_factory_t;
-struct contract_actor_t;
+struct contract_actor_t final : zlink::framework::actor_t
+{
+    explicit contract_actor_t (
+      zlink::framework::actor_context_t context) :
+        value (std::move (context))
+    {
+    }
+    zlink::framework::actor_context_t &context () noexcept override
+    { return value; }
+    const zlink::framework::actor_context_t &context () const noexcept override
+    { return value; }
+    zlink::framework::actor_context_t value;
+};
+struct contract_actor_factory_t final
+    : zlink::framework::actor_factory_t<contract_actor_t>
+{
+    zlink::framework::task_t<std::shared_ptr<contract_actor_t>>
+    create (zlink::framework::actor_context_t context,
+            std::stop_token) override
+    {
+        co_return std::make_shared<contract_actor_t> (
+          std::move (context));
+    }
+};
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
                            .add_entry_spot<contract_entry_spot_t> (
@@ -173,8 +195,12 @@ static_assert (std::is_same_v<
                zlink::framework::mesh_node_builder_t &>);
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
-                           .add_actor_factory<contract_actor_factory_t> (
+                           .add_actor_factory<
+                             contract_actor_t,
+                             contract_actor_factory_t> (
                              std::declval<std::string> (),
+                             std::declval<std::shared_ptr<
+                               contract_actor_factory_t>> (),
                              [] (auto &factory) {
                                  factory.disable_relocation ();
                              })),

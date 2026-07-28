@@ -1228,7 +1228,7 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
           << sample.user_spot_path << " must receive context through the exact factory";
         EXPECT_NE (user.find ("_context (std::move (context))"), std::string::npos)
           << sample.user_spot_path << " must move the factory context into the Spot";
-        EXPECT_NE (actor.find ("std::unique_ptr<actor_context_t> context;"), std::string::npos)
+        EXPECT_NE (actor.find ("std::unique_ptr<actor_context_t> actor_context;"), std::string::npos)
           << sample.actor_path << " must own the context injected by the framework";
         EXPECT_NE (actor.find ("set_actor_context (actor_context_t actor_context)"),
                    std::string::npos)

@@ -148,29 +148,33 @@ class game_api_store_t
     std::map<std::string, int> _unpublished_kills;
 };
 
-class player_actor_t
+class player_actor_t : public zlink::framework::actor_t
 {
   public:
-    explicit player_actor_t (std::string actor_id) : actor_id (std::move (actor_id)) {}
-
-    void set_actor_ref (const zlink::framework::actor_ref_t &value)
+    explicit player_actor_t (actor_context_t value) :
+        actor_id (value.actor_ref ().actor_id ()),
+        actor_ref (value.actor_ref ()),
+        actor_context (std::move (value))
     {
-        actor_ref = value;
-        actor_id = std::string (value.actor_id ());
     }
 
-    void set_actor_context (actor_context_t value) { context = std::move (value); }
+    actor_context_t &context () noexcept override { return actor_context; }
+    const actor_context_t &context () const noexcept override { return actor_context; }
 
     std::string actor_id;
     zlink::framework::actor_ref_t actor_ref;
-    actor_context_t context;
+    actor_context_t actor_context;
 };
 
-struct player_actor_factory_t
+struct player_actor_factory_t final
+    : public zlink::framework::actor_factory_t<player_actor_t>
 {
-    player_actor_t create (std::string actor_id) const
+    zlink::framework::task_t<std::shared_ptr<player_actor_t>>
+    create (actor_context_t context,
+            std::stop_token) override
     {
-        return player_actor_t (std::move (actor_id));
+        co_return std::make_shared<player_actor_t> (
+          std::move (context));
     }
 };
 
@@ -222,7 +226,7 @@ class player_entry_spot_t : public entry_spot_t
             return;
         }
         for (const auto &progress : notify.projection) {
-            actor.context.bound_session ()
+            actor.actor_context.bound_session ()
               .send (quest_progress_notify_t{notify.player_id, *session_id, progress})
               .submit ();
         }
@@ -233,7 +237,7 @@ class player_entry_spot_t : public entry_spot_t
                   return progress.quest_id == notify.completed_quest_id;
               });
             if (completed != notify.projection.end ()) {
-                actor.context.bound_session ()
+                actor.actor_context.bound_session ()
                   .send (quest_completed_notify_t{
                     notify.player_id, *session_id, *completed, true})
                   .submit ();
@@ -532,8 +536,9 @@ int main (int argc, char **argv)
           .add_entry_spot<player_entry_spot_t> ([store_ptr] {
               return std::make_shared<player_entry_spot_t> (*store_ptr);
           })
-          .add_actor_factory<player_actor_factory_t> (
+          .add_actor_factory<player_actor_t, player_actor_factory_t> (
             gamequest_player_actor_type,
+            std::make_shared<player_actor_factory_t> (),
             [] (auto &factory) { factory.disable_relocation (); });
         options.add_stream_node (sample_names_t::stream_node)
           .bind (topology.selected_api_stream_endpoint ())

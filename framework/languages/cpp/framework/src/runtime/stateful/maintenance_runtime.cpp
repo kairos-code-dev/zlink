@@ -14,7 +14,7 @@ namespace zlink::framework::runtime::stateful
 namespace
 {
 
-constexpr std::array<std::uint8_t, 4> envelope_magic{'Z', 'L', 'R', '1'};
+constexpr std::array<std::uint8_t, 4> envelope_magic{'Z', 'L', 'R', '2'};
 constexpr std::array<std::uint8_t, 4> aggregate_envelope_magic{
   'Z', 'L', 'R', 'A'};
 constexpr std::array<std::uint8_t, 4> join_completion_magic{
@@ -1326,6 +1326,7 @@ std::vector<std::uint8_t> maintenance_runtime_t::encode (
         || frozen.owner.mesh_name.empty ()
         || frozen.owner.node_id.empty ()
         || frozen.stable_type.empty ()
+        || frozen.application_state.size () > max_envelope_bytes
         || frozen.pending_application.size () > max_pending_records
         || frozen.timers.size () > max_logical_timers) {
         return {};
@@ -1341,6 +1342,8 @@ std::vector<std::uint8_t> maintenance_runtime_t::encode (
     }
     append_u64 (output, frozen.owner.object_generation);
     append_u64 (output, frozen.owner.authority_owner_generation);
+    if (!append_bytes (output, frozen.application_state))
+        return {};
     append_u32 (
       output,
       static_cast<std::uint32_t> (frozen.pending_application.size ()));
@@ -1371,7 +1374,9 @@ std::vector<std::uint8_t> maintenance_runtime_t::encode (
     }
     output.insert (
       output.end (), inventory_digest.begin (), inventory_digest.end ());
-    return output;
+    return output.size () <= max_envelope_bytes
+             ? std::move (output)
+             : std::vector<std::uint8_t>{};
 }
 
 std::optional<std::pair<frozen_object_state_t, inventory_digest_t>>
@@ -1397,12 +1402,14 @@ try
     const auto node_id = reader.text ();
     const auto object_generation = reader.u64 ();
     const auto owner_generation = reader.u64 ();
+    auto application_state = reader.bytes ();
     const auto pending_count = reader.u32 ();
     if (!kind || *kind > static_cast<std::uint8_t> (object_kind_t::instance_spot)
         || !key || key->empty () || !stable_type || stable_type->empty ()
         || !mesh_name || mesh_name->empty () || !node_id || node_id->empty ()
         || !object_generation || *object_generation == 0
-        || !owner_generation || *owner_generation == 0 || !pending_count
+        || !owner_generation || *owner_generation == 0
+        || !application_state || !pending_count
         || *pending_count > max_pending_records
         || reader.remaining ()
              < static_cast<std::size_t> (*pending_count) * 12u
@@ -1420,6 +1427,7 @@ try
           .mesh_name = *mesh_name,
           .node_id = *node_id},
       .stable_type = *stable_type,
+      .application_state = std::move (*application_state),
       .pending_application = {},
       .timers = {}};
     frozen.pending_application.reserve (*pending_count);

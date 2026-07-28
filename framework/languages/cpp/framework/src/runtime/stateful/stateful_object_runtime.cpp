@@ -45,6 +45,18 @@ stateful_object_runtime_t::stateful_object_runtime_t (
     }
 }
 
+void stateful_object_runtime_t::configure_relocation_state (
+  relocation_state_capture_t capture,
+  relocation_state_restore_t restore)
+{
+    if (!capture || !restore)
+        throw std::invalid_argument (
+          "Relocation state callbacks must not be empty");
+    std::lock_guard lock (_mutex);
+    _relocation_state_capture = std::move (capture);
+    _relocation_state_restore = std::move (restore);
+}
+
 void stateful_object_runtime_t::replace_placement_candidates (
   std::vector<placement_candidate_t> candidates)
 {
@@ -965,12 +977,21 @@ stateful_object_runtime_t::try_seal_relocation_aggregate (
 
     std::vector<frozen_object_state_t> frozen_participants;
     frozen_participants.reserve (records.size ());
-    for (auto *object : records) {
+    try {
+      for (auto *object : records) {
         frozen_object_state_t frozen{
           .owner = object->reference,
           .stable_type = object->stable_type,
+          .application_state = {},
           .pending_application = {},
           .timers = {}};
+        if ((object->reference.kind == object_kind_t::user_spot
+             || object->reference.kind == object_kind_t::instance_spot)
+            && _relocation_state_capture) {
+            frozen.application_state =
+              _relocation_state_capture (
+                object->reference, object->stable_type);
+        }
         frozen.pending_application.reserve (
           object->queue.application.size ());
         while (!object->queue.application.empty ()) {
@@ -982,6 +1003,14 @@ stateful_object_runtime_t::try_seal_relocation_aggregate (
         for (const auto &[_, timer] : object->timers)
             frozen.timers.push_back (timer);
         frozen_participants.push_back (std::move (frozen));
+      }
+    }
+    catch (...) {
+        for (auto *object : records) {
+            object->state = object_state_t::ready;
+            object->barrier_generation = 0;
+        }
+        return {stateful_error_t::conflict, {}};
     }
     _relocation_seals.emplace (
       token,
@@ -1120,9 +1149,22 @@ try
         }
         previous_timer = timer.timer_id;
     }
+    const auto key = key_for (target);
+    bool requires_application_restore = false;
+    {
+        std::lock_guard lock (_mutex);
+        requires_application_restore =
+          _objects.find (key) == _objects.end ();
+    }
+    if (requires_application_restore
+        && (target.kind == object_kind_t::user_spot
+            || target.kind == object_kind_t::instance_spot)
+        && _relocation_state_restore
+        && !_relocation_state_restore (frozen, target)) {
+        return stateful_error_t::conflict;
+    }
 
     std::lock_guard lock (_mutex);
-    const auto key = key_for (target);
     const auto existing = _objects.find (key);
     if (existing != _objects.end ()) {
         const auto &record = existing->second;
@@ -1252,6 +1294,26 @@ try
     }
     if (!user_spot_key || actor_count + 1 != targets.size ())
         return stateful_error_t::invalid;
+    bool has_existing_target = false;
+    {
+        std::lock_guard lock (_mutex);
+        has_existing_target =
+          std::any_of (
+            targets.begin (), targets.end (),
+            [&] (const object_ref_t &target) {
+                return _objects.contains (key_for (target));
+            });
+    }
+    if (!has_existing_target && _relocation_state_restore) {
+        for (std::size_t index = 0; index != frozen.size (); ++index) {
+            if ((targets[index].kind == object_kind_t::user_spot
+                 || targets[index].kind == object_kind_t::instance_spot)
+                && !_relocation_state_restore (
+                  frozen[index], targets[index])) {
+                return stateful_error_t::conflict;
+            }
+        }
+    }
 
     std::lock_guard lock (_mutex);
     std::size_t exact_existing = 0;
@@ -1303,7 +1365,6 @@ try
         return exact_existing == targets.size ()
                  ? stateful_error_t::already_exists
                  : stateful_error_t::conflict;
-
     std::vector<std::pair<object_key_t, object_record_t>> records;
     records.reserve (targets.size ());
     for (std::size_t index = 0; index != targets.size (); ++index) {

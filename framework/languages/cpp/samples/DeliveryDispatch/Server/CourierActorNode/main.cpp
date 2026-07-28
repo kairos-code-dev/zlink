@@ -22,30 +22,33 @@ namespace zlink::samples::deliverydispatch
 
 using namespace framework;
 
-class courier_actor_t
+class courier_actor_t : public actor_t
 {
   public:
-    explicit courier_actor_t (std::string actor_id) : actor_id (std::move (actor_id)) {}
-
-    void set_actor_ref (const zlink::framework::actor_ref_t &value)
+    explicit courier_actor_t (actor_context_t context) :
+        actor_id (context.actor_ref ().actor_id ()),
+        _context (std::move (context))
     {
-        actor_id = std::string (value.actor_id ());
     }
 
-    void set_actor_context (actor_context_t &value) { context = &value; }
+    actor_context_t &context () noexcept override { return _context; }
+    const actor_context_t &context () const noexcept override { return _context; }
 
     std::string actor_id;
-    actor_context_t *context = nullptr;
+    actor_context_t _context;
     /* 진행 중인 제안: delivery id -> attempt. 배송원의 결정이 오면 이 값을 실어 배차 쪽으로
      * 돌려준다(공통 sample spec §7.4). */
     std::map<std::string, int> offered_attempts;
 };
 
-struct courier_actor_factory_t
+struct courier_actor_factory_t final
+    : public actor_factory_t<courier_actor_t>
 {
-    courier_actor_t create (std::string actor_id) const
+    task_t<std::shared_ptr<courier_actor_t>>
+    create (actor_context_t context, std::stop_token) override
     {
-        return courier_actor_t (std::move (actor_id));
+        co_return std::make_shared<courier_actor_t> (
+          std::move (context));
     }
 };
 
@@ -89,7 +92,7 @@ class courier_entry_spot_t : public entry_spot_t
                          const offer_delivery_msg_t &message)
     {
         actor.offered_attempts[message.delivery_id] = message.attempt;
-        actor.context->bound_session ()
+        actor.context ().bound_session ()
           .send (offer_delivery_notify_t{message.courier_id, message.delivery_id,
                                          message.pickup_address, message.dropoff_address})
           .submit ();
@@ -160,8 +163,9 @@ int main (int argc, char **argv)
                 return std::make_shared<courier_entry_spot_t> (
                   std::move (context), services.get_required<channel_client_t> ());
             })
-          .add_actor_factory<courier_actor_factory_t> (
+          .add_actor_factory<courier_actor_t, courier_actor_factory_t> (
             sample_names_t::courier_actor_type,
+            std::make_shared<courier_actor_factory_t> (),
             [] (auto &factory) { factory.disable_relocation (); });
     });
     return app.run (argc, argv);

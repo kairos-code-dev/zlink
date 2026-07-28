@@ -452,21 +452,38 @@ class stream_gateway_state_t
 
 inline constexpr const char *admission_actor_type = "submit-admission-actor";
 
-class admission_actor_t
+class admission_actor_t : public zlink::framework::actor_t
 {
   public:
-    admission_actor_t () = default;
-    explicit admission_actor_t (std::string actor_id) : _actor_id (std::move (actor_id)) {}
-
-    void set_actor_ref (const zlink::framework::actor_ref_t &actor_ref)
+    explicit admission_actor_t (
+      zlink::framework::actor_context_t context) :
+        _actor_id (context.actor_ref ().actor_id ()),
+        _context (std::move (context))
     {
-        _actor_id = std::string (actor_ref.actor_id ());
     }
+    zlink::framework::actor_context_t &context () noexcept override
+    { return _context; }
+    const zlink::framework::actor_context_t &context () const noexcept override
+    { return _context; }
 
     const std::string &actor_id () const noexcept { return _actor_id; }
 
   private:
     std::string _actor_id;
+    zlink::framework::actor_context_t _context;
+};
+
+class admission_actor_factory_t final
+    : public zlink::framework::actor_factory_t<admission_actor_t>
+{
+  public:
+    zlink::framework::task_t<std::shared_ptr<admission_actor_t>>
+    create (zlink::framework::actor_context_t context,
+            std::stop_token) override
+    {
+        co_return std::make_shared<admission_actor_t> (
+          std::move (context));
+    }
 };
 
 class admission_actor_spot_t final : public zlink::framework::entry_spot_t
@@ -1038,8 +1055,9 @@ void configure_stream_gateway_role (zlink::framework::zlink_framework_options_t 
       .set_routing_id (zlink::routing_id_t::from (options.rid))
       .add_entry_spot<admission_actor_spot_t> (
         [evidence_ptr] { return std::make_shared<admission_actor_spot_t> (*evidence_ptr); })
-      .add_actor_factory<admission_actor_t> (
+      .add_actor_factory<admission_actor_t, admission_actor_factory_t> (
         admission_actor_type,
+        std::make_shared<admission_actor_factory_t> (),
         [] (auto &factory) { factory.disable_relocation (); });
     if (!options.peer_endpoint.empty ()) {
         mesh.peer_connections ().connect (
@@ -1070,8 +1088,9 @@ void configure_actor_target_role (zlink::framework::zlink_framework_options_t &f
       .set_routing_id (zlink::routing_id_t::from (options.rid))
       .add_entry_spot<admission_actor_spot_t> (
         [evidence_ptr] { return std::make_shared<admission_actor_spot_t> (*evidence_ptr); })
-      .add_actor_factory<admission_actor_t> (
+      .add_actor_factory<admission_actor_t, admission_actor_factory_t> (
         admission_actor_type,
+        std::make_shared<admission_actor_factory_t> (),
         [] (auto &factory) { factory.disable_relocation (); });
     if (!options.peer_endpoint.empty ()) {
         mesh.peer_connections ().connect (

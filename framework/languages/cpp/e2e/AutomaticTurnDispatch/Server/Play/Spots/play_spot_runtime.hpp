@@ -264,7 +264,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
                        + spot_id + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|target_node="
                        + request.target_node_rid + "|handler=actor");
-        auto call = actor.context
+        auto call = actor.context ()
                       .join_entry_spot (zlink::framework::node_rid_t::from_string (
                                           request.target_node_rid),
                                         yd::delay_req_t{.request_id = request.request_id,
@@ -306,7 +306,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
                        + actor.actor_id + "|request=" + request.request_id + "|target="
                        + request.target_spot_id + "|turn=" + current_turn_id ());
         const auto joined =
-          co_await actor.context
+          co_await actor.context ()
             .join_spot ((request.target_spot_id),
                         yd::delay_req_t{.request_id = request.request_id,
                                         .delay_ms = request.admission_delay_ms,
@@ -348,7 +348,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
         _evidence.add ("actor-push-await-resumed|rid=" + _evidence.node_rid + "|spot="
                        + spot_id + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");
-          actor.context.bound_session ()
+          actor.context ().bound_session ()
             .send (yd::actor_push_notify_t{.actor_id = actor.actor_id,
                                            .request_id = request.request_id,
                                            .value = request.value,

@@ -10,32 +10,35 @@
 namespace zlink::framework::e2e::automatic_turn_dispatch::server::play
 {
 
-struct await_actor_t
+struct await_actor_t : zlink::framework::actor_t
 {
-    explicit await_actor_t (std::string actor_id) : actor_id (std::move (actor_id)) {}
-
-    void set_actor_ref (const zlink::framework::actor_ref_t &value)
+    explicit await_actor_t (zlink::framework::actor_context_t value) :
+        actor_id (value.actor_ref ().actor_id ()),
+        actor_ref (value.actor_ref ()),
+        _actor_context (std::move (value))
     {
-        actor_ref = value;
-        actor_id = std::string (value.actor_id ());
     }
 
-    void set_actor_context (zlink::framework::actor_context_t value)
-    {
-        context = std::move (value);
-    }
+    zlink::framework::actor_context_t &context () noexcept override
+    { return _actor_context; }
+    const zlink::framework::actor_context_t &context () const noexcept override
+    { return _actor_context; }
 
     std::string actor_id;
     std::string join_request_id;
     zlink::framework::actor_ref_t actor_ref;
-    zlink::framework::actor_context_t context;
+    zlink::framework::actor_context_t _actor_context;
 };
 
-struct await_actor_factory_t
+struct await_actor_factory_t final
+    : zlink::framework::actor_factory_t<await_actor_t>
 {
-    await_actor_t create (std::string actor_id) const
+    zlink::framework::task_t<std::shared_ptr<await_actor_t>>
+    create (zlink::framework::actor_context_t context,
+            std::stop_token) override
     {
-        return await_actor_t (std::move (actor_id));
+        co_return std::make_shared<await_actor_t> (
+          std::move (context));
     }
 };
 

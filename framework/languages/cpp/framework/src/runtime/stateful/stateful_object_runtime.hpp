@@ -147,6 +147,7 @@ struct frozen_object_state_t
 {
     object_ref_t owner;
     std::string stable_type;
+    std::vector<std::uint8_t> application_state;
     std::vector<turn_record_t> pending_application;
     std::vector<logical_timer_t> timers;
 
@@ -190,9 +191,20 @@ struct aggregate_relocation_seal_t
 class stateful_object_runtime_t
 {
   public:
+    using relocation_state_capture_t = std::function<
+      std::vector<std::uint8_t> (
+        const object_ref_t &, const std::string &)>;
+    using relocation_state_restore_t = std::function<
+      bool (
+        const frozen_object_state_t &, const object_ref_t &)>;
+
     explicit stateful_object_runtime_t (
       std::size_t application_capacity = 4096,
       std::size_t infrastructure_capacity = 1024);
+
+    void configure_relocation_state (
+      relocation_state_capture_t capture,
+      relocation_state_restore_t restore);
 
     void replace_placement_candidates (
       std::vector<placement_candidate_t> candidates);
@@ -345,6 +357,8 @@ class stateful_object_runtime_t
     std::map<std::uint64_t, membership_move_t> _membership_moves;
     std::map<std::uint64_t, spot_close_token_t> _spot_closes;
     std::map<std::uint64_t, relocation_seal_state_t> _relocation_seals;
+    relocation_state_capture_t _relocation_state_capture;
+    relocation_state_restore_t _relocation_state_restore;
     bool _maintenance_inventory_active = false;
     std::uint64_t _next_attempt = 1;
     std::uint64_t _next_membership_token = 1;

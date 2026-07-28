@@ -757,6 +757,7 @@ void test_envelope_round_trip (test_context_t &test)
          .mesh_name = "mesh",
          .node_id = "node-a"},
       .stable_type = "actor",
+      .application_state = {7, 8, 9},
       .pending_application = {{1, {1, 2}}, {2, {3}}},
       .timers = {{11, 100, 50, 3}}};
     const auto digest = digest_with (0x5a);
@@ -771,7 +772,7 @@ void test_envelope_round_trip (test_context_t &test)
                   "CRC32C must be computed for the immutable root");
 
     auto excessive_count = encoded;
-    constexpr std::size_t pending_count_offset = 59;
+    constexpr std::size_t pending_count_offset = 66;
     excessive_count[pending_count_offset] = 0;
     excessive_count[pending_count_offset + 1] = 0;
     excessive_count[pending_count_offset + 2] = 0x10;
@@ -781,8 +782,8 @@ void test_envelope_round_trip (test_context_t &test)
       "decoder must reject pending counts above the explicit maximum");
 
     auto duplicate_sequence = encoded;
-    constexpr std::size_t first_sequence_offset = 63;
-    constexpr std::size_t second_sequence_offset = 77;
+    constexpr std::size_t first_sequence_offset = 70;
+    constexpr std::size_t second_sequence_offset = 84;
     std::copy_n (
       duplicate_sequence.begin ()
         + static_cast<std::ptrdiff_t> (first_sequence_offset),
@@ -803,6 +804,19 @@ void test_envelope_round_trip (test_context_t &test)
 void test_aggregate_envelope_and_crash_recovery (test_context_t &test)
 {
     stateful_object_runtime_t source;
+    int captured_spot_state = 0;
+    source.configure_relocation_state (
+      [&] (const object_ref_t &owner,
+           const std::string &stable_type) {
+          ++captured_spot_state;
+          test.require (
+            owner.kind == object_kind_t::user_spot
+              && stable_type == "spot",
+            "Spot capture must receive the exact owner and stable type");
+          return std::vector<std::uint8_t>{0xca, 0xfe};
+      },
+      [] (const frozen_object_state_t &,
+          const object_ref_t &) { return true; });
     const auto spot =
       create_spot (source, object_kind_t::user_spot, "spot-aggregate");
     const auto actor = create_actor (source, "actor-aggregate");
@@ -839,7 +853,8 @@ void test_aggregate_envelope_and_crash_recovery (test_context_t &test)
       1024 * 1024, digest);
     test.require (
       moved.terminal == relocation_terminal_t::completed
-        && moved.authority.size () == 2,
+        && moved.authority.size () == 2
+        && captured_spot_state == 1,
       "aggregate authority commit must publish every participant");
 
     const auto root =
@@ -864,12 +879,26 @@ void test_aggregate_envelope_and_crash_recovery (test_context_t &test)
     }
 
     stateful_object_runtime_t recovered;
+    int restored_spot_state = 0;
+    recovered.configure_relocation_state (
+      [] (const object_ref_t &,
+          const std::string &) {
+          return std::vector<std::uint8_t>{};
+      },
+      [&] (const frozen_object_state_t &frozen,
+           const object_ref_t &target) {
+          ++restored_spot_state;
+          return target.kind == object_kind_t::user_spot
+                 && frozen.application_state
+                      == std::vector<std::uint8_t>{0xca, 0xfe};
+      });
     const auto recovery =
       coordinator.recover_aggregate (participants, recovered);
     test.require (
       recovery.terminal == relocation_terminal_t::recovery_required
         && recovery.reason == relocation_reason_t::restore_failed
-        && recovery.authority.size () == 2,
+        && recovery.authority.size () == 2
+        && restored_spot_state == 1,
       "materialized aggregate must remain recovery-required until lifecycle and ACK completion");
 
     const auto target_spot =

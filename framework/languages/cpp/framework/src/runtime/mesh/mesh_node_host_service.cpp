@@ -1416,8 +1416,28 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                 }});
         }
     }
-    for (const auto &node : _nodes)
+    for (std::size_t index = 0; index < _nodes.size (); ++index) {
+        const auto &node = _nodes[index];
+        const auto registration = _registrations[index];
         node->start ();
+        node->native_node ().objects ().configure_relocation_state (
+          [registration] (
+            const stateful::object_ref_t &spot,
+            const std::string &stable_type) {
+              return detail::spot_node_runtime_t (
+                registration->spot_state)
+                .capture_spot_relocation_state (
+                  spot, stable_type);
+          },
+          [registration] (
+            const stateful::frozen_object_state_t &frozen,
+            const stateful::object_ref_t &target) {
+              return detail::spot_node_runtime_t (
+                registration->spot_state)
+                .restore_spot_relocation_state (
+                  frozen, target);
+          });
+    }
     _published_mesh_nodes.clear ();
     _published_mesh_descriptors.clear ();
     for (std::size_t index = 0; index < _nodes.size (); ++index) {

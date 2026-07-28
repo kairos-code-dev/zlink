@@ -39,11 +39,11 @@ class bingo_entry_spot_t : public entry_spot_t
     }
 
     task_t<observe_bingo_events_res_t>
-    observe_bingo_events (const player_actor_t &actor,
+    observe_bingo_events (player_actor_t &actor,
                           message_context_t &context,
                           const observe_bingo_events_req_t &request);
 
-    task_t<match_bingo_res_t> match_bingo (const player_actor_t &actor,
+    task_t<match_bingo_res_t> match_bingo (player_actor_t &actor,
                                            message_context_t &context,
                                            const match_bingo_req_t &request);
 

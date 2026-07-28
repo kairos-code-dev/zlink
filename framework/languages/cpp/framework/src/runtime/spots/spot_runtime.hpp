@@ -607,6 +607,12 @@ class spot_node_runtime_t
     void bind_relocation_authority (
       std::shared_ptr<runtime::stateful::authority_relocation_port_t>
         authority);
+    std::vector<std::uint8_t> capture_spot_relocation_state (
+      const runtime::stateful::object_ref_t &spot,
+      const std::string &stable_type) const;
+    bool restore_spot_relocation_state (
+      const runtime::stateful::frozen_object_state_t &frozen,
+      const runtime::stateful::object_ref_t &target);
     std::optional<runtime::stateful::durable_join_completion_root_t>
     pending_join_completion_root (const std::string &transfer_id) const;
     result_t<void> restore_pending_join_completion (

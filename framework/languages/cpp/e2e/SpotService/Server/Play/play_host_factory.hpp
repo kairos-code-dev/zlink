@@ -275,8 +275,9 @@ inline int run_play_server (int argc, char **argv)
             [] (auto &factory) {
                 factory.disable_relocation ();
             })
-          .add_actor_factory<scenario_actor_factory_t> (
+          .add_actor_factory<scenario_actor_t, scenario_actor_factory_t> (
             e2e::actor_type,
+            std::make_shared<scenario_actor_factory_t> (),
             [] (auto &factory) { factory.disable_relocation (); });
         auto &http = options.http ().listen (http_endpoint);
         map_operational_endpoints (http);

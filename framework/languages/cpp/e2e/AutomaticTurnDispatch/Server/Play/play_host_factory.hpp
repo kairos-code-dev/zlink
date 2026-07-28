@@ -95,8 +95,9 @@ inline void configure_play_host (zlink::framework::app_t &app,
             [] (auto &factory) {
                 factory.disable_relocation ();
             })
-          .add_actor_factory<await_actor_factory_t> (
+          .add_actor_factory<await_actor_t, await_actor_factory_t> (
             yd::actor_type,
+            std::make_shared<await_actor_factory_t> (),
             [] (auto &factory) { factory.disable_relocation (); });
         options.http ().listen (play_options.http_endpoint).map_health ("/health");
     });

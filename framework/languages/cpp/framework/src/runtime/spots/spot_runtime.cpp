@@ -2116,6 +2116,13 @@ spot_node_builder_t &spot_node_builder_t::add_spot_factory_erased (
           framework_error_kind_t::invalid_configuration,
           "Entry Spot execution mode is fixed by the Framework");
     }
+    if (relocation.kind
+          == detail::factory_relocation_kind_t::preserve_state
+        && (!relocation.capture || !relocation.restore)) {
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Spot preserve-state relocation callbacks must not be empty");
+    }
     const auto [_, inserted] = _state->spot_factories.emplace (spot_name, spot_type);
     if (!inserted) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -3144,6 +3151,102 @@ void spot_node_runtime_t::bind_relocation_authority (
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     _state->relocation_authority = std::move (authority);
+}
+
+std::vector<std::uint8_t>
+spot_node_runtime_t::capture_spot_relocation_state (
+  const runtime::stateful::object_ref_t &spot,
+  const std::string &stable_type) const
+{
+    std::shared_ptr<spot_context_state_t> context;
+    detail::factory_relocation_configuration_t relocation;
+    {
+        std::lock_guard<std::recursive_mutex> lock (_state->mutex);
+        const auto found =
+          _state->spot_contexts_by_id.find (spot.key);
+        const auto configured =
+          _state->spot_factory_relocations.find (stable_type);
+        if (found == _state->spot_contexts_by_id.end ()
+            || found->second._state->spot_name != stable_type
+            || configured == _state->spot_factory_relocations.end ()) {
+            throw framework_exception_t (
+              framework_error_kind_t::spot_route_not_found,
+              "Relocation source Spot is not materialized");
+        }
+        context = found->second._state;
+        relocation = configured->second;
+    }
+    if (relocation.kind
+          != detail::factory_relocation_kind_t::preserve_state)
+        return {};
+    if (!relocation.capture || !context->spot_instance) {
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "State-preserving Spot relocation has no capture callback");
+    }
+    std::vector<std::byte> payload;
+    const auto captured = context->run_serial_task (
+      "spot-relocation-capture",
+      [&] () -> task_t<void> {
+          payload = co_await relocation.capture (
+            context->spot_instance.get (), {});
+      });
+    if (!captured)
+        throw framework_exception_t (
+          captured.error_kind (),
+          captured.error () != nullptr
+            ? captured.error ()->what ()
+            : "Spot relocation capture failed");
+    std::vector<std::uint8_t> output;
+    output.reserve (payload.size ());
+    for (const auto value : payload)
+        output.push_back (std::to_integer<std::uint8_t> (value));
+    return output;
+}
+
+bool spot_node_runtime_t::restore_spot_relocation_state (
+  const runtime::stateful::frozen_object_state_t &frozen,
+  const runtime::stateful::object_ref_t &target)
+try
+{
+    detail::factory_relocation_configuration_t relocation;
+    {
+        std::lock_guard<std::recursive_mutex> lock (_state->mutex);
+        const auto configured =
+          _state->spot_factory_relocations.find (frozen.stable_type);
+        if (configured == _state->spot_factory_relocations.end ())
+            return false;
+        relocation = configured->second;
+    }
+    auto materialized = get_or_create_spot (
+      frozen.stable_type, spot_id_t (target.key), zlink::message_t{},
+      target.object_generation, target.mesh_name);
+    if (materialized.state != spot_create_state_t::created
+        && materialized.state != spot_create_state_t::existing)
+        return false;
+    if (relocation.kind
+          != detail::factory_relocation_kind_t::preserve_state)
+        return frozen.application_state.empty ();
+    if (!relocation.restore
+        || !materialized.context._state
+        || !materialized.context._state->spot_instance)
+        return false;
+    std::vector<std::byte> payload;
+    payload.reserve (frozen.application_state.size ());
+    for (const auto value : frozen.application_state)
+        payload.push_back (static_cast<std::byte> (value));
+    auto restored = materialized.context._state->run_serial_task (
+      "spot-relocation-restore",
+      [&] {
+          return relocation.restore (
+            materialized.context._state->spot_instance.get (),
+            std::move (payload), {});
+      });
+    return static_cast<bool> (restored);
+}
+catch (...)
+{
+    return false;
 }
 
 std::optional<runtime::stateful::durable_join_completion_root_t>

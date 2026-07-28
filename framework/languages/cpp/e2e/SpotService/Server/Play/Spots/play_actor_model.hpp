@@ -59,34 +59,37 @@ struct user_spot_stage_timer_handler_t
     void handle (user_spot_t &spot, const zlink::framework::timer_tick_t &tick) const;
 };
 
-struct scenario_actor_t
+struct scenario_actor_t : zlink::framework::actor_t
 {
-    explicit scenario_actor_t (std::string actor_id) : actor_id (std::move (actor_id)) {}
-
-    void set_actor_ref (const zlink::framework::actor_ref_t &value)
+    explicit scenario_actor_t (zlink::framework::actor_context_t value) :
+        actor_id (value.actor_ref ().actor_id ()),
+        actor_ref (value.actor_ref ()),
+        _actor_context (std::move (value))
     {
-        actor_ref = value;
-        actor_id = std::string (value.actor_id ());
     }
 
-    void set_actor_context (zlink::framework::actor_context_t value)
-    {
-        context = std::move (value);
-    }
+    zlink::framework::actor_context_t &context () noexcept override
+    { return _actor_context; }
+    const zlink::framework::actor_context_t &context () const noexcept override
+    { return _actor_context; }
 
     std::string actor_id;
     mutable std::string display_name;
     mutable int level = 0;
     int ping_seen = 0;
     zlink::framework::actor_ref_t actor_ref;
-    zlink::framework::actor_context_t context;
+    zlink::framework::actor_context_t _actor_context;
 };
 
-struct scenario_actor_factory_t
+struct scenario_actor_factory_t final
+    : zlink::framework::actor_factory_t<scenario_actor_t>
 {
-    scenario_actor_t create (std::string actor_id) const
+    zlink::framework::task_t<std::shared_ptr<scenario_actor_t>>
+    create (zlink::framework::actor_context_t context,
+            std::stop_token) override
     {
-        return scenario_actor_t (std::move (actor_id));
+        co_return std::make_shared<scenario_actor_t> (
+          std::move (context));
     }
 };
 
@@ -745,7 +748,7 @@ class user_spot_t : public zlink::framework::spot_t
                      const e2e::actor_push_req_t &request)
     {
         ++actor.ping_seen;
-          actor.context.bound_session ()
+          actor.context ().bound_session ()
             .send (e2e::actor_push_notify_t{actor.actor_id, request.value, actor.ping_seen})
             .submit ();
         _state.record ("ActorPushedSession", actor.actor_id,
@@ -875,7 +878,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
             _state.record ("EntryJoin", actor.actor_id,
                            _context.spot_id (), request.key);
             auto joined =
-              co_await actor.context.join_spot (rid, request).async<e2e::join_res_t> ();
+              co_await actor.context ().join_spot (rid, request).async<e2e::join_res_t> ();
             const auto *accepted =
               std::get_if<zlink::framework::actor_join_accepted_t<e2e::join_res_t>> (&joined);
             if (accepted == nullptr) {
@@ -915,7 +918,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
               "admission join request actor does not match dispatched actor");
         }
         auto joined =
-          co_await actor.context
+          co_await actor.context ()
             .join_spot ((request.spot_id), request)
             .async<e2e::join_admitted_user_spot_actor_res_t> ();
         const auto *joined_accepted =
@@ -985,7 +988,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
                      const e2e::actor_push_req_t &request)
     {
         ++actor.ping_seen;
-          actor.context.bound_session ()
+          actor.context ().bound_session ()
             .send (e2e::actor_push_notify_t{actor.actor_id, request.value, actor.ping_seen})
             .submit ();
         _state.record ("EntryActorPushedSession", actor.actor_id,

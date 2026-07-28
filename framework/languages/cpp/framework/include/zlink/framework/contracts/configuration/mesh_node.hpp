@@ -202,15 +202,6 @@ class mesh_node_builder_t
         return *this;
     }
 
-    template <typename TActorFactory, typename TConfigure>
-    mesh_node_builder_t &add_actor_factory (std::string actor_type,
-                                            TConfigure configure)
-    {
-        spot_builder ().template add_actor_factory<TActorFactory> (
-          std::move (actor_type), std::move (configure));
-        return *this;
-    }
-
     template <typename TActor, typename TActorFactory>
     requires std::derived_from<TActor, actor_t>
              && std::derived_from<TActorFactory, actor_factory_t<TActor>>

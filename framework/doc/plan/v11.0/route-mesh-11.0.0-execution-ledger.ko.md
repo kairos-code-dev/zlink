@@ -7052,3 +7052,36 @@ ContractTests 70/70, focused UnitTests 308/308, SampleRegressionTests 126/126을
 JVM factory builder 계약은 commit `116bc1bd97` 기준으로 Java core 603/603, core contract
 22/22, Kotlin 46/46과 Java·Kotlin SpotActorTransfer build를 통과했다. 기존 Kotlin contract
 3건 실패는 이 변경과 무관한 별도 gap으로 유지한다.
+
+## 2026-07-29 .NET Config 10 target completion crash window 수정
+
+High review에서 target이 completion journal의 `Prepare`를 저장한 직후 종료되면 startup
+recovery가 중단되는 문제를 확인했다. Journal이 canonical root에 completion payload를 추가할
+때 Location Store authority를 이전 relocation wrapper로 바꾸고 있었다. Startup은 이
+authority에서 canonical phase를 읽지 못했고 journal도 canonical publication을 무시했다.
+
+Completion journal의 모든 root pointer 변경을 canonical authority CAS로 통일했다.
+`Prepared`, `Committed`, `Delivered` cursor를 저장할 때 기존 relocation identity, owner fence,
+phase와 source cleanup state를 유지하고 root reference와 checksum만 새 immutable root로
+바꾼다. Journal recovery도 canonical root의 completion payload를 읽는다. CAS conflict에서는
+현재 authority가 같은 content-addressed root를 게시한 경우 그 root를 삭제하지 않는다.
+
+Focused crash-window test는 `Prepared`와 `Committed` 각각에서 journal 객체를 새로 만들어
+target restart를 모사한다. Startup publication coordinator가 root를 찾고 standalone Actor
+recovery가 소유하는 root로 판정하는지 확인한다. 두 cursor에서 canonical `Completed` phase,
+128-bit operation ID, reply와 root pointer가 유지되며, `Delivered` 뒤에만 root를 해제한다.
+
+- `DeferredActorJoinDurabilityTests`: 6/6
+- `StandaloneActorRelocationRuntimeTests`: 37/37
+- `RelocationRuntimeTests`: 153/153
+- `ActorRelocationProtocolTests`: 5/5
+- .NET UnitTests: 1,253/1,253
+- .NET ContractTests: 70/70
+- .NET solution build: warning 0, error 0
+- actual-process `ST-B1 ST-B2`:
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-062527-95677`
+
+위 actual-process 실행은 source process crash를 검증한다. Target process crash는 같은
+process의 User Spot owner도 함께 종료하므로 Actor completion journal만의 회귀와 분리되지
+않는다. Target process crash와 Spot aggregate recovery를 묶은 actual-process 시나리오는
+별도 gap으로 남긴다.

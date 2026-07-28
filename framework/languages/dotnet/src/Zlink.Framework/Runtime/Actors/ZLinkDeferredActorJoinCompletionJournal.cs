@@ -88,11 +88,18 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
         var replacedReference = default(string);
         var replacedRootIsActorOnly = false;
         var applicationAuthorityPayload = snapshot.Payload;
+        ZLinkCanonicalRelocationAuthorityProjection? canonical = null;
         ZLinkRelocationEnvelope envelope;
         if (ZLinkRelocationAuthorityPayloadCodec.TryDecode(
                 snapshot.Payload.Span,
                 out var currentPublication))
         {
+            if (currentPublication.IsCanonical
+                && !ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                    snapshot.Payload.Span,
+                    out canonical))
+                throw new ZLinkRelocationDataLostException(
+                    $"Actor '{actorId}' canonical relocation authority is malformed.");
             var current = await new ZLinkRelocationPublicationCoordinator(
                     authorityStore,
                     relocationStore)
@@ -133,6 +140,18 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
         {
             envelope = CreateEnvelope(key, snapshot, completion);
         }
+        if (canonical is not null)
+            return await PublishCanonicalAsync(
+                    key,
+                    snapshot,
+                    envelope,
+                    completion,
+                    canonical,
+                    replacedReference,
+                    replacedRootIsActorOnly,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
         var coordinator = new ZLinkRelocationPublicationCoordinator(
             authorityStore,
             relocationStore);
@@ -279,12 +298,27 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
                 out var publication))
             throw new ZLinkRelocationDataLostException(
                 "Actor authority lost its relocation publication.");
-        var nextPayload = ZLinkRelocationAuthorityPayloadCodec.Encode(
-            publication with
-            {
-                Reference = stored.Reference,
-                ChecksumCrc32c = stored.ChecksumCrc32c
-            });
+        var nextPayload = publication.IsCanonical
+            ? ZLinkCanonicalRelocationAuthorityStateCodec
+                .ReplaceRelocationState(
+                    snapshot.Payload.Span,
+                    ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                        snapshot.Payload.Span,
+                        out var canonical)
+                        ? canonical.State with
+                        {
+                            RelocationReference = stored.Reference,
+                            RelocationChecksumCrc32c = stored.ChecksumCrc32c
+                        }
+                        : throw new ZLinkRelocationDataLostException(
+                            "Actor authority lost its canonical relocation state."),
+                    updatedEnvelope)
+            : ZLinkRelocationAuthorityPayloadCodec.Encode(
+                publication with
+                {
+                    Reference = stored.Reference,
+                    ChecksumCrc32c = stored.ChecksumCrc32c
+                });
         var result = await authorityStore.CompareExchangeAuthorityAsync(
                 root.AuthorityKey,
                 snapshot.StoreVersion,
@@ -297,11 +331,29 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
             .ConfigureAwait(false);
         if (result is not ZLinkAuthorityCompareExchangeResult.Stored success)
         {
-            await DeleteBestEffortAsync(stored.Reference).ConfigureAwait(false);
-            return await RecoverAsync(root.Completion.ActorId, cancellationToken)
-                       .ConfigureAwait(false)
-                   ?? throw new ZLinkRelocationDataLostException(
-                       "Deferred Join completion cursor CAS conflicted without a recoverable root.");
+            var recovered = await RecoverAsync(
+                    root.Completion.ActorId,
+                    cancellationToken)
+                .ConfigureAwait(false)
+                ?? throw new ZLinkRelocationDataLostException(
+                    "Deferred Join completion cursor CAS conflicted without a recoverable root.");
+            EnsureSameOperation(
+                recovered.Completion,
+                root.Completion.OperationId,
+                root.Completion.Actor);
+            if ((byte)recovered.Completion.Cursor < (byte)next)
+                throw new ZLinkRelocationPublicationConflictException(
+                    await authorityStore.ReadAuthorityAsync(
+                        root.AuthorityKey,
+                        cancellationToken)
+                    .ConfigureAwait(false));
+            if (!string.Equals(
+                    recovered.Reference,
+                    stored.Reference,
+                    StringComparison.Ordinal))
+                await DeleteBestEffortAsync(stored.Reference)
+                    .ConfigureAwait(false);
+            return recovered;
         }
 
         await DeleteBestEffortAsync(current.Reference).ConfigureAwait(false);
@@ -321,15 +373,36 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
     {
         if (!ZLinkRelocationAuthorityPayloadCodec.TryDecode(
                 snapshot.Payload.Span,
-                out var publication)
-            || publication.IsCanonical)
+                out var publication))
             return null;
+        if (!string.Equals(
+                publication.TargetOwnerId,
+                snapshot.OwnerId,
+                StringComparison.Ordinal)
+            || publication.TargetOwnerLeaseGeneration
+            != snapshot.OwnerLeaseGeneration)
+            throw new ZLinkRelocationDataLostException(
+                "Deferred Join completion authority owner fence is invalid.");
         var envelope = await ZLinkRelocationTreeStore.GetAsync(
                 relocationStore,
                 publication.Reference,
                 publication.ChecksumCrc32c,
                 cancellationToken)
             .ConfigureAwait(false);
+        if (publication.IsCanonical
+            && (!ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                    snapshot.Payload.Span,
+                    out var canonical)
+                || canonical.RelocationReference != publication.Reference
+                || canonical.RelocationChecksumCrc32c
+                   != publication.ChecksumCrc32c
+                || envelope.AggregateId != publication.AggregateId
+                || envelope.CanonicalRelocationHigh
+                   != canonical.RelocationHigh
+                || envelope.CanonicalRelocationLow
+                   != canonical.RelocationLow))
+            throw new ZLinkRelocationDataLostException(
+                "Deferred Join completion canonical root fence is invalid.");
         var participant = envelope.Participants.SingleOrDefault(
             item => item.AuthorityKey == key);
         if (participant is null)
@@ -346,6 +419,145 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
             snapshot.StoreVersion,
             envelope,
             completion);
+    }
+
+    private async ValueTask<ZLinkDeferredJoinCompletionRoot>
+        PublishCanonicalAsync(
+            ZLinkAuthorityKey key,
+            ZLinkAuthoritySnapshot snapshot,
+            ZLinkRelocationEnvelope envelope,
+            ZLinkDeferredJoinCompletionRecord completion,
+            ZLinkCanonicalRelocationAuthorityProjection canonical,
+            string? replacedReference,
+            bool replacedRootIsActorOnly,
+            CancellationToken cancellationToken)
+    {
+        var tree = await ZLinkRelocationTreeStore.PutAsync(
+                relocationStore,
+                envelope,
+                Retention,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var stored = tree.Root;
+        var nextPayload = ZLinkCanonicalRelocationAuthorityStateCodec
+            .ReplaceRelocationState(
+                snapshot.Payload.Span,
+                canonical.State with
+                {
+                    RelocationReference = stored.Reference,
+                    RelocationChecksumCrc32c = stored.ChecksumCrc32c
+                },
+                envelope);
+        ZLinkAuthorityCompareExchangeResult result;
+        try
+        {
+            result = await authorityStore.CompareExchangeAuthorityAsync(
+                    key,
+                    snapshot.StoreVersion,
+                    new ZLinkAuthorityMutation.Put(
+                        nextPayload,
+                        ZLinkAuthorityGenerationTransition.Preserve,
+                        null,
+                        null),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            var current = await TryReadAuthorityWithoutCancellationAsync(key)
+                .ConfigureAwait(false);
+            if (current is not null)
+            {
+                var recovered = await TryReadPublishedAsync(
+                        key,
+                        current,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (recovered is not null)
+                {
+                    EnsureSameOperation(
+                        recovered.Completion,
+                        completion.OperationId,
+                        completion.Actor);
+                    return recovered;
+                }
+            }
+            throw;
+        }
+
+        if (result is ZLinkAuthorityCompareExchangeResult.Stored success)
+        {
+            if (replacedRootIsActorOnly
+                && replacedReference is not null
+                && !string.Equals(
+                    replacedReference,
+                    stored.Reference,
+                    StringComparison.Ordinal))
+                await DeleteBestEffortAsync(replacedReference)
+                    .ConfigureAwait(false);
+            return new ZLinkDeferredJoinCompletionRoot(
+                key,
+                stored.Reference,
+                stored.ChecksumCrc32c,
+                success.Snapshot.StoreVersion,
+                envelope,
+                completion);
+        }
+
+        if (result is ZLinkAuthorityCompareExchangeResult.Conflict conflict)
+        {
+            var current = conflict.Current is ZLinkAuthorityReadResult.Found found
+                ? found.Snapshot
+                : null;
+            if (current is not null)
+            {
+                var recovered = await TryReadPublishedAsync(
+                        key,
+                        current,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (recovered is not null)
+                {
+                    EnsureSameOperation(
+                        recovered.Completion,
+                        completion.OperationId,
+                        completion.Actor);
+                    if (!string.Equals(
+                            recovered.Reference,
+                            stored.Reference,
+                            StringComparison.Ordinal))
+                        await DeleteBestEffortAsync(stored.Reference)
+                            .ConfigureAwait(false);
+                    return recovered;
+                }
+            }
+            await DeleteBestEffortAsync(stored.Reference).ConfigureAwait(false);
+            throw new ZLinkRelocationPublicationConflictException(
+                conflict.Current);
+        }
+
+        await DeleteBestEffortAsync(stored.Reference).ConfigureAwait(false);
+        throw new InvalidOperationException(
+            "Authority Store rejected canonical deferred Join completion publication.");
+    }
+
+    private async ValueTask<ZLinkAuthoritySnapshot?>
+        TryReadAuthorityWithoutCancellationAsync(ZLinkAuthorityKey key)
+    {
+        try
+        {
+            var read = await authorityStore.ReadAuthorityAsync(
+                    key,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            return read is ZLinkAuthorityReadResult.Found found
+                ? found.Snapshot
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static ZLinkRelocationEnvelope CreateEnvelope(

@@ -115,6 +115,17 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         Assert.Throws<ZLinkConfigurationException>(
             () => escaped!.StableTypeLimit(8));
 
+        Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+                options.AddRouteMesh("zero-limit-node")
+                    .Objects()
+                    .Server()
+                    .AddSpotFactory<TestSpot>(
+                        "spot",
+                        factory => factory
+                            .StableTypeLimit(0)
+                            .DisableRelocation())));
+
         var callbackFailure = new InvalidOperationException("configure failed");
         var propagated = Assert.Throws<InvalidOperationException>(() =>
             new ServiceCollection().AddZLinkFramework(options =>

@@ -507,6 +507,9 @@ internal sealed class ZLinkUserSpotFactoryBuilder<TSpot>
     public IZLinkUserSpotFactoryBuilder<TSpot> StableTypeLimit(int limit)
     {
         EnsureConfigurationIsOpen();
+        if (limit <= 0)
+            throw new ZLinkConfigurationException(
+                "User Spot StableTypeLimit must be greater than zero.");
         _stableTypeLimit = limit;
         return this;
     }
@@ -562,6 +565,9 @@ internal sealed class ZLinkInstanceSpotFactoryBuilder<TSpot>
     public IZLinkInstanceSpotFactoryBuilder<TSpot> StableTypeLimit(int limit)
     {
         EnsureConfigurationIsOpen();
+        if (limit <= 0)
+            throw new ZLinkConfigurationException(
+                "Instance Spot StableTypeLimit must be greater than zero.");
         _stableTypeLimit = limit;
         return this;
     }

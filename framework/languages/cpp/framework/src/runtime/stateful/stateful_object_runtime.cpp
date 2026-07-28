@@ -655,6 +655,12 @@ stateful_error_t stateful_object_runtime_t::enqueue (
     if (object == nullptr) {
         return error;
     }
+    if (domain == turn_domain_t::application
+        && object->state == object_state_t::recovering
+        && _relocation_restore_reservations.contains (
+          key_for (owner))) {
+        return stateful_error_t::backpressured;
+    }
     if ((object->state == object_state_t::moving
          || object->state == object_state_t::recovering
          || object->state == object_state_t::closing)

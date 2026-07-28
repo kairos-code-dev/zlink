@@ -3218,6 +3218,7 @@ bool spot_node_runtime_t::restore_spot_relocation_state (
   std::stop_token cancellation)
 {
     std::uint64_t reservation = 0;
+    std::shared_ptr<std::promise<void>> completion;
     try {
         detail::factory_relocation_configuration_t relocation;
         {
@@ -3229,14 +3230,25 @@ bool spot_node_runtime_t::restore_spot_relocation_state (
                 == _state->spot_factory_relocations.end ())
                 return false;
             if (_state->spot_contexts_by_id.contains (target.key)
-                || _state->relocation_restore_reservations_by_id
+                || _state->pending_spot_creations_by_id
                      .contains (target.key)
-                || _state->next_relocation_restore_reservation == 0)
+                || _state->next_pending_spot_creation_reservation
+                     == 0)
                 return false;
             reservation =
-              _state->next_relocation_restore_reservation++;
-            _state->relocation_restore_reservations_by_id.emplace (
-              target.key, reservation);
+              _state->next_pending_spot_creation_reservation++;
+            completion =
+              std::make_shared<std::promise<void>> ();
+            const auto inserted =
+              _state->pending_spot_creations_by_id.emplace (
+                target.key,
+                detail::spot_node_builder_state_t::
+                  pending_spot_creation_t{
+                    frozen.stable_type,
+                    completion->get_future ().share (),
+                    reservation});
+            if (!inserted.second)
+                return false;
             relocation = configured->second;
         }
         if (frozen.application_state.size ()
@@ -3276,12 +3288,13 @@ bool spot_node_runtime_t::restore_spot_relocation_state (
         std::unique_lock<std::recursive_mutex> node_lock (
           _state->mutex);
         const auto owned =
-          _state->relocation_restore_reservations_by_id.find (
+          _state->pending_spot_creations_by_id.find (
             target.key);
         if (owned
-              == _state->relocation_restore_reservations_by_id.end ()
-            || owned->second != reservation)
-            return false;
+              == _state->pending_spot_creations_by_id.end ()
+            || owned->second.reservation != reservation)
+            throw std::logic_error (
+              "Relocation Spot reservation ownership was lost");
         auto materialized = create_spot_context_unlocked (
           frozen.stable_type,
           spot_id_t (target.key),
@@ -3293,13 +3306,21 @@ bool spot_node_runtime_t::restore_spot_relocation_state (
         const auto created =
           materialized.state == spot_create_state_t::created;
         const auto current =
-          _state->relocation_restore_reservations_by_id.find (
+          _state->pending_spot_creations_by_id.find (
             target.key);
         if (current
-              != _state->relocation_restore_reservations_by_id.end ()
-            && current->second == reservation) {
-            _state->relocation_restore_reservations_by_id.erase (
+              != _state->pending_spot_creations_by_id.end ()
+            && current->second.reservation == reservation) {
+            _state->pending_spot_creations_by_id.erase (
               current);
+            if (created)
+                completion->set_value ();
+            else
+                completion->set_exception (
+                  std::make_exception_ptr (
+                    framework_exception_t (
+                      framework_error_kind_t::spot_create_failed,
+                      "Relocation Spot activation was rejected")));
         }
         return created;
     }
@@ -3308,14 +3329,15 @@ bool spot_node_runtime_t::restore_spot_relocation_state (
             std::lock_guard<std::recursive_mutex> lock (
               _state->mutex);
             const auto current =
-              _state->relocation_restore_reservations_by_id.find (
+              _state->pending_spot_creations_by_id.find (
                 target.key);
             if (current
-                  != _state
-                       ->relocation_restore_reservations_by_id.end ()
-                && current->second == reservation) {
-                _state->relocation_restore_reservations_by_id.erase (
+                  != _state->pending_spot_creations_by_id.end ()
+                && current->second.reservation == reservation) {
+                _state->pending_spot_creations_by_id.erase (
                   current);
+                completion->set_exception (
+                  std::current_exception ());
             }
         }
     }
@@ -4867,10 +4889,17 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
     else
         attach_native_spot_locked (context_state);
 
+    const auto context_inserted =
+      _state->spot_contexts_by_id.emplace (
+        id_value, spot_context_t (context_state));
+    if (!context_inserted.second) {
+        remove_activation ();
+        return local_spot_create_result_t{
+          spot_id, spot_create_state_t::rejected,
+          std::nullopt, std::move (context)};
+    }
     _state->spot_ids_by_name[spot_name] = spot_id;
     _state->spot_names_by_id[id_value] = spot_name;
-    _state->spot_contexts_by_id.emplace (
-      id_value, spot_context_t (context_state));
     auto remove_ready_activation = [&] {
         _state->spot_ids_by_name.erase (spot_name);
         _state->spot_names_by_id.erase (id_value);
@@ -4972,14 +5001,33 @@ local_spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string 
     }
 
     auto promise = std::make_shared<std::promise<void>> ();
-    _state->pending_spot_creations_by_id.emplace (
+    if (_state->next_pending_spot_creation_reservation == 0)
+        throw framework_exception_t (
+          framework_error_kind_t::spot_create_failed,
+          "spot creation reservation sequence is exhausted");
+    const auto reservation =
+      _state->next_pending_spot_creation_reservation++;
+    const auto pending_inserted =
+      _state->pending_spot_creations_by_id.emplace (
       id_value, detail::spot_node_builder_state_t::pending_spot_creation_t{
-                   spot_name, promise->get_future ().share ()});
+                   spot_name, promise->get_future ().share (),
+                   reservation});
+    if (!pending_inserted.second)
+        throw framework_exception_t (
+          framework_error_kind_t::spot_create_failed,
+          "spot creation reservation was not acquired");
     try {
         auto result = create_spot_context_unlocked (std::move (spot_name), std::move (spot_id),
                                                     std::move (request), node_lock,
                                                     object_generation, std::move (mesh_name));
-        _state->pending_spot_creations_by_id.erase (id_value);
+        const auto owned =
+          _state->pending_spot_creations_by_id.find (id_value);
+        if (owned == _state->pending_spot_creations_by_id.end ()
+            || owned->second.reservation != reservation)
+            throw framework_exception_t (
+              framework_error_kind_t::spot_create_failed,
+              "spot creation reservation ownership was lost");
+        _state->pending_spot_creations_by_id.erase (owned);
         promise->set_value ();
         return std::move (result);
     }
@@ -4987,8 +5035,13 @@ local_spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string 
         if (!node_lock.owns_lock ()) {
             node_lock.lock ();
         }
-        _state->pending_spot_creations_by_id.erase (id_value);
-        promise->set_exception (std::current_exception ());
+        const auto owned =
+          _state->pending_spot_creations_by_id.find (id_value);
+        if (owned != _state->pending_spot_creations_by_id.end ()
+            && owned->second.reservation == reservation) {
+            _state->pending_spot_creations_by_id.erase (owned);
+            promise->set_exception (std::current_exception ());
+        }
         throw;
     }
 }

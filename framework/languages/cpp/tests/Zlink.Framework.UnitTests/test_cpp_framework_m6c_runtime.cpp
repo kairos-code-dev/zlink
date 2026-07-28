@@ -135,6 +135,7 @@ class concurrent_restore_spot_t final
     static inline std::condition_variable restore_condition;
     static inline bool restore_entered = false;
     static inline bool release_restore = false;
+    static inline std::vector<std::byte> restored_payload;
 
   private:
     zlink::framework::spot_context_t _context;
@@ -156,7 +157,7 @@ class concurrent_restore_adapter_t final
     zlink::framework::task_t<void>
     restore (
       concurrent_restore_spot_t &,
-      std::vector<std::byte>,
+      std::vector<std::byte> payload,
       std::stop_token) override
     {
         concurrent_restore_spot_t::restore_count.fetch_add (1);
@@ -168,6 +169,8 @@ class concurrent_restore_adapter_t final
           lock, [] {
               return concurrent_restore_spot_t::release_restore;
           });
+        concurrent_restore_spot_t::restored_payload =
+          std::move (payload);
         co_return;
     }
 };
@@ -1067,6 +1070,7 @@ void test_concurrent_spot_restore_owns_one_reservation (
           concurrent_restore_spot_t::restore_mutex);
         concurrent_restore_spot_t::restore_entered = false;
         concurrent_restore_spot_t::release_restore = false;
+        concurrent_restore_spot_t::restored_payload.clear ();
     }
     zlink::framework::spot_node_builder_t builder;
     builder.add_spot_factory<concurrent_restore_spot_t> (
@@ -1114,8 +1118,25 @@ void test_concurrent_spot_restore_owns_one_reservation (
               return concurrent_restore_spot_t::restore_entered;
           });
     }
-    const auto contender =
-      runtime.restore_spot_relocation_state (frozen, target);
+    std::atomic_bool contender_started{false};
+    bool contender_observed_existing = false;
+    std::thread contender ([&] {
+        contender_started.store (true);
+        const auto activated = runtime.get_or_create_spot (
+          "concurrent-spot",
+          zlink::framework::spot_id_t ("concurrent-id"));
+        contender_observed_existing =
+          activated.state
+          == zlink::framework::spot_create_state_t::existing;
+    });
+    while (!contender_started.load ())
+        std::this_thread::yield ();
+    std::this_thread::sleep_for (
+      std::chrono::milliseconds (10));
+    test.require (
+      concurrent_restore_spot_t::factory_count.load () == 1
+        && concurrent_restore_spot_t::restore_count.load () == 1,
+      "normal activation must wait on the relocation reservation");
     {
         std::lock_guard lock (
           concurrent_restore_spot_t::restore_mutex);
@@ -1123,11 +1144,14 @@ void test_concurrent_spot_restore_owns_one_reservation (
     }
     concurrent_restore_spot_t::restore_condition.notify_all ();
     owner.join ();
+    contender.join ();
 
     test.require (
-      first && !contender
+      first && contender_observed_existing
         && concurrent_restore_spot_t::factory_count.load () == 1
         && concurrent_restore_spot_t::restore_count.load () == 1
+        && concurrent_restore_spot_t::restored_payload
+             == std::vector<std::byte>{std::byte{1}}
         && runtime.find_spot (
           zlink::framework::spot_id_t ("concurrent-id")),
       "one SpotId reservation must own materialization and publication");
@@ -1285,6 +1309,87 @@ void test_restore_validates_generation_before_spot_publication (
               return entry.owner == aggregate_targets[1];
           }),
       "fresh aggregate retry must succeed without leaked state");
+}
+
+void test_pending_restore_rejects_ingress_before_rollback (
+  test_context_t &test)
+{
+    stateful_object_runtime_t target;
+    std::mutex callback_mutex;
+    std::condition_variable callback_condition;
+    bool callback_entered = false;
+    bool release_callback = false;
+    target.configure_relocation_state (
+      [] (const object_ref_t &, const std::string &,
+          std::stop_token) {
+          return std::vector<std::uint8_t>{};
+      },
+      [&] (const frozen_object_state_t &,
+           const object_ref_t &,
+           std::stop_token) {
+          std::unique_lock lock (callback_mutex);
+          callback_entered = true;
+          callback_condition.notify_all ();
+          callback_condition.wait (
+            lock, [&] { return release_callback; });
+          return false;
+      });
+    const frozen_object_state_t frozen{
+      .owner =
+        {.kind = object_kind_t::user_spot,
+         .key = "rollback-spot",
+         .object_generation = 1,
+         .authority_owner_generation = 1,
+         .mesh_name = "mesh",
+         .node_id = "source"},
+      .stable_type = "spot",
+      .application_state = {1},
+      .pending_application = {},
+      .timers = {}};
+    auto restored_target = frozen.owner;
+    restored_target.authority_owner_generation = 2;
+    restored_target.node_id = "target";
+    const relocation_restore_identity_t identity{
+      "rollback-root", 3, digest_with (3)};
+    stateful_error_t restore_result = stateful_error_t::none;
+    std::thread restoring ([&] {
+        restore_result = target.restore_relocation (
+          frozen, restored_target, identity);
+    });
+    {
+        std::unique_lock lock (callback_mutex);
+        callback_condition.wait (
+          lock, [&] { return callback_entered; });
+    }
+    const auto ingress = target.enqueue (
+      restored_target, turn_domain_t::application,
+      {1, {9}});
+    {
+        std::lock_guard lock (callback_mutex);
+        release_callback = true;
+    }
+    callback_condition.notify_all ();
+    restoring.join ();
+    test.require (
+      ingress == stateful_error_t::backpressured
+        && restore_result == stateful_error_t::conflict
+        && target.inventory ().empty (),
+      "pending restore must not accept ingress that rollback would erase");
+
+    target.configure_relocation_state (
+      [] (const object_ref_t &, const std::string &,
+          std::stop_token) {
+          return std::vector<std::uint8_t>{};
+      },
+      [] (const frozen_object_state_t &,
+          const object_ref_t &,
+          std::stop_token) { return true; });
+    test.require (
+      target.restore_relocation (
+        frozen, restored_target, identity)
+          == stateful_error_t::none
+        && target.inventory ().size () == 1,
+      "callback failure rollback must release the fresh retry");
 }
 
 void test_aggregate_envelope_and_crash_recovery (test_context_t &test)
@@ -2407,6 +2512,7 @@ int main ()
     test_spot_restore_stages_before_publication (test);
     test_concurrent_spot_restore_owns_one_reservation (test);
     test_restore_validates_generation_before_spot_publication (test);
+    test_pending_restore_rejects_ingress_before_rollback (test);
     test_aggregate_envelope_and_crash_recovery (test);
     test_publication_and_handoff (test);
     test_conflict_aborts_without_losing_ingress (test);

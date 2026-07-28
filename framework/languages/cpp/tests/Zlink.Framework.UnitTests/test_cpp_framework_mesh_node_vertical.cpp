@@ -141,6 +141,12 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::mesh_node_builder_t &> ().channel_name (
                    std::declval<std::string> ())),
                  zlink::framework::mesh_channel_builder_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::mesh_channel_builder_t &> ().client ()),
+                 zlink::framework::mesh_channel_client_builder_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::mesh_channel_builder_t &> ().server ()),
+                 zlink::framework::mesh_channel_server_builder_t>);
 struct contract_entry_spot_t;
 struct contract_spot_t;
 struct contract_actor_factory_t;
@@ -369,7 +375,8 @@ make_node (std::string endpoint, std::string routing_id)
     state->listen_endpoint = std::move (endpoint);
     state->routing_id = zlink::routing_id_t::from (routing_id);
     state->channels.emplace ("work",
-                             zlink::framework::detail::mesh_channel_registration_t{});
+                             zlink::framework::detail::mesh_channel_registration_t{
+                               100, {}, true, true});
     // The host admits object creation only for declared stable types.
     state->spot_state->snapshot.actor_types.emplace_back ("vertical.actor");
     return state;
@@ -384,7 +391,8 @@ make_named_node (std::string mesh_name, std::string routing_id)
     state->listen_endpoint = "tcp://127.0.0.1:0";
     state->routing_id = zlink::routing_id_t::from (std::move (routing_id));
     state->channels.emplace ("work",
-                             zlink::framework::detail::mesh_channel_registration_t{});
+                             zlink::framework::detail::mesh_channel_registration_t{
+                               100, {}, true, true});
     // The host admits object creation only for declared stable types.
     state->spot_state->snapshot.actor_types.emplace_back ("vertical.actor");
     return state;

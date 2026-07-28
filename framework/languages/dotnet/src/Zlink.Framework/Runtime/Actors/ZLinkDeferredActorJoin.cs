@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using Zlink.Framework.Runtime.Diagnostics;
+using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.Runtime.Actors;
 
@@ -120,6 +121,8 @@ internal sealed class ZLinkDeferredActorJoin(
     // join right after the handler terminal, so .NET posts onto the submitting
     // turn instead of detaching an unordered task.
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
+    private readonly IZLinkCurrentSpotActivation? _spotActivation =
+        ZLinkSpotAmbientContext.CurrentOrDefault;
     private ZLinkActorDispatchMailbox.BarrierReservation? _barrier;
 
     public void ReserveBarrier()
@@ -134,9 +137,18 @@ internal sealed class ZLinkDeferredActorJoin(
 
     public void Activate()
     {
-        if (_turn is { } turn && turn.TryPost(RunAsync)) return;
+        if (_turn is { } turn && turn.TryPost(RunOnSubmittingSpotAsync)) return;
         if (!runtime.TryRunDetached("actor-deferred-join", RunAsync))
             Discard();
+    }
+
+    private async ValueTask RunOnSubmittingSpotAsync(
+        CancellationToken cancellationToken)
+    {
+        using var spot = _spotActivation is null
+            ? null
+            : ZLinkSpotAmbientContext.Push(_spotActivation);
+        await RunAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public void Discard()

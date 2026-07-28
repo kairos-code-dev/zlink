@@ -114,6 +114,7 @@ start_node() {
   local rid="$1"
   local url="$2"
   local router="$3"
+  local advertise_host="$4"
   local config="$CONFIG_DIR/$rid.json"
   python3 "$ROOT_DIR/../write_role_config.py" "$config" -- \
     --rid "$rid" \
@@ -121,12 +122,29 @@ start_node() {
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --router-endpoint "$router" \
+    --router-advertise-host "$advertise_host" \
     --request-timeout-milliseconds 3000 \
     --evidence-file "$LOG_DIR/${rid}.evidence.log" \
     --log-dir "$LOG_DIR"
   setsid dotnet run --no-build --project "$SERVER_PROJECT" -- --config "$config" \
     9>&- \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
+  pids+=("$!")
+}
+
+start_transport_proxy() {
+  local name="$1"
+  local listen_port="$2"
+  local upstream_host="$3"
+  local upstream_port="$4"
+  local admin_port="$5"
+  setsid python3 "$ROOT_DIR/Support/stream_marker_proxy.py" \
+    --listen-port "$listen_port" \
+    --upstream-host "$upstream_host" \
+    --upstream-port "$upstream_port" \
+    --admin-port "$admin_port" \
+    9>&- \
+    >>"$LOG_DIR/$name.stdout.log" 2>>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
 }
 
@@ -156,6 +174,9 @@ run_client() {
     --node-a-pid "$NODE_A_PID" \
     --node-b-url "$NODE_B_URL" \
     --node-c-url "$NODE_C_URL" \
+    --transport-proxy-admin "$NODE_A_PROXY_ADMIN" \
+    --transport-proxy-admin "$NODE_B_PROXY_ADMIN" \
+    --transport-proxy-admin "$NODE_C_PROXY_ADMIN" \
     --node-a-stream-endpoint "$SESSION_A_STREAM" \
     --node-b-stream-endpoint "$SESSION_B_STREAM" \
     --scenario "$scenario"
@@ -179,6 +200,9 @@ NODE_C_HTTP_PORT="$(pick_port)"
 NODE_A_ROUTER_PORT="$(pick_port)"
 NODE_B_ROUTER_PORT="$(pick_port)"
 NODE_C_ROUTER_PORT="$(pick_port)"
+NODE_A_PROXY_ADMIN_PORT="$(pick_port)"
+NODE_B_PROXY_ADMIN_PORT="$(pick_port)"
+NODE_C_PROXY_ADMIN_PORT="$(pick_port)"
 SESSION_A_HTTP_PORT="$(pick_port)"
 SESSION_B_HTTP_PORT="$(pick_port)"
 SESSION_A_ROUTER_PORT="$(pick_port)"
@@ -188,9 +212,12 @@ SESSION_B_STREAM_PORT="$(pick_port)"
 NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
 NODE_B_URL="http://127.0.0.1:$NODE_B_HTTP_PORT"
 NODE_C_URL="http://127.0.0.1:$NODE_C_HTTP_PORT"
-NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
-NODE_B_ROUTER="tcp://127.0.0.1:$NODE_B_ROUTER_PORT"
-NODE_C_ROUTER="tcp://127.0.0.1:$NODE_C_ROUTER_PORT"
+NODE_A_ROUTER="tcp://127.0.0.2:$NODE_A_ROUTER_PORT"
+NODE_B_ROUTER="tcp://127.0.0.3:$NODE_B_ROUTER_PORT"
+NODE_C_ROUTER="tcp://127.0.0.4:$NODE_C_ROUTER_PORT"
+NODE_A_PROXY_ADMIN="http://127.0.0.1:$NODE_A_PROXY_ADMIN_PORT"
+NODE_B_PROXY_ADMIN="http://127.0.0.1:$NODE_B_PROXY_ADMIN_PORT"
+NODE_C_PROXY_ADMIN="http://127.0.0.1:$NODE_C_PROXY_ADMIN_PORT"
 SESSION_A_URL="http://127.0.0.1:$SESSION_A_HTTP_PORT"
 SESSION_B_URL="http://127.0.0.1:$SESSION_B_HTTP_PORT"
 SESSION_A_ROUTER="tcp://127.0.0.1:$SESSION_A_ROUTER_PORT"
@@ -203,10 +230,20 @@ dotnet build "$SERVER_PROJECT" --maxcpucount:1 9>&- >/dev/null
 dotnet build "$SESSION_GATEWAY_PROJECT" --maxcpucount:1 9>&- >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 9>&- >/dev/null
 
-start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER"
+start_transport_proxy actor-a-proxy "$NODE_A_ROUTER_PORT" \
+  127.0.0.2 "$NODE_A_ROUTER_PORT" "$NODE_A_PROXY_ADMIN_PORT"
+start_transport_proxy actor-b-proxy "$NODE_B_ROUTER_PORT" \
+  127.0.0.3 "$NODE_B_ROUTER_PORT" "$NODE_B_PROXY_ADMIN_PORT"
+start_transport_proxy actor-c-proxy "$NODE_C_ROUTER_PORT" \
+  127.0.0.4 "$NODE_C_ROUTER_PORT" "$NODE_C_PROXY_ADMIN_PORT"
+wait_health "$NODE_A_PROXY_ADMIN" actor-a-proxy
+wait_health "$NODE_B_PROXY_ADMIN" actor-b-proxy
+wait_health "$NODE_C_PROXY_ADMIN" actor-c-proxy
+
+start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" 127.0.0.1
 NODE_A_PID="${pids[${#pids[@]}-1]}"
-start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER"
-start_node actor-c "$NODE_C_URL" "$NODE_C_ROUTER"
+start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" 127.0.0.1
+start_node actor-c "$NODE_C_URL" "$NODE_C_ROUTER" 127.0.0.1
 
 wait_health "$NODE_A_URL" actor-a
 wait_health "$NODE_B_URL" actor-b
@@ -224,19 +261,15 @@ if [[ "$SCENARIO" == "all" ]]; then
   run_client "ST-B2"
   wait_process_exit "$NODE_A_PID" actor-a
   NODE_A_HTTP_PORT="$(pick_port)"
-  NODE_A_ROUTER_PORT="$(pick_port)"
   NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
-  NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
-  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER"
+  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" 127.0.0.1
   NODE_A_PID="${pids[${#pids[@]}-1]}"
   wait_health "$NODE_A_URL" actor-a
   run_client "ST-C2"
   wait_process_exit "$NODE_A_PID" actor-a
   NODE_A_HTTP_PORT="$(pick_port)"
-  NODE_A_ROUTER_PORT="$(pick_port)"
   NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
-  NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
-  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER"
+  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" 127.0.0.1
   NODE_A_PID="${pids[${#pids[@]}-1]}"
   wait_health "$NODE_A_URL" actor-a
   run_client "ST-C1"

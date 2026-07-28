@@ -70,7 +70,8 @@ final class ZLinkMeshApplicationDispatcherTest {
     void dispatchesChannelSendThroughTypedChannelHandler() throws Exception {
         MeshNodeRegistration mesh = new MeshNodeRegistration("game");
         mesh.listen("inproc://mesh-dispatch-channel");
-        mesh.channelName("play").addSendHandler(ChannelHandler.class, String.class);
+        mesh.channelName("play").server()
+            .addSendHandler(ChannelHandler.class, String.class);
         ZLinkMeshApplicationDispatcher dispatcher = dispatcher(mesh);
 
         dispatcher.accept(record(

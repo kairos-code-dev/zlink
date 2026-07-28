@@ -114,7 +114,8 @@ int main (int argc, char **argv)
             auto route = framework.add_route_mesh (e2e::route_channel);
             route.listen (options.route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (options.rid))
-              .channel_name (e2e::route_channel);
+              .channel_name (e2e::route_channel)
+              .server ();
             route.add_route_request_handler<rm_provider::route_ping_handler_t,
                                             e2e::scenario_route_req_t,
                                             e2e::scenario_route_res_t> (

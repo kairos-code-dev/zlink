@@ -32,6 +32,8 @@ struct mesh_channel_registration_t
 {
     int weight = 100;
     std::string handler_group;
+    bool role_selected = false;
+    bool server = false;
 };
 
 struct mesh_node_builder_state_t

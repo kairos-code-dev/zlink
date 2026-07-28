@@ -1,5 +1,6 @@
 using Zlink.Framework.E2E.Configuration;
 using System.Diagnostics;
+using System.Net.Http.Json;
 using SpotActorTransfer.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Errors;
@@ -10,6 +11,10 @@ namespace SpotActorTransfer.Client.Support;
 internal sealed class SpotActorTransferScenarioContext : IDisposable
 {
     private readonly SemaphoreSlim _placementGate = new(1, 1);
+    private readonly HttpClient _transportProxyClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(15)
+    };
 
     public SpotActorTransferScenarioContext(ClientOptions options)
     {
@@ -69,6 +74,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
     public void Dispose()
     {
         _placementGate.Dispose();
+        _transportProxyClient.Dispose();
         NodeA.Dispose();
         NodeB.Dispose();
         NodeC.Dispose();
@@ -764,6 +770,96 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         ?? throw new InvalidOperationException(
             "Transport delivery snapshot response was null.");
 
+    public async Task ArmExternalTransportDeliveryAsync(
+        string gateId,
+        string marker)
+    {
+        foreach (var admin in TransportProxyAdmins())
+        {
+            using var response = await _transportProxyClient.PostAsJsonAsync(
+                $"{admin}/arm",
+                new ExternalTransportGateArm(gateId, marker));
+            await EnsureProxySuccessAsync(response, admin, "arm");
+        }
+    }
+
+    public async Task<ExternalTransportGateRes>
+        WaitExternalTransportDeliveryAsync(string gateId)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        do
+        {
+            var snapshot = await GetExternalTransportDeliveryAsync(gateId);
+            if (snapshot.CapturedCount == 1)
+                return snapshot;
+            ZlinkStreamAssert.Ensure(
+                snapshot.CapturedCount == 0,
+                $"External transport gate '{gateId}' captured "
+                + $"{snapshot.CapturedCount} deliveries, expected one.");
+            await Task.Delay(25);
+        } while (DateTimeOffset.UtcNow < deadline);
+
+        throw new TimeoutException(
+            $"External transport gate '{gateId}' did not capture a delivery.");
+    }
+
+    public async Task<ExternalTransportGateRes>
+        ReleaseExternalTransportDeliveryAsync(string gateId)
+    {
+        foreach (var admin in TransportProxyAdmins())
+        {
+            using var response = await _transportProxyClient.PostAsync(
+                $"{admin}/release?gateId={Uri.EscapeDataString(gateId)}",
+                null);
+            await EnsureProxySuccessAsync(response, admin, "release");
+        }
+
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        do
+        {
+            var snapshot = await GetExternalTransportDeliveryAsync(gateId);
+            if (snapshot.ReleasedCount == 1)
+                return snapshot;
+            await Task.Delay(25);
+        } while (DateTimeOffset.UtcNow < deadline);
+        return await GetExternalTransportDeliveryAsync(gateId);
+    }
+
+    public async Task<ExternalTransportGateRes>
+        GetExternalTransportDeliveryAsync(string gateId)
+    {
+        var snapshots = new List<ExternalTransportGateRes>();
+        foreach (var admin in TransportProxyAdmins())
+        {
+            snapshots.Add(await _transportProxyClient.GetFromJsonAsync<
+                    ExternalTransportGateRes>(
+                    $"{admin}/snapshot?gateId={Uri.EscapeDataString(gateId)}")
+                ?? throw new InvalidOperationException(
+                    "External transport gate snapshot was null."));
+        }
+        return new ExternalTransportGateRes(
+            gateId,
+            snapshots.Sum(static item => item.CapturedCount),
+            snapshots.Sum(static item => item.ReleasedCount),
+            snapshots.All(static item => item.Released));
+    }
+
+    private IEnumerable<string> TransportProxyAdmins() =>
+        Options.TransportProxyAdmins.Distinct(StringComparer.Ordinal);
+
+    private static async Task EnsureProxySuccessAsync(
+        HttpResponseMessage response,
+        string admin,
+        string operation)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+        var detail = await response.Content.ReadAsStringAsync();
+        throw new HttpRequestException(
+            $"External transport proxy {operation} failed at {admin}: "
+            + $"{(int)response.StatusCode} {detail}");
+    }
+
     public async Task<ReplyAdmissionGateRes> ArmReplyAdmissionAsync(
         ZLinkHttpClient client,
         string actorId) =>
@@ -955,11 +1051,22 @@ internal sealed record ClientOptions(
     string NodeCUrl,
     string NodeAStreamEndpoint,
     string NodeBStreamEndpoint,
+    string[] TransportProxyAdmins,
     string Scenario)
 {
     public static ClientOptions Parse(string[] args)
         => E2eConfiguration.Load<ClientOptions>(args);
 }
+
+internal sealed record ExternalTransportGateArm(
+    string GateId,
+    string Marker);
+
+internal sealed record ExternalTransportGateRes(
+    string GateId,
+    int CapturedCount,
+    int ReleasedCount,
+    bool Released);
 
 internal sealed record JoinResponse(
     string Scenario,

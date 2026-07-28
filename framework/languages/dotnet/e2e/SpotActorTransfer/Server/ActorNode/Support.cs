@@ -17,6 +17,7 @@ internal sealed record ServerOptions(
     string RedisEndpoint,
     string RedisKeyPrefix,
     string RouterEndpoint,
+    string RouterAdvertiseHost,
     string EvidenceFile,
     string LogDir,
     int RequestTimeoutMilliseconds)

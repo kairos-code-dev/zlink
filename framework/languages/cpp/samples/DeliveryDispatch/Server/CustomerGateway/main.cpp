@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace zlink::samples::deliverydispatch
@@ -74,14 +75,12 @@ class customer_actor_t
 
     void set_actor_ref (const zlink::framework::actor_ref_t &value)
     {
-        actor_ref = value;
         actor_id = std::string (value.actor_id ());
     }
 
     void set_actor_context (actor_context_t &value) { context = &value; }
 
     std::string actor_id;
-    zlink::framework::actor_ref_t actor_ref;
     actor_context_t *context = nullptr;
 };
 
@@ -96,34 +95,23 @@ struct customer_actor_factory_t
 class customer_entry_spot_t : public entry_spot_t
 {
   public:
-    customer_entry_spot_t (customer_session_directory_t &sessions,
-                           actor_manager_t &actors) :
-        _sessions (sessions), _actors (actors)
+    customer_entry_spot_t (entry_spot_context_t context,
+                           customer_session_directory_t &sessions) :
+        _context (std::move (context)), _sessions (sessions)
     {
     }
 
-    void configure (entry_spot_context_t &context)
+    entry_spot_context_t &context () noexcept { return _context; }
+
+    void configure ()
     {
-        /* 공통 sample spec §7.3: Tracking은 고객 actor를 먼저 찾은 뒤 one-way로 상태를
-         * 보낸다. 조회는 이 entry spot의 route 핸들러가 답한다. */
-        context.handlers ()
-          .add_handler<&customer_entry_spot_t::find_customer_actor> (
-            find_customer_actor_req_t::packet_name)
+        /* Actor 위치 조회는 Framework의 Actor Directory가 담당한다. Entry Spot은
+         * actor에 도착한 subscription과 상태 message만 처리한다. */
+        _context.handlers ()
           .add_actor_request<&customer_entry_spot_t::subscribe_delivery> (
             subscribe_delivery_req_t::packet_name)
           .add_actor_send<&customer_entry_spot_t::status_updated> (
             delivery_status_updated_msg_t::packet_name);
-    }
-
-    task_t<find_customer_actor_res_t>
-    find_customer_actor (const find_customer_actor_req_t &request)
-    {
-        auto actor = co_await _actors.find (request.customer_id);
-        if (!actor) {
-            co_return find_customer_actor_res_t{request.customer_id, std::nullopt};
-        }
-        co_return find_customer_actor_res_t{request.customer_id,
-                                            actor_ref_snapshot_t::from (*actor)};
     }
 
     spot_actor_join_response_t on_actor_join (std::string_view,
@@ -159,8 +147,8 @@ class customer_entry_spot_t : public entry_spot_t
     }
 
   private:
+    entry_spot_context_t _context;
     customer_session_directory_t &_sessions;
-    actor_manager_t &_actors;
 };
 
 class customer_gateway_session_t final : public packet_stream_session_t
@@ -206,7 +194,9 @@ class customer_gateway_session_t final : public packet_stream_session_t
         const auto request = payload.parse_json<subscribe_delivery_req_t> ();
         auto &actors = stream.actors ();
         auto actor = actors.get_or_create (sample_names_t::customer_actor_type,
-                                           sample_names_t::customer_id, request);
+                                           sample_names_t::customer_id,
+                                           ensure_customer_actor_req_t{
+                                             sample_names_t::customer_id});
         if (!actor) {
             throw framework_exception_t (
               actor.error_kind (),
@@ -274,15 +264,15 @@ int main (int argc, char **argv)
         auto sessions = std::make_unique<customer_session_directory_t> ();
         auto *sessions_ptr = sessions.get ();
         options.services ().add_singleton<customer_session_directory_t> (std::move (sessions));
-        auto services = options.services ().build_provider ();
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         auto actor_mesh = options.add_route_mesh (sample_names_t::customer_actor_discovery);
         actor_mesh.listen (topology.customer_spot_router_endpoint);
         actor_mesh.channel_name (sample_names_t::customer_actor_discovery);
-        actor_mesh.add_entry_spot<customer_entry_spot_t> ([sessions_ptr, services] () mutable {
+        actor_mesh.add_entry_spot<customer_entry_spot_t> ([sessions_ptr] (
+                                                            entry_spot_context_t context) {
               return std::make_shared<customer_entry_spot_t> (
-                *sessions_ptr, services.get_required<actor_manager_t> ());
+                std::move (context), *sessions_ptr);
           })
           .add_actor_factory<customer_actor_factory_t> (sample_names_t::customer_actor_type);
         options.add_stream_node (sample_names_t::customer_stream_node)

@@ -21,6 +21,7 @@ internal static class StF5MessageFollowRouteRemovalScenario
         var source = context.NodeForRid(created.NodeRid);
         var (firstTarget, _) = context.OtherActorNode(created.NodeRid);
         var finalTarget = context.ThirdActorNode(source, firstTarget);
+        var caller = finalTarget;
         var firstSpotRef = await context.CreateSpotAsync(
             firstTarget,
             firstSpot);
@@ -30,23 +31,23 @@ internal static class StF5MessageFollowRouteRemovalScenario
 
         var chainOperation = Guid.NewGuid().ToString("N");
         var expiredOperation = Guid.NewGuid().ToString("N");
-        await context.ArmTransportDeliveryAsync(
-            source, chainOperation, actorId, "OneWay");
-        await context.ArmTransportDeliveryAsync(
-            source, expiredOperation, actorId, "Request");
+        var chainMarker = $"chain-to-final-{chainOperation}";
+        var expiredMarker = $"after-route-removal-{expiredOperation}";
+        await context.ArmExternalTransportDeliveryAsync(
+            chainOperation, chainMarker);
+        await context.ArmExternalTransportDeliveryAsync(
+            expiredOperation, expiredMarker);
         var chained = context.SendFromNodeAsync(
-            source,
+            caller,
             actorId,
-            new HandoffPacket(scenario, "chain-to-final"),
-            chainOperation);
+            new HandoffPacket(scenario, chainMarker));
+        await context.WaitExternalTransportDeliveryAsync(chainOperation);
         var expired = context.ProbeFromNodeAsync(
-            source,
+            caller,
             actorId,
-            new ProbeReq(scenario, "after-route-removal"),
-            TimeSpan.FromSeconds(15),
-            expiredOperation);
-        await context.WaitTransportDeliveryAsync(source, chainOperation);
-        await context.WaitTransportDeliveryAsync(source, expiredOperation);
+            new ProbeReq(scenario, expiredMarker),
+            TimeSpan.FromSeconds(15));
+        await context.WaitExternalTransportDeliveryAsync(expiredOperation);
 
         ZlinkStreamAssert.Ensure((await context.JoinAsync(
                 source,
@@ -69,11 +70,11 @@ internal static class StF5MessageFollowRouteRemovalScenario
             finalTarget,
             [$"{scenario}|{actorId}|success_reply|{finalSpot}"]);
 
-        await context.ReleaseTransportDeliveryAsync(source, chainOperation);
+        await context.ReleaseExternalTransportDeliveryAsync(chainOperation);
         await chained;
         await context.WaitEvidenceAsync(
             finalTarget,
-            [$"{scenario}|{actorId}|handoff_packet|chain-to-final"]);
+            [$"{scenario}|{actorId}|handoff_packet|{chainMarker}"]);
         _ = await context.WaitActorOwnerAsync(
             finalTarget,
             actorId,
@@ -84,7 +85,7 @@ internal static class StF5MessageFollowRouteRemovalScenario
                 item.Scenario == scenario
                 && item.ActorId == actorId
                 && item.Kind == "handoff_packet"
-                && item.Value == "chain-to-final") == 1,
+                && item.Value == chainMarker) == 1,
             "ST-F5 multi-hop delivery was not handled exactly once.");
         foreach (var previousOwner in new[] { source, firstTarget })
         {
@@ -93,18 +94,17 @@ internal static class StF5MessageFollowRouteRemovalScenario
                     item.Scenario == scenario
                     && item.ActorId == actorId
                     && item.Kind == "handoff_packet"
-                    && item.Value == "chain-to-final"),
+                    && item.Value == chainMarker),
                 "ST-F5 previous-owner application handler processed followed work.");
         }
 
         // Expiry is verified through the public terminal result. Route table
         // cleanup itself has no public observation surface.
         await Task.Delay(TimeSpan.FromSeconds(8));
-        await context.ReleaseTransportDeliveryAsync(
-            source, expiredOperation);
+        await context.ReleaseExternalTransportDeliveryAsync(expiredOperation);
         var stale = await expired;
-        ZlinkStreamAssert.Ensure(!stale.Succeeded && stale.ErrorKind == "InvalidOperation",
-            $"ST-F5 expected removed Message Follow route to fail stale, got '{stale.ErrorKind}'.");
+        ZlinkStreamAssert.Ensure(!stale.Succeeded && stale.ErrorKind == "Unavailable",
+            $"ST-F5 expected Unavailable after Message Follow route removal, got '{stale.ErrorKind}'.");
         foreach (var node in new[] { source, firstTarget, finalTarget })
         {
             ZlinkStreamAssert.Ensure(
@@ -112,14 +112,14 @@ internal static class StF5MessageFollowRouteRemovalScenario
                     item.Scenario == scenario
                     && item.ActorId == actorId
                     && item.Kind == "packet_handler"
-                    && item.Value == "after-route-removal"),
+                    && item.Value == expiredMarker),
                 "ST-F5 expired request reached an application handler.");
         }
         ZlinkStreamAssert.Ensure(
-            (await context.GetTransportDeliveryAsync(
-                source, chainOperation)).ReleasedCount == 1
-            && (await context.GetTransportDeliveryAsync(
-                source, expiredOperation)).ReleasedCount == 1,
+            (await context.GetExternalTransportDeliveryAsync(chainOperation))
+                .ReleasedCount == 1
+            && (await context.GetExternalTransportDeliveryAsync(
+                expiredOperation)).ReleasedCount == 1,
             "ST-F5 did not release each pre-resolved operation exactly once.");
     }
 }

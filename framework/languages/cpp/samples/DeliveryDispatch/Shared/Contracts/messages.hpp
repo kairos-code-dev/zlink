@@ -2,39 +2,13 @@
 #pragma once
 
 #include <zlink/Contracts/Messaging/message.hpp>
-#include <zlink/framework/contracts/actors/actor.hpp>
 
 #include <nlohmann/json.hpp>
-#include <optional>
 #include <string>
 #include <vector>
 
-#ifndef ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
-#define ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
-namespace zlink::framework
-{
-inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
-{
-    json = {{"nodeRid", std::string (value.node_rid.value ())},
-            {"actorId", value.actor_id},
-            {"generation", value.generation}};
-}
-inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
-{
-    const auto node_rid = json.contains ("nodeRid") ? json.value ("nodeRid", std::string{})
-                                                    : json.value ("node_rid", std::string{});
-    value.node_rid = node_rid_t::from_string (node_rid);
-    value.actor_id = json.contains ("actorId") ? json.value ("actorId", std::string{})
-                                               : json.value ("actor_id", std::string{});
-    value.generation = json.value ("generation", std::uint64_t{0});
-}
-} // namespace zlink::framework
-#endif
-
 namespace zlink::samples::deliverydispatch
 {
-
-using actor_ref_snapshot_t = zlink::framework::actor_ref_snapshot_t;
 
 struct delivery_status_t
 {
@@ -68,83 +42,22 @@ struct ensure_customer_actor_req_t
     std::string customer_id;
 };
 
-struct ensure_customer_actor_res_t
-{
-    static constexpr const char *packet_name = "EnsureCustomerActorRes";
-    std::string customer_id;
-    actor_ref_snapshot_t actor;
-};
-
-struct bind_courier_req_t
-{
-    static constexpr const char *packet_name = "BindCourierReq";
-    std::string courier_id;
-    std::string session_route;
-};
-
-struct bind_courier_res_t
-{
-    static constexpr const char *packet_name = "BindCourierRes";
-    std::string courier_id;
-    actor_ref_snapshot_t actor;
-    std::string session_route;
-};
-
 struct bind_courier_session_req_t
 {
     static constexpr const char *packet_name = "BindCourierSessionReq";
     std::string courier_id;
-    actor_ref_snapshot_t actor;
-    std::string session_route;
 };
 
 struct bind_courier_session_res_t
 {
     static constexpr const char *packet_name = "BindCourierSessionRes";
     std::string courier_id;
-    actor_ref_snapshot_t actor;
-    std::string session_route;
 };
 
 struct ensure_courier_actor_req_t
 {
     static constexpr const char *packet_name = "EnsureCourierActorReq";
     std::string courier_id;
-};
-
-struct ensure_courier_actor_res_t
-{
-    static constexpr const char *packet_name = "EnsureCourierActorRes";
-    std::string courier_id;
-    actor_ref_snapshot_t actor;
-};
-
-/* 공통 sample spec §7.2/§7.3: actor를 만들기 전에 먼저 찾는다. 기존 actor가 없으면 비어 있는
- * 결과를 돌려준다(생성은 Ensure가 맡는다). */
-struct find_courier_actor_req_t
-{
-    static constexpr const char *packet_name = "FindCourierActorReq";
-    std::string courier_id;
-};
-
-struct find_courier_actor_res_t
-{
-    static constexpr const char *packet_name = "FindCourierActorRes";
-    std::string courier_id;
-    std::optional<actor_ref_snapshot_t> actor;
-};
-
-struct find_customer_actor_req_t
-{
-    static constexpr const char *packet_name = "FindCustomerActorReq";
-    std::string customer_id;
-};
-
-struct find_customer_actor_res_t
-{
-    static constexpr const char *packet_name = "FindCustomerActorRes";
-    std::string customer_id;
-    std::optional<actor_ref_snapshot_t> actor;
 };
 
 struct subscribe_delivery_req_t
@@ -310,68 +223,24 @@ inline void from_json (const nlohmann::json &json, ensure_customer_actor_req_t &
     value.customer_id = json_string (json, "customerId", "customer_id");
 }
 
-inline void to_json (nlohmann::json &json, const ensure_customer_actor_res_t &value)
-{
-    json = {{"customerId", value.customer_id}, {"actor", value.actor}};
-}
-
-inline void from_json (const nlohmann::json &json, ensure_customer_actor_res_t &value)
-{
-    value.customer_id = json_string (json, "customerId", "customer_id");
-    value.actor = json.value ("actor", actor_ref_snapshot_t{});
-}
-
-inline void to_json (nlohmann::json &json, const bind_courier_req_t &value)
-{
-    json = {{"courierId", value.courier_id}, {"sessionRoute", value.session_route}};
-}
-
-inline void from_json (const nlohmann::json &json, bind_courier_req_t &value)
-{
-    value.courier_id = json_string (json, "courierId", "courier_id");
-    value.session_route = json_string (json, "sessionRoute", "session_route");
-}
-
-inline void to_json (nlohmann::json &json, const bind_courier_res_t &value)
-{
-    json = {{"courierId", value.courier_id},
-            {"actor", value.actor},
-            {"sessionRoute", value.session_route}};
-}
-
-inline void from_json (const nlohmann::json &json, bind_courier_res_t &value)
-{
-    value.courier_id = json_string (json, "courierId", "courier_id");
-    value.actor = json.value ("actor", actor_ref_snapshot_t{});
-    value.session_route = json_string (json, "sessionRoute", "session_route");
-}
-
 inline void to_json (nlohmann::json &json, const bind_courier_session_req_t &value)
 {
-    json = {{"courierId", value.courier_id},
-            {"actor", value.actor},
-            {"sessionRoute", value.session_route}};
+    json = {{"courierId", value.courier_id}};
 }
 
 inline void from_json (const nlohmann::json &json, bind_courier_session_req_t &value)
 {
     value.courier_id = json_string (json, "courierId", "courier_id");
-    value.actor = json.value ("actor", actor_ref_snapshot_t{});
-    value.session_route = json_string (json, "sessionRoute", "session_route");
 }
 
 inline void to_json (nlohmann::json &json, const bind_courier_session_res_t &value)
 {
-    json = {{"courierId", value.courier_id},
-            {"actor", value.actor},
-            {"sessionRoute", value.session_route}};
+    json = {{"courierId", value.courier_id}};
 }
 
 inline void from_json (const nlohmann::json &json, bind_courier_session_res_t &value)
 {
     value.courier_id = json_string (json, "courierId", "courier_id");
-    value.actor = json.value ("actor", actor_ref_snapshot_t{});
-    value.session_route = json_string (json, "sessionRoute", "session_route");
 }
 
 inline void to_json (nlohmann::json &json, const ensure_courier_actor_req_t &value)
@@ -382,75 +251,6 @@ inline void to_json (nlohmann::json &json, const ensure_courier_actor_req_t &val
 inline void from_json (const nlohmann::json &json, ensure_courier_actor_req_t &value)
 {
     value.courier_id = json_string (json, "courierId", "courier_id");
-}
-
-inline void to_json (nlohmann::json &json, const ensure_courier_actor_res_t &value)
-{
-    json = {{"courierId", value.courier_id}, {"actor", value.actor}};
-}
-
-inline void from_json (const nlohmann::json &json, ensure_courier_actor_res_t &value)
-{
-    value.courier_id = json_string (json, "courierId", "courier_id");
-    value.actor = json.value ("actor", actor_ref_snapshot_t{});
-}
-
-inline void to_json (nlohmann::json &json, const find_courier_actor_req_t &value)
-{
-    json = {{"courierId", value.courier_id}};
-}
-
-inline void from_json (const nlohmann::json &json, find_courier_actor_req_t &value)
-{
-    value.courier_id = json_string (json, "courierId", "courier_id");
-}
-
-inline void to_json (nlohmann::json &json, const find_courier_actor_res_t &value)
-{
-    json = {{"courierId", value.courier_id}};
-    if (value.actor) {
-        json["actor"] = *value.actor;
-    } else {
-        json["actor"] = nullptr;
-    }
-}
-
-inline void from_json (const nlohmann::json &json, find_courier_actor_res_t &value)
-{
-    value.courier_id = json_string (json, "courierId", "courier_id");
-    value.actor = json.contains ("actor") && !json.at ("actor").is_null ()
-                    ? std::optional<actor_ref_snapshot_t> (
-                        json.at ("actor").get<actor_ref_snapshot_t> ())
-                    : std::nullopt;
-}
-
-inline void to_json (nlohmann::json &json, const find_customer_actor_req_t &value)
-{
-    json = {{"customerId", value.customer_id}};
-}
-
-inline void from_json (const nlohmann::json &json, find_customer_actor_req_t &value)
-{
-    value.customer_id = json_string (json, "customerId", "customer_id");
-}
-
-inline void to_json (nlohmann::json &json, const find_customer_actor_res_t &value)
-{
-    json = {{"customerId", value.customer_id}};
-    if (value.actor) {
-        json["actor"] = *value.actor;
-    } else {
-        json["actor"] = nullptr;
-    }
-}
-
-inline void from_json (const nlohmann::json &json, find_customer_actor_res_t &value)
-{
-    value.customer_id = json_string (json, "customerId", "customer_id");
-    value.actor = json.contains ("actor") && !json.at ("actor").is_null ()
-                    ? std::optional<actor_ref_snapshot_t> (
-                        json.at ("actor").get<actor_ref_snapshot_t> ())
-                    : std::nullopt;
 }
 
 inline void to_json (nlohmann::json &json, const subscribe_delivery_req_t &value)

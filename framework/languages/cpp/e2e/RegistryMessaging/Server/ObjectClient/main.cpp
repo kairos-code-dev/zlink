@@ -216,7 +216,10 @@ int main (int argc, char **argv)
               zlink::framework::object_role_t::client);
           if (options.server_weight) {
               route.channel_name (server_channel)
+                .server ()
                 .set_weight (*options.server_weight);
+          } else {
+              route.channel_name (server_channel).client ();
           }
           for (const auto &peer : options.peer_endpoints)
               route.peer_connections ().connect (peer);

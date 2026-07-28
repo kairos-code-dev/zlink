@@ -466,13 +466,9 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
     EXPECT_STREQ (subscribe_delivery_req_t::packet_name, "SubscribeDeliveryReq");
     EXPECT_STREQ (subscribe_delivery_res_t::packet_name, "SubscribeDeliveryRes");
     EXPECT_STREQ (ensure_customer_actor_req_t::packet_name, "EnsureCustomerActorReq");
-    EXPECT_STREQ (ensure_customer_actor_res_t::packet_name, "EnsureCustomerActorRes");
-    EXPECT_STREQ (bind_courier_req_t::packet_name, "BindCourierReq");
-    EXPECT_STREQ (bind_courier_res_t::packet_name, "BindCourierRes");
     EXPECT_STREQ (bind_courier_session_req_t::packet_name, "BindCourierSessionReq");
     EXPECT_STREQ (bind_courier_session_res_t::packet_name, "BindCourierSessionRes");
     EXPECT_STREQ (ensure_courier_actor_req_t::packet_name, "EnsureCourierActorReq");
-    EXPECT_STREQ (ensure_courier_actor_res_t::packet_name, "EnsureCourierActorRes");
     /* 공통 sample spec §7.4: 제안과 결정은 응답 없는 one-way send 쌍이다. */
     EXPECT_STREQ (offer_delivery_msg_t::packet_name, "OfferDeliveryMsg");
     EXPECT_STREQ (offer_delivery_result_msg_t::packet_name, "OfferDeliveryResultMsg");
@@ -488,15 +484,16 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
                                "2026-07-15T00:00:00Z"});
     EXPECT_EQ (status_wire.at ("status"), "Assigned");
 
-    const auto actor_snapshot = actor_ref_snapshot_t{
-      .node_rid = zlink::framework::node_rid_t::from_string ("courier-node"),
-      .actor_id = "courier-1",
-      .generation = 7};
-    const auto bind_wire = nlohmann::json (
-      bind_courier_session_res_t{"courier-1", actor_snapshot, "courier-route"});
-    EXPECT_EQ (bind_wire.at ("actor").at ("nodeRid"), "courier-node");
-    EXPECT_EQ (bind_wire.at ("actor").at ("actorId"), "courier-1");
-    EXPECT_EQ (bind_wire.at ("actor").at ("generation"), 7);
+    const auto bind_request_wire =
+      nlohmann::json (bind_courier_session_req_t{"courier-1"});
+    const auto bind_response_wire =
+      nlohmann::json (bind_courier_session_res_t{"courier-1"});
+    for (const auto &wire : {bind_request_wire, bind_response_wire}) {
+        EXPECT_EQ (wire.at ("courierId"), "courier-1");
+        EXPECT_FALSE (wire.contains ("actor"));
+        EXPECT_FALSE (wire.contains ("nodeRid"));
+        EXPECT_FALSE (wire.contains ("sessionRoute"));
+    }
 
     const auto changed_wire = nlohmann::json (delivery_status_changed_req_t{
       "delivery-1", "customer-2", delivery_status_t::assigned, "courier-1",
@@ -511,14 +508,8 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
                                 "SubscribeDeliveryRes",
                                 "BindCourierSessionReq",
                                 "BindCourierSessionRes",
-                                "BindCourierReq",
-                                "BindCourierRes",
-                                "EnsureCourierActorReq",
-                                "EnsureCourierActorRes",
                                 "OfferDeliveryMsg",
                                 "OfferDeliveryResultMsg",
-                                "EnsureCustomerActorReq",
-                                "EnsureCustomerActorRes",
                                 "DeliveryStatusChangedReq",
                                 "DeliveryStatusChangedRes"}) {
         EXPECT_NE (common_doc.find (std::string ("`") + message + "`"), std::string::npos)
@@ -965,20 +956,25 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
 
     const auto courier_actor_node =
       read_file (cpp_root / "samples/DeliveryDispatch/Server/CourierActorNode/main.cpp");
-    /* 공통 sample spec §7.2: courier actor는 이 노드의 entry spot이 route 요청으로 찾고 만들고
-     * offer한다. 별도 gateway나 per-node client-server 채널을 두지 않는다. */
-    EXPECT_NE (courier_actor_node.find ("add_handler<&courier_entry_spot_t::find_courier_actor>"),
+    const auto courier_session =
+      read_file (cpp_root / "samples/DeliveryDispatch/Server/CourierSession/main.cpp");
+    const auto delivery_contracts =
+      read_file (cpp_root / "samples/DeliveryDispatch/Shared/Contracts/messages.hpp");
+    /* 공통 sample spec §6/§7.2: actor 생성·위치 조회·direct send는 Framework가
+     * 담당한다. Entry Spot route packet과 client-visible ActorRef를 만들지 않는다. */
+    EXPECT_NE (courier_session.find ("actors.get_or_create"), std::string::npos)
+      << "CourierSession must create or locate the courier through ActorManager";
+    EXPECT_NE (courier_session.find ("actors.bind_or_get (located.value ().ref ())"),
                std::string::npos)
-      << "DeliveryDispatch CourierActorNode must answer FindCourierActorReq on its entry spot";
-    EXPECT_NE (courier_actor_node.find ("add_handler<&courier_entry_spot_t::ensure_courier_actor>"),
-               std::string::npos)
-      << "DeliveryDispatch CourierActorNode must answer EnsureCourierActorReq on its entry spot";
-    EXPECT_NE (courier_actor_node.find ("add_handler<&courier_entry_spot_t::offer_delivery_route>"),
-               std::string::npos)
-      << "DeliveryDispatch CourierActorNode must relay OfferDeliveryMsg on its entry spot";
+      << "CourierSession must bind the exact Ready ActorRef without serializing it";
+    EXPECT_EQ (courier_actor_node.find ("find_courier_actor"), std::string::npos);
+    EXPECT_EQ (courier_actor_node.find ("ensure_courier_actor"), std::string::npos);
+    EXPECT_EQ (courier_actor_node.find ("offer_delivery_route"), std::string::npos);
+    EXPECT_EQ (courier_actor_node.find ("actor_ref_t actor_ref;"), std::string::npos);
+    EXPECT_EQ (delivery_contracts.find ("actor_ref_snapshot_t"), std::string::npos);
+    EXPECT_EQ (delivery_contracts.find ("session_route"), std::string::npos);
     EXPECT_EQ (courier_actor_node.find ("enable_server"), std::string::npos)
-      << "DeliveryDispatch CourierActorNode must be reached through the spot mesh, not a per-node "
-         "client-server channel";
+      << "DeliveryDispatch CourierActorNode must not expose a per-node client-server channel";
     /* 공통 sample spec §7.4: 노드는 배송원의 결정을 기다리지 않는다. 결정이 오면 배차 채널로
      * one-way로 돌려보낼 뿐이다. */
     EXPECT_EQ (courier_actor_node.find ("condition_variable"), std::string::npos)

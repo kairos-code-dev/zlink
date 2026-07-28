@@ -88,6 +88,7 @@ internal static class ActorNodeHostFactory
             framework.AddHandlersFromAssemblyOf<TransferEntrySpot>();
             var mesh28 = framework.AddRouteMesh(SpotActorTransferNames.Mesh)
                 .Listen(options.RouterEndpoint)
+                .SetAdvertiseHost(options.RouterAdvertiseHost)
                 .SetRoutingIdPrefix(options.Rid)
                 .SetActorLimit(30_000)
                 .SetSpotLimit(5_000);

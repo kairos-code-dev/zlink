@@ -6352,3 +6352,58 @@ Config 1 `RM-A3`를 Node production runtime과 Redis Location Store로 실행했
 
 따라서 Node Config 1 `RM-A3` actual-process gap만 해소했다. Full Node aggregate의
 101개 missing scenario는 별도 row blocker로 유지한다.
+
+## 2026-07-29 .NET Config 10 외부 transport Message Follow checkpoint
+
+SpotActorTransfer `ST-F4`와 `ST-F5`를 Framework 내부 gate 대신 process 밖 TCP proxy로
+검증했다. 세 ActorNode의 ROUTER는 서로 다른 loopback 주소에 bind하고 public
+`SetAdvertiseHost`로 proxy endpoint를 게시한다. Proxy는 service wire를 해석하지 않고
+application payload의 고유 marker만 streaming 검색한다.
+
+`ST-F5`에서 첫 relocation은 끝났지만 두 번째 User Spot source의 committed leave callback이
+끝나지 않던 원인을 수정했다. Deferred Join은 제출한 Spot의 serial turn에 게시되지만 기존
+구현은 그 turn의 Spot activation context를 복원하지 않았다. Source leave가 같은 Spot queue에
+lifecycle 작업을 다시 제출해 현재 turn을 기다렸다. Deferred Join이 owner turn에서 실행될 때
+제출 시점의 Spot activation context를 함께 복원하도록 수정했다.
+
+외부 proxy도 보강했다. Marker가 없는 control frame의 마지막 byte가 marker prefix와 우연히
+일치하면 다음 TCP read까지 byte 하나를 보관하던 문제를 제거했다. 실제 marker가 read 경계에서
+나뉘는 경우는 계속 탐지하되, 짧은 유예 동안 뒤 byte가 오지 않으면 일치하지 않은 partial
+prefix를 전달한다. Chain operation의 capture를 확인한 뒤 expiry operation을 제출해 같은
+connection에서 검증 순서를 고정했다.
+
+- Focused unit: `DeferredActorJoinContractTests` 2/2 PASS
+- `ST-F5` 3회 연속 PASS:
+  - `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-032242-2945859`
+  - `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-032307-2947057`
+  - `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-032331-2948131`
+- `ST-F4` 회귀 PASS:
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-032359-2949302`
+- Timeout과 assertion은 변경하지 않았다.
+- 원인 분석에만 사용한 source cleanup stage marker는 모두 제거했다.
+
+이 checkpoint는 Actor one-way multi-hop, final owner exactly-once, 이전 owner handler 0회와
+Message Follow 만료 뒤 request의 public `Unavailable` terminal을 외부 transport에서
+확인한다. 기존 `ST-I4~I6` internal delivery gate와 friend assembly는 아직 남아 있다.
+해당 selector를 외부 fixture로 바꾸거나 제거하고 내부 hook을 삭제하기 전에는 Config 10
+전체와 `.NET` final reference row를 완료로 전환하지 않는다.
+
+## 2026-07-29 JVM·C++ RM-A3와 C++ DeliveryDispatch checkpoint
+
+JVM과 C++의 RouteMesh Channel registration을 Client와 Server role로 분리했다. Descriptor와
+connection requirement에는 Server role만 게시한다. 따라서 양쪽 MeshNode가 Object Client-only이고
+양쪽 모두 RouteMesh Channel Server가 없을 때만 `NotRequired`다. Client-only Channel은 연결
+필요성을 만들지 않으며 weight가 0인 Server Channel은 server membership을 유지한다.
+Automatic과 Manual 연결에 같은 판정을 적용하고 `NotRequired`와 `NotConnected`를 구분한다.
+
+- JVM core 602/602, RM-A3 focused 89/89, Spring monitoring focused test가 통과했다.
+- Kotlin·Spring과 JVM ObjectClient fixture compile이 통과했다.
+- C++ Framework, ObjectClient, M6A policy·manual, mesh-node vertical, layout·target contract가
+  통과했다.
+- C++ Registry Provider target은 이번 변경 범위를 지난 뒤 기존 `route_handler_context_t`와
+  이전 ClientServer API compile gap에서 실패한다. RM-A3 완료 증거로 사용하지 않는다.
+
+C++ DeliveryDispatch도 공통 sample 계약에 맞췄다. Client JSON wire에서 `ActorRef`, `NodeRid`와
+session route를 제거했고 낡은 Actor 조회·생성용 route packet과 handler를 삭제했다.
+`ActorManager.GetOrCreate`가 반환한 Ready ActorRef는 Framework session binding 내부에서만
+사용한다. Sample parity 54/54와 DeliveryDispatch executable 6개 build가 통과했다.

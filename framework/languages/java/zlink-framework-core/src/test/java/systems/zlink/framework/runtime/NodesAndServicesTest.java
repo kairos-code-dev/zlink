@@ -111,7 +111,7 @@ final class NodesAndServicesTest {
         var mesh = options.addRouteMesh("game")
             .listen("inproc://creating-actor")
             .setRoutingIdPrefix("creating-node");
-        mesh.channelName("game");
+        mesh.channelName("game").server();
         mesh.addActorFactory(
             "blocking-player",
             BlockingPlayerActorFactory.class);
@@ -174,7 +174,7 @@ final class NodesAndServicesTest {
         var mesh = options.addRouteMesh("game-" + suffix)
             .setRoutingIdPrefix(nodeRid.toString())
             .listen("inproc://route-mesh-request-" + suffix);
-        mesh.channelName("game");
+        mesh.channelName("game").server();
         mesh.objects().server()
             .addSpotFactory(
                 "room",
@@ -243,7 +243,7 @@ final class NodesAndServicesTest {
         var mesh = options.addRouteMesh("game")
             .listen("inproc://play-router")
             .setRoutingIdPrefix("play-node");
-        mesh.channelName("game");
+        mesh.channelName("game").server();
         mesh.addSpotFactory(GameSpot.class);
         mesh.addActorFactory("player", PlayerActorFactory.class);
         return options;

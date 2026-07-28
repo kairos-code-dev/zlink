@@ -6,6 +6,7 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
@@ -126,14 +127,13 @@ final class DefaultZLinkFrameworkOptionsTest {
 
         var mesh = options.addRouteMesh("game")
             .listen("inproc://game");
-        mesh.channelName("orders").setWeight(2);
+        mesh.channelName("orders").server().setWeight(2);
         mesh.peerConnections().connect(
             RoutingId.from("game-2"),
             "inproc://game-2");
 
-        options.validate();
-
         var registration = options.registration().meshNodes().getFirst();
+        registration.validate();
         assertEquals("game", registration.meshName());
         assertEquals("inproc://game", registration.bindEndpoint());
         assertEquals(List.of("orders"), registration.channelNames());
@@ -147,14 +147,32 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         var mesh = options.addRouteMesh("game");
 
-        assertDoesNotThrow(() -> mesh.channelName("disabled").setWeight(0));
+        assertDoesNotThrow(() -> mesh.channelName("disabled").server().setWeight(0));
         assertDoesNotThrow(
-            () -> mesh.channelName("maximum").setWeight(10_000));
-        mesh.channelName("default");
+            () -> mesh.channelName("maximum").server().setWeight(10_000));
+        mesh.channelName("default").server();
         assertEquals(
             100,
             options.registration().meshNodes().getFirst()
                 .channelWeights().get("default"));
+    }
+
+    @Test
+    void routeMeshClientChannelIsOutboundOnlyAndServerWeightZeroIsPublished() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        var mesh = options.addRouteMesh("game").listen("inproc://game");
+
+        mesh.objects().client();
+        mesh.channelName("outbound").client();
+        mesh.channelName("disabled-server").server().setWeight(0);
+
+        var registration = options.registration().meshNodes().getFirst();
+        registration.validate();
+        assertEquals(
+            List.of("disabled-server", "outbound"),
+            registration.channelNames().stream().sorted().toList());
+        assertFalse(registration.channelWeights().containsKey("outbound"));
+        assertEquals(0, registration.channelWeights().get("disabled-server"));
     }
 
     @Test
@@ -164,10 +182,10 @@ final class DefaultZLinkFrameworkOptionsTest {
 
         assertThrows(
             ZLinkConfigurationException.class,
-            () -> mesh.channelName("negative").setWeight(-1));
+            () -> mesh.channelName("negative").server().setWeight(-1));
         assertThrows(
             ZLinkConfigurationException.class,
-            () -> mesh.channelName("too-large").setWeight(10_001));
+            () -> mesh.channelName("too-large").server().setWeight(10_001));
     }
 
     @Test

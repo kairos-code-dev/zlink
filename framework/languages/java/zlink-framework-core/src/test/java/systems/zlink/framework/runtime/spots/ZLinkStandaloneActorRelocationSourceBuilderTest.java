@@ -248,7 +248,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilderTest {
         var mesh = options.addRouteMesh(MESH)
             .setRoutingIdPrefix(SOURCE_RID.toString())
             .listen("inproc://actor-retire-source");
-        mesh.channelName(MESH);
+        mesh.channelName(MESH).server();
         mesh.objects().server().addActorFactory(
             ACTOR_TYPE,
             TestActor.class,

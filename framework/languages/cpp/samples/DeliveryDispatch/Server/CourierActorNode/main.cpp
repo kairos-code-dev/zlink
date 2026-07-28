@@ -22,8 +22,6 @@ namespace zlink::samples::deliverydispatch
 
 using namespace framework;
 
-static std::string g_instance_name;
-
 class courier_actor_t
 {
   public:
@@ -31,14 +29,12 @@ class courier_actor_t
 
     void set_actor_ref (const zlink::framework::actor_ref_t &value)
     {
-        actor_ref = value;
         actor_id = std::string (value.actor_id ());
     }
 
     void set_actor_context (actor_context_t &value) { context = &value; }
 
     std::string actor_id;
-    zlink::framework::actor_ref_t actor_ref;
     actor_context_t *context = nullptr;
     /* 진행 중인 제안: delivery id -> attempt. 배송원의 결정이 오면 이 값을 실어 배차 쪽으로
      * 돌려준다(공통 sample spec §7.4). */
@@ -56,24 +52,18 @@ struct courier_actor_factory_t
 class courier_entry_spot_t : public entry_spot_t
 {
   public:
-    courier_entry_spot_t (actor_manager_t &actors,
-                          actor_client_t &actor_client,
-                          channel_client_t &channels) :
-        _actors (actors), _actor_client (actor_client), _channels (channels)
+    courier_entry_spot_t (entry_spot_context_t context, channel_client_t &channels) :
+        _context (std::move (context)), _channels (channels)
     {
     }
 
-    void configure (entry_spot_context_t &context)
+    entry_spot_context_t &context () noexcept { return _context; }
+
+    void configure ()
     {
-        /* 공통 sample spec §7.2: CourierSession과 DispatchWorker는 이 노드의 entry spot으로
-         * Find/Ensure/Offer를 route 요청한다. 별도 gateway나 session registry는 두지 않는다. */
-        context.handlers ()
-          .add_handler<&courier_entry_spot_t::find_courier_actor> (
-            find_courier_actor_req_t::packet_name)
-          .add_handler<&courier_entry_spot_t::ensure_courier_actor> (
-            ensure_courier_actor_req_t::packet_name)
-          .add_handler<&courier_entry_spot_t::offer_delivery_route> (
-            offer_delivery_msg_t::packet_name)
+        /* Actor 생성과 위치 조회는 Framework의 ActorManager와 Actor Client가 담당한다.
+         * Entry Spot은 actor에 도착한 application message만 처리한다. */
+        _context.handlers ()
           .add_actor_request<&courier_entry_spot_t::bind_courier_session> (
             bind_courier_session_req_t::packet_name)
           .add_actor_send<&courier_entry_spot_t::offer_delivery> (
@@ -87,61 +77,11 @@ class courier_entry_spot_t : public entry_spot_t
         return spot_actor_join_response_t::accept ();
     }
 
-    task_t<find_courier_actor_res_t>
-    find_courier_actor (const find_courier_actor_req_t &request)
-    {
-        auto actor = co_await _actors.find (request.courier_id);
-        if (!actor) {
-            co_return find_courier_actor_res_t{request.courier_id, std::nullopt};
-        }
-        co_return find_courier_actor_res_t{request.courier_id,
-                                           actor_ref_snapshot_t::from (*actor)};
-    }
-
-    task_t<ensure_courier_actor_res_t>
-    ensure_courier_actor (const ensure_courier_actor_req_t &request)
-    {
-        auto created = co_await _actors
-                         .get_or_create (request.courier_id,
-                                         sample_names_t::courier_actor_type)
-                         .creation_request (request)
-                         .submit ();
-        const auto actor = std::visit (
-          [] (const auto &result) -> actor_ref_t {
-              using result_t = std::remove_cvref_t<decltype (result)>;
-              if constexpr (std::is_same_v<result_t, actor_create_rejected_t>) {
-                  throw framework_exception_t (framework_error_kind_t::actor_create_rejected,
-                                               "courier actor creation was rejected");
-              } else {
-                  return result.actor;
-              }
-          },
-          created);
-        std::cerr << "deliverydispatch courier-route: ensured courier=" << request.courier_id
-                  << " instance=" << g_instance_name << "\n";
-        co_return ensure_courier_actor_res_t{
-          request.courier_id,
-          actor_ref_snapshot_t::from (actor)};
-    }
-
-    /* 제안은 응답 없는 one-way다. actor에게 넘기고 즉시 리턴한다 — spot의 직렬 줄을 배송원의
-     * 반응 시간 동안 붙잡지 않는다(공통 sample spec §7.4). */
-    task_t<void> offer_delivery_route (const offer_delivery_msg_t &message)
-    {
-        auto actor = co_await _actors.find (message.courier_id);
-        if (!actor) {
-            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
-                                         "courier actor is not bound: " + message.courier_id);
-        }
-        co_await _actor_client.send_to_actor (*actor, message).submit ();
-        co_return;
-    }
-
     bind_courier_session_res_t bind_courier_session (courier_actor_t &,
                                                     message_context_t &,
                                                     const bind_courier_session_req_t &request)
     {
-        return {request.courier_id, request.actor, request.session_route};
+        return {request.courier_id};
     }
 
     void offer_delivery (courier_actor_t &actor,
@@ -178,8 +118,7 @@ class courier_entry_spot_t : public entry_spot_t
     }
 
   private:
-    actor_manager_t &_actors;
-    actor_client_t &_actor_client;
+    entry_spot_context_t _context;
     channel_client_t &_channels;
 };
 
@@ -198,7 +137,6 @@ int main (int argc, char **argv)
         throw std::runtime_error (
           "sample.role.instanceName is required for the courier actor node");
     }
-    g_instance_name = instance_name;
     const auto spot_router_endpoint = instance_name == sample_names_t::courier_actor_instance_1
                                         ? topology.courier_actor_node_1_router_endpoint
                                         : topology.courier_actor_node_2_router_endpoint;
@@ -218,11 +156,9 @@ int main (int argc, char **argv)
         actor_mesh.listen (spot_router_endpoint);
         actor_mesh.channel_name (sample_names_t::courier_actor_discovery);
         actor_mesh.add_entry_spot<courier_entry_spot_t> (
-            [services] () mutable {
+            [services] (entry_spot_context_t context) mutable {
                 return std::make_shared<courier_entry_spot_t> (
-                  services.get_required<actor_manager_t> (),
-                  services.get_required<actor_client_t> (),
-                  services.get_required<channel_client_t> ());
+                  std::move (context), services.get_required<channel_client_t> ());
             })
           .add_actor_factory<courier_actor_factory_t> (sample_names_t::courier_actor_type);
     });

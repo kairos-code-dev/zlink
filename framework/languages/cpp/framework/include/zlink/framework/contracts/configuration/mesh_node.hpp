@@ -65,14 +65,34 @@ class mesh_peer_connections_t
     std::shared_ptr<detail::mesh_node_builder_state_t> _state;
 };
 
+class mesh_channel_server_builder_t;
+
+class mesh_channel_client_builder_t
+{
+};
+
 class mesh_channel_builder_t
 {
   public:
-    mesh_channel_builder_t &set_weight (int weight);
-    mesh_channel_builder_t &use_handler_group (std::string group_name);
+    mesh_channel_client_builder_t client ();
+    mesh_channel_server_builder_t server ();
+
+  private:
+    friend class mesh_node_builder_t;
+    mesh_channel_builder_t (std::shared_ptr<detail::mesh_node_builder_state_t> state,
+                            std::string channel_name);
+    std::shared_ptr<detail::mesh_node_builder_state_t> _state;
+    std::string _channel_name;
+};
+
+class mesh_channel_server_builder_t
+{
+  public:
+    mesh_channel_server_builder_t &set_weight (int weight);
+    mesh_channel_server_builder_t &use_handler_group (std::string group_name);
 
     template <typename THandler, typename TMessage>
-    mesh_channel_builder_t &add_send_handler (std::string packet_name = {})
+    mesh_channel_server_builder_t &add_send_handler (std::string packet_name = {})
     {
         const auto packet = packet_name.empty () ? detail::message_name<TMessage> ()
                                                  : std::move (packet_name);
@@ -80,7 +100,7 @@ class mesh_channel_builder_t
     }
 
     template <typename THandler, typename TRequest, typename TReply>
-    mesh_channel_builder_t &add_request_handler (std::string packet_name = {})
+    mesh_channel_server_builder_t &add_request_handler (std::string packet_name = {})
     {
         const auto packet = packet_name.empty () ? detail::message_name<TRequest> ()
                                                  : std::move (packet_name);
@@ -88,14 +108,16 @@ class mesh_channel_builder_t
     }
 
   private:
+    friend class mesh_channel_builder_t;
     friend class mesh_node_builder_t;
-    mesh_channel_builder_t (std::shared_ptr<detail::mesh_node_builder_state_t> state,
-                            std::string channel_name);
+    mesh_channel_server_builder_t (
+      std::shared_ptr<detail::mesh_node_builder_state_t> state,
+      std::string channel_name);
     template <typename THandler, typename TMessage>
-    mesh_channel_builder_t &add_handler (bool request, std::string packet_name);
+    mesh_channel_server_builder_t &add_handler (bool request, std::string packet_name);
     template <typename THandler, typename TRequest, typename TReply>
-    mesh_channel_builder_t &add_handler (bool request, std::string packet_name);
-    mesh_channel_builder_t &
+    mesh_channel_server_builder_t &add_handler (bool request, std::string packet_name);
+    mesh_channel_server_builder_t &
     add_handler_registration (detail::mesh_handler_registration_t registration);
     std::shared_ptr<detail::mesh_node_builder_state_t> _state;
     std::string _channel_name;
@@ -219,8 +241,8 @@ class mesh_node_builder_t
 };
 
 template <typename THandler, typename TMessage>
-mesh_channel_builder_t &
-mesh_channel_builder_t::add_handler (bool request, std::string packet_name)
+mesh_channel_server_builder_t &
+mesh_channel_server_builder_t::add_handler (bool request, std::string packet_name)
 {
     static_assert (!std::is_same_v<TMessage, void>);
     return add_handler_registration (detail::mesh_handler_registration_t{
@@ -262,8 +284,8 @@ mesh_channel_builder_t::add_handler (bool request, std::string packet_name)
 }
 
 template <typename THandler, typename TRequest, typename TReply>
-mesh_channel_builder_t &
-mesh_channel_builder_t::add_handler (bool request, std::string packet_name)
+mesh_channel_server_builder_t &
+mesh_channel_server_builder_t::add_handler (bool request, std::string packet_name)
 {
     return add_handler_registration (detail::mesh_handler_registration_t{
       request,
@@ -312,7 +334,7 @@ mesh_node_builder_t &
 mesh_node_builder_t::add_handler (bool request, std::string packet_name)
 {
     mark_node_direct_handler ();
-    mesh_channel_builder_t route (_state, route_dispatch_name ());
+    mesh_channel_server_builder_t route (_state, route_dispatch_name ());
     route.add_handler<THandler, TMessage> (request, std::move (packet_name));
     return *this;
 }
@@ -322,7 +344,7 @@ mesh_node_builder_t &
 mesh_node_builder_t::add_handler (bool request, std::string packet_name)
 {
     mark_node_direct_handler ();
-    mesh_channel_builder_t route (_state, route_dispatch_name ());
+    mesh_channel_server_builder_t route (_state, route_dispatch_name ());
     route.add_handler<THandler, TRequest, TReply> (request, std::move (packet_name));
     return *this;
 }

@@ -95,7 +95,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         var mesh = options.addRouteMesh("location-game")
             .setRoutingIdPrefix(nodeRid.toString())
             .listen("inproc://location-user-spot");
-        mesh.channelName("location-game");
+        mesh.channelName("location-game").server();
         mesh.objects().server().addSpotFactory(
             "location-spot",
             LocationSpot.class,
@@ -139,7 +139,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         var mesh = options.addRouteMesh("moving-game")
             .setRoutingIdPrefix(nodeRid.toString())
             .listen("inproc://moving-user-spot");
-        mesh.channelName("moving-game");
+        mesh.channelName("moving-game").server();
         mesh.objects().server().addSpotFactory(
             "location-spot",
             LocationSpot.class,
@@ -207,7 +207,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         var mesh = options.addRouteMesh("durable-actors")
             .setRoutingIdPrefix(nodeRid.toString())
             .listen("inproc://durable-actor-create");
-        mesh.channelName("durable-actors");
+        mesh.channelName("durable-actors").server();
         mesh.objects().server().addActorFactory(
             "player",
             LocationActor.class,
@@ -259,7 +259,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         var mesh = options.addRouteMesh("durable-concurrent")
             .setRoutingIdPrefix("durable-concurrent-node")
             .listen("inproc://durable-actor-concurrent");
-        mesh.channelName("durable-concurrent");
+        mesh.channelName("durable-concurrent").server();
         mesh.objects().server().addActorFactory(
             "player",
             LocationActor.class,
@@ -316,7 +316,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         var mesh = options.addRouteMesh("rooms")
             .setRoutingIdPrefix(nodeRid.toString())
             .listen("inproc://location-actor-join");
-        mesh.channelName("rooms");
+        mesh.channelName("rooms").server();
         mesh.objects().server().addActorFactory(
             "player",
             LocationActor.class,

@@ -170,6 +170,12 @@ void mesh_node_runtime_t::start ()
         && _state->object_role != object_role_t::client) {
         throw configuration_error ("MeshNode requires at least one ChannelName");
     }
+    for (const auto &[channel_name, channel] : _state->channels) {
+        if (!channel.role_selected)
+            throw configuration_error (
+              "RouteMesh channel requires a Client or Server role: "
+              + channel_name);
+    }
     if (_state->object_role == object_role_t::client
         && _state->has_node_direct_handler) {
         throw configuration_error (
@@ -186,9 +192,10 @@ void mesh_node_runtime_t::start ()
     std::vector<runtime::mesh::service_channel_descriptor_t> channels;
     channels.reserve (_state->channels.size ());
     for (const auto &[channel_name, channel] : _state->channels) {
-        channels.push_back (
-          runtime::mesh::service_channel_descriptor_t{
-            channel_name, channel.weight});
+        if (channel.server)
+            channels.push_back (
+              runtime::mesh::service_channel_descriptor_t{
+                channel_name, channel.weight});
     }
     std::sort (channels.begin (), channels.end (),
                [] (const auto &left, const auto &right) {
@@ -1398,7 +1405,8 @@ std::map<std::string, int> mesh_node_runtime_t::channel_weights () const
     std::lock_guard lock (_state->mutex);
     std::map<std::string, int> result;
     for (const auto &[name, registration] : _state->channels)
-        result.emplace (name, registration.weight);
+        if (registration.server)
+            result.emplace (name, registration.weight);
     return result;
 }
 
@@ -1451,7 +1459,8 @@ void mesh_node_runtime_t::set_placement_weight (int weight)
         std::lock_guard lock (_state->mutex);
         publisher = _descriptor_publisher;
         for (const auto &[name, registration] : _state->channels)
-            channel_weights.emplace (name, registration.weight);
+            if (registration.server)
+                channel_weights.emplace (name, registration.weight);
     }
     if (publisher)
         publisher (channel_weights, weight, descriptor.descriptor_revision);
@@ -1496,12 +1505,13 @@ void mesh_node_runtime_t::set_channel_weight (const std::string &channel_name,
     {
         std::lock_guard lock (_state->mutex);
         const auto found = _state->channels.find (channel_name);
-        if (found == _state->channels.end ())
+        if (found == _state->channels.end () || !found->second.server)
             throw configuration_error ("RouteMesh channel is not configured: "
                                        + _state->mesh_name + "/" + channel_name);
         for (const auto &[name, registration] : _state->channels)
-            channel_weights.emplace (
-              name, name == channel_name ? weight : registration.weight);
+            if (registration.server)
+                channel_weights.emplace (
+                  name, name == channel_name ? weight : registration.weight);
         placement_weight = _state->placement_weight;
         publisher = _descriptor_publisher;
     }
@@ -1613,7 +1623,39 @@ mesh_channel_builder_t::mesh_channel_builder_t (
 {
 }
 
-mesh_channel_builder_t &mesh_channel_builder_t::set_weight (int weight)
+mesh_channel_client_builder_t mesh_channel_builder_t::client ()
+{
+    std::lock_guard lock (_state->mutex);
+    auto &channel = _state->channels[_channel_name];
+    if (channel.role_selected)
+        throw detail::configuration_error (
+          "RouteMesh channel role is already selected: " + _channel_name);
+    channel.role_selected = true;
+    channel.server = false;
+    return {};
+}
+
+mesh_channel_server_builder_t mesh_channel_builder_t::server ()
+{
+    std::lock_guard lock (_state->mutex);
+    auto &channel = _state->channels[_channel_name];
+    if (channel.role_selected)
+        throw detail::configuration_error (
+          "RouteMesh channel role is already selected: " + _channel_name);
+    channel.role_selected = true;
+    channel.server = true;
+    return mesh_channel_server_builder_t (_state, _channel_name);
+}
+
+mesh_channel_server_builder_t::mesh_channel_server_builder_t (
+  std::shared_ptr<detail::mesh_node_builder_state_t> state,
+  std::string channel_name) :
+    _state (std::move (state)), _channel_name (std::move (channel_name))
+{
+}
+
+mesh_channel_server_builder_t &
+mesh_channel_server_builder_t::set_weight (int weight)
 {
     if (weight < 0 || weight > 10000) {
         throw detail::configuration_error (
@@ -1624,7 +1666,8 @@ mesh_channel_builder_t &mesh_channel_builder_t::set_weight (int weight)
     return *this;
 }
 
-mesh_channel_builder_t &mesh_channel_builder_t::use_handler_group (std::string group_name)
+mesh_channel_server_builder_t &
+mesh_channel_server_builder_t::use_handler_group (std::string group_name)
 {
     if (group_name.empty ()) {
         throw detail::configuration_error ("handler group name is required");
@@ -1634,7 +1677,8 @@ mesh_channel_builder_t &mesh_channel_builder_t::use_handler_group (std::string g
     return *this;
 }
 
-mesh_channel_builder_t &mesh_channel_builder_t::add_handler_registration (
+mesh_channel_server_builder_t &
+mesh_channel_server_builder_t::add_handler_registration (
   detail::mesh_handler_registration_t registration)
 {
     detail::route_handler_descriptor_t descriptor{

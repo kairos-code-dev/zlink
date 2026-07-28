@@ -26,7 +26,6 @@ struct sample_topology_t
     std::string customer_spot_router_endpoint;
     std::string customer_spot_endpoint;
     std::string courier_stream_endpoint;
-    std::string courier_session_route_endpoint;
     std::string courier_session_spot_router_endpoint;
     std::string courier_session_spot_endpoint;
     std::string courier_actor_node_1_route_endpoint;
@@ -52,7 +51,6 @@ struct sample_topology_t
         topology.customer_spot_router_endpoint = section.require ("customerSpotRouterEndpoint");
         topology.customer_spot_endpoint = section.require ("customerSpotEndpoint");
         topology.courier_stream_endpoint = section.require ("courierStreamEndpoint");
-        topology.courier_session_route_endpoint = section.require ("courierSessionRouteEndpoint");
         topology.courier_session_spot_router_endpoint =
           section.require ("courierSessionSpotRouterEndpoint");
         topology.courier_session_spot_endpoint = section.require ("courierSessionSpotEndpoint");

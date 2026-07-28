@@ -59,11 +59,11 @@ cleanup() {
 }
 trap 'cleanup; status=$?; exit "$status"' EXIT
 
-read -r RESERVED_PORT API_HTTP_PORT DISPATCH_ROUTE DISPATCH_SPOT_ROUTER TRACKING_ROUTE TRACKING_SPOT_ROUTER TRACKING_SPOT DISPATCH_SPOT CUSTOMER_STREAM CUSTOMER_SPOT_ROUTER CUSTOMER_SPOT COURIER_STREAM COURIER_SESSION_ROUTE COURIER_SESSION_SPOT_ROUTER COURIER_SESSION_SPOT COURIER_NODE1_ROUTE COURIER_NODE1_ROUTER COURIER_NODE1 COURIER_NODE2_ROUTE COURIER_NODE2_ROUTER COURIER_NODE2 <<<"$(python3 - <<'PY'
+read -r RESERVED_PORT API_HTTP_PORT DISPATCH_ROUTE DISPATCH_SPOT_ROUTER TRACKING_ROUTE TRACKING_SPOT_ROUTER TRACKING_SPOT DISPATCH_SPOT CUSTOMER_STREAM CUSTOMER_SPOT_ROUTER CUSTOMER_SPOT COURIER_STREAM COURIER_SESSION_SPOT_ROUTER COURIER_SESSION_SPOT COURIER_NODE1_ROUTE COURIER_NODE1_ROUTER COURIER_NODE1 COURIER_NODE2_ROUTE COURIER_NODE2_ROUTER COURIER_NODE2 <<<"$(python3 - <<'PY'
 import socket
 sockets = []
 chosen = set()
-while len(sockets) < 21:
+while len(sockets) < 20:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
@@ -110,7 +110,7 @@ write_role_config() {
     "$DISPATCH_SPOT_ROUTER" "$DISPATCH_SPOT" "$TRACKING_ROUTE" \
     "$TRACKING_SPOT_ROUTER" "$TRACKING_SPOT" "$CUSTOMER_STREAM" \
     "$CUSTOMER_SPOT_ROUTER" "$CUSTOMER_SPOT" "$COURIER_STREAM" \
-    "$COURIER_SESSION_ROUTE" "$COURIER_SESSION_SPOT_ROUTER" "$COURIER_SESSION_SPOT" \
+    "$COURIER_SESSION_SPOT_ROUTER" "$COURIER_SESSION_SPOT" \
     "$COURIER_NODE1_ROUTE" "$COURIER_NODE1_ROUTER" "$COURIER_NODE1" \
     "$COURIER_NODE2_ROUTE" "$COURIER_NODE2_ROUTER" "$COURIER_NODE2" <<'PY'
 import json
@@ -121,7 +121,7 @@ import sys
 (path, role_name, instance_name, flow_log_dir, redis_endpoint, redis_key_prefix,
  api_http_url, dispatch_route, dispatch_spot_router, dispatch_spot, tracking_route,
  tracking_spot_router, tracking_spot, customer_stream, customer_spot_router,
- customer_spot, courier_stream, courier_session_route, courier_session_spot_router,
+ customer_spot, courier_stream, courier_session_spot_router,
  courier_session_spot, courier_node1_route, courier_node1_router, courier_node1,
  courier_node2_route, courier_node2_router, courier_node2) = sys.argv[1:]
 
@@ -146,7 +146,6 @@ document = {
             "customerSpotRouterEndpoint": customer_spot_router,
             "customerSpotEndpoint": customer_spot,
             "courierStreamEndpoint": courier_stream,
-            "courierSessionRouteEndpoint": courier_session_route,
             "courierSessionSpotRouterEndpoint": courier_session_spot_router,
             "courierSessionSpotEndpoint": courier_session_spot,
             "courierActorNode1RouteEndpoint": courier_node1_route,

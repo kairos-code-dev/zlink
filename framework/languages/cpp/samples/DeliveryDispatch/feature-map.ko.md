@@ -13,7 +13,7 @@
 | `DD-A4` server evidence self-check | 구현 | `/self-check/assert`가 두 delivery의 상태 순서를 evidence log에서 확인하고 `deliverydispatch-server-evidence=completed` marker를 출력한다. 최신 통과: `timeout 420s framework/languages/cpp/samples/DeliveryDispatch/run_sample.sh`. |
 | `DD-A5` message-flow evidence | 구현 | runner가 `flow-dispatch.log`, `flow-customer-gateway.log`, `flow-courier-session.log`, `flow-delivery-courier-node-1.log`, `flow-delivery-courier-node-2.log`의 `message flow` 기록을 확인한다. |
 | role split | 구현 | Dispatch, Tracking, CustomerGateway, CourierSession, CourierActorNode, Client를 별도 executable로 실행한다. CourierActorNode 실행 파일은 서로 다른 설정으로 두 번 시작한다. Customer stream과 courier stream endpoint도 분리한다. |
-| shared contract | 구현 | C++ `Shared/Contracts/messages.hpp`가 배송 생성, tracking, customer subscription, `BindCourierReq`, `EnsureCourierActorReq`, courier session bind, offer notify, courier decision DTO를 제공하고, client는 public JSON stream connector codec 경로를 사용한다. |
+| shared contract | 구현 | C++ `Shared/Contracts/messages.hpp`가 배송 생성, tracking, customer subscription, courier session bind, offer notify와 courier decision DTO를 제공한다. Client wire에는 `ActorRef`, owner `NodeRid`와 session route를 넣지 않으며 public JSON stream connector codec 경로를 사용한다. |
 | tracking file split | 구현 | CustomerActor, DeliverySpotDirectory, DeliveryTrackingSpot, CustomerEntrySpot, Tracking handler를 별도 header로 나누고 role wiring만 `Tracking/main.cpp`에 둔다. |
 
 ## C++ 구현 배치

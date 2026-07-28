@@ -49,19 +49,15 @@ class courier_session_t final : public packet_stream_session_t
                   located.error () ? located.error ()->what ()
                                    : "courier actor could not be located");
             }
-            const auto actor_ref = actor_ref_snapshot_t::from (located.value ().ref ());
-
-            const std::string session_route = "courier-session:" + request.courier_id;
-            auto actor =
-              co_await actors
-                .bind_or_get (actor_ref.to_actor_ref (sample_names_t::courier_actor_type))
-                .submit ();
+            /* Ready 결과의 exact ActorRef는 Framework session bind에만 사용한다. Application
+             * message나 client reply에는 ActorRef와 physical route를 넣지 않는다. */
+            auto actor = co_await actors.bind_or_get (located.value ().ref ()).submit ();
             const auto actor_id = std::string (actor.actor_id ());
             _bound_actors.insert (actor_id);
             auto reply = co_await actor
                            .relay_request (bind_courier_session_req_t::packet_name,
                                            zlink::message_t::from_json (bind_courier_session_req_t{
-                                             request.courier_id, actor_ref, session_route}))
+                                             request.courier_id}))
                            .submit ();
             stream.reply_packet (reply).submit ();
             std::cerr << "deliverydispatch courier-session: bound courier=" << request.courier_id

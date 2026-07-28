@@ -44,8 +44,10 @@ public final class ZLinkMeshNodeRuntime implements AutoCloseable {
                     .orElse(Duration.ofSeconds(1)));
             node.setMailboxMessageBudget(
                 registration.configureRouterSocket().receiveHighWaterMark());
-            registration.channelNames().forEach(node::addChannel);
-            registration.channelWeights().forEach(node::setChannelWeight);
+            registration.channelWeights().forEach((channelName, weight) -> {
+                node.addChannel(channelName);
+                node.setChannelWeight(channelName, weight);
+            });
             if (!registration.spotFactories().isEmpty()
                 || !registration.entrySpots().isEmpty()
                 || !registration.actorFactories().isEmpty()

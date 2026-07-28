@@ -16,8 +16,8 @@ DeliveryDispatch 샘플은 배달 생성, courier 배정, 픽업, 완료까지�
 - `Client`는 배달 dispatch 흐름을 시나리오처럼 검증한다.
 - 각 server role은 Redis location store를 공유해 channel/spot/route 위치를 발견한다.
 - `Server/Dispatch`는 `/deliveries`와 `/self-check/assert` HTTP API를 제공하고, 배차 큐를 비우는
-  DispatchWorker가 courier 제안과 tracking 상태 갱신을 조율한다. courier의 session route는 별도
-  gateway가 아니라 courier actor가 기억한다.
+  DispatchWorker가 courier 제안과 tracking 상태 갱신을 조율한다. Courier actor와 stream session의
+  연결은 Framework가 관리하며 application message에는 session route를 넣지 않는다.
 - `Server/CourierSession`은 배송원 stream 연결을 받고 actor session binding을 연결한다.
 - `Server/CourierActorNode`는 배송원 actor와 entry spot을 실행하며, runner가 node 2개를 시작한다.
 - `Server/CustomerGateway`는 고객 stream 연결, 고객 actor binding, 상태 push를 맡는다.

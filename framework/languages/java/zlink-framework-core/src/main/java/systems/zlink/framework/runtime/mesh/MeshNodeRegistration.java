@@ -20,6 +20,8 @@ import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.configuration.ZLinkMeshChannelBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshChannelClientBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshChannelServerBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshObjectClientBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder;
@@ -124,12 +126,19 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     }
 
     public List<String> channelNames() {
-        return List.copyOf(channels.keySet());
+        return channels.entrySet().stream()
+            .filter(entry -> entry.getValue().client || entry.getValue().server)
+            .map(Map.Entry::getKey)
+            .toList();
     }
 
     public Map<String, Integer> channelWeights() {
         Map<String, Integer> weights = new LinkedHashMap<>();
-        channels.forEach((name, channel) -> weights.put(name, channel.weight));
+        channels.forEach((name, channel) -> {
+            if (channel.server) {
+                weights.put(name, channel.weight);
+            }
+        });
         return Map.copyOf(weights);
     }
 
@@ -449,6 +458,12 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
             throw new ZLinkConfigurationException(
                 "MeshNode registers multiple entry spots: " + meshName);
         }
+        channels.forEach((name, channel) -> {
+            if (channel.client == channel.server) {
+                throw new ZLinkConfigurationException(
+                    "RouteMesh channel requires exactly one role: " + name);
+            }
+        });
         Set<Class<? extends ZLinkSpot<?>>> spotTypes = new LinkedHashSet<>();
         for (Class<? extends ZLinkSpot<?>> spotFactory : spotFactories) {
             if (!spotTypes.add(spotFactory)) {
@@ -702,18 +717,35 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         }
     }
 
-    private final class Channel implements ZLinkMeshChannelBuilder {
+    private final class Channel implements
+        ZLinkMeshChannelBuilder,
+        ZLinkMeshChannelClientBuilder,
+        ZLinkMeshChannelServerBuilder {
         private final String name;
         private final List<String> handlerGroups = new ArrayList<>();
         private final List<DispatchHandler> handlers = new ArrayList<>();
         private int weight = 100;
+        private boolean client;
+        private boolean server;
 
         private Channel(String name) {
             this.name = name;
         }
 
         @Override
-        public ZLinkMeshChannelBuilder setWeight(int value) {
+        public ZLinkMeshChannelClientBuilder client() {
+            selectRole(false);
+            return this;
+        }
+
+        @Override
+        public ZLinkMeshChannelServerBuilder server() {
+            selectRole(true);
+            return this;
+        }
+
+        @Override
+        public ZLinkMeshChannelServerBuilder setWeight(int value) {
             if (value < 0 || value > 10_000) {
                 throw new ZLinkConfigurationException(
                     "channel weight must be in 0..10000");
@@ -723,14 +755,14 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         }
 
         @Override
-        public ZLinkMeshChannelBuilder addHandlerGroup(String groupName) {
+        public ZLinkMeshChannelServerBuilder addHandlerGroup(String groupName) {
             handlerGroups.add(requireText(groupName, "handler group"));
             return this;
         }
 
         @Override
         public <THandler extends ZLinkSendHandler<TMessage>, TMessage>
-        ZLinkMeshChannelBuilder addSendHandler(
+        ZLinkMeshChannelServerBuilder addSendHandler(
             Class<THandler> handlerType,
             Class<TMessage> messageType) {
             handlers.add(new DispatchHandler(
@@ -742,7 +774,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
 
         @Override
         public <THandler extends ZLinkRequestHandler<TRequest, TReply>, TRequest, TReply>
-        ZLinkMeshChannelBuilder addRequestHandler(
+        ZLinkMeshChannelServerBuilder addRequestHandler(
             Class<THandler> handlerType,
             Class<TRequest> requestType,
             Class<TReply> replyType) {
@@ -751,6 +783,15 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
                 Objects.requireNonNull(requestType, "requestType"),
                 Objects.requireNonNull(replyType, "replyType")));
             return this;
+        }
+
+        private void selectRole(boolean serverRole) {
+            if (client || server) {
+                throw new ZLinkConfigurationException(
+                    "RouteMesh channel role is already selected: " + name);
+            }
+            client = !serverRole;
+            server = serverRole;
         }
     }
 

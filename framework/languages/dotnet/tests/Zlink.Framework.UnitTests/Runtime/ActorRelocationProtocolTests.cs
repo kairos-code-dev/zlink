@@ -226,39 +226,69 @@ public sealed class ActorRelocationProtocolTests
             0,
             null,
             []);
-        var envelope = ZLinkActorRelocationRoot.Create(
-            ZLinkActorAuthorityPayloadCodec.AuthorityKey("actor-1"),
+        var sourceRid = RoutingId.From("source-node");
+        var source = new ZLinkAuthoritySnapshot(
+            "v1",
+            ReadOnlyMemory<byte>.Empty,
             7,
             3,
-            aggregateId,
-            new byte[] { 2 },
-            [],
-            recovery);
-        var durableRecovery =
-            System.Text.Json.JsonSerializer.Deserialize<
-                ZLinkActorRelocationRecoveryRecord>(
-                envelope.Participants[0].RecoveryPayload.Span)!;
-        var changedParticipant = envelope.Participants[0] with
+            "source-owner",
+            3,
+            new ZLinkPlacementAllocation(
+                ZLinkPlacementAllocationState.Active,
+                ZLinkPlacementObjectKind.Actor,
+                "player",
+                new ZLinkMeshNodeDescriptorKey("mesh", sourceRid),
+                7,
+                new ZLinkCapacityVector(1, 0, null)),
+            null,
+            DateTimeOffset.UtcNow);
+        var sourceAuthority = new ZLinkActorAuthorityPayload(
+            ZLinkActorAuthorityState.Ready,
+            "player",
+            "actor-1",
+            "source-spot",
+            7,
+            ZLinkSpotKind.Entry,
+            "source-owner",
+            3,
+            "mesh",
+            sourceRid,
+            7);
+        var destination = new ZLinkStandaloneActorRelocationDestination(
+            "target-spot",
+            5,
+            ZLinkSpotKind.Entry,
+            RoutingId.From("target-node"),
+            11,
+            "mesh",
+            new ZLinkLocationOwnerToken("target-owner", 4));
+        var corruptedRecovery = recovery with
         {
-            RecoveryPayload =
+            TargetNodeRid =
+                RoutingId.From("other-target-node").ToBytes().ToArray()
+        };
+        var envelope =
+            ZLinkStandaloneActorRelocationRuntime.CreateImmutableRoot(
+                source,
+                sourceAuthority,
+                destination,
+                aggregateId,
+                new byte[] { 2 },
+                [],
+                default,
                 System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
-                    durableRecovery with
-                    {
-                        TargetNodeRid =
-                            RoutingId.From("other-target-node").ToBytes().ToArray()
-                    })
-        };
-        var changedEnvelope = envelope with
-        {
-            Participants = [changedParticipant]
-        };
+                    corruptedRecovery));
         var wire = request with
         {
+            RelocationAggregateGeneration = envelope.AggregateGeneration,
             RelocationInventoryDigest = envelope.InventoryDigest.ToArray()
         };
 
-        var error = Assert.Throws<ZLinkFrameworkException>(
-            () => ZLinkActorRelocationRoot.Load(wire, changedEnvelope));
+        var error = Assert.Throws<ZLinkFrameworkException>(() =>
+        {
+            _ = ZLinkActorRelocationRoot.Load(wire, envelope);
+        });
 
         Assert.Equal(ZLinkFrameworkErrorKind.DataLost, error.Kind);
         Assert.False(error.RetryAdvice != ZLinkRetryAdvice.DoNotRetry);

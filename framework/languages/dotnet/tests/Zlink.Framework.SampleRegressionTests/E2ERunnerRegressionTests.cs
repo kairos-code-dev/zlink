@@ -470,7 +470,7 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
-    public void SpotActorTransfer_Cleanup_Fencing_Uses_The_Public_Location_Store_Path()
+    public void SpotActorTransfer_Cleanup_Fixtures_Use_Public_Contracts()
     {
         var root = Path.Combine(ResolveE2eRoot(), "SpotActorTransfer");
         var support = File.ReadAllText(Path.Combine(
@@ -481,6 +481,8 @@ public sealed partial class RegressionTests
             root, "Client", "Scenarios", "StB2SourceCleanupFailureAfterSuccessScenario.cs"));
         var d2 = File.ReadAllText(Path.Combine(
             root, "Client", "Scenarios", "StD2StaleSourceReleaseFencingScenario.cs"));
+        var runtime = File.ReadAllText(Path.Combine(
+            root, "Server", "ActorNode", "ActorRuntime.cs"));
 
         Assert.Contains("CleanupGatedLocationStore", host, StringComparison.Ordinal);
         Assert.Contains("IZLinkLocationStore", support, StringComparison.Ordinal);
@@ -490,9 +492,11 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.DoesNotContain("Zlink.Framework.Runtime", support, StringComparison.Ordinal);
 
-        Assert.Contains("AllowCleanupAttemptAsync", b2, StringComparison.Ordinal);
-        Assert.Contains("source_cleanup_attempt", b2, StringComparison.Ordinal);
+        Assert.Contains("source_cleanup_wait", b2, StringComparison.Ordinal);
+        Assert.Contains("source_cleanup_wait", runtime, StringComparison.Ordinal);
         Assert.Contains("CrashNodeAAndWaitUnavailableAsync", b2, StringComparison.Ordinal);
+        Assert.DoesNotContain("ArmCleanupGateAsync", b2, StringComparison.Ordinal);
+        Assert.DoesNotContain("AllowCleanupAttemptAsync", b2, StringComparison.Ordinal);
         Assert.DoesNotContain("ReleaseCleanupGateAsync", b2, StringComparison.Ordinal);
 
         Assert.Contains("before-stale-cleanup-release", d2, StringComparison.Ordinal);

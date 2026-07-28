@@ -5,6 +5,8 @@ namespace Zlink.Framework.Runtime.Host;
 internal sealed partial class ZLinkFrameworkRuntime
 {
     private readonly ZLinkActorMessageFollower _actorMessageFollower;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<
+        Guid, byte> _publishedActorRecoveryWatches = new();
 
     internal ZLinkActorMessageFollower ActorMessageFollower
         => _actorMessageFollower;
@@ -580,6 +582,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                         request.HandoffId,
                         request.ActorGeneration,
                         ZLinkActorRelocationRoot.Reference(request),
+                        durableEnvelope,
                         capacityFence,
                         request.TargetAuthorityOwnerGeneration,
                         cancellationToken)
@@ -592,6 +595,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                     committedAuthority.NodeGeneration,
                     committedAuthority.OwnerLeaseGeneration);
                 authorityCommitted = true;
+                SchedulePublishedActorRelocationRecovery(durableEnvelope);
                 return await CompleteCommittedActorJoinTargetAsync(
                         target,
                         actorState,
@@ -1152,6 +1156,135 @@ internal sealed partial class ZLinkFrameworkRuntime
             : null;
     }
 
+    private void SchedulePublishedActorRelocationRecovery(
+        ZLinkRelocationEnvelope envelope)
+    {
+        if (!_publishedActorRecoveryWatches.TryAdd(
+                envelope.AggregateId, 0))
+            return;
+        if (TryRunDetached(
+                "actor-published-relocation-recovery",
+                async token =>
+                {
+                    try
+                    {
+                        await ZLinkReconciliationRunner.RunAsync(
+                                async retryToken =>
+                                {
+                                    var locationStore =
+                                        Registration.Locations.ResolveStore()
+                                        ?? throw new ZLinkConfigurationException(
+                                            "Actor relocation recovery requires a Location Store.");
+                                    var relocationStore =
+                                        Registration.Locations
+                                            .ResolveRelocationStore()
+                                        ?? throw new ZLinkConfigurationException(
+                                            "Actor relocation recovery requires a Relocation Store.");
+                                    var candidate =
+                                        await new ZLinkRelocationStartupRecovery(
+                                                locationStore,
+                                                relocationStore)
+                                            .TryReadExactPublishedAsync(
+                                                envelope,
+                                                retryToken)
+                                            .ConfigureAwait(false);
+                                    if (candidate is null)
+                                        return;
+                                    await _standaloneActorRelocationRuntime
+                                        .RecoverPublishedAsync(
+                                            candidate,
+                                            retryToken)
+                                        .ConfigureAwait(false);
+                                    await RecoverCanonicalRemoteJoinCompletionAsync(
+                                            candidate,
+                                            retryToken)
+                                        .ConfigureAwait(false);
+                                },
+                                exception => ZLinkFrameworkDebugLog.SpotDiscovery(
+                                        "published Actor relocation recovery "
+                                        + $"id={envelope.AggregateId:N}: "
+                                        + exception.Message),
+                                token,
+                                static exception =>
+                                    exception is ZLinkRelocationDataLostException
+                                    or ZLinkFrameworkException
+                                    {
+                                        Kind: ZLinkFrameworkErrorKind.DataLost
+                                    },
+                                Registration.Locations.Options.PollingInterval)
+                            .ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        _publishedActorRecoveryWatches.TryRemove(
+                            envelope.AggregateId,
+                            out _);
+                    }
+                }))
+            return;
+        _publishedActorRecoveryWatches.TryRemove(envelope.AggregateId, out _);
+        throw new InvalidOperationException(
+            "Published Actor relocation recovery could not be scheduled.");
+    }
+
+    private async ValueTask RecoverCanonicalRemoteJoinCompletionAsync(
+        ZLinkRelocationRecoveryCandidate candidate,
+        CancellationToken cancellationToken)
+    {
+        var participant = candidate.Envelope.Participants.Single();
+        var canonical = ZLinkCanonicalParticipantRecoveryCodec.Decode(
+            participant.RecoveryPayload.Span);
+        var sourceFence = ZLinkActorRelocationSourceFenceCodec.Decode(
+            canonical.MembershipMutation.Span);
+        if (sourceFence.RemoteJoinRecovery.IsEmpty)
+            return;
+        ZLinkActorRelocationRecoveryRecord recovery;
+        try
+        {
+            recovery = System.Text.Json.JsonSerializer.Deserialize<
+                           ZLinkActorRelocationRecoveryRecord>(
+                           sourceFence.RemoteJoinRecovery.Span)
+                       ?? throw new System.Text.Json.JsonException();
+        }
+        catch (Exception error) when (error
+                                      is System.Text.Json.JsonException
+                                      or NotSupportedException)
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.DataLost,
+                "Canonical Actor Join recovery metadata is malformed.",
+                retryAdvice: ZLinkRetryAdvice.DoNotRetry,
+                error);
+        }
+        var wire = recovery.Request;
+        await CompleteRoutedActorHandoffAsync(
+                recovery.TargetSpotId,
+                new ZLinkRemoteActorHandoffCompletionRequest(
+                    wire.ActorId,
+                    wire.HandoffId,
+                    wire.SourceSpotId,
+                    wire.SourceNodeRid,
+                    recovery.TargetSpotId,
+                    [],
+                    recovery.OperationIdHigh,
+                    recovery.OperationIdLow,
+                    recovery.ReplyContentType,
+                    recovery.Reply,
+                    wire.BoundSessionNodeRid,
+                    wire.BoundSessionRid,
+                    wire.BoundSessionBindingToken,
+                    wire.BoundSessionBindingGeneration,
+                    wire.BoundSessionObjectGeneration,
+                    wire.BoundSessionAuthorityOwnerGeneration,
+                    wire.BoundSessionMeshName,
+                    wire.BoundSessionTargetNodeGeneration,
+                    wire.BoundSessionOwnerLeaseGeneration,
+                    wire.BoundSessionOwnerNodeGeneration,
+                    wire.BoundSessionAcceptedHighWater),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     internal void ScheduleDeferredJoinCompletionRecovery(
         ZLinkActorRuntimeState actorState)
     {
@@ -1212,6 +1345,10 @@ internal sealed partial class ZLinkFrameworkRuntime
                     {
                         await _standaloneActorRelocationRuntime
                             .RecoverPublishedAsync(candidate, token)
+                            .ConfigureAwait(false);
+                        await RecoverCanonicalRemoteJoinCompletionAsync(
+                                candidate,
+                                token)
                             .ConfigureAwait(false);
                         return;
                     }
@@ -1571,6 +1708,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         string handoffId,
         ulong sourceObjectGeneration,
         ZLinkRelocationManifestReference relocationReference,
+        ZLinkRelocationEnvelope relocationRoot,
         ZLinkRelocationCapacityFence? capacityFence,
         ulong targetAuthorityOwnerGeneration,
         CancellationToken cancellationToken)
@@ -1618,6 +1756,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                         ? stagedSessionRoute
                         : default,
                     relocationReference,
+                    relocationRoot,
                     capacityFence,
                     targetAuthorityOwnerGeneration,
                     _ => DeactivateActorOnOwnershipLossAsync(actorState.ActorId),

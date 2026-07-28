@@ -591,14 +591,55 @@ internal sealed class ZLinkActorRemoteJoiner(
             operationId?.Low ?? 0,
             operationId is null ? null : admissionReply.ReplyContentType,
             operationId is null ? [] : admissionReply.Reply);
-        var relocationEnvelope = ZLinkActorRelocationRoot.Create(
-            authorityKey,
-            actorRef.Generation,
-            actorAuthorityOwnerGeneration,
-            relocationId,
-            relocationState.Payload,
-            committedFrames,
-            recovery);
+        var targetDescriptor = (await authorityStore.ListAllMeshNodesAsync(
+                sourceAuthority.MeshName,
+                cancellationToken)
+            .ConfigureAwait(false)).SingleOrDefault(
+            descriptor => descriptor.Rid == targetNodeRid);
+        if (targetDescriptor is null
+            || targetDescriptor.LifecycleGeneration
+               != targetReservation.TargetNodeGeneration
+            || targetDescriptor.LeaseGeneration <= 0
+            || string.IsNullOrWhiteSpace(targetDescriptor.OwnerId))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.DataLost,
+                $"Actor '{actor.Context.ActorId}' target owner fence changed before root preparation.",
+                retryAdvice: ZLinkRetryAdvice.DoNotRetry);
+        var targetActor = new ZLinkBackendActorRef(
+            targetNodeRid,
+            actor.Context.ActorId,
+            actorRef.Generation);
+        var acceptedRecords = committedFrames.Select(frame =>
+                new ZLinkActorAcceptedRecord(
+                    frame,
+                    frame.RequestSource
+                    ?? throw new ZLinkRelocationDataLostException(
+                        $"Actor '{actor.Context.ActorId}' accepted journal lost its source fence."),
+                    targetActor))
+            .ToArray();
+        var relocationEnvelope =
+            ZLinkStandaloneActorRelocationRuntime.CreateImmutableRoot(
+                currentAuthority.Snapshot,
+                sourceAuthority,
+                new ZLinkStandaloneActorRelocationDestination(
+                    targetSpotId,
+                    targetReservation.TargetSpotGeneration,
+                    admission.Snapshot.SpotKind,
+                    targetNodeRid,
+                    targetReservation.TargetNodeGeneration,
+                    sourceAuthority.MeshName,
+                    new ZLinkLocationOwnerToken(
+                        targetDescriptor.OwnerId,
+                        targetDescriptor.LeaseGeneration)),
+                relocationId,
+                relocationState.Payload,
+                acceptedRecords,
+                hasBoundSession
+                    ? ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(
+                        requestTemplate)
+                    : default,
+                System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
+                    recovery));
         var publication = new ZLinkRelocationPublicationCoordinator(
             authorityStore,
             relocationStore);
@@ -678,7 +719,13 @@ internal sealed class ZLinkActorRemoteJoiner(
             published.Snapshot.OwnerLeaseGeneration);
         var progress = new ZLinkStandaloneActorRelocationProgressCoordinator(
             authorityStore,
-            relocationStore);
+            relocationStore,
+            new ZLinkStandaloneActorRelocationTargetFence(
+                prepared.Envelope.AggregateId,
+                admissionReply.TargetAuthorityOwnerGeneration,
+                targetNodeRid,
+                admissionReply.TargetNodeGeneration,
+                targetOwner));
         await progress.AdvancePhaseAsync(
                 prepared.Envelope,
                 ZLinkActorRelocationAuthorityPhase.Activated,

@@ -78,6 +78,23 @@ internal static class ZLinkCanonicalParticipantRecoveryCodec
             stableType, authorityPayload, membershipMutation);
     }
 
+    internal static bool IsEncoded(ReadOnlySpan<byte> encoded)
+    {
+        try
+        {
+            _ = Decode(encoded);
+            return true;
+        }
+        catch (Exception error) when (error is InvalidDataException
+                                      or EndOfStreamException
+                                      or DecoderFallbackException
+                                      or ArgumentException
+                                      or OverflowException)
+        {
+            return false;
+        }
+    }
+
     private static void Text16(Stream stream, string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);

@@ -383,6 +383,9 @@ internal sealed class ZLinkActorHandoffState(
         ArgumentNullException.ThrowIfNull(frames);
         lock (_gate)
         {
+            var adoptingPreparedRemoteJoin =
+                string.Equals(_handoffId, handoffId, StringComparison.Ordinal)
+                && _targetPhase == ZLinkActorTargetHandoffPhase.Prepared;
             if (string.Equals(_handoffId, handoffId, StringComparison.Ordinal)
                 && _targetPhase is ZLinkActorTargetHandoffPhase.Importing
                     or ZLinkActorTargetHandoffPhase.AuthorityCommitted
@@ -390,7 +393,8 @@ internal sealed class ZLinkActorHandoffState(
                     or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
                     or ZLinkActorTargetHandoffPhase.Completed)
                 return;
-            if (_sourcePhase is ZLinkActorSourceHandoffPhase.Capturing
+            if (!adoptingPreparedRemoteJoin
+                && (_sourcePhase is ZLinkActorSourceHandoffPhase.Capturing
                     or ZLinkActorSourceHandoffPhase.CutoverPending
                     or ZLinkActorSourceHandoffPhase.MessageFollowCommitted
                 || _targetPhase is ZLinkActorTargetHandoffPhase.Importing
@@ -399,7 +403,7 @@ internal sealed class ZLinkActorHandoffState(
                     or ZLinkActorTargetHandoffPhase.Prepared
                     or ZLinkActorTargetHandoffPhase.Replaying
                     or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
-                    or ZLinkActorTargetHandoffPhase.Quarantined)
+                    or ZLinkActorTargetHandoffPhase.Quarantined))
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' already has an active handoff transaction.");
             _handoffId = handoffId;
@@ -804,6 +808,9 @@ internal sealed class ZLinkActorHandoffState(
     {
         lock (_gate)
         {
+            if (_targetPhase == ZLinkActorTargetHandoffPhase.Completed
+                && sourceTrailingFrames.Count == 0)
+                return [];
             if (_targetPhase is not (ZLinkActorTargetHandoffPhase.Importing
                 or ZLinkActorTargetHandoffPhase.Prepared
                 or ZLinkActorTargetHandoffPhase.Replaying))
@@ -961,6 +968,8 @@ internal sealed class ZLinkActorHandoffState(
     {
         lock (_gate)
         {
+            if (_targetPhase == ZLinkActorTargetHandoffPhase.Completed)
+                return [];
             if (_targetPhase is not (
                     ZLinkActorTargetHandoffPhase.Replaying
                     or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining))

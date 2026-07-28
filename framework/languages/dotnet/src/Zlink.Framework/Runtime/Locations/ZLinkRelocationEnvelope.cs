@@ -687,11 +687,12 @@ internal static class ZLinkRelocationEnvelopeCodec
                     reader.ReadByteField(MaxFieldBytes));
         }
         reader.RequireEnd("relocation root");
-        var envelope = new ZLinkRelocationEnvelope(
+        var envelope = HydrateCanonicalParticipantIdentity(
+            new ZLinkRelocationEnvelope(
             aggregateId,
             aggregateGeneration,
             decodedInventoryDigest,
-            participants);
+            participants));
         ValidateEnvelope(envelope);
         return envelope;
     }
@@ -774,13 +775,54 @@ internal static class ZLinkRelocationEnvelopeCodec
             throw new InvalidDataException(
                 "The relocation root contains trailing bytes.");
 
-        var envelope = new ZLinkRelocationEnvelope(
+        var envelope = HydrateCanonicalParticipantIdentity(
+            new ZLinkRelocationEnvelope(
             aggregateId,
             aggregateGeneration,
             decodedInventoryDigest,
-            participants);
+            participants));
         ValidateEnvelope(envelope);
         return envelope;
+    }
+
+    private static ZLinkRelocationEnvelope HydrateCanonicalParticipantIdentity(
+        ZLinkRelocationEnvelope envelope)
+    {
+        var participants =
+            new ZLinkRelocationParticipantEnvelope[envelope.Participants.Count];
+        for (var index = 0; index < participants.Length; index++)
+        {
+            var participant = envelope.Participants[index];
+            try
+            {
+                _ = ZLinkCanonicalParticipantRecoveryCodec.Decode(
+                    participant.RecoveryPayload.Span);
+            }
+            catch (Exception error) when (error is InvalidDataException
+                                          or EndOfStreamException)
+            {
+                return envelope;
+            }
+            participants[index] = participant with
+            {
+                CanonicalParticipantId = checked((ulong)index + 1),
+                AcceptedBoundary = checked(
+                    (ulong)participant.AcceptedJobs.Count)
+            };
+        }
+        Span<byte> id = stackalloc byte[16];
+        envelope.AggregateId.TryWriteBytes(
+            id,
+            bigEndian: true,
+            out _);
+        return envelope with
+        {
+            Participants = participants,
+            CanonicalRelocationHigh =
+                BinaryPrimitives.ReadUInt64BigEndian(id[..8]),
+            CanonicalRelocationLow =
+                BinaryPrimitives.ReadUInt64BigEndian(id[8..])
+        };
     }
 
     private static ZLinkRelocationEnvelope DecodeCanonical(

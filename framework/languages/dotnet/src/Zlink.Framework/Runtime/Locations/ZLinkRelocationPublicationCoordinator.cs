@@ -337,7 +337,12 @@ internal sealed class ZLinkRelocationPublicationCoordinator(
         ZLinkRelocationEnvelope envelope,
         ZLinkRelocationManifestReference reference)
     {
-        if (!envelope.CanonicalLogicalStream.IsEmpty)
+        if (!envelope.CanonicalLogicalStream.IsEmpty
+            || (envelope.Participants.Count > 0
+                && envelope.Participants.All(
+                    participant =>
+                        ZLinkCanonicalParticipantRecoveryCodec.IsEncoded(
+                            participant.RecoveryPayload.Span))))
         {
             if (envelope.AggregateId != reference.AggregateId)
                 throw new ZLinkRelocationDataLostException(

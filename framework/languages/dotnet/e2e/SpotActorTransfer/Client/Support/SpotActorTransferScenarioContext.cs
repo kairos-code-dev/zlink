@@ -876,9 +876,13 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
 
     public async Task<IReadOnlyList<ActorEvidence>> WaitEvidenceAsync(
         ZLinkHttpClient client,
-        string[] containsAll)
+        string[] containsAll,
+        int timeoutMilliseconds = 10000)
     {
-        var evidence = (await client.Post("/evidence/wait").Body(new EvidenceWaitReq(containsAll))
+        var evidence = (await client.Post("/evidence/wait")
+                .Body(new EvidenceWaitReq(
+                    containsAll,
+                    timeoutMilliseconds))
                 .Async<IReadOnlyList<ActorEvidence>>()).Body
             ?? throw new InvalidOperationException("Evidence response was null.");
         foreach (var expected in containsAll)

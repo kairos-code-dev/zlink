@@ -24,6 +24,12 @@ artifact provenance만 검증한다.
 
 현재 병렬 checkpoint는 다음과 같다.
 
+- Factory 등록 목표 계약을 target-first로 갱신했다. Actor·User Spot·Instance Spot은 option 객체와 별도
+  relocation policy value 대신 factory configure callback과 typed builder를 사용한다. Policy는
+  `DisableRelocation`, `RecreateOnRelocation`, `PreserveStateWith(adapter)`이며 callback에서 정확히 하나를
+  선택하지 않으면 startup configuration error다. User Spot builder는 execution mode와 relocation readiness를
+  함께 설정한다. 공통 spec과 다섯 언어 exact interface가 목표 계약을 소유하며 현재 구현, package, sample과
+  E2E의 차이는 implementation gap §12.59로 기록했다. Redis Relocation Store SPI는 변경하지 않았다.
 - 2026-07-28 RouteMesh Object Client 연결 계약을 갱신했다. 양쪽 모두 `Objects().Client()`이고
   RouteMesh Channel Server membership도 없는 pair만 Automatic discovery에서 connection intent를 만들지
   않는다. Manual endpoint가 이 조합을 만들면 handshake에서 확인한 뒤 socket을 종료하고 같은
@@ -6986,3 +6992,63 @@ Consumer는 exact `client().connect(endpoint)`로 `api-a`와 `api-b`를 등록�
 
 Actual-process 증거는
 `framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-051403-2182401`이다.
+
+## 2026-07-29 .NET Config 10 ST-B2 public fixture와 runtime blocker
+
+ST-B2를 현재 public Deferred Join 계약으로 전환했다. Actor를 먼저 생성한 뒤 다른 node의
+User Spot으로 Join하고, source Entry Spot의 `OnLeaveActorAsync`에서 cleanup을 대기시킨다.
+Target의 `transfer_in`과 `joined`를 확인한 뒤 source process를 SIGKILL한다. Source 종료
+전에는 target `success_reply`와 application handler가 실행되지 않아야 한다.
+
+Actual process
+`framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-051808-2374624`는
+target authority commit과 callback 뒤 source가 종료되는 경계까지 도달했다. 그러나 source
+owner lease가 만료된 뒤에도 target `success_reply`가 20초 안에 발생하지 않아 실패했다.
+
+현재 remote Actor Join은 `ZLinkActorRelocationRoot`에 이전 JSON recovery payload를 저장한다.
+반면 target recovery는 `ZLinkCanonicalParticipantRecoveryCodec`으로 만든 canonical root만
+처리한다. 살아 있는 target process에서 source lease 상실을 감지해 recovery를 시작하는
+coordinator도 없다. 이 두 구현을 canonical relocation 경로로 통합하기 전에는 ST-B2를
+완료로 판정하지 않는다.
+
+Public application·provider observation은 `Completed`, route acknowledgement, steady
+normalization, ready와 admission open의 private phase를 각각 구분하지 못한다. 따라서 해당
+순서는 이 실행의 완료 증거로 기록하지 않는다.
+
+## 2026-07-29 .NET Config 10 ST-B2 canonical recovery 완료
+
+앞 checkpoint의 ST-B2 blocker를 해소했다. Remote Actor Join은 이전 JSON 전용 root를 만들지
+않고 canonical immutable root를 저장한다. 이 root에는 application state, accepted journal,
+source owner fence와 remote Join recovery metadata가 함께 들어간다. Location Store의
+published authority도 같은 root reference와 checksum을 가리킨다.
+
+살아 있는 target은 published root를 감시한다. Source owner lease가 exact fence와 일치하는
+동안에는 `Committed` 이후 target activation, takeover와 callback을 시작하지 않는다. Source
+process가 종료되고 lease가 만료된 뒤에만 같은 immutable root를 idempotent하게 복원한다.
+복원이 끝나도 remote Join root를 즉시 제거하지 않는다. 기존 routed completion 경로가
+completion journal을 `Prepare → Committed → callback → Delivered` 순서로 기록한 뒤 steady
+authority로 전환하고 root를 해제한다.
+
+Actual-process `ST-B1 ST-B2` 묶음 실행은 모두 통과했다.
+
+- 증거:
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-060855-3830374`
+- .NET solution build: warning 0, error 0
+- .NET UnitTests: 1,252/1,252
+- .NET ContractTests: 70/70
+- .NET SampleRegressionTests: 126/126
+- focused relocation gate:
+  `ActorRelocationProtocolTests` 5/5,
+  `StandaloneActorRelocationRuntimeTests` 37/37,
+  `RelocationStartupRecoveryTests` 10/10,
+  `DeferredActorJoinDurabilityTests` 5/5,
+  `RelocationRuntimeTests` 153/153
+
+## 2026-07-29 factory builder validation checkpoint
+
+.NET factory builder 계약은 commit `79c1c14801` 기준으로 solution build warning 0, error 0,
+ContractTests 70/70, focused UnitTests 308/308, SampleRegressionTests 126/126을 통과했다.
+
+JVM factory builder 계약은 commit `116bc1bd97` 기준으로 Java core 603/603, core contract
+22/22, Kotlin 46/46과 Java·Kotlin SpotActorTransfer build를 통과했다. 기존 Kotlin contract
+3건 실패는 이 변경과 무관한 별도 gap으로 유지한다.

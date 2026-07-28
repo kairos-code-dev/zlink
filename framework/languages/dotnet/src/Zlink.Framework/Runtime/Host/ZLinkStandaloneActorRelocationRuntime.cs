@@ -646,7 +646,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
         Guid relocationId,
         ReadOnlyMemory<byte> applicationState,
         IReadOnlyList<ZLinkActorAcceptedRecord> acceptedRecords,
-        ZLinkRemoteActorBoundSessionRoute boundSessionRoute)
+        ZLinkRemoteActorBoundSessionRoute boundSessionRoute,
+        ReadOnlyMemory<byte> remoteJoinRecovery = default)
     {
         ArgumentNullException.ThrowIfNull(target);
         return CreateImmutableRoot(
@@ -668,7 +669,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             relocationId,
             applicationState,
             acceptedRecords,
-            boundSessionRoute);
+            boundSessionRoute,
+            remoteJoinRecovery);
     }
 
     internal static ZLinkRelocationEnvelope CreateImmutableRoot(
@@ -678,7 +680,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
         Guid relocationId,
         ReadOnlyMemory<byte> applicationState,
         IReadOnlyList<ZLinkActorAcceptedRecord> acceptedRecords,
-        ZLinkRemoteActorBoundSessionRoute boundSessionRoute)
+        ZLinkRemoteActorBoundSessionRoute boundSessionRoute,
+        ReadOnlyMemory<byte> remoteJoinRecovery = default)
     {
         ArgumentNullException.ThrowIfNull(sourceSnapshot);
         ArgumentNullException.ThrowIfNull(sourceAuthority);
@@ -746,7 +749,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         sourceFence.OwnerId,
                         sourceFence.LeaseGeneration,
                         sourceFence.NodeRid,
-                        sourceFence.NodeGeneration))));
+                        sourceFence.NodeGeneration,
+                        remoteJoinRecovery))));
         var participant = new ZLinkRelocationParticipantEnvelope(
             ZLinkActorAuthorityPayloadCodec.AuthorityKey(sourceAuthority.ActorId),
             ZLinkPlacementObjectKind.Actor,
@@ -774,11 +778,20 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             relocatingAuthority,
             ReadOnlyMemory<byte>.Empty);
         var digest = ZLinkAggregateInventoryDigest.Compute([publicationParticipant]);
+        var relocationBytes = relocationId.ToByteArray(bigEndian: true);
         return new ZLinkRelocationEnvelope(
             relocationId,
             1,
             digest,
-            [participant]);
+            [participant])
+        {
+            CanonicalRelocationHigh =
+                System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(
+                    relocationBytes.AsSpan(0, 8)),
+            CanonicalRelocationLow =
+                System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(
+                    relocationBytes.AsSpan(8, 8))
+        };
     }
 
     private static ZLinkStandaloneActorRelocationDestination ResolveDestination(
@@ -1282,6 +1295,24 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             throw DataLost(
                 "Standalone Actor source cleanup completed before the Cleaning phase.");
 
+        if (canonical.SourceCleanupState == 0
+            && canonical.Phase
+               >= (byte)ZLinkStandaloneActorCanonicalPhase.Committed)
+        {
+            var authorityStore = registration.Locations.ResolveStore()
+                                 ?? throw new ZLinkConfigurationException(
+                                     "Location Store is not registered.");
+            var sourceLease = await authorityStore.ReadOwnerLeaseAsync(
+                    sourceFence.OwnerId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!IsExactSourceLeaseExpired(sourceLease, sourceFence))
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.Unavailable,
+                    $"Actor '{targetAuthority.ActorId}' source cleanup is not yet durable.",
+                    retryAdvice: ZLinkRetryAdvice.RetryAfterBackoff);
+        }
+
         var targetAttemptGeneration = canonical.TargetAttemptGeneration;
         var localNode = runtime.TryGetSpotNodeRuntime(targetAuthority.NodeRid);
         var hasCurrentLocalTarget = localNode is not null
@@ -1573,7 +1604,9 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                     targetAttemptGeneration,
                     candidate.Envelope,
                     handoffId,
-                    cancellationToken)
+                    cancellationToken,
+                    normalizeSteady:
+                    sourceFence.RemoteJoinRecovery.IsEmpty)
                 .ConfigureAwait(false);
         }
         catch
@@ -2482,7 +2515,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         ulong targetAttemptGeneration,
         ZLinkRelocationEnvelope relocationIdentity,
         string handoffId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool normalizeSteady = true)
     {
         await ActivateStandaloneActorRelocationTargetAsync(
                 actorState,
@@ -2554,11 +2588,12 @@ internal sealed partial class ZLinkFrameworkRuntime
                 .ConfigureAwait(false);
             actorState.CompleteRelocationSessionRoute(handoffId);
         }
-        await coordinator.NormalizeSteadyAsync(
-                relocationIdentity,
-                targetOwner,
-                cancellationToken)
-            .ConfigureAwait(false);
+        if (normalizeSteady)
+            await coordinator.NormalizeSteadyAsync(
+                    relocationIdentity,
+                    targetOwner,
+                    cancellationToken)
+                .ConfigureAwait(false);
         actorState.Handoff.Complete(handoffId);
     }
 

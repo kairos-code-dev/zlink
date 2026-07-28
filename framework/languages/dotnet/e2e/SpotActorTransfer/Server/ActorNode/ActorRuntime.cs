@@ -211,7 +211,8 @@ namespace SpotActorTransfer.ActorNode
     internal sealed class TransferEntrySpot(
         IZLinkEntrySpotContext context,
         EvidenceStore evidence,
-        DomainStateStore domainState)
+        DomainStateStore domainState,
+        TransferGateStore transferGates)
         : IZLinkEntrySpot<TransferActor>
     {
         public IZLinkEntrySpotContext Context { get; } = context;
@@ -262,6 +263,20 @@ namespace SpotActorTransfer.ActorNode
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (actor.ActorId.StartsWith(
+                    "actor-cleanup-after-success-",
+                    StringComparison.Ordinal))
+            {
+                evidence.Add(
+                    "ST-B2",
+                    actor.ActorId,
+                    "source_cleanup_wait",
+                    "entry-spot-leave");
+                await transferGates.WaitAsync(
+                        actor.ActorId,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
             if (actor.ActorId.StartsWith(
                     "actor-st-g5-slow-cleanup-",
                     StringComparison.Ordinal))

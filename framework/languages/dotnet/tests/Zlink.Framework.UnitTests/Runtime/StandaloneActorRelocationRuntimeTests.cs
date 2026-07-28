@@ -2001,14 +2001,24 @@ public sealed class StandaloneActorRelocationRuntimeTests
                     await store.ReadOwnerLeaseAsync(source.Owner.OwnerId));
 
             if (phase >=
-                    (byte)ZLinkStandaloneActorCanonicalPhase.Committed
-                && !targetRemainsLive)
+                (byte)ZLinkStandaloneActorCanonicalPhase.Committed)
             {
                 var waiting = await Assert.ThrowsAsync<ZLinkFrameworkException>(
                     () => runtime.RecoverPublishedRelocationsAsync(
                             CancellationToken.None)
                         .AsTask());
                 Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, waiting.Kind);
+
+                var beforeSourceExpiry =
+                    Assert.IsType<ZLinkAuthorityReadResult.Found>(
+                        await store.ReadAuthorityAsync(key));
+                Assert.Equal(failed.Owner.OwnerId,
+                    beforeSourceExpiry.Snapshot.OwnerId);
+                Assert.Equal(0, HostedRecoveryActorFactory.CreatedCount);
+
+                _ = await store.ReleaseOwnerLeaseAsync(source.Owner);
+                await runtime.RecoverPublishedRelocationsAsync(
+                    CancellationToken.None);
             }
             else
             {
@@ -2031,24 +2041,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
             if (phase >=
                 (byte)ZLinkStandaloneActorCanonicalPhase.Committed)
             {
-                Assert.Equal(replacement.OwnerId,
-                    recovered.Snapshot.OwnerId);
-                Assert.True(
-                    ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
-                        recovered.Snapshot.Payload.Span,
-                        out var replacementProgress));
-                Assert.Equal(
-                    (byte)ZLinkStandaloneActorCanonicalPhase.Activated,
-                    replacementProgress.Phase);
                 Assert.Equal(1, HostedRecoveryActorFactory.CreatedCount);
-                Assert.Equal(1,
-                    runtime.RelocationPermits.Snapshot().InboundUnits);
-
-                _ = await store.ReleaseOwnerLeaseAsync(source.Owner);
-                await runtime.RecoverPublishedRelocationsAsync(
-                    CancellationToken.None);
-                recovered = Assert.IsType<ZLinkAuthorityReadResult.Found>(
-                    await store.ReadAuthorityAsync(key));
             }
             Assert.True(ZLinkActorAuthorityPayloadCodec.TryDecode(
                 recovered.Snapshot.Payload.Span,

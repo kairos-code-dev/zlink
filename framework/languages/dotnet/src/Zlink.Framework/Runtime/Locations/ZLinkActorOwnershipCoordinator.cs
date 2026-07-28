@@ -434,6 +434,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         Guid relocationId,
         ZLinkRemoteActorBoundSessionRoute boundSessionRoute,
         ZLinkRelocationManifestReference relocationReference,
+        ZLinkRelocationEnvelope relocationRoot,
         ZLinkRelocationCapacityFence? capacityFence,
         ulong targetAuthorityOwnerGeneration,
         Func<CancellationToken, ValueTask>? deactivate,
@@ -525,22 +526,35 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 NodeRid = target.Rid,
                 NodeGeneration = target.LifecycleGeneration
             });
-        var phasePayload = ZLinkActorRelocationAuthorityPayloadCodec.Encode(
-            new ZLinkActorRelocationAuthorityPayload(
-                relocationId,
-                ZLinkActorRelocationAuthorityPhase.Activated,
-                boundSessionRoute,
-                applicationPayload));
-        var authorityPayload = ZLinkRelocationAuthorityPayloadCodec.Encode(
-            new ZLinkRelocationAuthorityPayload(
-                relocationReference.Reference,
-                relocationReference.ChecksumCrc32c,
-                relocationReference.AggregateId,
-                relocationReference.AggregateGeneration,
-                relocationReference.InventoryDigest,
-                targetOwner.OwnerId,
-                targetOwner.LeaseGeneration,
-                phasePayload));
+        var relocationBytes = relocationId.ToByteArray(bigEndian: true);
+        var authorityPayload =
+            ZLinkCanonicalRelocationAuthorityStateCodec.ReplaceRelocationState(
+                applicationPayload,
+                new ZLinkCanonicalRelocationAuthorityState(
+                    System.Buffers.Binary.BinaryPrimitives
+                        .ReadUInt64BigEndian(relocationBytes.AsSpan(0, 8)),
+                    System.Buffers.Binary.BinaryPrimitives
+                        .ReadUInt64BigEndian(relocationBytes.AsSpan(8, 8)),
+                    targetAuthorityOwnerGeneration,
+                    authority.NodeRid.ToHex(),
+                    authority.NodeGeneration,
+                    snapshot.OwnerId,
+                    checked((ulong)snapshot.OwnerLeaseGeneration),
+                    target.Rid.ToHex(),
+                    target.LifecycleGeneration,
+                    targetOwner.OwnerId,
+                    checked((ulong)targetOwner.LeaseGeneration),
+                    targetAuthorityOwnerGeneration,
+                    snapshot.OwnerId,
+                    checked((ulong)snapshot.OwnerLeaseGeneration),
+                    authority.NodeRid.ToHex(),
+                    authority.NodeGeneration,
+                    (byte)ZLinkStandaloneActorCanonicalPhase.Activated,
+                    relocationReference.Reference,
+                    relocationReference.ChecksumCrc32c,
+                    0,
+                    0),
+                relocationRoot);
 
         var committed = false;
         try

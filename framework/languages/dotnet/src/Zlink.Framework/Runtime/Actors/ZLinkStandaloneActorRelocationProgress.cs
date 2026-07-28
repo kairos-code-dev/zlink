@@ -105,7 +105,7 @@ internal sealed class ZLinkStandaloneActorRelocationProgressCoordinator(
         ZLinkLocationOwnerToken targetOwner,
         CancellationToken cancellationToken)
     {
-        if (!identity.CanonicalLogicalStream.IsEmpty)
+        if (IsCanonicalRoot(identity))
         {
             var canonical = (expected, next) switch
             {
@@ -167,6 +167,22 @@ internal sealed class ZLinkStandaloneActorRelocationProgressCoordinator(
                     "Authority Store rejected standalone Actor phase progress.");
         }
         throw Moving("phase advance conflicted after the bounded retry limit");
+    }
+
+    private static bool IsCanonicalRoot(
+        ZLinkRelocationEnvelope envelope)
+    {
+        try
+        {
+            _ = ZLinkCanonicalParticipantRecoveryCodec.Decode(
+                envelope.Participants.Single().RecoveryPayload.Span);
+            return true;
+        }
+        catch (Exception error) when (error is InvalidDataException
+                                      or EndOfStreamException)
+        {
+            return false;
+        }
     }
 
     internal async ValueTask<ZLinkStandaloneActorRelocationProgress>

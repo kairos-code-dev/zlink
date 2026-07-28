@@ -205,13 +205,18 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
         ZLinkCanonicalRelocationAuthorityState state,
         ZLinkRelocationEnvelope? root)
     {
-        if (root is not null
-            && (root.CanonicalLogicalStream.IsEmpty
-                || root.CanonicalRelocationHigh != state.RelocationHigh
-                || root.CanonicalRelocationLow != state.RelocationLow))
-            throw new ArgumentException(
-                "Canonical authority relocation identity differs from its root.",
-                nameof(root));
+        if (root is not null)
+        {
+            Span<byte> relocationId = stackalloc byte[16];
+            BinaryPrimitives.WriteUInt64BigEndian(
+                relocationId[..8], state.RelocationHigh);
+            BinaryPrimitives.WriteUInt64BigEndian(
+                relocationId[8..], state.RelocationLow);
+            if (root.AggregateId != new Guid(relocationId, bigEndian: true))
+                throw new ArgumentException(
+                    "Canonical authority relocation identity differs from its root.",
+                    nameof(root));
+        }
         var source = new Reader(authorityPayload);
         if (!source.Bytes(4).SequenceEqual(Magic)
             || source.U8() != 1)

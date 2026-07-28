@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Zlink.Framework.Runtime.Locations;
 
@@ -25,53 +23,6 @@ internal sealed record ZLinkLoadedActorRelocation(
 
 internal static class ZLinkActorRelocationRoot
 {
-    internal static ZLinkRelocationEnvelope Create(
-        ZLinkAuthorityKey authorityKey,
-        ulong objectGeneration,
-        ulong authorityOwnerGeneration,
-        Guid relocationId,
-        ReadOnlyMemory<byte> applicationState,
-        IReadOnlyList<ZLinkActorHandoffFrame> acceptedFrames,
-        ZLinkActorRelocationRecoveryRecord recovery)
-    {
-        if (relocationId == Guid.Empty)
-            throw new ArgumentOutOfRangeException(nameof(relocationId));
-        var inventoryDigest = ComputeInventoryDigest(
-            authorityKey,
-            ZLinkPlacementObjectKind.Actor,
-            objectGeneration,
-            authorityOwnerGeneration,
-            recovery);
-        var durableRecovery = recovery with
-        {
-            Request = recovery.Request with
-            {
-                RelocationInventoryDigest = inventoryDigest
-            }
-        };
-        return new ZLinkRelocationEnvelope(
-            relocationId,
-            authorityOwnerGeneration,
-            inventoryDigest,
-            [
-                new ZLinkRelocationParticipantEnvelope(
-                    authorityKey,
-                    ZLinkPlacementObjectKind.Actor,
-                    objectGeneration,
-                    authorityOwnerGeneration,
-                    applicationState,
-                    acceptedFrames
-                        .OrderBy(static frame => frame.ArrivalIndex)
-                        .Select(
-                            (frame, index) => new ZLinkRelocationQueuedJob(
-                                checked((ulong)index + 1),
-                                JsonSerializer.SerializeToUtf8Bytes(frame)))
-                        .ToArray(),
-                    [],
-                    JsonSerializer.SerializeToUtf8Bytes(durableRecovery))
-            ]);
-    }
-
     internal static ZLinkLoadedActorRelocation Load(
         ZLinkRemoteActorJoinRequest wire,
         ZLinkRelocationEnvelope envelope)
@@ -97,20 +48,33 @@ internal static class ZLinkActorRelocationRoot
 
         ZLinkActorRelocationRecoveryRecord recovery;
         ZLinkActorHandoffFrame[] frames;
+        ZLinkCanonicalParticipantRecovery canonical;
         try
         {
+            canonical =
+                ZLinkCanonicalParticipantRecoveryCodec.Decode(
+                    participant.RecoveryPayload.Span);
+            var sourceFence = ZLinkActorRelocationSourceFenceCodec.Decode(
+                canonical.MembershipMutation.Span);
+            if (sourceFence.RemoteJoinRecovery.IsEmpty)
+                throw new InvalidDataException(
+                    "Canonical Actor Join recovery metadata is unavailable.");
             recovery = JsonSerializer.Deserialize<
                            ZLinkActorRelocationRecoveryRecord>(
-                           participant.RecoveryPayload.Span)
+                           sourceFence.RemoteJoinRecovery.Span)
                        ?? throw new JsonException();
-            frames = participant.AcceptedJobs.Select(
-                    job => JsonSerializer.Deserialize<ZLinkActorHandoffFrame>(
-                               job.Payload.Span)
-                           ?? throw new JsonException())
+            frames = participant.AcceptedJobs
+                .OrderBy(static job => job.AcceptedSequence)
+                .Select((job, index) =>
+                    ZLinkCanonicalActorAcceptedJournal.Decode(
+                        job.Payload.Span,
+                        checked((long)index)).Frame)
                 .ToArray();
         }
         catch (Exception error) when (error is JsonException
-                                      or NotSupportedException)
+                                      or NotSupportedException
+                                      or InvalidDataException
+                                      or EndOfStreamException)
         {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.DataLost,
@@ -118,12 +82,25 @@ internal static class ZLinkActorRelocationRoot
                 retryAdvice: ZLinkRetryAdvice.DoNotRetry,
                 error);
         }
-        var expectedInventoryDigest = ComputeInventoryDigest(
-            participant.AuthorityKey,
-            participant.ObjectKind,
-            participant.ObjectGeneration,
-            participant.AuthorityOwnerGeneration,
-            recovery);
+        if (canonical.AuthorityKey != participant.AuthorityKey
+            || canonical.ObjectKind != participant.ObjectKind
+            || canonical.ObjectGeneration != participant.ObjectGeneration
+            || canonical.AuthorityOwnerGeneration
+               != participant.AuthorityOwnerGeneration
+            || !StringComparer.Ordinal.Equals(
+                canonical.StableType,
+                wire.ActorType))
+            throw DataLost(
+                $"Actor '{wire.ActorId}' canonical participant recovery fences are invalid.");
+        var expectedInventoryDigest = ZLinkAggregateInventoryDigest.Compute(
+        [
+            new ZLinkAggregateRelocationParticipant(
+                participant,
+                canonical.ExpectedStoreVersion,
+                ZLinkAuthorityGenerationTransition.NewOwner,
+                canonical.AuthorityPayload,
+                ReadOnlyMemory<byte>.Empty)
+        ]);
         if (!envelope.InventoryDigest.Span.SequenceEqual(
                 expectedInventoryDigest))
             throw DataLost(
@@ -203,93 +180,6 @@ internal static class ZLinkActorRelocationRoot
         {
             HandoffFrames = loaded.AcceptedFrames
         };
-
-    private static byte[] ComputeInventoryDigest(
-        ZLinkAuthorityKey authorityKey,
-        ZLinkPlacementObjectKind objectKind,
-        ulong objectGeneration,
-        ulong authorityOwnerGeneration,
-        ZLinkActorRelocationRecoveryRecord recovery)
-    {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(
-            stream,
-            Encoding.UTF8,
-            leaveOpen: true);
-        var request = recovery.Request;
-        WriteString(writer, authorityKey.Value);
-        writer.Write((byte)objectKind);
-        writer.Write(objectGeneration);
-        writer.Write(authorityOwnerGeneration);
-
-        // Canonically bind the target membership and every route, generation,
-        // and session fence preserved by the authority mutation.
-        WriteString(writer, recovery.TargetSpotId);
-        WriteBytes(writer, recovery.TargetNodeRid);
-        writer.Write(recovery.TargetNodeGeneration);
-        writer.Write(recovery.TargetSpotGeneration);
-        writer.Write(recovery.TargetAuthorityOwnerGeneration);
-        WriteString(writer, request.ActorId);
-        WriteString(writer, request.ActorType);
-        WriteString(writer, request.HandoffId);
-        WriteBytes(writer, request.SourceNodeRid);
-        WriteString(writer, request.SourceSpotId);
-        writer.Write(request.ActorGeneration);
-        writer.Write(request.ActorAuthorityOwnerGeneration);
-        WriteString(writer, request.ReservationToken);
-        writer.Write(request.ReservedPayloadBytes);
-        WriteNullableBytes(writer, request.TargetNodeRid);
-        writer.Write(request.TargetNodeGeneration);
-        writer.Write(request.TargetSpotGeneration);
-        writer.Write(request.TargetAuthorityOwnerGeneration);
-        writer.Write(request.TargetSpotAuthorityOwnerGeneration);
-        WriteNullableBytes(writer, request.BoundSessionNodeRid);
-        WriteNullableBytes(writer, request.BoundSessionRid);
-        WriteNullableString(writer, request.BoundSessionBindingToken);
-        writer.Write(request.BoundSessionBindingGeneration);
-        writer.Write(request.BoundSessionObjectGeneration);
-        writer.Write(request.BoundSessionAuthorityOwnerGeneration);
-        WriteString(writer, request.BoundSessionMeshName ?? string.Empty);
-        writer.Write(request.BoundSessionTargetNodeGeneration);
-        writer.Write(request.BoundSessionOwnerLeaseGeneration);
-        writer.Write(request.BoundSessionOwnerNodeGeneration);
-        writer.Write(request.BoundSessionAcceptedHighWater);
-        WriteString(writer, request.RelocationContentType);
-        writer.Flush();
-        return SHA256.HashData(
-            stream.GetBuffer().AsSpan(0, checked((int)stream.Length)));
-    }
-
-    private static void WriteString(BinaryWriter writer, string value)
-    {
-        var bytes = Encoding.UTF8.GetBytes(value);
-        writer.Write(bytes.Length);
-        writer.Write(bytes);
-    }
-
-    private static void WriteNullableString(
-        BinaryWriter writer,
-        string? value)
-    {
-        writer.Write(value is not null);
-        if (value is not null)
-            WriteString(writer, value);
-    }
-
-    private static void WriteBytes(BinaryWriter writer, byte[] value)
-    {
-        writer.Write(value.Length);
-        writer.Write(value);
-    }
-
-    private static void WriteNullableBytes(
-        BinaryWriter writer,
-        byte[]? value)
-    {
-        writer.Write(value is not null);
-        if (value is not null)
-            WriteBytes(writer, value);
-    }
 
     private static ZLinkFrameworkException DataLost(string message) =>
         new(

@@ -73,7 +73,6 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.45 | `.NET`, Java/Kotlin, C++ | User Spot aggregate relocation은 command 30 source accept 뒤 participant 전체의 typed capacity bundle으로 aggregate prepare를 한 번 실행하고, target factory·Restore 뒤 같은 aggregate fence를 commit해야 한다. Standalone relocation capacity fence와 뒤늦은 aggregate prepare를 함께 사용하면 capacity를 이중 예약하므로 금지한다 |
 | §12.49 | 전 언어 | Host relocation mode와 exact application-version target 선택이 구현되지 않았다. 현재 runtime은 `PlannedMaintenance`와 `RollingUpdate`를 구분하지 않으며 언어별 target filter에도 차이가 있다 |
 | §12.52 | 전 언어 | `Message Follow`의 Actor·Spot 전체 조합과 relocation payload·대량 처리·서비스 연속성 process E2E가 없다. `.NET`은 Actor·Spot route를 구현했지만 전체 matrix를 검증하지 않았고, Java/Kotlin·Node.js·C++는 Spot route 구현도 남아 있다 |
-| §12.59 | C++ | Spot `PreserveStateWith` adapter가 runtime capture·restore에 연결되지 않았다. Exact interface 밖의 duck-typed Actor factory overload와 이전 placement option 선언도 남아 있다 |
 | §12.53 | 전 언어 E2E | 정식 public contract는 `SpotId` 문자열을 사용하지만 기존 process fixture와 application DTO에 `SpotRid`·`spotRid`·`spot_rid` 이름과 RoutingId 변환이 남아 있다 |
 | §12.54 | `.NET`, Java/Kotlin, Node.js E2E | 여러 fixture가 제거된 handler context, Spot handle resolver, 이전 builder와 rich Store 표면을 사용해 현재 framework source와 compile되지 않는다 |
 | §12.57 | Java/Kotlin | Global Actor ID request가 remote owner route를 resolve한 뒤에도 local-only dispatch에서 실패한다 |
@@ -1420,14 +1419,3 @@ all-settled 통지를 수행하도록 요구한다.
 | Kotlin | `server/languages/kotlin/` |
 | Node.js / TypeScript | `server/languages/node/` |
 | C++ | `server/languages/cpp/` |
-
-### 12.59 C++ factory builder runtime 연결 미완료
-
-C++ User Spot과 Instance Spot의 `preserve_state_with<TAdapter>()`는 adapter type만 저장하고
-capture·restore callback을 runtime에 연결하지 않는다. 따라서 state 보존을 선택해도 application state를
-이전할 수 없다.
-
-C++ exact interface는 Actor type과 `actor_factory_t<TActor>` instance를 명시하는 등록 함수만 정의한다.
-구현과 sample에는 default construction과 `create(string)` 모양을 암묵적으로 요구하는 별도 overload가
-남아 있다. 이 overload를 제거하고 exact interface로 통일해야 한다. Exact 문서에 남은 이전 placement
-option 선언과 stable type limit `0` 허용 규칙도 현재 목표 계약과 맞지 않는다.

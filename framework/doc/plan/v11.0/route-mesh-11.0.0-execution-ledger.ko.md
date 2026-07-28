@@ -7065,10 +7065,23 @@ public Snapshot policy factory를 제거했다.
 - 기존 Node.js NestJS manual ClientServer DI: 57/58
 - 기존 C++ Store resolver RouteMesh role gap: 32/37
 
-마지막 두 실패는 factory builder 변경과 무관한 기존 gap이다. 후속 high review에서 C++의
-Spot state 보존 adapter가 runtime capture·restore에 연결되지 않은 문제, exact interface 밖의
-duck-typed Actor factory overload와 이전 placement option 선언을 확인했다. `.NET`, Java, Kotlin과
-Node.js는 builder gate를 통과했으며 C++는 implementation gap §12.59로 다시 열었다. Redis
+마지막 두 실패는 factory builder 변경과 무관한 기존 gap이다. 후속 high review에서 확인한 C++
+Spot state 보존과 factory public surface 문제는 commits `df92300d29`, `469b3cddd6`,
+`32153c2b6e`, `42eaa1f9d2`에서 수정했다.
+
+C++ Spot state는 private staging에서 capture·restore하며 restore 성공 전에는 Spot map, native
+runtime과 Location Store에 공개하지 않는다. Restore 실패는 instance를 폐기하고 fresh retry를
+사용한다. 일반 activation과 relocation은 Spot ID별 pending reservation을 공유한다. Stateful
+single·aggregate recovery는 participant 전체의 generation과 conflict를 먼저 검증하고, recovery
+중 application ingress는 `backpressured`로 반환해 rollback 시 message가 유실되지 않게 한다.
+64 MiB state bound, ZLR1 읽기 호환, ZLR2 쓰기와 operation cancellation 전달도 검증했다.
+
+- C++ M6b, M6c, contract header와 mesh vertical: 통과
+- C++ sample parity: 54/54
+- Concurrent relocation/normal activation, stale single/aggregate와 fresh retry: 통과
+- C++ final high review commit `42eaa1f9d2`: P0–P2 없음
+
+다섯 언어 factory builder가 목표 계약에 도달했으므로 implementation gap §12.59를 닫았다. Redis
 `AddRelocationStore` SPI와 Store 동작은 변경하지 않았다.
 
 ## 2026-07-29 .NET Config 10 target completion crash window 수정

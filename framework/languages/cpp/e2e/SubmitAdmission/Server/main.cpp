@@ -1038,7 +1038,9 @@ void configure_stream_gateway_role (zlink::framework::zlink_framework_options_t 
       .set_routing_id (zlink::routing_id_t::from (options.rid))
       .add_entry_spot<admission_actor_spot_t> (
         [evidence_ptr] { return std::make_shared<admission_actor_spot_t> (*evidence_ptr); })
-      .add_actor_factory<admission_actor_t> (admission_actor_type);
+      .add_actor_factory<admission_actor_t> (
+        admission_actor_type,
+        [] (auto &factory) { factory.disable_relocation (); });
     if (!options.peer_endpoint.empty ()) {
         mesh.peer_connections ().connect (
           zlink::routing_id_t::from (options.peer_rid), options.peer_endpoint);
@@ -1068,7 +1070,9 @@ void configure_actor_target_role (zlink::framework::zlink_framework_options_t &f
       .set_routing_id (zlink::routing_id_t::from (options.rid))
       .add_entry_spot<admission_actor_spot_t> (
         [evidence_ptr] { return std::make_shared<admission_actor_spot_t> (*evidence_ptr); })
-      .add_actor_factory<admission_actor_t> (admission_actor_type);
+      .add_actor_factory<admission_actor_t> (
+        admission_actor_type,
+        [] (auto &factory) { factory.disable_relocation (); });
     if (!options.peer_endpoint.empty ()) {
         mesh.peer_connections ().connect (
           zlink::routing_id_t::from (options.peer_rid), options.peer_endpoint);

@@ -148,10 +148,11 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::mesh_channel_builder_t &> ().server ()),
                  zlink::framework::mesh_channel_server_builder_t>);
 struct contract_entry_spot_t;
-struct contract_spot_t;
+struct contract_spot_t : zlink::framework::spot_t
+{
+};
 struct contract_actor_factory_t;
 struct contract_actor_t;
-struct contract_transfer_adapter_t;
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
                            .add_entry_spot<contract_entry_spot_t> (
@@ -161,24 +162,23 @@ static_assert (std::is_same_v<
                zlink::framework::mesh_node_builder_t &>);
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
-                           .add_spot<contract_spot_t> (
+                           .add_spot_factory<contract_spot_t> (
                              std::declval<std::string> (),
                              std::declval<
                                std::function<std::shared_ptr<contract_spot_t> (
-                                 zlink::framework::spot_context_t)>> ())),
+                                 zlink::framework::spot_context_t)>> (),
+                             std::declval<std::function<void (
+                               zlink::framework::user_spot_factory_builder_t<
+                                 contract_spot_t> &)>> ())),
                zlink::framework::mesh_node_builder_t &>);
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
                            .add_actor_factory<contract_actor_factory_t> (
-                             std::declval<std::string> ())),
+                             std::declval<std::string> (),
+                             [] (auto &factory) {
+                                 factory.disable_relocation ();
+                             })),
                zlink::framework::mesh_node_builder_t &>);
-static_assert (std::is_same_v<
-               decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
-                           .add_actor_transfer_adapter<contract_actor_t,
-                                                       contract_transfer_adapter_t> (
-                             std::declval<std::string> ())),
-               zlink::framework::mesh_node_builder_t &>);
-
 bool wait_until_admitted (zlink::framework::detail::mesh_node_runtime_t &node)
 {
     // The transport drains its socket monitor from dispatch_ready, so a waiter

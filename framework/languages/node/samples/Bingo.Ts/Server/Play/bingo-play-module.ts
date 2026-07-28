@@ -14,7 +14,7 @@ import {
   LeaveFinishedBingoRoomHandler,
   PendingBingoActorDestroyRegistry
 } from './Infrastructure/ZLink/Actors/player-actor-lifecycle-handlers';
-import { PlayerActorTransferAdapter } from './Infrastructure/ZLink/Actors/player-actor-transfer-adapter';
+import { PlayerActorRelocationAdapter } from './Infrastructure/ZLink/Actors/player-actor-relocation-adapter';
 import {
   BingoEntrySpot,
   DestroyBingoActorHandler
@@ -76,11 +76,19 @@ function createBingoPlayModule() {
           builder.codecs().use(bingoFrameworkProtobuf);
           const mesh = builder.addRouteMesh(SampleNames.roomSpotNode)
             .setRoutingIdPrefix('play')
-            .listen(config.playSpotEndpoint)
-            .addEntrySpot(BingoEntrySpot)
-            .addSpotFactory(BingoRoomSpot)
-            .actorFactory(SampleNames.playerActorType, PlayerActorFactory)
-            .addActorTransferAdapter(SampleNames.playerActorType, PlayerActorTransferAdapter);
+            .listen(config.playSpotEndpoint);
+          const objectServer = mesh.objects().server();
+          objectServer.addEntrySpot(BingoEntrySpot);
+          objectServer.addSpotFactory(
+            BingoRoomSpot.name,
+            BingoRoomSpot,
+            (factory) => factory.disableRelocation()
+          );
+          objectServer.addActorFactory(
+            SampleNames.playerActorType,
+            PlayerActorFactory,
+            (factory) => factory.preserveStateWith(PlayerActorRelocationAdapter)
+          );
           mesh.channelName(SampleNames.playChannel).addHandlerGroup('play');
           mesh.channelName(SampleNames.apiChannel).setWeight(0);
           mesh.channelName(SampleNames.roomSpotNode);
@@ -101,7 +109,7 @@ function createBingoPlayModule() {
       BingoRoomProvisioner,
       EnsurePlayerActorHandler,
       PlayerActorFactory,
-      PlayerActorTransferAdapter,
+      PlayerActorRelocationAdapter,
       BingoGameEndedNotificationHandler,
       BingoGameStartedNotificationHandler,
       BingoNumberDrawnNotificationHandler,

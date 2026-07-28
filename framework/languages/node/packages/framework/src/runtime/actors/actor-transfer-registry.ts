@@ -1,9 +1,10 @@
 import type {
   Type,
   ZLinkActor,
-  ZLinkActorTransferAdapter,
   ZLinkMessageSerializer,
 } from '../../contracts';
+import type { ZLinkActorRelocationAdapter } from '../../contracts/Configuration/ObjectRoles';
+import type { ZLinkSpotNodeOptions } from '../../contracts/Configuration/RegistrationTypes';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
 import { throwIfAborted } from '../abort';
@@ -14,22 +15,27 @@ export interface ZLinkActorTransferPayloadState {
 }
 
 export class ZLinkActorTransferRegistry {
-  private readonly byActorType = new Map<Type, Type>();
   private readonly byKey = new Map<string, Type>();
 
   constructor(
-    registrations: ReadonlyMap<Type, Type>,
+    spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>,
     private readonly providerResolver?: ZLinkProviderResolver,
-    private readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>,
-    private readonly actorFactories: ReadonlyMap<string, Type> = new Map()
+    private readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>
   ) {
-    for (const [actorType, adapterType] of registrations) {
-      const key = actorTransferKey(actorType);
-      if (this.byKey.has(key)) {
-        throw new Error(`Actor transfer type key '${key}' is registered more than once.`);
+    for (const node of spotNodes.values()) {
+      for (const [stableType, registration] of Object.entries(
+        node.actorFactoryRegistrations ?? {}
+      )) {
+        if (registration.relocation.kind !== 'snapshot') continue;
+        const adapterType = registration.relocation.adapterType;
+        const current = this.byKey.get(stableType);
+        if (current !== undefined && current !== adapterType) {
+          throw new Error(
+            `Actor relocation adapter for stable type '${stableType}' is registered more than once.`
+          );
+        }
+        this.byKey.set(stableType, adapterType);
       }
-      this.byActorType.set(actorType, adapterType);
-      this.byKey.set(key, adapterType);
     }
   }
 
@@ -39,35 +45,47 @@ export class ZLinkActorTransferRegistry {
     signal?: AbortSignal
   ): Promise<ZLinkActorTransferPayloadState> {
     throwIfAborted(signal);
-    const registeredType = actorType === undefined
-      ? actor.constructor as Type
-      : this.actorFactories.get(actorType) ?? actor.constructor as Type;
-    const adapterType = this.byActorType.get(registeredType);
+    const adapterType = actorType === undefined
+      ? undefined
+      : this.byKey.get(actorType);
     if (adapterType === undefined) {
       return { state: emptyTransferState(this.messageSerializers) };
     }
-    const adapter = await this.createAdapter(adapterType) as ZLinkActorTransferAdapter<ZLinkActor>;
-    const state = await adapter.transferOut(actor);
-    if (!(state instanceof ZLinkMessage)) {
-      throw new Error(`Actor transfer adapter '${adapterType.name}' returned an invalid state message.`);
+    const adapter = await this.createAdapter(adapterType) as ZLinkActorRelocationAdapter<ZLinkActor>;
+    const state = await adapter.capture(
+      actor,
+      signal ?? new AbortController().signal
+    );
+    if (!(state instanceof Uint8Array)) {
+      throw new Error(
+        `Actor relocation adapter '${adapterType.name}' returned invalid state bytes.`
+      );
     }
-    return { adapterKey: actorTransferKey(registeredType), state };
+    return {
+      adapterKey: actorType,
+      state: ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(state))
+    };
   }
 
-  async transferIn(
+  async restore(
     adapterKey: string,
-    actorId: string,
+    actor: ZLinkActor,
     state: ZLinkMessage,
     signal?: AbortSignal
-  ): Promise<ZLinkActor> {
+  ): Promise<void> {
     throwIfAborted(signal);
     const adapterType = this.byKey.get(adapterKey);
     if (adapterType === undefined) {
-      throw new Error(`Actor transfer adapter '${adapterKey}' is not registered on the target node.`);
+      throw new Error(
+        `Actor relocation adapter for stable type '${adapterKey}' is not registered on the target node.`
+      );
     }
-    const adapter = await this.createAdapter(adapterType) as ZLinkActorTransferAdapter<ZLinkActor>;
-    const actor = await adapter.transferIn(actorId, state);
-    return actor;
+    const adapter = await this.createAdapter(adapterType) as ZLinkActorRelocationAdapter<ZLinkActor>;
+    await adapter.restore(
+      actor,
+      state.toEncodedPayload().toBytes(),
+      signal ?? new AbortController().signal
+    );
   }
 
   private async createAdapter(adapterType: Type): Promise<unknown> {
@@ -81,14 +99,6 @@ export class ZLinkActorTransferRegistry {
     }
     return new (adapterType as new () => unknown)();
   }
-}
-
-function actorTransferKey(actorType: Type): string {
-  const key = actorType.name.trim();
-  if (key.length === 0) {
-    throw new Error('Actor transfer types must have a stable class name.');
-  }
-  return key;
 }
 
 function emptyTransferState(

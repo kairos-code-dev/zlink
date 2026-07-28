@@ -274,7 +274,9 @@ int main (int argc, char **argv)
               return std::make_shared<customer_entry_spot_t> (
                 std::move (context), *sessions_ptr);
           })
-          .add_actor_factory<customer_actor_factory_t> (sample_names_t::customer_actor_type);
+          .add_actor_factory<customer_actor_factory_t> (
+            sample_names_t::customer_actor_type,
+            [] (auto &factory) { factory.disable_relocation (); });
         options.add_stream_node (sample_names_t::customer_stream_node)
           .bind (topology.customer_stream_endpoint)
           .register_session<customer_gateway_session_t> ();

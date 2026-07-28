@@ -2,7 +2,6 @@ import type {
   Type,
   ZLinkActor,
   ZLinkActorFactory,
-  ZLinkActorTransferAdapter,
   ZLinkCodecExtension,
   ZLinkCodecRegistrar,
   ZLinkDispatchOptionsBuilder,
@@ -11,10 +10,11 @@ import type {
   ZLinkLocationOptionValues,
   ZLinkLocationOptions,
   ZLinkRelocationStore,
-  ZLinkRelocationPolicy,
-  ZLinkActorFactoryOptions,
-  ZLinkInstanceSpotFactoryOptions,
-  ZLinkUserSpotFactoryOptions,
+  ZLinkActorFactoryBuilder,
+  ZLinkActorRelocationAdapter,
+  ZLinkInstanceSpotFactoryBuilder,
+  ZLinkSpotRelocationAdapter,
+  ZLinkUserSpotFactoryBuilder,
   ZLinkMeshNodeSocketConfig,
   ZLinkMeshPeerConnection,
   ZLinkMeshPeerConnections,
@@ -28,11 +28,16 @@ import type {
 } from '@zlink-systems/framework';
 import type {
   ZLinkFrameworkRegistrationOptions,
+  ZLinkActorFactoryConfiguration,
+  ZLinkInstanceSpotFactoryConfiguration,
+  ZLinkRelocationConfiguration,
   ZLinkSpotNodeOptions,
-  ZLinkStreamNodeOptions
+  ZLinkStreamNodeOptions,
+  ZLinkUserSpotFactoryConfiguration
 } from './framework-integration-contracts';
 import {
   ZLinkMessageFlowLogMode,
+  ZLinkSpotRelocationReadinessMode,
   ZLinkUserSpotExecutionMode,
   ZLinkUnhandledDispatchAction
 } from '@zlink-systems/framework';
@@ -158,19 +163,6 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     this.state.additionalOptions = {
       ...this.state.additionalOptions,
       maintenanceWave: waveId
-    };
-    return this;
-  }
-
-  protected registerActorTransferAdapter<TActor extends ZLinkActor>(
-    actorType: Type<TActor>,
-    adapterType: Type<ZLinkActorTransferAdapter<TActor>>
-  ): this {
-    const adapters = new Map(this.state.additionalOptions.actorTransferAdapters);
-    framework.registerActorTransferAdapter(adapters, actorType, adapterType);
-    this.state.additionalOptions = {
-      ...this.state.additionalOptions,
-      actorTransferAdapters: adapters
     };
     return this;
   }
@@ -657,41 +649,6 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
     return this;
   }
 
-  addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this {
-    framework.registerEntrySpot(this.spotOptions, entrySpotType);
-    return this;
-  }
-
-  addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
-    const spotFactories = [...(this.spotOptions.spotFactories ?? [])];
-    framework.registerSpotFactory({ spotFactories }, spotType);
-    this.spotOptions.spotFactories = spotFactories;
-    return this;
-  }
-
-  actorFactory(actorType: string, factoryType: Type): this {
-    const actorFactories = { ...(this.spotOptions.actorFactories as Record<string, Type> | undefined) };
-    framework.registerActorFactory({ actorFactories }, actorType, factoryType);
-    this.spotOptions.actorFactories = actorFactories;
-    return this;
-  }
-
-  addActorTransferAdapter<TActor extends ZLinkActor>(
-    actorType: string,
-    adapterType: Type<ZLinkActorTransferAdapter<TActor>>
-  ): this {
-    const actorFactory = this.spotOptions.actorFactories instanceof Map
-      ? this.spotOptions.actorFactories.get(actorType)
-      : (this.spotOptions.actorFactories as Readonly<Record<string, Type>> | undefined)?.[actorType];
-    if (actorFactory === undefined) {
-      throw new framework.ZLinkConfigurationException(
-        `Actor transfer adapter '${actorType}' requires an actor factory on RouteMesh '${this.name}'.`
-      );
-    }
-    this.registerActorTransferAdapter(actorFactory as Type<TActor>, adapterType);
-    return this;
-  }
-
 }
 
 class DefaultZLinkNestMeshObjectRoleBuilder
@@ -724,6 +681,184 @@ class DefaultZLinkNestMeshObjectClientBuilder
   extends ZLinkNestOptionsBuilder
   implements ZLinkNestMeshObjectClientBuilder {}
 
+abstract class DefaultZLinkNestFactoryBuilder<TInstance> {
+  private relocation: ZLinkRelocationConfiguration<TInstance> | undefined;
+  private sealed = false;
+
+  protected disable(): void {
+    this.select({ kind: 'disabled' });
+  }
+
+  protected recreate(): void {
+    this.select({ kind: 'recreate' });
+  }
+
+  protected preserve(adapterType: Type): void {
+    if (typeof adapterType !== 'function') {
+      throw new framework.ZLinkConfigurationException(
+        'PreserveStateWith relocation requires an adapter type.'
+      );
+    }
+    this.select({ kind: 'snapshot', adapterType });
+  }
+
+  protected relocationConfiguration(): ZLinkRelocationConfiguration<TInstance> {
+    if (this.relocation === undefined) {
+      throw new framework.ZLinkConfigurationException(
+        'Factory configure callback must select exactly one relocation policy.'
+      );
+    }
+    return this.relocation;
+  }
+
+  seal(): void {
+    this.sealed = true;
+  }
+
+  protected assertMutable(): void {
+    if (this.sealed) {
+      throw new framework.ZLinkConfigurationException(
+        'Factory builder cannot be changed after the configure callback returns.'
+      );
+    }
+  }
+
+  private select(relocation: ZLinkRelocationConfiguration<TInstance>): void {
+    this.assertMutable();
+    if (this.relocation !== undefined) {
+      throw new framework.ZLinkConfigurationException(
+        'Factory configure callback must select exactly one relocation policy.'
+      );
+    }
+    this.relocation = relocation;
+  }
+}
+
+class DefaultZLinkNestActorFactoryBuilder<TActor extends ZLinkActor>
+  extends DefaultZLinkNestFactoryBuilder<TActor>
+  implements ZLinkActorFactoryBuilder<TActor> {
+  disableRelocation(): void {
+    this.disable();
+  }
+
+  recreateOnRelocation(): void {
+    this.recreate();
+  }
+
+  preserveStateWith(
+    adapterType: Type<ZLinkActorRelocationAdapter<TActor>>
+  ): void {
+    this.preserve(adapterType);
+  }
+
+  build(): {
+    readonly options: ZLinkActorFactoryConfiguration;
+    readonly relocation: ZLinkRelocationConfiguration<TActor>;
+  } {
+    return { options: {}, relocation: this.relocationConfiguration() };
+  }
+}
+
+class DefaultZLinkNestUserSpotFactoryBuilder<TSpot extends ZLinkSpot>
+  extends DefaultZLinkNestFactoryBuilder<TSpot>
+  implements ZLinkUserSpotFactoryBuilder<TSpot> {
+  private stableTypeLimitValue: number | undefined;
+  private executionModeValue = ZLinkUserSpotExecutionMode.SpotWide;
+  private relocationReadinessValue = ZLinkSpotRelocationReadinessMode.AnyTurnBoundary;
+
+  stableTypeLimit(limit: number): this {
+    this.assertMutable();
+    validateStableTypeLimit(limit);
+    this.stableTypeLimitValue = limit;
+    return this;
+  }
+
+  executionMode(mode: ZLinkUserSpotExecutionMode): this {
+    this.assertMutable();
+    this.executionModeValue = mode;
+    return this;
+  }
+
+  relocationReadiness(mode: ZLinkSpotRelocationReadinessMode): this {
+    this.assertMutable();
+    this.relocationReadinessValue = mode;
+    return this;
+  }
+
+  disableRelocation(): void {
+    this.disable();
+  }
+
+  recreateOnRelocation(): void {
+    this.recreate();
+  }
+
+  preserveStateWith(
+    adapterType: Type<ZLinkSpotRelocationAdapter<TSpot>>
+  ): void {
+    this.preserve(adapterType);
+  }
+
+  build(): {
+    readonly options: ZLinkUserSpotFactoryConfiguration;
+    readonly relocation: ZLinkRelocationConfiguration<TSpot>;
+  } {
+    const relocation = this.relocationConfiguration();
+    const options = {
+      stableTypeLimit: this.stableTypeLimitValue,
+      executionMode: this.executionModeValue,
+      relocationReadiness: this.relocationReadinessValue
+    };
+    validateUserSpotFactoryConfiguration(options);
+    if (
+      options.executionMode === ZLinkUserSpotExecutionMode.PerActor
+      && relocation.kind !== 'recreate'
+    ) {
+      throw new framework.ZLinkConfigurationException(
+        'PerActor User Spots require RecreateOnRelocation.'
+      );
+    }
+    return { options, relocation };
+  }
+}
+
+class DefaultZLinkNestInstanceSpotFactoryBuilder<TSpot extends ZLinkInstanceSpot>
+  extends DefaultZLinkNestFactoryBuilder<TSpot>
+  implements ZLinkInstanceSpotFactoryBuilder<TSpot> {
+  private stableTypeLimitValue: number | undefined;
+
+  stableTypeLimit(limit: number): this {
+    this.assertMutable();
+    validateStableTypeLimit(limit);
+    this.stableTypeLimitValue = limit;
+    return this;
+  }
+
+  disableRelocation(): void {
+    this.disable();
+  }
+
+  recreateOnRelocation(): void {
+    this.recreate();
+  }
+
+  preserveStateWith(
+    adapterType: Type<ZLinkSpotRelocationAdapter<TSpot>>
+  ): void {
+    this.preserve(adapterType);
+  }
+
+  build(): {
+    readonly options: ZLinkInstanceSpotFactoryConfiguration;
+    readonly relocation: ZLinkRelocationConfiguration<TSpot>;
+  } {
+    return {
+      options: { stableTypeLimit: this.stableTypeLimitValue },
+      relocation: this.relocationConfiguration()
+    };
+  }
+}
+
 class DefaultZLinkNestMeshObjectServerBuilder
   extends ZLinkNestOptionsBuilder
   implements ZLinkNestMeshObjectServerBuilder {
@@ -745,25 +880,19 @@ class DefaultZLinkNestMeshObjectServerBuilder
   addSpotFactory<TSpot extends ZLinkSpot>(
     spotType: string,
     implementation: Type<TSpot>,
-    options: ZLinkUserSpotFactoryOptions | undefined,
-    relocation: ZLinkRelocationPolicy<TSpot>
+    configure: (builder: ZLinkUserSpotFactoryBuilder<TSpot>) => void
   ): this {
-    const stableType = validateObjectFactory(
-      spotType,
-      'User Spot type',
-      relocation
-    );
-    validateStableTypeLimit(options?.stableTypeLimit);
-    const executionMode: unknown = options?.executionMode;
-    if (
-      executionMode !== undefined
-      && executionMode !== ZLinkUserSpotExecutionMode.SpotWide
-      && executionMode !== ZLinkUserSpotExecutionMode.PerActor
-    ) {
-      throw new framework.ZLinkConfigurationException(
-        'User Spot executionMode is invalid.'
-      );
+    const stableType = validateObjectFactory(spotType, 'User Spot type');
+    requireFactoryConfigure(configure);
+    const factory = new DefaultZLinkNestUserSpotFactoryBuilder<TSpot>();
+    let built: ReturnType<typeof factory.build>;
+    try {
+      configure(factory);
+      built = factory.build();
+    } finally {
+      factory.seal();
     }
+    const { options, relocation } = built;
     const registrations = {
       ...(this.node.spotFactoryRegistrations ?? {})
     };
@@ -786,14 +915,19 @@ class DefaultZLinkNestMeshObjectServerBuilder
   addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
     instanceSpotType: string,
     implementation: Type<TSpot>,
-    options: ZLinkInstanceSpotFactoryOptions | undefined,
-    relocation: ZLinkRelocationPolicy<TSpot>
+    configure: (builder: ZLinkInstanceSpotFactoryBuilder<TSpot>) => void
   ): this {
-    const stableType = validateObjectFactory(
-      instanceSpotType,
-      'Instance Spot type',
-      relocation
-    );
+    const stableType = validateObjectFactory(instanceSpotType, 'Instance Spot type');
+    requireFactoryConfigure(configure);
+    const factory = new DefaultZLinkNestInstanceSpotFactoryBuilder<TSpot>();
+    let built: ReturnType<typeof factory.build>;
+    try {
+      configure(factory);
+      built = factory.build();
+    } finally {
+      factory.seal();
+    }
+    const { options, relocation } = built;
     validateStableTypeLimit(options?.stableTypeLimit);
     const factories = {
       ...(this.node.instanceSpotFactories ?? {})
@@ -815,14 +949,19 @@ class DefaultZLinkNestMeshObjectServerBuilder
   addActorFactory<TActor extends ZLinkActor>(
     actorType: string,
     implementation: Type<ZLinkActorFactory<TActor>>,
-    options: ZLinkActorFactoryOptions | undefined,
-    relocation: ZLinkRelocationPolicy<TActor>
+    configure: (builder: ZLinkActorFactoryBuilder<TActor>) => void
   ): this {
-    const stableType = validateObjectFactory(
-      actorType,
-      'Actor type',
-      relocation
-    );
+    const stableType = validateObjectFactory(actorType, 'Actor type');
+    requireFactoryConfigure(configure);
+    const factory = new DefaultZLinkNestActorFactoryBuilder<TActor>();
+    let built: ReturnType<typeof factory.build>;
+    try {
+      configure(factory);
+      built = factory.build();
+    } finally {
+      factory.seal();
+    }
+    const { options, relocation } = built;
     const registrations = {
       ...(this.node.actorFactoryRegistrations ?? {})
     };
@@ -838,10 +977,9 @@ class DefaultZLinkNestMeshObjectServerBuilder
   }
 }
 
-function validateObjectFactory<T>(
+function validateObjectFactory(
   stableType: string,
-  label: string,
-  relocation: ZLinkRelocationPolicy<T>
+  label: string
 ): string {
   if (
     typeof stableType !== 'string'
@@ -853,18 +991,56 @@ function validateObjectFactory<T>(
       `${label} must contain 1..255 UTF-8 bytes and no NUL.`
     );
   }
-  if (relocation.kind === 'snapshot' && typeof relocation.adapterType !== 'function') {
-    throw new framework.ZLinkConfigurationException(
-      'Snapshot relocation requires an adapter type.'
-    );
-  }
   return stableType;
 }
 
-function validateStableTypeLimit(value: number | undefined): void {
-  if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+function requireFactoryConfigure(
+  configure: unknown
+): asserts configure is (builder: unknown) => void {
+  if (typeof configure !== 'function') {
     throw new framework.ZLinkConfigurationException(
-      'stableTypeLimit must be a non-negative safe integer.'
+      'Object factory requires a configure callback.'
+    );
+  }
+}
+
+function validateUserSpotFactoryConfiguration(
+  options: ZLinkUserSpotFactoryConfiguration
+): void {
+  validateStableTypeLimit(options.stableTypeLimit);
+  if (
+    options.executionMode !== ZLinkUserSpotExecutionMode.SpotWide
+    && options.executionMode !== ZLinkUserSpotExecutionMode.PerActor
+  ) {
+    throw new framework.ZLinkConfigurationException(
+      'User Spot executionMode is invalid.'
+    );
+  }
+  if (
+    options.relocationReadiness !== ZLinkSpotRelocationReadinessMode.AnyTurnBoundary
+    && options.relocationReadiness !== ZLinkSpotRelocationReadinessMode.ApplicationSignaled
+  ) {
+    throw new framework.ZLinkConfigurationException(
+      'User Spot relocationReadiness is invalid.'
+    );
+  }
+  if (
+    options.executionMode === ZLinkUserSpotExecutionMode.PerActor
+    && options.relocationReadiness === ZLinkSpotRelocationReadinessMode.ApplicationSignaled
+  ) {
+    throw new framework.ZLinkConfigurationException(
+      'ApplicationSignaled relocation readiness is valid only for SpotWide User Spots.'
+    );
+  }
+}
+
+function validateStableTypeLimit(value: number | undefined): void {
+  if (
+    value !== undefined
+    && (!Number.isInteger(value) || value < 1 || value > 2_147_483_647)
+  ) {
+    throw new framework.ZLinkConfigurationException(
+      'stableTypeLimit must be an integer from 1 through 2147483647.'
     );
   }
 }

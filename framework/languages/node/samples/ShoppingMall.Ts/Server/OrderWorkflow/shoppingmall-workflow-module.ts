@@ -44,8 +44,12 @@ function createShoppingMallWorkflowModule(role: string): Function {
           builder.addLocationStore(createShoppingMallLocationStore(config));
           shoppingMallLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.orderWorkflowSpotMesh)
-            .listen(workflowSpotEndpointForRole(role, config))
-            .addSpotFactory(OrderWorkflowSpot);
+            .listen(workflowSpotEndpointForRole(role, config));
+          mesh.objects().server().addSpotFactory(
+            OrderWorkflowSpot.name,
+            OrderWorkflowSpot,
+            (factory) => factory.disableRelocation()
+          );
           mesh.channelName(SampleNames.orderWorkflowChannel).addHandlerGroup('workflow');
           mesh.channelName(SampleNames.orderWorkflowSpotMesh);
           return builder.build();

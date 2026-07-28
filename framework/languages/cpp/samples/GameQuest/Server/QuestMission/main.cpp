@@ -427,12 +427,16 @@ int main (int argc, char **argv)
         auto quest_spot = options.add_route_mesh (sample_names_t::quest_spot_discovery);
         quest_spot.channel_name (sample_names_t::quest_spot_route);
         quest_spot.listen (topology.selected_mission_spot_router_endpoint ())
-          .add_spot<player_quest_spot_t> (
-            sample_names_t::player_quest_spot, [quest_store_ptr, spot_services] mutable {
+          .add_spot_factory<player_quest_spot_t> (
+            sample_names_t::player_quest_spot,
+            [quest_store_ptr, spot_services] (spot_context_t) mutable {
                 return std::make_shared<player_quest_spot_t> (
                   *quest_store_ptr,
                   spot_services.get_required<actor_directory_t> (),
                   spot_services.get_required<actor_client_t> ());
+            },
+            [] (auto &factory) {
+                factory.disable_relocation ();
             });
         options.handlers ()
           .group ("quest-owner")

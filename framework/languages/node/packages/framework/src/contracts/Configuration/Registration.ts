@@ -45,7 +45,6 @@ export function createFrameworkRegistration(
     codecs: codecRegistry.registration,
     requestTimeoutMs: normalizeOptionalPositiveInteger(options.requestTimeoutMs, 'requestTimeoutMs'),
     actorFactories: actorFactoriesFromSpotNodes(spotNodes),
-    actorTransferAdapters: new Map(options.actorTransferAdapters),
     actorTransferTimeoutMs: normalizeOptionalPositiveInteger(
       options.actorTransferTimeoutMs,
       'actorTransferTimeoutMs'

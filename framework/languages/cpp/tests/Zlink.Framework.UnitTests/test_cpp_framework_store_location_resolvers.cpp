@@ -1949,9 +1949,12 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
         node.set_routing_id (
               zlink::routing_id_t::from ("spot-local-node"))
           .listen (endpoint)
-          .add_spot<local_user_spot_t> (
+          .add_spot_factory<local_user_spot_t> (
             "room", [] (zlink::framework::spot_context_t context) {
                 return std::make_shared<local_user_spot_t> (std::move (context));
+            },
+            [] (auto &factory) {
+                factory.disable_relocation ();
             });
     });
     auto service =
@@ -1985,7 +1988,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
         node.set_routing_id (
               zlink::routing_id_t::from ("context-node"))
           .listen (endpoint)
-          .add_spot<context_owned_user_spot_t> (
+          .add_spot_factory<context_owned_user_spot_t> (
             "room",
             [&] (zlink::framework::spot_context_t context) {
                 observed_mesh = context.mesh_name ();
@@ -1994,6 +1997,9 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
                 observed_generation = context.object_generation ();
                 return std::make_shared<context_owned_user_spot_t> (
                   std::move (context), destruction_count);
+            },
+            [] (auto &factory) {
+                factory.disable_relocation ();
             });
     });
     auto service =
@@ -2028,10 +2034,13 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
         node.set_routing_id (
               zlink::routing_id_t::from ("context-rejection-node"))
           .listen (endpoint)
-          .add_spot<mismatched_context_user_spot_t> (
+          .add_spot_factory<mismatched_context_user_spot_t> (
             "mismatch",
             [] (zlink::framework::spot_context_t) {
                 return std::make_shared<mismatched_context_user_spot_t> ();
+            },
+            [] (auto &factory) {
+                factory.disable_relocation ();
             });
     });
     auto service =
@@ -2063,13 +2072,19 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
               zlink::routing_id_t::from (
                 "spot-collision-node"))
           .listen (endpoint)
-          .add_spot<occupied_user_spot_t> (
+          .add_spot_factory<occupied_user_spot_t> (
             "occupied", [] (zlink::framework::spot_context_t context) {
                 return std::make_shared<occupied_user_spot_t> (std::move (context));
+            },
+            [] (auto &factory) {
+                factory.disable_relocation ();
             })
-          .add_spot<local_user_spot_t> (
+          .add_spot_factory<local_user_spot_t> (
             "room", [] (zlink::framework::spot_context_t context) {
                 return std::make_shared<local_user_spot_t> (std::move (context));
+            },
+            [] (auto &factory) {
+                factory.disable_relocation ();
             });
     });
     auto service =
@@ -2104,9 +2119,12 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
               zlink::routing_id_t::from (
                 "source-cleanup-node"))
           .listen (endpoint)
-          .add_spot<failing_user_spot_t> (
+          .add_spot_factory<failing_user_spot_t> (
             "failing", [] (zlink::framework::spot_context_t context) {
                 return std::make_shared<failing_user_spot_t> (std::move (context));
+            },
+            [] (auto &factory) {
+                factory.disable_relocation ();
             });
     });
     auto service =

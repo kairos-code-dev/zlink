@@ -12,7 +12,7 @@
 #include "Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp"
 #include "Infrastructure/Redis/redis_bingo_match_queue.hpp"
 #include "Infrastructure/ZLink/Actors/player_actor_factory.hpp"
-#include "Infrastructure/ZLink/Actors/player_actor_transfer_adapter.hpp"
+#include "Infrastructure/ZLink/Actors/player_actor_relocation_adapter.hpp"
 #include "Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp"
 #include "Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp"
 #include "Application/RoomAllocation/bingo_room_allocator.hpp"
@@ -68,15 +68,22 @@ class play_server_host_factory_t
                     return std::make_shared<bingo_entry_spot_t> (
                       std::move (context), topology);
                 })
-              .add_spot<bingo_room_spot_t> (
+              .add_spot_factory<bingo_room_spot_t> (
                 sample_names_t::room_spot,
                 [] (spot_context_t context) {
                     return std::make_shared<bingo_room_spot_t> (
                       std::move (context));
+                },
+                [] (auto &factory) {
+                    factory.disable_relocation ();
                 })
-              .add_actor_factory<player_actor_factory_t> (sample_names_t::player_actor_type)
-              .add_actor_transfer_adapter<player_actor_t, player_actor_transfer_adapter_t> (
-                sample_names_t::player_actor_type);
+              .add_actor_factory<player_actor_factory_t> (
+                sample_names_t::player_actor_type,
+                [] (auto &factory) {
+                    factory
+                      .template preserve_state_with<
+                        player_actor_relocation_adapter_t> ();
+                });
             options.handlers ()
               .group ("play")
               .add<allocate_bingo_room_handler_t> ();

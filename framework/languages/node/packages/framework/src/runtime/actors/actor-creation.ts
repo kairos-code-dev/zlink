@@ -80,7 +80,7 @@ export class ZLinkActorCreationCoordinator {
     actorId: string,
     actorType: string,
     state: ZLinkActorRuntimeState,
-    restore: (() => Promise<ZLinkActor>) | undefined
+    restore: ((actor: ZLinkActor) => Promise<void>) | undefined
   ): Promise<ZLinkActorCreationAttemptResult> {
     void actorId;
     const context = state.ensureContext(() => new DefaultZLinkActorContext(
@@ -90,10 +90,9 @@ export class ZLinkActorCreationCoordinator {
       this.options.messageSerializers,
       this.options.actorMeshNameProvider
     ));
-    const actor = restore === undefined
-      ? await (await this.createFactory(actorType)).create(context)
-      : await restore();
+    const actor = await (await this.createFactory(actorType)).create(context);
     attachTransferredActorContext(actor, context);
+    await restore?.(actor);
     state.bindActor(actor, context);
     const nativeActorNode = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
     if (nativeActorNode !== undefined) {

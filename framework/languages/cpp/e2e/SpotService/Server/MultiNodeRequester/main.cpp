@@ -79,7 +79,14 @@ int main (int argc, char **argv)
         spot.listen (spot_router_endpoint)
           .set_routing_id (zlink::routing_id_t::from ("requester-spot-" + node_rid))
           .channel_name (requester_mesh);
-        spot.add_spot<requester_bridge_spot_t> ("requester-bridge");
+        spot.add_spot_factory<requester_bridge_spot_t> (
+          "requester-bridge",
+          [] (spot_context_t) {
+              return std::make_shared<requester_bridge_spot_t> ();
+          },
+          [] (auto &factory) {
+              factory.disable_relocation ();
+          });
         options.http ()
           .listen (http_endpoint)
           .map_health ("/health")

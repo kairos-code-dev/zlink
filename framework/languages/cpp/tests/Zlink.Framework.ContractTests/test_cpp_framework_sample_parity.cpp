@@ -1314,9 +1314,13 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     EXPECT_NE (play_factory.find (".add_entry_spot<tictactoe_entry_spot_t> ("),
                std::string::npos);
     EXPECT_NE (play_factory.find ("[] (entry_spot_context_t context)"), std::string::npos);
-    EXPECT_NE (play_factory.find (".add_spot<tictactoe_game_spot_t> ("), std::string::npos);
+    EXPECT_NE (
+      play_factory.find (".add_spot_factory<tictactoe_game_spot_t> ("),
+      std::string::npos);
     EXPECT_NE (play_factory.find ("[] (spot_context_t context)"), std::string::npos);
-    EXPECT_EQ (play_factory.find (".add_spot<tictactoe_match_t>"), std::string::npos);
+    EXPECT_EQ (
+      play_factory.find (".add_spot_factory<tictactoe_match_t>"),
+      std::string::npos);
     EXPECT_NE (play_factory.find (".peer_connections ()"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_stream_node (sample_names_t::stream_name)"),
                std::string::npos);
@@ -1392,11 +1396,15 @@ TEST (CppFrameworkSampleParity, BingoHostsUseRouteMeshCapabilities)
     EXPECT_NE (play_factory.find ("options.add_route_mesh"), std::string::npos);
     EXPECT_NE (session_factory.find ("options.add_route_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<bingo_entry_spot_t> ("), std::string::npos);
-    EXPECT_NE (play_factory.find (".add_spot<bingo_room_spot_t> ("), std::string::npos);
+    EXPECT_NE (
+      play_factory.find (".add_spot_factory<bingo_room_spot_t> ("),
+      std::string::npos);
     EXPECT_NE (play_factory.find ("[topology] (entry_spot_context_t context)"),
                std::string::npos);
     EXPECT_NE (play_factory.find ("[] (spot_context_t context)"), std::string::npos);
-    EXPECT_EQ (play_factory.find (".add_spot<bingo_room_t>"), std::string::npos);
+    EXPECT_EQ (
+      play_factory.find (".add_spot_factory<bingo_room_t>"),
+      std::string::npos);
     EXPECT_NE (api_framework.find ("use_default_bingo_codecs (options.codecs ())"),
                std::string::npos);
     EXPECT_NE (play_factory.find ("use_default_bingo_codecs (options.codecs ())"),

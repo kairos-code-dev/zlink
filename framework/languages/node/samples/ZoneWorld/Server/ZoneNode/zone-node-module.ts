@@ -9,7 +9,7 @@ import { createZoneWorldLocationStore, zoneWorldLocationOptions } from '../Confi
 import { ZoneWorldNames, zonesOf } from '../../Shared/spec';
 import { PlayerActorFactory } from './Infrastructure/ZLink/Actors/player-actor-factory';
 import { DeliverZoneNotificationHandler } from './Infrastructure/ZLink/Actors/player-actor';
-import { PlayerActorTransferAdapter } from './Infrastructure/ZLink/Actors/player-actor-transfer-adapter';
+import { PlayerActorRelocationAdapter } from './Infrastructure/ZLink/Actors/player-actor-relocation-adapter';
 import { ZoneEntrySpot } from './Infrastructure/ZLink/Spots/zone-entry-spot';
 import { ZoneSpot } from './Infrastructure/ZLink/Spots/zone-spot';
 import {
@@ -70,11 +70,19 @@ function createZoneNodeModule() {
 
           const zoneMesh = builder.addRouteMesh(ZoneWorldNames.zoneMesh)
             .setRoutingIdPrefix('zn')
-            .listen(node.spotRouterEndpoint)
-            .addEntrySpot(ZoneEntrySpot)
-            .actorFactory(ZoneWorldNames.playerActorType, PlayerActorFactory)
-            .addSpotFactory(ZoneSpot)
-            .addActorTransferAdapter(ZoneWorldNames.playerActorType, PlayerActorTransferAdapter);
+            .listen(node.spotRouterEndpoint);
+          const objectServer = zoneMesh.objects().server();
+          objectServer.addEntrySpot(ZoneEntrySpot);
+          objectServer.addSpotFactory(
+            ZoneSpot.name,
+            ZoneSpot,
+            (factory) => factory.disableRelocation()
+          );
+          objectServer.addActorFactory(
+            ZoneWorldNames.playerActorType,
+            PlayerActorFactory,
+            (factory) => factory.preserveStateWith(PlayerActorRelocationAdapter)
+          );
           zoneMesh.channelName(ZoneWorldNames.zoneMesh);
           zoneMesh.channelName(ZoneWorldNames.bridgeMesh);
           zoneMesh.channelName(ZoneWorldNames.reportChannel).setWeight(0);
@@ -104,7 +112,7 @@ function createZoneNodeModule() {
       DeliverZoneNotificationHandler,
       MaintenanceStore,
       NodeRuntimeState,
-      PlayerActorTransferAdapter,
+      PlayerActorRelocationAdapter,
       ZoneEntrySpot,
       ZoneSpot,
       ApplyNodeMaintenanceHandler,

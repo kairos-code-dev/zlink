@@ -175,14 +175,17 @@ class mesh_node_builder_t
     }
 
     template <typename TSpot>
-    mesh_node_builder_t &add_spot (
-      std::string spot_name,
+    requires std::derived_from<TSpot, spot_t>
+             && (!std::derived_from<TSpot, entry_spot_t>)
+             && (!std::derived_from<TSpot, instance_spot_t>)
+    mesh_node_builder_t &add_spot_factory (
+      std::string stable_type,
       std::function<std::shared_ptr<TSpot> (spot_context_t)> factory,
-      user_spot_execution_mode_t execution_mode =
-        user_spot_execution_mode_t::spot_wide)
+      std::function<void (user_spot_factory_builder_t<TSpot> &)> configure)
     {
-        spot_builder ().template add_spot<TSpot> (
-          std::move (spot_name), std::move (factory), execution_mode);
+        spot_builder ().template add_spot_factory<TSpot> (
+          std::move (stable_type), std::move (factory),
+          std::move (configure));
         return *this;
     }
 
@@ -190,17 +193,21 @@ class mesh_node_builder_t
     requires std::derived_from<TSpot, instance_spot_t>
     mesh_node_builder_t &add_instance_spot_factory (
       std::string stable_type,
-      std::function<std::shared_ptr<TSpot> (instance_spot_context_t)> factory)
+      std::function<std::shared_ptr<TSpot> (instance_spot_context_t)> factory,
+      std::function<void (instance_spot_factory_builder_t<TSpot> &)> configure)
     {
         spot_builder ().template add_instance_spot_factory<TSpot> (
-          std::move (stable_type), std::move (factory));
+          std::move (stable_type), std::move (factory),
+          std::move (configure));
         return *this;
     }
 
-    template <typename TActorFactory>
-    mesh_node_builder_t &add_actor_factory (std::string actor_type)
+    template <typename TActorFactory, typename TConfigure>
+    mesh_node_builder_t &add_actor_factory (std::string actor_type,
+                                            TConfigure configure)
     {
-        spot_builder ().template add_actor_factory<TActorFactory> (std::move (actor_type));
+        spot_builder ().template add_actor_factory<TActorFactory> (
+          std::move (actor_type), std::move (configure));
         return *this;
     }
 
@@ -209,18 +216,12 @@ class mesh_node_builder_t
              && std::derived_from<TActorFactory, actor_factory_t<TActor>>
     mesh_node_builder_t &
     add_actor_factory (std::string actor_type,
-                       std::shared_ptr<TActorFactory> factory)
+                       std::shared_ptr<TActorFactory> factory,
+                       std::function<void (actor_factory_builder_t<TActor> &)> configure)
     {
         spot_builder ().template add_actor_factory<TActor, TActorFactory> (
-          std::move (actor_type), std::move (factory));
-        return *this;
-    }
-
-    template <typename TActor, typename TAdapter>
-    mesh_node_builder_t &add_actor_transfer_adapter (std::string actor_type)
-    {
-        spot_builder ().template add_actor_transfer_adapter<TActor, TAdapter> (
-          std::move (actor_type));
+          std::move (actor_type), std::move (factory),
+          std::move (configure));
         return *this;
     }
 

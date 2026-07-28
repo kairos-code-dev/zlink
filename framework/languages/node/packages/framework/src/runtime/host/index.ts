@@ -401,10 +401,9 @@ export class ZLinkFrameworkRuntimeHost implements
       }
     });
     this.actorTransferRegistry = new ZLinkActorTransferRegistry(
-      options.registration.actorTransferAdapters,
+      options.registration.spotNodes,
       options.providerResolver,
-      options.registration.messageSerializers,
-      options.registration.actorFactories
+      options.registration.messageSerializers
     );
     this.boundSessionFactory = new DefaultZLinkBoundSessionFactory(this.streamBindingRuntime);
     this.boundSessionRelay = new ZLinkBoundSessionRelay({

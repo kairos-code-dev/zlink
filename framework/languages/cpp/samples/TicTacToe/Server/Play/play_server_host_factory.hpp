@@ -10,7 +10,7 @@
 #include "../sample_log_dir.hpp"
 #include "Infrastructure/ZLink/Handlers/create_game_handler.hpp"
 #include "Infrastructure/ZLink/Sessions/play_session.hpp"
-#include "Infrastructure/ZLink/Actors/player_actor_transfer_adapter.hpp"
+#include "Infrastructure/ZLink/Actors/player_actor_relocation_adapter.hpp"
 #include "Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp"
 #include "Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_spot.hpp"
 #include "Application/GameCreation/tictactoe_game_creator.hpp"
@@ -64,15 +64,22 @@ class play_server_host_factory_t
                     return std::make_shared<tictactoe_entry_spot_t> (
                       std::move (context));
                 })
-              .add_spot<tictactoe_game_spot_t> (
+              .add_spot_factory<tictactoe_game_spot_t> (
                 sample_names_t::match_spot,
                 [] (spot_context_t context) {
                     return std::make_shared<tictactoe_game_spot_t> (
                       std::move (context));
+                },
+                [] (auto &factory) {
+                    factory.disable_relocation ();
                 })
-              .add_actor_factory<player_actor_factory_t> (sample_names_t::actor_type)
-              .add_actor_transfer_adapter<player_actor_t, player_actor_transfer_adapter_t> (
-                sample_names_t::actor_type);
+              .add_actor_factory<player_actor_factory_t> (
+                sample_names_t::actor_type,
+                [] (auto &factory) {
+                    factory
+                      .template preserve_state_with<
+                        player_actor_relocation_adapter_t> ();
+                });
             options.add_stream_node (sample_names_t::stream_name)
               .bind (topology.selected_stream_endpoint ())
               .register_session<play_session_t> ();

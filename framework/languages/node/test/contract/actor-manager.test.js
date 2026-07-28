@@ -40,6 +40,18 @@ function encodedMessage(value) {
   return framework.ZLinkMessage.fromEncoded(zlink.Message.from(value));
 }
 
+function relocationSpotNodes(stableType, implementation, adapterType) {
+  return new Map([['game', {
+    actorFactoryRegistrations: {
+      [stableType]: {
+        implementation,
+        options: {},
+        relocation: { kind: 'snapshot', adapterType }
+      }
+    }
+  }]]);
+}
+
 function createActorManager(options = {}) {
   options.actorMeshNameProvider ??= () => 'play';
   return new framework.DefaultZLinkActorManager(options);
@@ -175,26 +187,26 @@ test('actor transfer registry uses custom state adapters and defaults missing ad
     }
   }
   class TransferAdapter {
-    async transferOut(actor) {
+    async capture(actor) {
       events.push(`out:${actor.context.actorId}:${actor.value}`);
-      return framework.ZLinkMessage.from({ value: actor.value });
+      return Buffer.from(JSON.stringify({ value: actor.value }));
     }
-    async transferIn(actorId, state) {
-      const value = state.decode().value;
-      events.push(`in:${actorId}:${value}`);
-      return new TransferActor(actorId, value);
+    async restore(actor, payload) {
+      const value = JSON.parse(Buffer.from(payload).toString('utf8')).value;
+      events.push(`in:${actor.context.actorId}:${value}`);
+      actor.value = value;
     }
   }
   const registry = new framework.ZLinkActorTransferRegistry(
-    new Map([[TransferActor, TransferAdapter]])
+    relocationSpotNodes('transfer', TransferActor, TransferAdapter)
   );
   const source = new TransferActor('alice', 41, { actorId: 'alice' });
-  const transferred = await registry.transferOut(source);
-  assert.equal(transferred.adapterKey, 'TransferActor');
-  assert.deepEqual(transferred.state.decode(), { value: 41 });
-  const restored = await registry.transferIn(
+  const transferred = await registry.transferOut(source, 'transfer');
+  assert.equal(transferred.adapterKey, 'transfer');
+  const restored = new TransferActor('alice', 0, { actorId: 'alice' });
+  await registry.restore(
     transferred.adapterKey,
-    'alice',
+    restored,
     transferred.state
   );
   assert.equal(restored.value, 41);
@@ -203,13 +215,13 @@ test('actor transfer registry uses custom state adapters and defaults missing ad
   const empty = await registry.transferOut(Object.assign(new StatelessActor(), {
     actorId: 'stateless',
     context: {}
-  }));
+  }), 'stateless');
   assert.equal(empty.adapterKey, undefined);
   assert.equal(empty.state.toEncodedPayload().data().length, 0);
   assert.deepEqual(events, ['out:alice:41', 'in:alice:41']);
 });
 
-test('transferred actor materialization injects context without invoking actor create lifecycle', async () => {
+test('transferred actor materialization creates a fresh actor before restoring state', async () => {
   const lifecycle = [];
   class TransferActor {
     constructor(actorId, value) {
@@ -218,11 +230,11 @@ test('transferred actor materialization injects context without invoking actor c
     }
   }
   class TransferAdapter {
-    async transferOut(actor) {
-      return framework.ZLinkMessage.from({ value: actor.value });
+    async capture(actor) {
+      return Buffer.from(JSON.stringify({ value: actor.value }));
     }
-    async transferIn(actorId, state) {
-      return new TransferActor(actorId, state.decode().value);
+    async restore(actor, payload) {
+      actor.value = JSON.parse(Buffer.from(payload).toString('utf8')).value;
     }
   }
   class TransferFactory {
@@ -243,7 +255,7 @@ test('transferred actor materialization injects context without invoking actor c
     }
   });
   const registry = new framework.ZLinkActorTransferRegistry(
-    new Map([[TransferActor, TransferAdapter]])
+    relocationSpotNodes('transfer', TransferActor, TransferAdapter)
   );
   const manager = createActorManager({
     actorFactories: new Map([['transfer', TransferFactory]]),
@@ -270,13 +282,17 @@ test('transferred actor materialization injects context without invoking actor c
   const result = await manager.materializeTransferredActor(
     'alice',
     'transfer',
-    'TransferActor',
-    framework.ZLinkMessage.from({ value: 77 })
+    'transfer',
+    framework.ZLinkMessage.fromEncoded(
+      framework.ZLinkEncodedPayload.from(
+        Buffer.from(JSON.stringify({ value: 77 }))
+      )
+    )
   );
   assert.equal(result.actor.value, 77);
   assert.equal(result.actor.context, manager.getState('alice').actor.context);
   assert.equal(String(result.actorRef.nodeRid), 'target-node');
-  assert.deepEqual(lifecycle, []);
+  assert.deepEqual(lifecycle, ['factory']);
 
   manager.getState('alice').setRemoteBoundSessionTarget({
     routerChannelId: 'session-route',
@@ -285,7 +301,7 @@ test('transferred actor materialization injects context without invoking actor c
   });
   await manager.rollbackTransferredActor(result.actor);
   assert.equal(manager.getState('alice'), undefined);
-  assert.deepEqual(lifecycle, ['destroy:alice:2', 'cleanup:alice']);
+  assert.deepEqual(lifecycle, ['factory', 'destroy:alice:2', 'cleanup:alice']);
 });
 
 test('transferred actor rollback keeps a dispatch-disabled tombstone until native destroy retry succeeds', async () => {
@@ -1760,14 +1776,14 @@ test('remote transfer failures before commit preserve source ownership and never
       }
     }
     class PlayerTransferAdapter {
-      async transferOut() {
+      async capture() {
         events.push('transferOut');
         if (failurePoint === 'transferOut') {
           throw new Error('injected transferOut failure');
         }
-        return framework.ZLinkMessage.from({ version: 1 });
+        return Buffer.from(JSON.stringify({ version: 1 }));
       }
-      async transferIn() {
+      async restore() {
         throw new Error('target transferIn is not part of the source contract test');
       }
     }
@@ -1785,7 +1801,7 @@ test('remote transfer failures before commit preserve source ownership and never
       }
     });
     const transferRegistry = new framework.ZLinkActorTransferRegistry(
-      new Map([[PlayerActor, PlayerTransferAdapter]])
+      relocationSpotNodes('player', PlayerActor, PlayerTransferAdapter)
     );
     const manager = createActorManager({
       actorFactories: new Map([['player', PlayerFactory]]),
@@ -1821,7 +1837,11 @@ test('remote transfer failures before commit preserve source ownership and never
             events.push('move:start');
             state.beginMove();
             try {
-              const transfer = await transferRegistry.transferOut(joinedActor, signal);
+              const transfer = await transferRegistry.transferOut(
+                joinedActor,
+                'player',
+                signal
+              );
               events.push('prepare');
               if (failurePoint === 'prepare') {
                 throw new Error('injected prepare failure');

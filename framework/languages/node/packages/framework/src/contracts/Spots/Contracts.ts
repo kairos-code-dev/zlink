@@ -4,7 +4,6 @@ import type {
   RoutingId,
   SpotId,
   Type,
-  ZLinkMessage,
   ZLinkMessageMetadata
 } from '../Common';
 import type { ZLinkSpotTimerHandler } from '../Handlers';
@@ -18,11 +17,6 @@ import type {
 
 export interface ZLinkActorHandlerRegistry {
   addHandler<THandler>(handlerType: Type<THandler>, packetName?: string): this;
-}
-
-export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
-  transferOut(actor: TActor): Promise<ZLinkMessage>;
-  transferIn(actorId: string, state: ZLinkMessage): Promise<TActor>;
 }
 
 export interface ZLinkSpotHandlerRegistry {

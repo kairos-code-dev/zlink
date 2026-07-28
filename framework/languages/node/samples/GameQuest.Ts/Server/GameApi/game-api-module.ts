@@ -71,9 +71,14 @@ function createGameApiModule(instanceId: 'api-a' | 'api-b') {
             .registerSession(GameQuestSessionFactory);
           const mesh = builder.addRouteMesh(SampleNames.playerQuestSpotMesh)
             .listen(config[actorSpotEndpointKey])
-            .setRoutingIdPrefix('gamequest-api')
-            .addEntrySpot(GameQuestEntrySpot)
-            .actorFactory(SampleNames.playerActorType, GameQuestPlayerActorFactory);
+            .setRoutingIdPrefix('gamequest-api');
+          const objectServer = mesh.objects().server();
+          objectServer.addEntrySpot(GameQuestEntrySpot);
+          objectServer.addActorFactory(
+            SampleNames.playerActorType,
+            GameQuestPlayerActorFactory,
+            (factory) => factory.disableRelocation()
+          );
           mesh.channelName(questMissionInstanceChannel('mission-a')).setWeight(0);
           mesh.channelName(SampleNames.playerQuestSpotMesh);
           return builder.build();

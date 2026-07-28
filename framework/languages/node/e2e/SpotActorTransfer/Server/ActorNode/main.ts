@@ -9,7 +9,6 @@ import {
   ZLinkMessageFlowLogMode,
   ZLinkSpotActorRequest,
   ZLinkSpotActorSend,
-  zlinkRecreateRelocation,
   type ActorRef,
   type ZLinkActor,
   type ZLinkActorClient,
@@ -17,7 +16,7 @@ import {
   type ZLinkActorFactory,
   type ZLinkActorJoinCompletion,
   type ZLinkActorManager,
-  type ZLinkActorTransferAdapter,
+  type ZLinkActorRelocationAdapter,
   type ZLinkEntrySpot,
   type ZLinkEntrySpotActorRequestHandler,
   type ZLinkEntrySpotActorSendHandler,
@@ -275,16 +274,16 @@ class NoAdapterActorFactory implements ZLinkActorFactory {
 }
 
 @Injectable()
-class TransferActorAdapter implements ZLinkActorTransferAdapter<TransferActor> {
-  async transferOut(actor: TransferActor, signal?: AbortSignal): Promise<ZLinkMessage> {
-    signal?.throwIfAborted();
+class TransferActorAdapter implements ZLinkActorRelocationAdapter<TransferActor> {
+  async capture(actor: TransferActor, signal: AbortSignal): Promise<Uint8Array> {
+    signal.throwIfAborted();
     if (actor.actorType === SpotActorTransferNames.actorTypeFailTransferOut) {
       evidence.add('ST-C3', actor.actorId, 'transfer_out_failed', String(actor.stateVersion));
       throw new Error('injected transfer out failure');
     }
     if (actor.actorType === SpotActorTransferNames.actorTypeEmptyState) {
       evidence.add('transfer', actor.actorId, 'transfer_out_empty', 'custom-adapter');
-      return ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(Buffer.alloc(0)));
+      return new Uint8Array();
     }
     evidence.add('transfer', actor.actorId, 'transfer_out', String(actor.stateVersion));
     if (actor.actorId.startsWith('actor-handoff-gate-')) {
@@ -293,32 +292,29 @@ class TransferActorAdapter implements ZLinkActorTransferAdapter<TransferActor> {
       await transferGates.wait(actor.actorId, signal);
     }
     actorLifecycleStates.set(actor.actorId, { actorType: actor.actorType, stateVersion: actor.stateVersion });
-    return ZLinkMessage.from({
+    return new TextEncoder().encode(JSON.stringify({
       actorId: actor.actorId,
       actorType: actor.actorType,
       stateVersion: actor.stateVersion
-    } satisfies TransferStateDto);
+    } satisfies TransferStateDto));
   }
 
-  async transferIn(actorId: string, state: ZLinkMessage, signal?: AbortSignal): Promise<TransferActor> {
-    signal?.throwIfAborted();
-    if (state.toEncodedPayload().isEmpty()) {
-      evidence.add('transfer', actorId, 'transfer_in_empty', 'custom-adapter');
-      const actor = new TransferActor(actorId);
+  async restore(actor: TransferActor, payload: Uint8Array, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    if (payload.byteLength === 0) {
+      evidence.add('transfer', actor.actorId, 'transfer_in_empty', 'custom-adapter');
       actor.actorType = SpotActorTransferNames.actorTypeEmptyState;
-      return actor;
+      return;
     }
-    const dto = state.decode<TransferStateDto>(Object as never);
-    if (actorId.startsWith('actor-fail-transfer-in-')) {
-      evidence.add('ST-C3', actorId, 'transfer_in_failed', String(dto.stateVersion));
+    const dto = JSON.parse(new TextDecoder().decode(payload)) as TransferStateDto;
+    if (actor.actorId.startsWith('actor-fail-transfer-in-')) {
+      evidence.add('ST-C3', actor.actorId, 'transfer_in_failed', String(dto.stateVersion));
       throw new Error('injected transfer in failure');
     }
-    const actor = new TransferActor(actorId);
     actor.actorType = dto.actorType;
     actor.stateVersion = dto.stateVersion;
-    actorLifecycleStates.set(actorId, { actorType: actor.actorType, stateVersion: actor.stateVersion });
-    evidence.add('transfer', actorId, 'transfer_in', String(actor.stateVersion));
-    return actor;
+    actorLifecycleStates.set(actor.actorId, { actorType: actor.actorType, stateVersion: actor.stateVersion });
+    evidence.add('transfer', actor.actorId, 'transfer_in', String(actor.stateVersion));
   }
 }
 
@@ -733,48 +729,37 @@ Module({
         objects.addActorFactory(
           SpotActorTransferNames.actorTypeStateful,
           TransferActorFactory,
-          undefined,
-          zlinkRecreateRelocation()
+          (factory) => factory.preserveStateWith(TransferActorAdapter)
         );
         objects.addActorFactory(
           SpotActorTransferNames.actorTypeEmptyState,
           TransferActorFactory,
-          undefined,
-          zlinkRecreateRelocation()
+          (factory) => factory.preserveStateWith(TransferActorAdapter)
         );
         objects.addActorFactory(
           SpotActorTransferNames.actorTypeFailTransferOut,
           TransferActorFactory,
-          undefined,
-          zlinkRecreateRelocation()
+          (factory) => factory.preserveStateWith(TransferActorAdapter)
         );
         objects.addActorFactory(
           SpotActorTransferNames.actorTypeFailLeave,
           TransferActorFactory,
-          undefined,
-          zlinkRecreateRelocation()
+          (factory) => factory.preserveStateWith(TransferActorAdapter)
         );
         objects.addActorFactory(
           SpotActorTransferNames.actorTypeFailTransferIn,
           TransferActorFactory,
-          undefined,
-          zlinkRecreateRelocation()
+          (factory) => factory.preserveStateWith(TransferActorAdapter)
         );
         objects.addActorFactory(
           SpotActorTransferNames.actorTypeNoAdapter,
           NoAdapterActorFactory,
-          undefined,
-          zlinkRecreateRelocation()
+          (factory) => factory.recreateOnRelocation()
         );
         objects.addSpotFactory(
           TransferUserSpot.name,
           TransferUserSpot,
-          undefined,
-          zlinkRecreateRelocation()
-        );
-        mesh.addActorTransferAdapter(
-          SpotActorTransferNames.actorTypeStateful,
-          TransferActorAdapter
+          (factory) => factory.recreateOnRelocation()
         );
         mesh.channel(SpotActorTransferNames.mesh).server();
         return builder.build();

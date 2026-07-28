@@ -259,11 +259,25 @@ inline int run_play_server (int argc, char **argv)
                                        e2e::channel_echo_res_t> ("ChannelEchoReq");
         spot.add_entry_spot<entry_spot_t> (
           [state_ptr] { return std::make_shared<entry_spot_t> (*state_ptr); })
-          .add_spot<user_spot_t> (
+          .add_spot_factory<user_spot_t> (
             e2e::user_spot,
-            [state_ptr] { return std::make_shared<user_spot_t> (*state_ptr); })
-          .add_spot<alternate_user_spot_t> (e2e::alternate_spot)
-          .add_actor_factory<scenario_actor_factory_t> (e2e::actor_type);
+            [state_ptr] (spot_context_t) {
+                return std::make_shared<user_spot_t> (*state_ptr);
+            },
+            [] (auto &factory) {
+                factory.disable_relocation ();
+            })
+          .add_spot_factory<alternate_user_spot_t> (
+            e2e::alternate_spot,
+            [] (spot_context_t) {
+                return std::make_shared<alternate_user_spot_t> ();
+            },
+            [] (auto &factory) {
+                factory.disable_relocation ();
+            })
+          .add_actor_factory<scenario_actor_factory_t> (
+            e2e::actor_type,
+            [] (auto &factory) { factory.disable_relocation (); });
         auto &http = options.http ().listen (http_endpoint);
         map_operational_endpoints (http);
         map_spot_lifecycle_endpoints (http);

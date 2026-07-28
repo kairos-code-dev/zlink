@@ -431,10 +431,12 @@ class transfer_actor_factory_t final :
     }
 };
 
-class transfer_actor_adapter_t : public fw::actor_transfer_adapter_t<transfer_actor_t>
+class transfer_actor_adapter_t
+    : public fw::actor_relocation_adapter_t<transfer_actor_t>
 {
   public:
-    fw::task_t<fw::message_t> transfer_out (const transfer_actor_t &actor) override
+    fw::task_t<std::vector<std::byte>>
+    capture (transfer_actor_t &actor, std::stop_token) override
     {
         if (actor.actor_type == e2e::actor_type_fail_transfer_out) {
             g_evidence->add ("ST-C3", actor.actor_id, "transfer_out_failed",
@@ -443,8 +445,7 @@ class transfer_actor_adapter_t : public fw::actor_transfer_adapter_t<transfer_ac
         }
         if (actor.actor_type == e2e::actor_type_empty_state) {
             g_evidence->add ("transfer", actor.actor_id, "transfer_out_empty", "custom-adapter");
-            return fw::task_t<fw::message_t> (
-              fw::result_t<fw::message_t>::success (fw::message_t{}));
+            co_return std::vector<std::byte>{};
         }
         g_evidence->add ("transfer", actor.actor_id, "transfer_out",
                          std::to_string (actor.state_version));
@@ -453,31 +454,42 @@ class transfer_actor_adapter_t : public fw::actor_transfer_adapter_t<transfer_ac
                              std::to_string (actor.state_version));
             g_transfer_gates->wait (actor.actor_id);
         }
-        return fw::task_t<fw::message_t> (fw::result_t<fw::message_t>::success (
-          fw::message_t::from (e2e::transfer_state_dto_t{actor.actor_id, actor.state_version})));
+        const auto json = nlohmann::json (
+          e2e::transfer_state_dto_t{
+            actor.actor_id, actor.state_version}).dump ();
+        std::vector<std::byte> payload;
+        payload.reserve (json.size ());
+        for (const auto value : json)
+            payload.push_back (static_cast<std::byte> (value));
+        co_return payload;
     }
 
-    fw::task_t<transfer_actor_t> transfer_in (std::string actor_id, fw::message_t state) override
+    fw::task_t<void>
+    restore (transfer_actor_t &actor,
+             std::vector<std::byte> payload,
+             std::stop_token) override
     {
-        transfer_actor_t actor;
-        actor.actor_id = actor_id;
-        if (state.empty ()) {
-            g_evidence->add ("transfer", actor_id, "transfer_in_empty", "custom-adapter");
+        if (payload.empty ()) {
+            g_evidence->add ("transfer", actor.actor_id, "transfer_in_empty", "custom-adapter");
             actor.actor_type = e2e::actor_type_empty_state;
-            return fw::task_t<transfer_actor_t> (
-              fw::result_t<transfer_actor_t>::success (std::move (actor)));
+            co_return;
         }
-        const auto dto = state.decode<e2e::transfer_state_dto_t> ();
-        if (actor_id.rfind ("actor-fail-transfer-in-", 0) == 0) {
-            g_evidence->add ("ST-C3", actor_id, "transfer_in_failed",
+        std::string json;
+        json.reserve (payload.size ());
+        for (const auto value : payload)
+            json.push_back (static_cast<char> (value));
+        const auto dto =
+          nlohmann::json::parse (json)
+            .get<e2e::transfer_state_dto_t> ();
+        if (actor.actor_id.rfind ("actor-fail-transfer-in-", 0) == 0) {
+            g_evidence->add ("ST-C3", actor.actor_id, "transfer_in_failed",
                              std::to_string (dto.state_version));
             throw std::runtime_error ("injected transfer in failure");
         }
         actor.actor_type = e2e::actor_type_stateful;
         actor.state_version = dto.state_version;
-        g_evidence->add ("transfer", actor_id, "transfer_in", std::to_string (actor.state_version));
-        return fw::task_t<transfer_actor_t> (
-          fw::result_t<transfer_actor_t>::success (std::move (actor)));
+        g_evidence->add ("transfer", actor.actor_id, "transfer_in", std::to_string (actor.state_version));
+        co_return;
     }
 };
 
@@ -1370,53 +1382,78 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
         mesh.channel_name (e2e::mesh_name);
         if (host_role == transfer_host_role_t::actor_node) {
             mesh.add_entry_spot<transfer_entry_spot_t> ()
-              .add_spot<transfer_user_spot_t> ("transfer-user")
+              .add_spot_factory<transfer_user_spot_t> (
+                "transfer-user",
+                [] (fw::spot_context_t) {
+                    return std::make_shared<transfer_user_spot_t> ();
+                },
+                [] (auto &factory) {
+                    factory.disable_relocation ();
+                })
               .add_actor_factory<
                 transfer_actor_t,
                 transfer_actor_factory_t> (
                 e2e::actor_type_stateful,
                 std::make_shared<
-                  transfer_actor_factory_t> ())
-              .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
-                e2e::actor_type_stateful)
+                  transfer_actor_factory_t> (),
+                [] (auto &factory) {
+                    factory
+                      .template preserve_state_with<
+                        transfer_actor_adapter_t> ();
+                })
               .add_actor_factory<
                 transfer_actor_t,
                 transfer_actor_factory_t> (
                 e2e::actor_type_empty_state,
                 std::make_shared<
-                  transfer_actor_factory_t> ())
-              .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
-                e2e::actor_type_empty_state)
+                  transfer_actor_factory_t> (),
+                [] (auto &factory) {
+                    factory
+                      .template preserve_state_with<
+                        transfer_actor_adapter_t> ();
+                })
               .add_actor_factory<
                 transfer_actor_t,
                 transfer_actor_factory_t> (
                 e2e::actor_type_no_adapter,
                 std::make_shared<
-                  transfer_actor_factory_t> ())
+                  transfer_actor_factory_t> (),
+                [] (auto &factory) {
+                    factory.recreate_on_relocation ();
+                })
               .add_actor_factory<
                 transfer_actor_t,
                 transfer_actor_factory_t> (
                 e2e::actor_type_fail_leave,
                 std::make_shared<
-                  transfer_actor_factory_t> ())
-              .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
-                e2e::actor_type_fail_leave)
+                  transfer_actor_factory_t> (),
+                [] (auto &factory) {
+                    factory
+                      .template preserve_state_with<
+                        transfer_actor_adapter_t> ();
+                })
               .add_actor_factory<
                 transfer_actor_t,
                 transfer_actor_factory_t> (
                 e2e::actor_type_fail_transfer_out,
                 std::make_shared<
-                  transfer_actor_factory_t> ())
-              .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
-                e2e::actor_type_fail_transfer_out)
+                  transfer_actor_factory_t> (),
+                [] (auto &factory) {
+                    factory
+                      .template preserve_state_with<
+                        transfer_actor_adapter_t> ();
+                })
               .add_actor_factory<
                 transfer_actor_t,
                 transfer_actor_factory_t> (
                 e2e::actor_type_fail_transfer_in,
                 std::make_shared<
-                  transfer_actor_factory_t> ())
-              .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
-                e2e::actor_type_fail_transfer_in);
+                  transfer_actor_factory_t> (),
+                [] (auto &factory) {
+                    factory
+                      .template preserve_state_with<
+                        transfer_actor_adapter_t> ();
+                });
         }
 
         if (host_role == transfer_host_role_t::actor_node) {

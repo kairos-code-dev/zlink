@@ -62,10 +62,19 @@ function createSupportChatSupportModule() {
           builder.addLocationStore(createSupportChatLocationStore(config));
           supportChatLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.conversationSpotMesh)
-              .listen(config.supportSpotEndpoint).setRoutingIdPrefix('support-owner')
-              .addEntrySpot(SupportEntrySpot)
-              .addSpotFactory(ConversationSpot)
-              .actorFactory('support.user', SupportUserActorFactory);
+              .listen(config.supportSpotEndpoint).setRoutingIdPrefix('support-owner');
+          const objectServer = mesh.objects().server();
+          objectServer.addEntrySpot(SupportEntrySpot);
+          objectServer.addSpotFactory(
+            ConversationSpot.name,
+            ConversationSpot,
+            (factory) => factory.disableRelocation()
+          );
+          objectServer.addActorFactory(
+            'support.user',
+            SupportUserActorFactory,
+            (factory) => factory.disableRelocation()
+          );
           mesh.channelName(SampleNames.apiChannel).setWeight(0);
           mesh.channelName(SampleNames.supportChannel).addHandlerGroup('support');
           mesh.channelName(SampleNames.conversationSpotMesh);

@@ -46,9 +46,14 @@ function createCourierActorNodeModule(options: CourierOptions) {
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.routeMesh)
-              .listen(spotEndpoint).setRoutingIdPrefix('delivery-courier')
-              .addEntrySpot(CourierEntrySpot)
-              .actorFactory(SampleNames.courierActorType, CourierActorFactory);
+              .listen(spotEndpoint).setRoutingIdPrefix('delivery-courier');
+          const objectServer = mesh.objects().server();
+          objectServer.addEntrySpot(CourierEntrySpot);
+          objectServer.addActorFactory(
+            SampleNames.courierActorType,
+            CourierActorFactory,
+            (factory) => factory.disableRelocation()
+          );
           mesh.channelName(SampleNames.dispatchChannel).setWeight(0);
           mesh.channelName(SampleNames.routeMesh);
           return builder.build();

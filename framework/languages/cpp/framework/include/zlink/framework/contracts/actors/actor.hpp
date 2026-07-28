@@ -164,6 +164,108 @@ class actor_factory_t
             std::stop_token operation_cancellation) = 0;
 };
 
+template <typename TActor>
+class actor_relocation_adapter_t
+{
+  public:
+    virtual ~actor_relocation_adapter_t () = default;
+    virtual task_t<std::vector<std::byte>>
+    capture (TActor &actor, std::stop_token operation_cancellation) = 0;
+    virtual task_t<void>
+    restore (TActor &actor,
+             std::vector<std::byte> payload,
+             std::stop_token operation_cancellation) = 0;
+};
+
+template <typename TActor>
+class actor_factory_builder_t
+{
+  public:
+    void disable_relocation ()
+    {
+        ensure_mutable ();
+        select (detail::factory_relocation_kind_t::disabled, typeid (void));
+    }
+
+    void recreate_on_relocation ()
+    {
+        ensure_mutable ();
+        select (detail::factory_relocation_kind_t::recreate, typeid (void));
+    }
+
+    template <typename TAdapter>
+    requires std::derived_from<TAdapter, actor_relocation_adapter_t<TActor>>
+    void preserve_state_with ()
+    {
+        ensure_mutable ();
+        static_assert (
+          std::is_default_constructible_v<TAdapter>,
+          "C++ Actor relocation adapters must be default constructible");
+        select (detail::factory_relocation_kind_t::preserve_state,
+                typeid (TAdapter));
+        _capture = [] (void *actor,
+                       std::stop_token operation_cancellation)
+          -> task_t<std::vector<std::byte>> {
+            auto adapter = std::make_shared<TAdapter> ();
+            auto payload = co_await adapter->capture (
+              *static_cast<TActor *> (actor), operation_cancellation);
+            co_return payload;
+        };
+        _restore = [] (void *actor,
+                       std::vector<std::byte> payload,
+                       std::stop_token operation_cancellation)
+          -> task_t<void> {
+            auto adapter = std::make_shared<TAdapter> ();
+            co_await adapter->restore (
+              *static_cast<TActor *> (actor), std::move (payload),
+              operation_cancellation);
+        };
+    }
+
+  private:
+    friend class spot_node_builder_t;
+
+    void seal () noexcept { _sealed = true; }
+
+    void ensure_mutable () const
+    {
+        if (_sealed) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "Actor factory builder cannot be changed after the configure callback returns");
+        }
+    }
+
+    void validate () const
+    {
+        if (_relocation.kind
+            == detail::factory_relocation_kind_t::unspecified) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "Actor factory must select exactly one relocation policy");
+        }
+    }
+
+    void select (detail::factory_relocation_kind_t kind,
+                 std::type_index adapter_type)
+    {
+        if (_relocation.kind
+            != detail::factory_relocation_kind_t::unspecified) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "Actor factory must select exactly one relocation policy");
+        }
+        _relocation = {kind, adapter_type};
+    }
+
+    detail::factory_relocation_configuration_t _relocation;
+    std::function<task_t<std::vector<std::byte>> (
+      void *, std::stop_token)> _capture;
+    std::function<task_t<void> (
+      void *, std::vector<std::byte>, std::stop_token)> _restore;
+    bool _sealed = false;
+};
+
 class actor_send_call_t
 {
   public:
@@ -778,16 +880,32 @@ template <typename TActor, typename TActorFactory>
 spot_node_builder_t &
 spot_node_builder_t::add_actor_factory (
   std::string actor_type,
-  std::shared_ptr<TActorFactory> factory)
+  std::shared_ptr<TActorFactory> factory,
+  std::function<void (actor_factory_builder_t<TActor> &)> configure)
 {
     static_assert (std::derived_from<TActor, actor_t>);
     static_assert (
       std::derived_from<TActorFactory, actor_factory_t<TActor>>);
-    if (!factory) {
+    if (!factory || !configure) {
         throw framework_exception_t (
           framework_error_kind_t::invalid_configuration,
-          "Actor factory must not be null");
+          "Actor factory and configure callback must not be empty");
     }
+    auto factory_builder =
+      std::make_shared<actor_factory_builder_t<TActor>> ();
+    retain_factory_builder (factory_builder);
+    try {
+        configure (*factory_builder);
+        factory_builder->validate ();
+    }
+    catch (...) {
+        factory_builder->seal ();
+        throw;
+    }
+    const auto relocation = factory_builder->_relocation;
+    auto capture = factory_builder->_capture;
+    auto restore = factory_builder->_restore;
+    factory_builder->seal ();
     return add_actor_factory_erased (
       std::move (actor_type), std::type_index (typeid (TActor)),
       {},
@@ -847,7 +965,8 @@ spot_node_builder_t::add_actor_factory (
               reply, error_kind, retryable);
           return static_cast<TActor *> (actor)
             ->on_join_completed (completion);
-      });
+      },
+      relocation, std::move (capture), std::move (restore));
 }
 
 } // namespace zlink::framework

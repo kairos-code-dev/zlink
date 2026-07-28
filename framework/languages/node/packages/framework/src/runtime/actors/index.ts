@@ -266,12 +266,12 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
         state,
         adapterKey === undefined
           ? undefined
-          : () => {
+          : (actor) => {
               const registry = this.options.actorTransferRegistry;
               if (registry === undefined) {
                 throw new ZLinkConfigurationException('Actor transfer registry is not configured.');
               }
-              return registry.transferIn(adapterKey, actorId, transferState, signal);
+              return registry.restore(adapterKey, actor, transferState, signal);
             }
       )
     );

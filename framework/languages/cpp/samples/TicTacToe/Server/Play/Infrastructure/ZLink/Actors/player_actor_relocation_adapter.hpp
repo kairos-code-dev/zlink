@@ -37,29 +37,32 @@ inline void from_json (const nlohmann::json &json, player_actor_state_t &value)
     value.player = json.value ("player", player_info_t{});
 }
 
-class player_actor_transfer_adapter_t final
-    : public actor_transfer_adapter_t<player_actor_t>
+class player_actor_relocation_adapter_t final
+    : public actor_relocation_adapter_t<player_actor_t>
 {
   public:
-    task_t<message_t> transfer_out (const player_actor_t &actor) override
+    task_t<std::vector<std::byte>>
+    capture (player_actor_t &actor, std::stop_token) override
     {
-        return task_t<message_t> (
-          result_t<message_t>::success (message_t::from (player_actor_state_t{
-            actor.actor_id, actor.node_rid, actor.generation,
-            actor.destroy_after_entry_spot_join, actor.disconnected, actor.player})));
+        const auto message = zlink::message_t::from_json (player_actor_state_t{
+          {}, {}, 1, actor.destroy_after_entry_spot_join,
+          actor.disconnected, actor.player});
+        co_return std::vector<std::byte> (
+          message.bytes ().begin (), message.bytes ().end ());
     }
 
-    task_t<player_actor_t> transfer_in (std::string actor_id, message_t state) override
+    task_t<void>
+    restore (player_actor_t &actor,
+             std::vector<std::byte> payload,
+             std::stop_token) override
     {
-        auto restored = state.decode<player_actor_state_t> ();
-        player_actor_t actor;
-        actor.actor_id = std::move (actor_id);
-        actor.node_rid = std::move (restored.node_rid);
-        actor.generation = restored.generation;
+        const auto message = zlink::message_t::from (
+          std::span<const std::byte> (payload.data (), payload.size ()));
+        auto restored = message.parse_json<player_actor_state_t> ();
         actor.destroy_after_entry_spot_join = restored.destroy_after_entry_spot_join;
         actor.disconnected = restored.disconnected;
         actor.player = std::move (restored.player);
-        return task_t<player_actor_t> (result_t<player_actor_t>::success (std::move (actor)));
+        co_return;
     }
 };
 

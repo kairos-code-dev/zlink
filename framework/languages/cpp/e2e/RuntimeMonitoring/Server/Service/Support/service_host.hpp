@@ -70,10 +70,22 @@ inline int run_service_host (int argc, char **argv)
           std::chrono::milliseconds (250);
         mesh.configure_router_socket ().mailbox_message_budget = 1;
         mesh.configure_router_socket ().mailbox_byte_budget = 2 * 1024 * 1024;
-        mesh.add_spot<monitoring_spot_t> (spot_channel);
-        mesh.add_spot<monitoring_subject_spot_t> (
+        mesh.add_spot_factory<monitoring_spot_t> (
+          spot_channel,
+          [] (zlink::framework::spot_context_t) {
+              return std::make_shared<monitoring_spot_t> ();
+          },
+          [] (auto &factory) {
+              factory.disable_relocation ();
+          });
+        mesh.add_spot_factory<monitoring_subject_spot_t> (
           monitoring_subject_spot,
-          [] { return std::make_shared<monitoring_subject_spot_t> (); });
+          [] (zlink::framework::spot_context_t) {
+              return std::make_shared<monitoring_subject_spot_t> ();
+          },
+          [] (auto &factory) {
+              factory.disable_relocation ();
+          });
         for (const auto &endpoint : options.mesh_peer_endpoints)
             mesh.peer_connections ().connect (endpoint);
         auto &monitoring = framework.monitoring ();

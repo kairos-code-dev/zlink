@@ -1,22 +1,9 @@
 import type {
   Type,
-  ZLinkActor,
-  ZLinkActorTransferAdapter,
   ZLinkEntrySpot,
   ZLinkSpot
 } from '../../contracts';
 import { ZLinkConfigurationException } from './ConfigurationException';
-
-export function registerActorTransferAdapter<TActor extends ZLinkActor>(
-  adapters: Map<Type, Type>,
-  actorType: Type<TActor>,
-  adapterType: Type<ZLinkActorTransferAdapter<TActor>>
-): void {
-  if (adapters.has(actorType)) {
-    throw new ZLinkConfigurationException(`Duplicate actor transfer adapter for '${actorType.name}'.`);
-  }
-  adapters.set(actorType, adapterType);
-}
 
 export function validateMessageFollowDuration(timeoutMs: number): number {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0) {

@@ -20,7 +20,7 @@ import {
   type ZLinkActorJoinRequest,
   type ZLinkActorMembership,
   type ZLinkActorManager,
-  type ZLinkActorTransferAdapter,
+  type ZLinkActorRelocationAdapter,
   type ZLinkEntrySpot,
   type ZLinkEntrySpotActorRequestHandler,
   type ZLinkEntrySpotActorSendHandler,
@@ -137,9 +137,9 @@ class TransferActorFactory implements ZLinkActorFactory {
 }
 
 @Injectable()
-class TransferActorAdapter implements ZLinkActorTransferAdapter<TransferActor> {
-  async transferOut(actor: TransferActor, signal?: AbortSignal): Promise<ZLinkMessage> {
-    signal?.throwIfAborted();
+class TransferActorAdapter implements ZLinkActorRelocationAdapter<TransferActor> {
+  async capture(actor: TransferActor, signal: AbortSignal): Promise<Uint8Array> {
+    signal.throwIfAborted();
     evidence.add('transfer', actor.actorId, 'transfer_out', String(actor.stateVersion));
     if (
       actor.actorId.startsWith('actor-source-down-before-commit-') ||
@@ -150,22 +150,20 @@ class TransferActorAdapter implements ZLinkActorTransferAdapter<TransferActor> {
       await transferGates.wait(actor.actorId, signal);
     }
     actorLifecycleStates.set(actor.actorId, { actorType: actor.actorType, stateVersion: actor.stateVersion });
-    return ZLinkMessage.from({
+    return new TextEncoder().encode(JSON.stringify({
       actorId: actor.actorId,
       actorType: actor.actorType,
       stateVersion: actor.stateVersion
-    } satisfies TransferStateDto);
+    } satisfies TransferStateDto));
   }
 
-  async transferIn(actorId: string, state: ZLinkMessage, signal?: AbortSignal): Promise<TransferActor> {
-    signal?.throwIfAborted();
-    const dto = state.decode<TransferStateDto>(Object as never);
-    const actor = new TransferActor(actorId);
+  async restore(actor: TransferActor, payload: Uint8Array, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    const dto = JSON.parse(new TextDecoder().decode(payload)) as TransferStateDto;
     actor.actorType = dto.actorType;
     actor.stateVersion = dto.stateVersion;
-    actorLifecycleStates.set(actorId, { actorType: actor.actorType, stateVersion: actor.stateVersion });
-    evidence.add('transfer', actorId, 'transfer_in', String(actor.stateVersion));
-    return actor;
+    actorLifecycleStates.set(actor.actorId, { actorType: actor.actorType, stateVersion: actor.stateVersion });
+    evidence.add('transfer', actor.actorId, 'transfer_in', String(actor.stateVersion));
   }
 }
 
@@ -484,11 +482,19 @@ Module({
           .traceLabel(options.rid);
         builder.setMessageFollowDuration(500);
         const mesh = builder.addRouteMesh(ObservabilityOpsNames.mesh)
-          .listen(options.routerEndpoint).routingId(options.rid)
-          .addEntrySpot(TransferEntrySpot)
-          .actorFactory(ObservabilityOpsNames.actorTypeStateful, TransferActorFactory)
-          .addActorTransferAdapter(ObservabilityOpsNames.actorTypeStateful, TransferActorAdapter)
-          .addSpotFactory(TransferUserSpot);
+          .listen(options.routerEndpoint).routingId(options.rid);
+        const objectServer = mesh.objects().server();
+        objectServer.addEntrySpot(TransferEntrySpot);
+        objectServer.addSpotFactory(
+          TransferUserSpot.name,
+          TransferUserSpot,
+          (factory) => factory.disableRelocation()
+        );
+        objectServer.addActorFactory(
+          ObservabilityOpsNames.actorTypeStateful,
+          TransferActorFactory,
+          (factory) => factory.preserveStateWith(TransferActorAdapter)
+        );
         mesh.channelName(ObservabilityOpsNames.mesh);
         return {
           ...builder.build(),

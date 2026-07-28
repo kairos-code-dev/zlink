@@ -19,12 +19,30 @@ import type { ZLinkMessageSerializer } from '../Codecs';
 import type { ZLinkDispatchOptions } from '../Dispatch';
 import type { ZLinkLocationStore, ZLinkRelocationStore } from '../Locations';
 import type { ZLinkLocationOptionValues } from '../RouteMesh';
-import type {
-  ZLinkActorFactoryOptions,
-  ZLinkInstanceSpotFactoryOptions,
-  ZLinkRelocationPolicy,
-  ZLinkUserSpotFactoryOptions
+import {
+  ZLinkSpotRelocationReadinessMode,
+  ZLinkUserSpotExecutionMode
 } from './ObjectRoles';
+
+declare const zlinkRelocationConfigurationBrand: unique symbol;
+
+export type ZLinkRelocationConfiguration<T> = (
+  | { readonly kind: 'disabled' }
+  | { readonly kind: 'recreate' }
+  | { readonly kind: 'snapshot'; readonly adapterType: Type }
+) & { readonly [zlinkRelocationConfigurationBrand]?: T };
+
+export interface ZLinkActorFactoryConfiguration {}
+
+export interface ZLinkUserSpotFactoryConfiguration {
+  readonly stableTypeLimit?: number;
+  readonly executionMode: ZLinkUserSpotExecutionMode;
+  readonly relocationReadiness: ZLinkSpotRelocationReadinessMode;
+}
+
+export interface ZLinkInstanceSpotFactoryConfiguration {
+  readonly stableTypeLimit?: number;
+}
 
 export interface ZLinkFrameworkRegistration {
   readonly applicationVersion: bigint;
@@ -33,7 +51,6 @@ export interface ZLinkFrameworkRegistration {
   readonly codecs: ZLinkCodecRegistration;
   readonly requestTimeoutMs?: number;
   readonly actorFactories: ReadonlyMap<string, Type>;
-  readonly actorTransferAdapters: ReadonlyMap<Type, Type>;
   readonly actorTransferTimeoutMs?: number;
   readonly messageFollowDurationMs: number;
   readonly spotFactories: ReadonlySet<Type<ZLinkSpot>>;
@@ -98,7 +115,6 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly codecs?: ZLinkCodecRegistryOptions;
   readonly requestTimeoutMs?: number;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
-  readonly actorTransferAdapters?: ReadonlyMap<Type, Type>;
   readonly actorTransferTimeoutMs?: number;
   /** How long Message Follow relays messages from a previous owner. Defaults to 30000 ms. */
   readonly messageFollowDurationMs?: number;
@@ -225,7 +241,7 @@ export interface ZLinkSpotNodeOptions {
     Record<string, ZLinkObjectFactoryRegistration<
       ZLinkSpot,
       ZLinkSpot,
-      ZLinkUserSpotFactoryOptions
+      ZLinkUserSpotFactoryConfiguration
     >>
   >;
   readonly instanceSpotFactories?: Readonly<Record<string, Type<ZLinkInstanceSpot>>>;
@@ -233,7 +249,7 @@ export interface ZLinkSpotNodeOptions {
     Record<string, ZLinkObjectFactoryRegistration<
       ZLinkInstanceSpot,
       ZLinkInstanceSpot,
-      ZLinkInstanceSpotFactoryOptions
+      ZLinkInstanceSpotFactoryConfiguration
     >>
   >;
   readonly actorFactories?: Readonly<Record<string, Type> | Map<string, Type>>;
@@ -241,7 +257,7 @@ export interface ZLinkSpotNodeOptions {
     Record<string, ZLinkObjectFactoryRegistration<
       ZLinkActor,
       ZLinkActorFactory,
-      ZLinkActorFactoryOptions
+      ZLinkActorFactoryConfiguration
     >>
   >;
   readonly meshChannels?: Readonly<Record<string, ZLinkMeshChannelOptions>>;
@@ -268,7 +284,7 @@ export interface ZLinkSpotNodeOptions {
 export interface ZLinkObjectFactoryRegistration<T, TImplementation = T, TOptions = unknown> {
   readonly implementation: Type<TImplementation>;
   readonly options?: TOptions;
-  readonly relocation: ZLinkRelocationPolicy<T>;
+  readonly relocation: ZLinkRelocationConfiguration<T>;
 }
 
 export interface ZLinkMeshChannelOptions {

@@ -3,8 +3,6 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
-  zlinkDisabledRelocation,
-  zlinkSnapshotRelocation,
   type ZLinkActorClient,
   type ZLinkActorManager,
   type ZLinkLocationRuntimeQuery,
@@ -36,7 +34,6 @@ import {
   MultiNodeCreateSpotBHandler,
   MultiNodeEntrySpot,
   MultiNodeScenarioActorRelocationAdapter,
-  MultiNodeScenarioActorTransferAdapter,
   MultiNodeScenarioActorFactory,
   ScaleOutActorProbeHandler,
   MultiNodeSpotOnlyJoinHandler,
@@ -112,18 +109,14 @@ export async function startMultiNodeHost(): Promise<void> {
           objects.addActorFactory(
             SpotServiceNames.actorType,
             MultiNodeScenarioActorFactory,
-            undefined,
-            zlinkSnapshotRelocation(MultiNodeScenarioActorRelocationAdapter)
+            (factory) => factory.preserveStateWith(
+              MultiNodeScenarioActorRelocationAdapter
+            )
           );
           objects.addSpotFactory(
             SpotOnlyUserSpot.name,
             SpotOnlyUserSpot,
-            undefined,
-            zlinkDisabledRelocation()
-          );
-          spot.addActorTransferAdapter(
-            SpotServiceNames.actorType,
-            MultiNodeScenarioActorTransferAdapter
+            (factory) => factory.disableRelocation()
           );
           spot.channel(options.spotOnly ? SpotServiceNames.spotOnlyMesh : options.rid).server();
           if (options.peerSpotRouterEndpoint !== undefined) {
@@ -137,16 +130,14 @@ export async function startMultiNodeHost(): Promise<void> {
             objects.addSpotFactory(
               MultiNodeSpotA.name,
               MultiNodeSpotA,
-              undefined,
-              zlinkDisabledRelocation()
+              (factory) => factory.disableRelocation()
             );
           } else {
             route?.addRequestHandler('MultiNodeCreateSpotReq', MultiNodeCreateSpotBHandler);
             objects.addSpotFactory(
               MultiNodeSpotB.name,
               MultiNodeSpotB,
-              undefined,
-              zlinkDisabledRelocation()
+              (factory) => factory.disableRelocation()
             );
           }
           return builder.build();
@@ -159,7 +150,6 @@ export async function startMultiNodeHost(): Promise<void> {
       MultiNodeCreateSpotBHandler,
       MultiNodeEntrySpot,
       MultiNodeScenarioActorRelocationAdapter,
-      MultiNodeScenarioActorTransferAdapter,
       MultiNodeScenarioActorFactory,
       ScaleOutActorProbeHandler,
       MultiNodeSpotOnlyJoinHandler,

@@ -48,9 +48,14 @@ export async function startSessionHost(): Promise<void> {
           for (const endpoint of options.playControlEndpoints) controlMesh.peerConnections().connect(endpoint);
           const spotMesh = builder.addRouteMesh(SpotServiceNames.spotChannel)
             .listen(options.spotRouterEndpoint)
-            .routingId(options.rid)
-            .addEntrySpot(ScenarioEntrySpot)
-            .actorFactory(SpotServiceNames.actorType, ScenarioActorFactory);
+            .routingId(options.rid);
+          const objectServer = spotMesh.objects().server();
+          objectServer.addEntrySpot(ScenarioEntrySpot);
+          objectServer.addActorFactory(
+            SpotServiceNames.actorType,
+            ScenarioActorFactory,
+            (factory) => factory.disableRelocation()
+          );
           spotMesh.channelName(SpotServiceNames.spotChannel);
           for (const [peerRid, endpoint] of options.playSpotRouterEndpoints) {
             spotMesh.peerConnections().connect(peerRid, endpoint);

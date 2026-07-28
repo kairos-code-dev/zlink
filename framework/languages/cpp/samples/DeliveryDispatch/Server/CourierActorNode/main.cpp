@@ -160,7 +160,9 @@ int main (int argc, char **argv)
                 return std::make_shared<courier_entry_spot_t> (
                   std::move (context), services.get_required<channel_client_t> ());
             })
-          .add_actor_factory<courier_actor_factory_t> (sample_names_t::courier_actor_type);
+          .add_actor_factory<courier_actor_factory_t> (
+            sample_names_t::courier_actor_type,
+            [] (auto &factory) { factory.disable_relocation (); });
     });
     return app.run (argc, argv);
 }

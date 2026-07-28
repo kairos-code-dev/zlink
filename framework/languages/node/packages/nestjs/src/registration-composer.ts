@@ -358,7 +358,6 @@ export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOp
   }
 
   return {
-    actorTransferAdapters: options.actorTransferAdapters,
     actorTransferTimeoutMs: options.actorTransferTimeoutMs,
     messageFollowDurationMs: options.messageFollowDurationMs,
     channels,

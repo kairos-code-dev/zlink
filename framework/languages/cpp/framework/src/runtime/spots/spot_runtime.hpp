@@ -48,6 +48,10 @@ class spot_node_builder_state_t
     mutable std::recursive_mutex mutex;
     spot_node_snapshot_t snapshot;
     std::map<std::string, std::type_index> spot_factories;
+    // Configure callbacks receive a builder reference. Keep the sealed builder
+    // alive with the registration so an escaped reference reports a typed
+    // configuration error instead of becoming dangling.
+    std::vector<std::shared_ptr<void>> factory_builder_lifetimes;
     std::map<std::string, spot_lifecycle_callbacks_t> spot_lifecycles;
     std::map<std::string, spot_id_t> spot_ids_by_name;
     std::map<std::string, std::string> spot_names_by_id;
@@ -110,6 +114,7 @@ class spot_node_builder_state_t
     struct actor_factory_registration_t
     {
         std::type_index actor_type{typeid (void)};
+        factory_relocation_configuration_t relocation;
         std::function<std::shared_ptr<void> (std::string)> create_instance;
         std::function<void (void *, const actor_ref_t &, void *)> configure_instance;
         std::function<std::optional<zlink::message_t> (void *, serializer_registry_t &)>
@@ -119,12 +124,10 @@ class spot_node_builder_state_t
         std::function<std::shared_ptr<void> (actor_context_t)>
           create_context_instance;
         actor_join_completion_callback_t on_join_completed;
-    };
-    struct actor_transfer_registration_t
-    {
-        std::type_index actor_type{typeid (void)};
-        std::function<task_t<message_t> (const void *)> transfer_out;
-        std::function<task_t<std::shared_ptr<void>> (std::string, message_t)> transfer_in;
+        std::function<task_t<std::vector<std::byte>> (
+          void *, std::stop_token)> capture;
+        std::function<task_t<void> (
+          void *, std::vector<std::byte>, std::stop_token)> restore;
     };
     std::function<result_t<void> (const actor_ref_t &)> destroy_actor_registry;
     std::function<result_t<void> (const actor_ref_t &)> update_actor_registry_ref;
@@ -148,7 +151,11 @@ class spot_node_builder_state_t
                                                 const std::optional<zlink::message_t> &)>
       actor_entry_spot_join;
     std::map<std::string, actor_factory_registration_t> actor_factories;
-    std::map<std::string, actor_transfer_registration_t> actor_transfers;
+    std::map<std::string, factory_relocation_configuration_t>
+      spot_factory_relocations;
+    std::map<std::string, std::int32_t> spot_stable_type_limits;
+    std::map<std::string, spot_relocation_readiness_mode_t>
+      spot_relocation_readiness;
     actor_transfer_coordinator_t actor_transfer_coordinator;
     // Message Follow relays messages that reach the committed source route
     // after relocation. The common contract bounds its default duration to 30s.

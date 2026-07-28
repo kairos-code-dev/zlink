@@ -532,7 +532,9 @@ int main (int argc, char **argv)
           .add_entry_spot<player_entry_spot_t> ([store_ptr] {
               return std::make_shared<player_entry_spot_t> (*store_ptr);
           })
-          .add_actor_factory<player_actor_factory_t> (gamequest_player_actor_type);
+          .add_actor_factory<player_actor_factory_t> (
+            gamequest_player_actor_type,
+            [] (auto &factory) { factory.disable_relocation (); });
         options.add_stream_node (sample_names_t::stream_node)
           .bind (topology.selected_api_stream_endpoint ())
           .register_session<gamequest_session_t> ();

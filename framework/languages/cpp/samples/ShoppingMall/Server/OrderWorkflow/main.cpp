@@ -225,9 +225,15 @@ int main (int argc, char **argv)
         auto order_spot = options.add_route_mesh (sample_names_t::order_spot_discovery);
         order_spot.channel_name (sample_names_t::order_spot_route);
         order_spot.listen (instance.spot_router_endpoint)
-          .add_spot<order_workflow_spot_t> (
+          .add_spot_factory<order_workflow_spot_t> (
             sample_names_t::order_workflow_spot,
-            [topology] { return std::make_shared<order_workflow_spot_t> (topology); });
+            [topology] (spot_context_t) {
+                return std::make_shared<order_workflow_spot_t> (
+                  topology);
+            },
+            [] (auto &factory) {
+                factory.disable_relocation ();
+            });
         options.http ()
           .listen (instance.http_url)
           .map_health ("/health");

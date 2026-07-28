@@ -86,10 +86,19 @@ export async function startPlayHost(): Promise<void> {
       }
       const spotMesh = builder.addRouteMesh(AutomaticTurnDispatchNames.spotChannel)
         .routingId(options.rid)
-        .listen(options.spotRouterEndpoint)
-        .addEntrySpot(AwaitEntrySpot)
-        .actorFactory(AutomaticTurnDispatchNames.actorType, AwaitActorFactory)
-        .addSpotFactory(AwaitProbeSpot);
+        .listen(options.spotRouterEndpoint);
+      const objectServer = spotMesh.objects().server();
+      objectServer.addEntrySpot(AwaitEntrySpot);
+      objectServer.addActorFactory(
+        AutomaticTurnDispatchNames.actorType,
+        AwaitActorFactory,
+        (factory) => factory.disableRelocation()
+      );
+      objectServer.addSpotFactory(
+        AwaitProbeSpot.name,
+        AwaitProbeSpot,
+        (factory) => factory.disableRelocation()
+      );
       spotMesh.channelName(AutomaticTurnDispatchNames.spotChannel);
       for (const peer of options.spotRouterPeers) spotMesh.peerConnections().connect(peer.rid, peer.endpoint);
       return builder.build();

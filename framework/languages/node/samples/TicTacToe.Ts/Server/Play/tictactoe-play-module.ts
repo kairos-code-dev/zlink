@@ -9,7 +9,7 @@ import {
   DeliverPlayNotificationHandler,
   InitializePlayActorHandler
 } from './Infrastructure/ZLink/Actors/play-actor';
-import { PlayActorTransferAdapter } from './Infrastructure/ZLink/Actors/play-actor-transfer-adapter';
+import { PlayActorRelocationAdapter } from './Infrastructure/ZLink/Actors/play-actor-relocation-adapter';
 import { PlayActorJoinGameHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/play-actor-join-game-handler';
 import { PlayActorObserveMilestoneHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/play-actor-observe-milestone-handler';
 import { PlayActorLeaveGameHandler } from './Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/play-actor-leave-game-handler';
@@ -67,11 +67,19 @@ function createTicTacToePlayModule() {
             .registerSession(PlaySessionFactory);
           const mesh = builder.addRouteMesh(SampleNames.playSpotNode)
             .listen(config.playSpotEndpoint)
-            .setRoutingIdPrefix('tictactoe-play')
-            .addEntrySpot(PlayEntrySpot)
-            .addSpotFactory(TicTacToeGameSpot)
-            .actorFactory(SampleNames.playerActorType, PlayActorFactory)
-            .addActorTransferAdapter(SampleNames.playerActorType, PlayActorTransferAdapter);
+            .setRoutingIdPrefix('tictactoe-play');
+          const objectServer = mesh.objects().server();
+          objectServer.addEntrySpot(PlayEntrySpot);
+          objectServer.addSpotFactory(
+            TicTacToeGameSpot.name,
+            TicTacToeGameSpot,
+            (factory) => factory.disableRelocation()
+          );
+          objectServer.addActorFactory(
+            SampleNames.playerActorType,
+            PlayActorFactory,
+            (factory) => factory.preserveStateWith(PlayActorRelocationAdapter)
+          );
           mesh.channelName(SampleNames.apiChannel).setWeight(0);
           mesh.channelName(SampleNames.playChannel)
             .addRequestHandler(PacketNames.createGameReq, CreateGameHandler);
@@ -95,7 +103,7 @@ function createTicTacToePlayModule() {
       TicTacToeGameCreator,
       CreateGameHandler,
       PlayActorFactory,
-      PlayActorTransferAdapter,
+      PlayActorRelocationAdapter,
       DeliverPlayNotificationHandler,
       InitializePlayActorHandler,
       MilestoneObserverRegistry,

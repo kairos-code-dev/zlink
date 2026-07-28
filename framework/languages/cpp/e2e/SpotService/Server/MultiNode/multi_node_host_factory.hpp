@@ -112,15 +112,27 @@ inline int run_multi_node_server (int argc, char **argv)
           .channel_name (spot_name);
         spot.add_entry_spot<multi_node_entry_spot_t> (
           [state_ptr] { return std::make_shared<multi_node_entry_spot_t> (*state_ptr); })
-          .add_actor_factory<multi_node_actor_factory_t> (e2e::actor_type);
+          .add_actor_factory<multi_node_actor_factory_t> (
+            e2e::actor_type,
+            [] (auto &factory) { factory.disable_relocation (); });
         if (node_rid == multi_node_a_name) {
-            spot.add_spot<multi_node_spot_a_t> (
+            spot.add_spot_factory<multi_node_spot_a_t> (
               e2e::multi_spot_a,
-              [state_ptr] { return std::make_shared<multi_node_spot_a_t> (*state_ptr); });
+              [state_ptr] (spot_context_t) {
+                  return std::make_shared<multi_node_spot_a_t> (*state_ptr);
+              },
+              [] (auto &factory) {
+                  factory.disable_relocation ();
+              });
         } else {
-            spot.add_spot<multi_node_spot_b_t> (
+            spot.add_spot_factory<multi_node_spot_b_t> (
               e2e::multi_spot_b,
-              [state_ptr] { return std::make_shared<multi_node_spot_b_t> (*state_ptr); });
+              [state_ptr] (spot_context_t) {
+                  return std::make_shared<multi_node_spot_b_t> (*state_ptr);
+              },
+              [] (auto &factory) {
+                  factory.disable_relocation ();
+              });
         }
         options.http ()
           .listen (http_endpoint)

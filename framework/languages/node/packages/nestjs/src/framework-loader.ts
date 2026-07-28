@@ -2,10 +2,8 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import type {
   Type,
-  ZLinkActor,
   ZLinkActorClient,
   ZLinkActorManager,
-  ZLinkActorTransferAdapter,
   ZLinkChannelClient,
   ZLinkCodecRegistrar,
   ZLinkCodecRegistryBuilder,
@@ -86,11 +84,6 @@ interface FrameworkIntegrationModule {
   ): ZLinkSpotManager;
   createIntegrationSpotOutbound(runtime: ZLinkNestIntegrationRuntimeHost): ZLinkSpotOutbound;
   createIntegrationHttpExecutionScheduler(runtime: ZLinkNestIntegrationRuntimeHost): ZLinkHttpExecutionScheduler;
-  registerActorTransferAdapter<TActor extends ZLinkActor>(
-    adapters: Map<Type, Type>,
-    actorType: Type<TActor>,
-    adapterType: Type<ZLinkActorTransferAdapter<TActor>>
-  ): void;
   validateActorTransferTimeout(timeoutMs: number): number;
   validateMessageFollowDuration(timeoutMs: number): number;
   validateRoutingIdPrefix(prefix: string): string;

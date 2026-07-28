@@ -189,12 +189,17 @@ Module({
           .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
           .traceLogFile(path.join(options.logDir, 'actor-flow.log'))
           .traceLabel(options.rid);
-        builder
+        const mesh = builder
           .addRouteMesh('to-actor')
-          .listen(options.routerEndpoint).routingId(options.rid)
-          .addEntrySpot(TestEntrySpot)
-          .actorFactory('test-actor', TestActorFactory)
-          .channelName('to-actor');
+          .listen(options.routerEndpoint).routingId(options.rid);
+        const objectServer = mesh.objects().server();
+        objectServer.addEntrySpot(TestEntrySpot);
+        objectServer.addActorFactory(
+          'test-actor',
+          TestActorFactory,
+          (factory) => factory.disableRelocation()
+        );
+        mesh.channelName('to-actor');
         return builder.build();
       }
     })

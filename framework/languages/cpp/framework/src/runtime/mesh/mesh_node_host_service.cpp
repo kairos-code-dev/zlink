@@ -1455,20 +1455,31 @@ void mesh_node_host_service_t::start (service_provider_t &services)
           _location_owner->lease_generation;
         for (const auto &stable_type :
              registration->spot_state->snapshot.actor_types) {
-            const auto has_transfer_adapter =
-              registration->spot_state->actor_transfers.contains (
+            const auto configured =
+              registration->spot_state->actor_factories.find (
                 stable_type);
+            const auto relocation =
+              configured
+                  != registration->spot_state->actor_factories.end ()
+                ? configured->second.relocation.kind
+                : detail::factory_relocation_kind_t::disabled;
+            const auto has_state_adapter =
+              relocation
+                == detail::factory_relocation_kind_t::preserve_state;
             descriptor.object_capabilities.push_back (
               object_capability_t{
                 .object_kind =
                   placement_object_kind_t::actor,
                 .stable_type = stable_type,
                 .policy =
-                  has_transfer_adapter
+                  has_state_adapter
                     ? maintenance_policy_kind_t::snapshot
-                    : maintenance_policy_kind_t::disabled,
+                    : relocation
+                          == detail::factory_relocation_kind_t::recreate
+                        ? maintenance_policy_kind_t::recreate
+                        : maintenance_policy_kind_t::disabled,
                 .has_snapshot_adapter =
-                  has_transfer_adapter});
+                  has_state_adapter});
         }
         for (const auto &stable_type :
              registration->spot_state->snapshot.spot_names) {
@@ -1481,11 +1492,30 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                   stable_type)
                 != registration->spot_state->snapshot.instance_spot_names.end ())
                 continue;
+            const auto configured =
+              registration->spot_state->spot_factory_relocations.find (
+                stable_type);
+            const auto relocation =
+              configured
+                  != registration->spot_state->spot_factory_relocations.end ()
+                ? configured->second.kind
+                : detail::factory_relocation_kind_t::disabled;
             descriptor.object_capabilities.push_back (
               object_capability_t{
                 .object_kind =
                   placement_object_kind_t::user_spot,
-                .stable_type = stable_type});
+                .stable_type = stable_type,
+                .policy =
+                  relocation
+                      == detail::factory_relocation_kind_t::preserve_state
+                    ? maintenance_policy_kind_t::snapshot
+                    : relocation
+                          == detail::factory_relocation_kind_t::recreate
+                        ? maintenance_policy_kind_t::recreate
+                        : maintenance_policy_kind_t::disabled,
+                .has_snapshot_adapter =
+                  relocation
+                  == detail::factory_relocation_kind_t::preserve_state});
             descriptor.capacity.spot_types.push_back (
               spot_type_capacity_t{
                 .object_kind =
@@ -1495,10 +1525,29 @@ void mesh_node_host_service_t::start (service_provider_t &services)
         }
         for (const auto &stable_type :
              registration->spot_state->snapshot.instance_spot_names) {
+            const auto configured =
+              registration->spot_state->spot_factory_relocations.find (
+                stable_type);
+            const auto relocation =
+              configured
+                  != registration->spot_state->spot_factory_relocations.end ()
+                ? configured->second.kind
+                : detail::factory_relocation_kind_t::disabled;
             descriptor.object_capabilities.push_back (
               object_capability_t{
                 .object_kind = placement_object_kind_t::instance_spot,
-                .stable_type = stable_type});
+                .stable_type = stable_type,
+                .policy =
+                  relocation
+                      == detail::factory_relocation_kind_t::preserve_state
+                    ? maintenance_policy_kind_t::snapshot
+                    : relocation
+                          == detail::factory_relocation_kind_t::recreate
+                        ? maintenance_policy_kind_t::recreate
+                        : maintenance_policy_kind_t::disabled,
+                .has_snapshot_adapter =
+                  relocation
+                  == detail::factory_relocation_kind_t::preserve_state});
             descriptor.capacity.spot_types.push_back (
               spot_type_capacity_t{
                 .object_kind = placement_object_kind_t::instance_spot,

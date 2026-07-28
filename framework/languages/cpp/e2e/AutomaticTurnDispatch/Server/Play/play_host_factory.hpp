@@ -87,11 +87,17 @@ inline void configure_play_host (zlink::framework::app_t &app,
           .listen (play_options.spot_router_endpoint)
           .add_entry_spot<await_entry_spot_t> (
             [evidence_ptr] { return std::make_shared<await_entry_spot_t> (*evidence_ptr); })
-          .add_spot<await_probe_spot_t> (
-            yd::probe_spot_name, [evidence_ptr, external_api] {
+          .add_spot_factory<await_probe_spot_t> (
+            yd::probe_spot_name,
+            [evidence_ptr, external_api] (spot_context_t) {
                 return std::make_shared<await_probe_spot_t> (*evidence_ptr, external_api);
+            },
+            [] (auto &factory) {
+                factory.disable_relocation ();
             })
-          .add_actor_factory<await_actor_factory_t> (yd::actor_type);
+          .add_actor_factory<await_actor_factory_t> (
+            yd::actor_type,
+            [] (auto &factory) { factory.disable_relocation (); });
         options.http ().listen (play_options.http_endpoint).map_health ("/health");
     });
 }

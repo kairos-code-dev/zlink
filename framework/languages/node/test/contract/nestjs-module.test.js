@@ -253,8 +253,9 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
     .options({ spotPublisherClients: ['events'] })
     .addRouteMesh('game')
       .listen('tcp://127.0.0.1:0')
-      .addSpotFactory(StageSpot)
-      .actorFactory('player', ActorFactory)
+      .objects().server()
+      .addSpotFactory(StageSpot.name, StageSpot, (factory) => factory.disableRelocation())
+      .addActorFactory('player', ActorFactory, (factory) => factory.disableRelocation())
     .build());
   const tokens = providerTokens(module);
 
@@ -307,8 +308,9 @@ test('ZLinkModule.forRoot creates Spot manager before runtime bootstrap', async 
   const module = nestjs.ZLinkModule.forRoot(builder
     .addRouteMesh('game')
       .listen('tcp://127.0.0.1:0')
-      .addSpotFactory(StageSpot)
-      .actorFactory('player', ActorFactory)
+      .objects().server()
+      .addSpotFactory(StageSpot.name, StageSpot, (factory) => factory.disableRelocation())
+      .addActorFactory('player', ActorFactory, (factory) => factory.disableRelocation())
     .build());
   const container = await resolveModuleProviders(module, [
     nestjs.ZLINK_FRAMEWORK_RUNTIME,
@@ -1003,23 +1005,25 @@ test('ZLinkModule.forRoot with grouped handlers exposes capability providers thr
   }
   nestjs.zlinkRequestHandler('api', 'GetProfile')(ProfileHandler);
 
+  const options = nestjs.zlinkFramework()
+    .addLocationStore(new framework.ZLinkInMemoryProviderLocationStore())
+    .options({ spotPublisherClients: ['events'] });
+  const gameMesh = options.addRouteMesh('game')
+    .listen(spotEndpoint)
+    .routingId('game-node');
+  gameMesh.objects().server()
+    .addSpotFactory(StageSpot.name, StageSpot, (factory) => factory.disableRelocation())
+    .addActorFactory('player', ActorFactory, (factory) => factory.disableRelocation());
+  gameMesh.channelName('game');
+  options.addRouteMesh('api')
+    .listen(apiEndpoint)
+    .routingId('api-node')
+    .channelName('api')
+    .addHandlerGroup('api');
+
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addLocationStore(new framework.ZLinkInMemoryProviderLocationStore())
-      .options({ spotPublisherClients: ['events'] })
-      .addRouteMesh('game')
-        .listen(spotEndpoint)
-        .routingId('game-node')
-        .addSpotFactory(StageSpot)
-        .actorFactory('player', ActorFactory)
-        .channelName('game')
-      .addRouteMesh('api')
-        .listen(apiEndpoint)
-        .routingId('api-node')
-        .channelName('api')
-        .addHandlerGroup('api')
-      .build())],
+    imports: [nestjs.ZLinkModule.forRoot(options.build())],
     providers: [ProfileHandler]
   })(HandlerModule);
 
@@ -1075,13 +1079,17 @@ test('ZLinkModule.forRoot exposes exact create calls for registered Spot factori
       this.context = context;
     }
   }
-  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+  const options = nestjs.zlinkFramework()
     .addLocationStore(new framework.ZLinkInMemoryProviderLocationStore())
-    .options({ spotFactories: [StageSpot] })
-    .addRouteMesh('game')
-      .listen('tcp://127.0.0.1:0')
-      .addSpotFactory(LocalStageSpot)
-    .build());
+    .options({ spotFactories: [StageSpot] });
+  const mesh = options.addRouteMesh('game')
+    .listen('tcp://127.0.0.1:0');
+  mesh.objects().server().addSpotFactory(
+    LocalStageSpot.name,
+    LocalStageSpot,
+    (factory) => factory.disableRelocation()
+  );
+  const module = nestjs.ZLinkModule.forRoot(options.build());
   const container = await resolveModuleProviders(module, [nestjs.ZLINK_SPOT_MANAGER]);
   const spotManager = container.get(nestjs.ZLINK_SPOT_MANAGER);
 
@@ -1106,13 +1114,17 @@ test('ZLinkModule.forRoot preserves Spot factories in the formal MeshNode regist
   }
   Inject(SpotDependency)(StageSpot, undefined, 0);
 
-  const frameworkModule = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMesh('game')
-        .listen(spotEndpoint)
-        .routingId('game-node')
-        .addSpotFactory(StageSpot)
-        .channelName('game')
-      .build());
+  const options = nestjs.zlinkFramework();
+  const mesh = options.addRouteMesh('game')
+    .listen(spotEndpoint)
+    .routingId('game-node');
+  mesh.objects().server().addSpotFactory(
+    StageSpot.name,
+    StageSpot,
+    (factory) => factory.disableRelocation()
+  );
+  mesh.channelName('game');
+  const frameworkModule = nestjs.ZLinkModule.forRoot(options.build());
   class HandlerModule {}
   Module({
     imports: [frameworkModule],
@@ -1141,13 +1153,13 @@ test('ZLinkModule.forRoot preserves Entry Spot type in the formal MeshNode regis
   }
   Inject(EntryDependency)(StageEntrySpot, undefined, 0);
 
-  const frameworkModule = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMesh('game')
-        .listen(spotEndpoint)
-        .routingId('game-node')
-        .addEntrySpot(StageEntrySpot)
-        .channelName('game')
-      .build());
+  const options = nestjs.zlinkFramework();
+  const mesh = options.addRouteMesh('game')
+    .listen(spotEndpoint)
+    .routingId('game-node');
+  mesh.objects().server().addEntrySpot(StageEntrySpot);
+  mesh.channelName('game');
+  const frameworkModule = nestjs.ZLinkModule.forRoot(options.build());
   class HandlerModule {}
   Module({
     imports: [frameworkModule],
@@ -1176,13 +1188,17 @@ test('ZLinkModule.forRoot preserves Actor factories in the formal MeshNode regis
   }
   Inject(ActorDependency)(PlayerActorFactory, undefined, 0);
 
-  const frameworkModule = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMesh('game')
-        .listen(spotEndpoint)
-        .actorFactory('player', PlayerActorFactory)
-        .routingId('game-node')
-        .channelName('game')
-      .build());
+  const options = nestjs.zlinkFramework();
+  const mesh = options.addRouteMesh('game')
+    .listen(spotEndpoint)
+    .routingId('game-node');
+  mesh.objects().server().addActorFactory(
+    'player',
+    PlayerActorFactory,
+    (factory) => factory.disableRelocation()
+  );
+  mesh.channelName('game');
+  const frameworkModule = nestjs.ZLinkModule.forRoot(options.build());
   class HandlerModule {}
   Module({
     imports: [frameworkModule],
@@ -1253,15 +1269,16 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
   })(RoomSubscriptionHandler);
 
   class TestModule {}
+  const options = nestjs.zlinkFramework();
+  const mesh = options.addRouteMesh('game')
+    .listen(spotEndpoint)
+    .routingId('game-node');
+  mesh.objects().server()
+    .addEntrySpot(EntrySpot)
+    .addSpotFactory(RoomSpot.name, RoomSpot, (factory) => factory.disableRelocation());
+  mesh.channelName('game');
   Module({
-    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMesh('game')
-        .listen(spotEndpoint)
-        .routingId('game-node')
-        .addEntrySpot(EntrySpot)
-        .addSpotFactory(RoomSpot)
-        .channelName('game')
-      .build())],
+    imports: [nestjs.ZLinkModule.forRoot(options.build())],
     providers: [
       EntryPacketHandler,
       EntrySubscriptionHandler,
@@ -1352,13 +1369,17 @@ test('ZLinkModule.forRoot rejects duplicate SPOT actor request handler decorator
     spot: () => RoomSpot
   })(SecondHandler);
 
+  const options = nestjs.zlinkFramework();
+  const mesh = options.addRouteMesh('game')
+    .listen('tcp://127.0.0.1:0');
+  mesh.objects().server().addSpotFactory(
+    RoomSpot.name,
+    RoomSpot,
+    (factory) => factory.disableRelocation()
+  );
   class TestModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMesh('game')
-        .listen('tcp://127.0.0.1:0')
-        .addSpotFactory(RoomSpot)
-      .build())],
+    imports: [nestjs.ZLinkModule.forRoot(options.build())],
     providers: [FirstHandler, SecondHandler]
   })(TestModule);
 
@@ -1371,12 +1392,18 @@ test('ZLinkModule.forRoot rejects duplicate SPOT actor request handler decorator
 test('ZLinkModule.forRoot validates multiple actor-capable spot nodes at registration time', async () => {
   class ActorFactory {}
 
-  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addRouteMesh('alpha')
-        .actorFactory('player', ActorFactory)
-      .addRouteMesh('beta')
-        .actorFactory('mage', ActorFactory)
-      .build());
+  const options = nestjs.zlinkFramework();
+  options.addRouteMesh('alpha').objects().server().addActorFactory(
+    'player',
+    ActorFactory,
+    (factory) => factory.disableRelocation()
+  );
+  options.addRouteMesh('beta').objects().server().addActorFactory(
+    'mage',
+    ActorFactory,
+    (factory) => factory.disableRelocation()
+  );
+  const module = nestjs.ZLinkModule.forRoot(options.build());
 
   await assert.rejects(
     () => resolveFrameworkRegistration(module),
@@ -1439,21 +1466,28 @@ test('ZLinkModule.forRoot maps route mesh channel options into runtime registrat
   assert.deepEqual(Object.keys(route.meshChannels), ['route']);
 });
 
-test('zlinkFramework preserves actor transfer adapters in the runtime registration', async () => {
+test('zlinkFramework preserves actor relocation adapters in the factory registration', async () => {
   class PlayerActorFactory {}
-  class PlayerActorTransferAdapter {}
+  class PlayerActorRelocationAdapter {}
   const builder = nestjs.zlinkFramework()
     .addLocationStore(new framework.ZLinkInMemoryProviderLocationStore());
   const mesh = builder.addRouteMesh('game')
     .listen('inproc://actor-transfer')
-    .routingId('game-node')
-    .actorFactory('player', PlayerActorFactory)
-    .addActorTransferAdapter('player', PlayerActorTransferAdapter);
+    .routingId('game-node');
+  mesh.objects().server().addActorFactory(
+    'player',
+    PlayerActorFactory,
+    (factory) => factory.preserveStateWith(PlayerActorRelocationAdapter)
+  );
   mesh.channelName('game');
   const registration = await resolveFrameworkRegistration(
     nestjs.ZLinkModule.forRoot(builder.build())
   );
-  assert.equal(registration.actorTransferAdapters.get(PlayerActorFactory), PlayerActorTransferAdapter);
+  assert.equal(
+    registration.spotNodes.get('game')
+      .actorFactoryRegistrations.player.relocation.adapterType,
+    PlayerActorRelocationAdapter
+  );
 });
 
 test('zlinkFramework preserves actor transfer timeout and Message Follow duration', async () => {
@@ -1491,17 +1525,29 @@ test('zlinkFramework applies core SPOT registration policy before duplicate stat
   class ActorFactory {}
 
   const entryNode = nestjs.zlinkFramework().addRouteMesh('entry');
-  entryNode.addEntrySpot(EntrySpot);
-  assert.throws(() => entryNode.addEntrySpot(EntrySpot), /Duplicate Entry Spot registration/);
+  const entryServer = entryNode.objects().server();
+  entryServer.addEntrySpot(EntrySpot);
+  assert.throws(() => entryServer.addEntrySpot(EntrySpot), /Duplicate Entry Spot registration/);
 
   const factoryNode = nestjs.zlinkFramework().addRouteMesh('factory');
-  factoryNode.addSpotFactory(Spot);
-  assert.throws(() => factoryNode.addSpotFactory(Spot), /Duplicate SPOT factory registration/);
+  const factoryServer = factoryNode.objects().server();
+  factoryServer.addSpotFactory(Spot.name, Spot, (factory) => factory.disableRelocation());
+  assert.throws(
+    () => factoryServer.addSpotFactory(Spot.name, Spot, (factory) => factory.disableRelocation()),
+    /Duplicate object factory/
+  );
 
   const actorNode = nestjs.zlinkFramework().addRouteMesh('actor');
-  actorNode.actorFactory('player', ActorFactory);
-  assert.throws(() => actorNode.actorFactory('player', ActorFactory), /Duplicate actor factory 'player'/);
-  assert.throws(() => actorNode.actorFactory(' player ', ActorFactory), /must not be empty or padded/);
+  const actorServer = actorNode.objects().server();
+  actorServer.addActorFactory('player', ActorFactory, (factory) => factory.disableRelocation());
+  assert.throws(
+    () => actorServer.addActorFactory('player', ActorFactory, (factory) => factory.disableRelocation()),
+    /Duplicate actor factory|Duplicate object factory/
+  );
+  assert.throws(
+    () => actorServer.addActorFactory(' player ', ActorFactory, (factory) => factory.disableRelocation()),
+    /must not be empty or padded/
+  );
 });
 
 test('framework options builder maps the formal RouteMesh registration flow into options', () => {
@@ -1514,7 +1560,7 @@ test('framework options builder maps the formal RouteMesh registration flow into
   class LocalStageSpot {}
   class StageEntrySpot {}
   class StageActor {}
-  class StageActorTransferAdapter {}
+  class StageActorRelocationAdapter {}
   const streamCompressionCodec = {
     compress(payload) {
       return payload;
@@ -1539,11 +1585,16 @@ test('framework options builder maps the formal RouteMesh registration flow into
       .bind('tcp://0.0.0.0:9404')
       .registerSession(GatewaySession);
     const spot = builder.addRouteMesh('game.stage');
-    spot.addSpotFactory(StageSpot)
-      .addSpotFactory(LocalStageSpot)
-      .addEntrySpot(StageEntrySpot)
-      .actorFactory('stage', StageActor)
-      .addActorTransferAdapter('stage', StageActorTransferAdapter);
+    const objectServer = spot.objects().server();
+    objectServer
+      .addSpotFactory(StageSpot.name, StageSpot, (factory) => factory.disableRelocation())
+      .addSpotFactory(LocalStageSpot.name, LocalStageSpot, (factory) => factory.disableRelocation())
+      .addEntrySpot(StageEntrySpot);
+    objectServer.addActorFactory(
+      'stage',
+      StageActor,
+      (factory) => factory.preserveStateWith(StageActorRelocationAdapter)
+    );
     spot.listen('tcp://0.0.0.0:9405');
     spot.routingId('stage-node');
     spot.channelName('game.stage');
@@ -1558,7 +1609,10 @@ test('framework options builder maps the formal RouteMesh registration flow into
   const streamNode = registration.streamNodes.get('gateway');
   const route = registration.spotNodes.get('route');
 
-  assert.equal(registration.actorTransferAdapters.get(StageActor), StageActorTransferAdapter);
+  assert.equal(
+    spotNode.actorFactoryRegistrations.stage.relocation.adapterType,
+    StageActorRelocationAdapter
+  );
   assert.equal(registration.channels.get('events').publisher.bind, 'tcp://0.0.0.0:9402');
   assert.deepEqual(registration.channels.get('events').subscriber.manualConnections, ['tcp://127.0.0.1:9402']);
   assert.equal(route.router.bind, 'tcp://0.0.0.0:9403');
@@ -1590,25 +1644,35 @@ test('framework options builder maps the formal RouteMesh registration flow into
   assert.throws(
     () => framework.createFrameworkOptions((builder) => {
       const node = builder.addRouteMesh('game.stage');
-      node.addEntrySpot(StageEntrySpot);
-      node.addEntrySpot(StageEntrySpot);
+      const server = node.objects().server();
+      server.addEntrySpot(StageEntrySpot);
+      server.addEntrySpot(StageEntrySpot);
     }),
     /Duplicate Entry Spot registration/
   );
   assert.throws(
     () => framework.createFrameworkOptions((builder) => {
       const node = builder.addRouteMesh('game.stage');
-      node.addSpotFactory(StageSpot);
-      node.addSpotFactory(StageSpot);
+      const server = node.objects().server();
+      server.addSpotFactory(StageSpot.name, StageSpot, (factory) => factory.disableRelocation());
+      server.addSpotFactory(StageSpot.name, StageSpot, (factory) => factory.disableRelocation());
     }),
-    /Duplicate SPOT factory registration/
+    /Duplicate object factory/
   );
   assert.throws(() => framework.createFrameworkOptions((builder) => {
     const node = builder.addRouteMesh('game');
-    node.actorFactory('stage', StageActor);
-    node.addActorTransferAdapter('stage', StageActorTransferAdapter);
-    node.addActorTransferAdapter('stage', StageActorTransferAdapter);
-  }), /Duplicate actor transfer adapter/);
+    const server = node.objects().server();
+    server.addActorFactory(
+      'stage',
+      StageActor,
+      (factory) => factory.preserveStateWith(StageActorRelocationAdapter)
+    );
+    server.addActorFactory(
+      'stage',
+      StageActor,
+      (factory) => factory.preserveStateWith(StageActorRelocationAdapter)
+    );
+  }), /Duplicate actor factory/);
 });
 
 test('ZLinkModule.forRoot maps stream node options into runtime registration', async () => {
@@ -1677,31 +1741,34 @@ test('zlinkFramework builder maps stream node registration without raw server co
   }
   class StageEntrySpot {}
 
-  const module = nestjs.ZLinkModule.forRoot(
-    nestjs.zlinkFramework()
-      .options({ spotPublisherClients: ['game.spot'] })
-      .addRouteMesh('api')
+  const options = nestjs.zlinkFramework()
+    .options({ spotPublisherClients: ['game.spot'] });
+  options.addRouteMesh('api')
         .listen('tcp://0.0.0.0:9113')
         .routingId('api-node')
         .channelName('api')
-        .addRequestHandler('NoopRequest', NoopRequestHandler)
-      .addFanoutChannel('game.events')
-        .enablePublisher('tcp://0.0.0.0:9114')
-      .addRouteMesh('route')
+        .addRequestHandler('NoopRequest', NoopRequestHandler);
+  options.addFanoutChannel('game.events')
+        .enablePublisher('tcp://0.0.0.0:9114');
+  options.addRouteMesh('route')
         .listen('tcp://0.0.0.0:9115')
         .routingId('route-node')
-        .channelName('route')
-      .addStreamNode('client.stream')
+        .channelName('route');
+  options.addStreamNode('client.stream')
         .bind('tcp://0.0.0.0:9100')
-        .registerSession(ClientHeaderSession)
-      .addRouteMesh('game.spot')
-        .listen('tcp://0.0.0.0:9110')
-        .routingId('game-node')
-        .addEntrySpot(StageEntrySpot)
-        .actorFactory('player', PlayerActorFactory)
-        .channelName('game.spot')
-      .build()
-  );
+        .registerSession(ClientHeaderSession);
+  const spotMesh = options.addRouteMesh('game.spot')
+    .listen('tcp://0.0.0.0:9110')
+    .routingId('game-node');
+  spotMesh.objects().server()
+    .addEntrySpot(StageEntrySpot)
+    .addActorFactory(
+      'player',
+      PlayerActorFactory,
+      (factory) => factory.disableRelocation()
+    );
+  spotMesh.channelName('game.spot');
+  const module = nestjs.ZLinkModule.forRoot(options.build());
   const registration = await resolveFrameworkRegistration(module);
   const streamNode = registration.streamNodes.get('client.stream');
   const spotNode = registration.spotNodes.get('game.spot');
@@ -1807,14 +1874,17 @@ test('ZLinkModule.forRoot maps one location store into runtime registration', as
 test('ZLinkModule.forRoot exposes only the public Spot manager capability', async () => {
   const store = new framework.ZLinkInMemoryProviderLocationStore();
   class ManagedSpot {}
-  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .addLocationStore(store)
-    .addRouteMesh('game')
-      .listen(uniqueIpcEndpoint('public-spot-manager'))
-      .routingId('game-node')
-      .addSpotFactory(ManagedSpot)
-      .channelName('game')
-    .build());
+  const options = nestjs.zlinkFramework().addLocationStore(store);
+  const mesh = options.addRouteMesh('game')
+    .listen(uniqueIpcEndpoint('public-spot-manager'))
+    .routingId('game-node');
+  mesh.objects().server().addSpotFactory(
+    ManagedSpot.name,
+    ManagedSpot,
+    (factory) => factory.disableRelocation()
+  );
+  mesh.channelName('game');
+  const module = nestjs.ZLinkModule.forRoot(options.build());
   const tokens = providerTokens(module);
 
   assert.equal(tokens.has(nestjs.ZLINK_SPOT_MANAGER), true);
@@ -1837,16 +1907,17 @@ test('ZLinkModule.forRootFactory exposes capability providers through the real N
   }
   const module = nestjs.ZLinkModule.forRootFactory({
     async useFactory() {
-      return nestjs.zlinkFramework()
+      const options = nestjs.zlinkFramework()
         .addLocationStore(new framework.ZLinkInMemoryProviderLocationStore())
-        .options({ spotPublisherClients: ['game-events'] })
-        .addRouteMesh('game')
-          .listen(spotEndpoint)
-          .routingId('game-node')
-          .addSpotFactory(AsyncSpot)
-          .actorFactory('player', ActorFactory)
-          .channelName('game')
-        .build();
+        .options({ spotPublisherClients: ['game-events'] });
+      const mesh = options.addRouteMesh('game')
+        .listen(spotEndpoint)
+        .routingId('game-node');
+      mesh.objects().server()
+        .addSpotFactory(AsyncSpot.name, AsyncSpot, (factory) => factory.disableRelocation())
+        .addActorFactory('player', ActorFactory, (factory) => factory.disableRelocation());
+      mesh.channelName('game');
+      return options.build();
     }
   });
   class AsyncModule {}

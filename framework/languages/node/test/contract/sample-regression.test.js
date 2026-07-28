@@ -261,7 +261,7 @@ test('GameQuest TypeScript sample registers required sample and provisions playe
     [names, 'ownerIndex(playerId) === 0 ? \'mission-a\' : \'mission-b\''],
     [publisher, '.sendToChannel(SampleNames.playerQuestSpotMesh, questMissionRouteChannel(event.playerId), message)'],
     [sessionModule, '.addRouteMesh(SampleNames.playerQuestSpotMesh)'],
-    [questModule, '.addSpotFactory(PlayerQuestSpot)'],
+    [questModule, '.addSpotFactory(\n            PlayerQuestSpot.name,\n            PlayerQuestSpot,'],
     [provisioner, 'ZLINK_SPOT_MANAGER'],
     [provisioner, 'this.spots.getOrCreate(SampleNames.playerQuestSpotMesh, PlayerQuestSpot, spotId, { playerId })'],
     [spot, 'private aggregate: PlayerQuestAggregate | undefined'],
@@ -304,7 +304,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
   const missing = [];
   const violations = [];
   for (const [name, content, text] of [
-    ['Bingo module', files.bingoModule, '.addSpotFactory(BingoRoomSpot)'],
+    ['Bingo module', files.bingoModule, '.addSpotFactory(\n            BingoRoomSpot.name,\n            BingoRoomSpot,'],
     ['Bingo API match', files.bingoApiMatch, 'ZLINK_CHANNEL_CLIENT'],
     ['Bingo allocate', files.bingoAllocate, 'ZLINK_SPOT_MANAGER'],
     ['Bingo ensure actor', files.bingoEnsureActor, 'ZLINK_ACTOR_MANAGER'],
@@ -315,7 +315,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     ['Bingo room', files.bingoRoom, 'onActorJoin'],
     ['Bingo room', files.bingoRoom, 'onLeaveActor'],
     ['Bingo actor lifecycle', files.bingoActorLifecycle, 'actor.context.leaveSpot()'],
-    ['TicTacToe module', files.ticTacToeModule, '.addSpotFactory(TicTacToeGameSpot)'],
+    ['TicTacToe module', files.ticTacToeModule, '.addSpotFactory(\n            TicTacToeGameSpot.name,\n            TicTacToeGameSpot,'],
     ['TicTacToe create', files.ticTacToeCreate, 'TICTACTOE_GAME_ROOM_PROVISIONER'],
     ['TicTacToe create', files.ticTacToeCreate, 'this.rooms.provision(roomId)'],
     ['TicTacToe actor join', files.ticTacToeActorJoin, '.joinSpot(request.roomId, joinRequest)'],
@@ -637,7 +637,7 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   assert.match(questModule, /QuestEventProcessor/);
   assert.match(apiModule, /\.addRouteMesh\(SampleNames\.playerQuestSpotMesh\)/);
   assert.match(apiModule, /\.addEntrySpot\(GameQuestEntrySpot\)/);
-  assert.match(questModule, /\.addSpotFactory\(PlayerQuestSpot\)/);
+  assert.match(questModule, /\.addSpotFactory\(\s*PlayerQuestSpot\.name,\s*PlayerQuestSpot,/);
   assert.match(questModule, /channelName\(questMissionInstanceChannel\(instanceId\)\)\.addHandlerGroup\('quest-owner'\)/);
   assert.doesNotMatch(questModule, /\.add(?:Send|Request)Handler\(/);
   assert.match(questDomain, /decide\(event: GameplayEventEnvelope/);
@@ -762,7 +762,7 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   assert.equal((workflowModule.match(/\.addRouteMesh\(/g) ?? []).length, 1);
   assert.doesNotMatch(workflowModule, /workflowChannelEndpointForRole/);
   assert.match(workflowModule, /\.addRouteMesh\(SampleNames\.orderWorkflowSpotMesh\)/);
-  assert.match(workflowModule, /\.addSpotFactory\(OrderWorkflowSpot\)/);
+  assert.match(workflowModule, /\.addSpotFactory\(\s*OrderWorkflowSpot\.name,\s*OrderWorkflowSpot,/);
   assert.match(workflowModule, /OrderWorkflowService/);
   assert.match(workflowModule, /\.addHandlerGroup\('workflow'\)/);
   assert.match(orderWorkflowSpot, /class OrderWorkflowSpot implements ZLinkSpot/);
@@ -1843,10 +1843,10 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
   const required = [
     [frameworkSpotContract, 'interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor>'],
     [frameworkSpotContract, 'interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>'],
-    [playModule, '.actorFactory(SampleNames.playerActorType, PlayerActorFactory)'],
+    [playModule, '.addActorFactory(\n            SampleNames.playerActorType,\n            PlayerActorFactory,'],
     [playModule, '.addRouteMesh(SampleNames.roomSpotNode'],
     [playModule, '.addEntrySpot(BingoEntrySpot)'],
-    [playModule, '.addSpotFactory(BingoRoomSpot)'],
+    [playModule, '.addSpotFactory(\n            BingoRoomSpot.name,\n            BingoRoomSpot,'],
     [roomSpot, 'implements ZLinkSpot<PlayerActor>'],
     // node spec `04-spots.ko.md:65` declares onActorJoin(actorId: string, request).
     [roomSpot, 'onActorJoin(actorId: string'],

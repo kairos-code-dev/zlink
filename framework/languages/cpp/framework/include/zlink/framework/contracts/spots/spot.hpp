@@ -22,6 +22,8 @@
 #include <atomic>
 #include <chrono>
 #include <cctype>
+#include <concepts>
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
@@ -29,6 +31,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <stop_token>
 #include <thread>
 #include <tuple>
 #include <typeindex>
@@ -53,6 +56,8 @@ class actor_t;
 template <typename TActor>
 requires std::derived_from<TActor, actor_t>
 class actor_factory_t;
+template <typename TActor>
+class actor_factory_builder_t;
 class spot_publisher_client_t;
 class spot_manager_t;
 class instance_spot_context_t;
@@ -197,14 +202,6 @@ struct actor_create_response_t
     {
         return reject (message_t::from (std::move (reply)));
     }
-};
-
-template <typename TActor> class actor_transfer_adapter_t
-{
-  public:
-    virtual ~actor_transfer_adapter_t () = default;
-    virtual task_t<message_t> transfer_out (const TActor &actor) = 0;
-    virtual task_t<TActor> transfer_in (std::string actor_id, message_t state) = 0;
 };
 
 enum class spot_create_state_t
@@ -548,6 +545,232 @@ enum class user_spot_execution_mode_t
 {
     spot_wide = 0,
     per_actor = 1
+};
+
+enum class spot_relocation_readiness_mode_t
+{
+    any_turn_boundary = 0,
+    application_signaled = 1
+};
+
+namespace detail
+{
+enum class factory_relocation_kind_t
+{
+    unspecified = 0,
+    disabled = 1,
+    recreate = 2,
+    preserve_state = 3
+};
+
+struct factory_relocation_configuration_t
+{
+    factory_relocation_kind_t kind{factory_relocation_kind_t::unspecified};
+    std::type_index adapter_type{typeid (void)};
+};
+} // namespace detail
+
+template <typename TSpot>
+class spot_relocation_adapter_t
+{
+  public:
+    virtual ~spot_relocation_adapter_t () = default;
+    virtual task_t<std::vector<std::byte>>
+    capture (TSpot &spot, std::stop_token operation_cancellation) = 0;
+    virtual task_t<void>
+    restore (TSpot &spot,
+             std::vector<std::byte> payload,
+             std::stop_token operation_cancellation) = 0;
+};
+
+template <typename TSpot>
+class user_spot_factory_builder_t
+{
+  public:
+    user_spot_factory_builder_t &set_stable_type_limit (std::int32_t limit)
+    {
+        ensure_mutable ();
+        if (limit < 1) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "User Spot stable type limit must be positive");
+        }
+        _stable_type_limit = limit;
+        return *this;
+    }
+
+    user_spot_factory_builder_t &
+    set_execution_mode (user_spot_execution_mode_t mode)
+    {
+        ensure_mutable ();
+        _execution_mode = mode;
+        return *this;
+    }
+
+    user_spot_factory_builder_t &
+    set_relocation_readiness (spot_relocation_readiness_mode_t mode)
+    {
+        ensure_mutable ();
+        _relocation_readiness = mode;
+        return *this;
+    }
+
+    void disable_relocation ()
+    {
+        ensure_mutable ();
+        select (detail::factory_relocation_kind_t::disabled, typeid (void));
+    }
+
+    void recreate_on_relocation ()
+    {
+        ensure_mutable ();
+        select (detail::factory_relocation_kind_t::recreate, typeid (void));
+    }
+
+    template <typename TAdapter>
+    requires std::derived_from<TAdapter, spot_relocation_adapter_t<TSpot>>
+    void preserve_state_with ()
+    {
+        ensure_mutable ();
+        select (detail::factory_relocation_kind_t::preserve_state,
+                typeid (TAdapter));
+    }
+
+  private:
+    friend class spot_node_builder_t;
+
+    void seal () noexcept { _sealed = true; }
+
+    void ensure_mutable () const
+    {
+        if (_sealed) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "User Spot factory builder cannot be changed after the configure callback returns");
+        }
+    }
+
+    void validate () const
+    {
+        if (_relocation.kind
+            == detail::factory_relocation_kind_t::unspecified) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "User Spot factory must select exactly one relocation policy");
+        }
+        if (_execution_mode == user_spot_execution_mode_t::per_actor
+            && _relocation.kind
+                 != detail::factory_relocation_kind_t::recreate) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "Per-Actor User Spots require recreate_on_relocation");
+        }
+        if (_execution_mode == user_spot_execution_mode_t::per_actor
+            && _relocation_readiness
+                 == spot_relocation_readiness_mode_t::application_signaled) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "Application-signaled relocation readiness requires Spot-Wide execution");
+        }
+    }
+
+    void select (detail::factory_relocation_kind_t kind,
+                 std::type_index adapter_type)
+    {
+        if (_relocation.kind
+            != detail::factory_relocation_kind_t::unspecified) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "User Spot factory must select exactly one relocation policy");
+        }
+        _relocation = {kind, adapter_type};
+    }
+
+    std::int32_t _stable_type_limit = 0;
+    user_spot_execution_mode_t _execution_mode =
+      user_spot_execution_mode_t::spot_wide;
+    spot_relocation_readiness_mode_t _relocation_readiness =
+      spot_relocation_readiness_mode_t::any_turn_boundary;
+    detail::factory_relocation_configuration_t _relocation;
+    bool _sealed = false;
+};
+
+template <typename TSpot>
+class instance_spot_factory_builder_t
+{
+  public:
+    instance_spot_factory_builder_t &set_stable_type_limit (std::int32_t limit)
+    {
+        ensure_mutable ();
+        if (limit < 1) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "Instance Spot stable type limit must be positive");
+        }
+        _stable_type_limit = limit;
+        return *this;
+    }
+
+    void disable_relocation ()
+    {
+        ensure_mutable ();
+        select (detail::factory_relocation_kind_t::disabled, typeid (void));
+    }
+
+    void recreate_on_relocation ()
+    {
+        ensure_mutable ();
+        select (detail::factory_relocation_kind_t::recreate, typeid (void));
+    }
+
+    template <typename TAdapter>
+    requires std::derived_from<TAdapter, spot_relocation_adapter_t<TSpot>>
+    void preserve_state_with ()
+    {
+        ensure_mutable ();
+        select (detail::factory_relocation_kind_t::preserve_state,
+                typeid (TAdapter));
+    }
+
+  private:
+    friend class spot_node_builder_t;
+
+    void seal () noexcept { _sealed = true; }
+
+    void ensure_mutable () const
+    {
+        if (_sealed) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "Instance Spot factory builder cannot be changed after the configure callback returns");
+        }
+    }
+
+    void validate () const
+    {
+        if (_relocation.kind
+            == detail::factory_relocation_kind_t::unspecified) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "Instance Spot factory must select exactly one relocation policy");
+        }
+    }
+
+    void select (detail::factory_relocation_kind_t kind,
+                 std::type_index adapter_type)
+    {
+        if (_relocation.kind
+            != detail::factory_relocation_kind_t::unspecified) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "Instance Spot factory must select exactly one relocation policy");
+        }
+        _relocation = {kind, adapter_type};
+    }
+
+    std::int32_t _stable_type_limit = 0;
+    detail::factory_relocation_configuration_t _relocation;
+    bool _sealed = false;
 };
 
 struct spot_node_snapshot_t
@@ -1534,31 +1757,51 @@ class spot_node_builder_t
                                          "Entry SPOT factory must not be empty");
         }
         auto &builder =
-          add_spot_factory (std::string ("entry"), std::type_index (typeid (TEntrySpot)), true,
-                            user_spot_execution_mode_t::spot_wide);
+          add_spot_factory_erased (
+            std::string ("entry"), std::type_index (typeid (TEntrySpot)), true,
+            user_spot_execution_mode_t::spot_wide);
         register_context_lifecycle<TEntrySpot> ("entry", std::move (factory));
         return builder;
     }
 
     template <typename TSpot>
-    spot_node_builder_t &add_spot (
-      std::string spot_name,
+    requires std::derived_from<TSpot, spot_t>
+             && (!std::derived_from<TSpot, entry_spot_t>)
+             && (!std::derived_from<TSpot, instance_spot_t>)
+    spot_node_builder_t &add_spot_factory (
+      std::string stable_type,
       std::function<std::shared_ptr<TSpot> (spot_context_t)> factory,
-      user_spot_execution_mode_t execution_mode =
-        user_spot_execution_mode_t::spot_wide)
+      std::function<void (user_spot_factory_builder_t<TSpot> &)> configure)
     {
-        static_assert (std::is_base_of_v<spot_t, TSpot>);
-        static_assert (!std::is_base_of_v<entry_spot_t, TSpot>);
-        static_assert (!std::is_base_of_v<instance_spot_t, TSpot>);
-        if (!factory) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "SPOT factory must not be empty");
+        if (!factory || !configure) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "User Spot factory and configure callback must not be empty");
         }
-        const auto registered_name = spot_name;
-        auto &builder = add_spot_factory (
-          std::move (spot_name), std::type_index (typeid (TSpot)), false,
-          execution_mode);
-        register_context_lifecycle<TSpot> (registered_name, std::move (factory));
+        auto factory_builder =
+          std::make_shared<user_spot_factory_builder_t<TSpot>> ();
+        retain_factory_builder (factory_builder);
+        try {
+            configure (*factory_builder);
+            factory_builder->validate ();
+        }
+        catch (...) {
+            factory_builder->seal ();
+            throw;
+        }
+        const auto execution_mode = factory_builder->_execution_mode;
+        const auto stable_type_limit = factory_builder->_stable_type_limit;
+        const auto relocation_readiness =
+          factory_builder->_relocation_readiness;
+        const auto relocation = factory_builder->_relocation;
+        factory_builder->seal ();
+        const auto registered_type = stable_type;
+        auto &builder = add_spot_factory_erased (
+          std::move (stable_type), std::type_index (typeid (TSpot)), false,
+          execution_mode, false, stable_type_limit, relocation_readiness,
+          relocation);
+        register_context_lifecycle<TSpot> (
+          registered_type, std::move (factory));
         return builder;
     }
 
@@ -1566,22 +1809,42 @@ class spot_node_builder_t
     requires std::derived_from<TSpot, instance_spot_t>
     spot_node_builder_t &add_instance_spot_factory (
       std::string stable_type,
-      std::function<std::shared_ptr<TSpot> (instance_spot_context_t)> factory)
+      std::function<std::shared_ptr<TSpot> (instance_spot_context_t)> factory,
+      std::function<void (instance_spot_factory_builder_t<TSpot> &)> configure)
     {
-        if (!factory) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "Instance Spot factory must not be empty");
+        if (!factory || !configure) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "Instance Spot factory and configure callback must not be empty");
         }
+        auto factory_builder =
+          std::make_shared<instance_spot_factory_builder_t<TSpot>> ();
+        retain_factory_builder (factory_builder);
+        try {
+            configure (*factory_builder);
+            factory_builder->validate ();
+        }
+        catch (...) {
+            factory_builder->seal ();
+            throw;
+        }
+        const auto stable_type_limit = factory_builder->_stable_type_limit;
+        const auto relocation = factory_builder->_relocation;
+        factory_builder->seal ();
         const auto registered_type = stable_type;
-        auto &builder = add_spot_factory (
+        auto &builder = add_spot_factory_erased (
           std::move (stable_type), std::type_index (typeid (TSpot)), false,
-          user_spot_execution_mode_t::spot_wide, true);
+          user_spot_execution_mode_t::spot_wide, true,
+          stable_type_limit,
+          spot_relocation_readiness_mode_t::any_turn_boundary,
+          relocation);
         register_context_lifecycle<TSpot> (registered_type, std::move (factory));
         return builder;
     }
 
-    template <typename TActorFactory>
-    spot_node_builder_t &add_actor_factory (std::string actor_type)
+    template <typename TActorFactory, typename TConfigure>
+    spot_node_builder_t &add_actor_factory (std::string actor_type,
+                                            TConfigure configure)
     {
         static_assert (std::is_default_constructible_v<TActorFactory>,
                        "C++ actor factories must be default constructible");
@@ -1591,6 +1854,21 @@ class spot_node_builder_t
             using actor_type_t =
               std::remove_cvref_t<decltype (std::declval<TActorFactory &> ().create (
                 std::declval<std::string> ()))>;
+            auto factory_builder =
+              std::make_shared<actor_factory_builder_t<actor_type_t>> ();
+            retain_factory_builder (factory_builder);
+            try {
+                configure (*factory_builder);
+                factory_builder->validate ();
+            }
+            catch (...) {
+                factory_builder->seal ();
+                throw;
+            }
+            const auto relocation = factory_builder->_relocation;
+            auto capture = factory_builder->_capture;
+            auto restore = factory_builder->_restore;
+            factory_builder->seal ();
             return add_actor_factory_erased (
               std::move (actor_type), std::type_index (typeid (actor_type_t)),
               [] (std::string actor_id) -> std::shared_ptr<void> {
@@ -1640,8 +1918,26 @@ class spot_node_builder_t
                         serializers.get<actor_type_t> ().deserialize (
                           detail::encoded_payload_from_raw (snapshot));
                   }
-              });
+              },
+              {},
+              {},
+              relocation, std::move (capture), std::move (restore));
         } else {
+            auto factory_builder =
+              std::make_shared<actor_factory_builder_t<TActorFactory>> ();
+            retain_factory_builder (factory_builder);
+            try {
+                configure (*factory_builder);
+                factory_builder->validate ();
+            }
+            catch (...) {
+                factory_builder->seal ();
+                throw;
+            }
+            const auto relocation = factory_builder->_relocation;
+            auto capture = factory_builder->_capture;
+            auto restore = factory_builder->_restore;
+            factory_builder->seal ();
             return add_actor_factory_erased (
               std::move (actor_type), std::type_index (typeid (TActorFactory)),
               [] (std::string) -> std::shared_ptr<void> {
@@ -1689,39 +1985,18 @@ class spot_node_builder_t
                         serializers.get<TActorFactory> ().deserialize (
                           detail::encoded_payload_from_raw (snapshot));
                   }
-              });
+              },
+              {},
+              {},
+              relocation, std::move (capture), std::move (restore));
         }
     }
 
     template <typename TActor, typename TActorFactory>
     spot_node_builder_t &
     add_actor_factory (std::string actor_type,
-                       std::shared_ptr<TActorFactory> factory);
-
-    template <typename TActor, typename TAdapter>
-    spot_node_builder_t &add_actor_transfer_adapter (std::string actor_type)
-    {
-        static_assert (std::is_base_of_v<actor_transfer_adapter_t<TActor>, TAdapter>,
-                       "Actor transfer adapter must implement actor_transfer_adapter_t<TActor>");
-        static_assert (std::is_default_constructible_v<TAdapter>,
-                       "C++ actor transfer adapters must be default constructible");
-        return add_actor_transfer_erased (
-          std::move (actor_type), std::type_index (typeid (TActor)),
-          [] (const void *actor) -> task_t<message_t> {
-              /* Coroutine invoker: the adapter task is awaited by the
-               * transfer chain, no result() bridge in the contract layer. */
-              TAdapter adapter;
-              auto state = co_await adapter.transfer_out (*static_cast<const TActor *> (actor));
-              co_return state;
-          },
-          [] (std::string actor_id, message_t state) -> task_t<std::shared_ptr<void>> {
-              TAdapter adapter;
-              auto transferred =
-                co_await adapter.transfer_in (std::move (actor_id), std::move (state));
-              co_return std::static_pointer_cast<void> (
-                std::make_shared<TActor> (std::move (transferred)));
-          });
-    }
+                       std::shared_ptr<TActorFactory> factory,
+                       std::function<void (actor_factory_builder_t<TActor> &)> configure);
 
     spot_node_builder_t &
     add_spot_resolver (std::string name,
@@ -1743,6 +2018,7 @@ class spot_node_builder_t
     task_t<std::optional<spot_info_t>> find_spot (spot_id_t spot_id) const;
     task_t<std::vector<spot_info_t>> list_spots () const;
     task_t<bool> close_spot (spot_id_t spot_id);
+    void retain_factory_builder (std::shared_ptr<void> builder);
     std::optional<std::string> spot_name_for (spot_id_t spot_id) const;
     std::optional<spot_route_t> resolve_spot (spot_id_t spot_id) const;
     detail::local_spot_create_result_t create_spot_raw (
@@ -1751,11 +2027,16 @@ class spot_node_builder_t
     get_or_create_spot_raw (std::string spot_name, spot_id_t spot_id, zlink::message_t request);
 
     spot_node_builder_t &
-    add_spot_factory (std::string spot_name,
-                      std::type_index spot_type,
-                      bool entry_spot,
-                      user_spot_execution_mode_t execution_mode,
-                      bool instance_spot = false);
+    add_spot_factory_erased (
+      std::string spot_name,
+      std::type_index spot_type,
+      bool entry_spot,
+      user_spot_execution_mode_t execution_mode,
+      bool instance_spot = false,
+      std::int32_t stable_type_limit = 0,
+      spot_relocation_readiness_mode_t relocation_readiness =
+        spot_relocation_readiness_mode_t::any_turn_boundary,
+      detail::factory_relocation_configuration_t relocation = {});
     spot_node_builder_t &
     accept_implicit_route_mesh (std::string route_channel_name,
                                 std::vector<std::string> manual_connections = {});
@@ -1770,12 +2051,12 @@ class spot_node_builder_t
         deserialize_instance,
       std::function<std::shared_ptr<void> (actor_context_t)>
         create_context_instance = {},
-      detail::actor_join_completion_callback_t on_join_completed = {});
-    spot_node_builder_t &add_actor_transfer_erased (
-      std::string actor_type,
-      std::type_index actor_instance_type,
-      std::function<task_t<message_t> (const void *)> transfer_out,
-      std::function<task_t<std::shared_ptr<void>> (std::string, message_t)> transfer_in);
+      detail::actor_join_completion_callback_t on_join_completed = {},
+      detail::factory_relocation_configuration_t relocation = {},
+      std::function<task_t<std::vector<std::byte>> (
+        void *, std::stop_token)> capture = {},
+      std::function<task_t<void> (
+        void *, std::vector<std::byte>, std::stop_token)> restore = {});
 
     template <typename TSpot, typename TContext>
     void register_context_lifecycle (

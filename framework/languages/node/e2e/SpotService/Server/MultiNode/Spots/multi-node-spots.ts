@@ -5,7 +5,6 @@ import type {
   ZLinkActorFactory,
   ZLinkActorJoinCompletion,
   ZLinkActorRelocationAdapter,
-  ZLinkActorTransferAdapter,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessageContext,
@@ -149,21 +148,6 @@ implements ZLinkActorRelocationAdapter<MultiNodeScenarioActor> {
     if (state.actorId !== actor.actorId) {
       throw new Error(`Actor relocation payload mismatch for '${actor.actorId}'.`);
     }
-  }
-}
-
-export class MultiNodeScenarioActorTransferAdapter
-implements ZLinkActorTransferAdapter<MultiNodeScenarioActor> {
-  async transferOut(actor: MultiNodeScenarioActor): Promise<ZLinkMessage> {
-    return ZLinkMessage.from({ actorId: actor.actorId });
-  }
-
-  async transferIn(actorId: string, state: ZLinkMessage): Promise<MultiNodeScenarioActor> {
-    const payload = state.decode<{ actorId: string }>(Object as never);
-    if (payload.actorId !== actorId) {
-      throw new Error(`Actor transfer payload mismatch for '${actorId}'.`);
-    }
-    return new MultiNodeScenarioActor(actorId);
   }
 }
 

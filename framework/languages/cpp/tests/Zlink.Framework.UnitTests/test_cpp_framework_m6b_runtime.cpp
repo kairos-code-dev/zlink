@@ -337,9 +337,16 @@ void verify_user_spot_execution_mode_registration ()
     const auto factory = [] (spot_context_t context) {
         return std::make_shared<execution_mode_spot_t> (std::move (context));
     };
-    builder.add_spot<execution_mode_spot_t> ("wide", factory);
-    builder.add_spot<execution_mode_spot_t> (
-      "actors", factory, user_spot_execution_mode_t::per_actor);
+    builder.add_spot_factory<execution_mode_spot_t> (
+      "wide", factory, [] (auto &configuration) {
+          configuration.disable_relocation ();
+      });
+    builder.add_spot_factory<execution_mode_spot_t> (
+      "actors", factory, [] (auto &configuration) {
+          configuration.set_execution_mode (
+            user_spot_execution_mode_t::per_actor);
+          configuration.recreate_on_relocation ();
+      });
 
     const auto snapshot = builder.snapshot ();
     assert (

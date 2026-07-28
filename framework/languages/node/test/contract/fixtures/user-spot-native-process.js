@@ -60,8 +60,7 @@ async function start() {
     mesh.objects().server().addSpotFactory(
       'RemoteRoom',
       RemoteRoomSpot,
-      undefined,
-      framework.zlinkDisabledRelocation()
+      (factory) => factory.disableRelocation()
     );
   } else if (role === 'source') {
     mesh.objects().client();

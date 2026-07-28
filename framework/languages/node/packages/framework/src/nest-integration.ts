@@ -9,7 +9,6 @@ export type * from './contracts/Configuration/RegistrationTypes';
 export type * from './contracts';
 export {
   registerActorFactory,
-  registerActorTransferAdapter,
   validateRoutingIdPrefix,
   registerEntrySpot,
   registerSpotFactory,

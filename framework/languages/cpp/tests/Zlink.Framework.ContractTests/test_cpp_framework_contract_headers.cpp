@@ -845,20 +845,20 @@ struct contract_exact_actor_factory_t
 };
 
 struct contract_actor_transfer_t
-    : zlink::framework::actor_transfer_adapter_t<contract_actor_t>
+    : zlink::framework::actor_relocation_adapter_t<contract_actor_t>
 {
-    zlink::framework::task_t<zlink::framework::message_t>
-    transfer_out (const contract_actor_t &) override
+    zlink::framework::task_t<std::vector<std::byte>>
+    capture (contract_actor_t &, std::stop_token) override
     {
-        return zlink::framework::task_t<zlink::framework::message_t> (
-          zlink::framework::result_t<zlink::framework::message_t>::success ({}));
+        co_return std::vector<std::byte>{};
     }
 
-    zlink::framework::task_t<contract_actor_t>
-    transfer_in (std::string, zlink::framework::message_t) override
+    zlink::framework::task_t<void>
+    restore (contract_actor_t &,
+             std::vector<std::byte>,
+             std::stop_token) override
     {
-        return zlink::framework::task_t<contract_actor_t> (
-          zlink::framework::result_t<contract_actor_t>::success ({}));
+        co_return;
     }
 };
 
@@ -906,6 +906,12 @@ struct contract_context_spot_t : public zlink::framework::spot_t
     const zlink::framework::spot_context_t &context () const noexcept { return value; }
     void configure () {}
     zlink::framework::spot_context_t value;
+};
+
+struct contract_context_spot_relocation_adapter_t
+    : public zlink::framework::spot_relocation_adapter_t<
+        contract_context_spot_t>
+{
 };
 
 struct contract_context_entry_spot_t : public zlink::framework::entry_spot_t
@@ -1341,7 +1347,7 @@ static_assert (std::has_virtual_destructor_v<zlink::framework::spot_t>);
 static_assert (std::has_virtual_destructor_v<zlink::framework::entry_spot_t>);
 static_assert (std::is_base_of_v<zlink::framework::spot_t, zlink::framework::entry_spot_t>);
 static_assert (std::has_virtual_destructor_v<
-               zlink::framework::actor_transfer_adapter_t<contract_actor_t>>);
+               zlink::framework::actor_relocation_adapter_t<contract_actor_t>>);
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
                            .set_placement_weight (10000)),
@@ -1350,11 +1356,6 @@ static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
                            .set_object_role (
                              zlink::framework::object_role_t::client)),
-               zlink::framework::mesh_node_builder_t &>);
-static_assert (std::is_same_v<
-               decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
-                           .add_actor_transfer_adapter<contract_actor_t,
-                                                       contract_actor_transfer_t> ("contract")),
                zlink::framework::mesh_node_builder_t &>);
 static_assert (std::is_same_v<decltype (std::declval<contract_spot_t &> ().on_actor_join (
                                 std::declval<std::string_view> (),
@@ -1488,10 +1489,13 @@ static_assert (
 static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::spot_node_builder_t &> ()
-                .add_spot<contract_context_spot_t> (
+                .add_spot_factory<contract_context_spot_t> (
                   "stage",
                   std::declval<std::function<std::shared_ptr<contract_context_spot_t> (
-                    zlink::framework::spot_context_t)>> ())),
+                    zlink::framework::spot_context_t)>> (),
+                  std::declval<std::function<void (
+                    zlink::framework::user_spot_factory_builder_t<
+                      contract_context_spot_t> &)>> ())),
     zlink::framework::spot_node_builder_t &>);
 static_assert (
   std::is_same_v<
@@ -1507,7 +1511,10 @@ static_assert (
                   "shopping-cart",
                   std::declval<std::function<std::shared_ptr<
                     contract_context_instance_spot_t> (
-                    zlink::framework::instance_spot_context_t)>> ())),
+                    zlink::framework::instance_spot_context_t)>> (),
+                  std::declval<std::function<void (
+                    zlink::framework::instance_spot_factory_builder_t<
+                      contract_context_instance_spot_t> &)>> ())),
     zlink::framework::mesh_node_builder_t &>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_create_result_t> ().reply),
@@ -1544,7 +1551,10 @@ static_assert (
                 .add_actor_factory<contract_exact_actor_t> (
                   "actor",
                   std::declval<std::shared_ptr<
-                    contract_exact_actor_factory_t>> ())),
+                    contract_exact_actor_factory_t>> (),
+                  std::declval<std::function<void (
+                    zlink::framework::actor_factory_builder_t<
+                      contract_exact_actor_t> &)>> ())),
     zlink::framework::mesh_node_builder_t &>);
 static_assert (!has_legacy_async<zlink::framework::actor_join_call_t>);
 static_assert (!has_blocking_submit<zlink::framework::actor_join_call_t>);
@@ -1746,6 +1756,91 @@ int main ()
              != zlink::framework::detail::boundary_error_t::shutdown) {
         return 2;
     }
+
+    const auto spot_factory =
+      [] (zlink::framework::spot_context_t context) {
+          return std::make_shared<contract_context_spot_t> (
+            std::move (context));
+      };
+    bool missing_relocation_rejected = false;
+    try {
+        zlink::framework::spot_node_builder_t builder;
+        builder.add_spot_factory<contract_context_spot_t> (
+          "missing-policy", spot_factory, [] (auto &) {});
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        missing_relocation_rejected =
+          error.kind ()
+          == zlink::framework::framework_error_kind_t::invalid_configuration;
+    }
+    if (!missing_relocation_rejected)
+        return 3;
+
+    bool repeated_relocation_rejected = false;
+    try {
+        zlink::framework::spot_node_builder_t builder;
+        builder.add_spot_factory<contract_context_spot_t> (
+          "repeated-policy", spot_factory,
+          [] (auto &factory) {
+              factory.disable_relocation ();
+              factory.recreate_on_relocation ();
+          });
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        repeated_relocation_rejected =
+          error.kind ()
+          == zlink::framework::framework_error_kind_t::invalid_configuration;
+    }
+    if (!repeated_relocation_rejected)
+        return 4;
+
+    zlink::framework::spot_node_builder_t valid_builder;
+    zlink::framework::user_spot_factory_builder_t<
+      contract_context_spot_t> *escaped_factory_builder = nullptr;
+    valid_builder.add_spot_factory<contract_context_spot_t> (
+      "valid-policy", spot_factory,
+      [&escaped_factory_builder] (auto &factory) {
+          escaped_factory_builder = &factory;
+          factory
+            .template preserve_state_with<
+              contract_context_spot_relocation_adapter_t> ();
+      });
+    bool sealed_builder_rejected = false;
+    try {
+        escaped_factory_builder->set_stable_type_limit (10);
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        sealed_builder_rejected =
+          error.kind ()
+          == zlink::framework::framework_error_kind_t::invalid_configuration;
+    }
+    if (!sealed_builder_rejected)
+        return 6;
+
+    bool user_limit_rejected = false;
+    try {
+        zlink::framework::user_spot_factory_builder_t<
+          contract_context_spot_t> builder;
+        builder.set_stable_type_limit (0);
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        user_limit_rejected =
+          error.kind ()
+          == zlink::framework::framework_error_kind_t::invalid_configuration;
+    }
+    bool instance_limit_rejected = false;
+    try {
+        zlink::framework::instance_spot_factory_builder_t<
+          contract_context_instance_spot_t> builder;
+        builder.set_stable_type_limit (-1);
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        instance_limit_rejected =
+          error.kind ()
+          == zlink::framework::framework_error_kind_t::invalid_configuration;
+    }
+    if (!user_limit_rejected || !instance_limit_rejected)
+        return 7;
 
     // Exhaustive over every declared kind, not a hand-listed subset. The retriable
     // column is fixed by 05-framework-api.ko.md 13. A subset list silently stops

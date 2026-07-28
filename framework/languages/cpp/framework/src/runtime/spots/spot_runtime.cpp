@@ -2101,11 +2101,15 @@ spot_node_builder_t::accept_implicit_route_mesh (std::string route_channel_name,
     return *this;
 }
 
-spot_node_builder_t &spot_node_builder_t::add_spot_factory (std::string spot_name,
-                                                            std::type_index spot_type,
-                                                            bool entry_spot,
-                                                            user_spot_execution_mode_t execution_mode,
-                                                            bool instance_spot)
+spot_node_builder_t &spot_node_builder_t::add_spot_factory_erased (
+  std::string spot_name,
+  std::type_index spot_type,
+  bool entry_spot,
+  user_spot_execution_mode_t execution_mode,
+  bool instance_spot,
+  std::int32_t stable_type_limit,
+  spot_relocation_readiness_mode_t relocation_readiness,
+  detail::factory_relocation_configuration_t relocation)
 {
     if (entry_spot && execution_mode != user_spot_execution_mode_t::spot_wide) {
         throw framework_exception_t (
@@ -2127,6 +2131,12 @@ spot_node_builder_t &spot_node_builder_t::add_spot_factory (std::string spot_nam
     if (instance_spot) {
         _state->snapshot.instance_spot_names.push_back (spot_name);
     }
+    if (!entry_spot) {
+        _state->spot_factory_relocations.emplace (spot_name, relocation);
+        _state->spot_stable_type_limits.emplace (spot_name, stable_type_limit);
+        _state->spot_relocation_readiness.emplace (
+          spot_name, relocation_readiness);
+    }
     _state->snapshot.spot_execution_modes.emplace (spot_name, execution_mode);
     _state->snapshot.spot_names.push_back (std::move (spot_name));
     return *this;
@@ -2142,49 +2152,38 @@ spot_node_builder_t &spot_node_builder_t::add_actor_factory_erased (
   std::function<void (void *, const zlink::message_t &, serializer_registry_t &)>
     deserialize_instance,
   std::function<std::shared_ptr<void> (actor_context_t)> create_context_instance,
-  detail::actor_join_completion_callback_t on_join_completed)
+  detail::actor_join_completion_callback_t on_join_completed,
+  detail::factory_relocation_configuration_t relocation,
+  std::function<task_t<std::vector<std::byte>> (
+    void *, std::stop_token)> capture,
+  std::function<task_t<void> (
+    void *, std::vector<std::byte>, std::stop_token)> restore)
 {
     if ((!create_instance && !create_context_instance)
         || !configure_instance || !serialize_instance || !deserialize_instance) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "actor factory callback must not be empty");
     }
+    if (relocation.kind
+          == detail::factory_relocation_kind_t::preserve_state
+        && (!capture || !restore)) {
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Actor preserve-state relocation callbacks must not be empty");
+    }
     const auto [_, inserted] = _state->actor_factories.emplace (
       actor_type,
       detail::spot_node_builder_state_t::actor_factory_registration_t{
-        actor_instance_type, std::move (create_instance), std::move (configure_instance),
+        actor_instance_type, relocation,
+        std::move (create_instance), std::move (configure_instance),
         std::move (serialize_instance), std::move (deserialize_instance),
-        std::move (create_context_instance), std::move (on_join_completed)});
+        std::move (create_context_instance), std::move (on_join_completed),
+        std::move (capture), std::move (restore)});
     if (!inserted) {
         throw framework_exception_t (framework_error_kind_t::actor_already_exists,
                                      "duplicate actor factory registration");
     }
     _state->snapshot.actor_types.push_back (std::move (actor_type));
-    return *this;
-}
-
-spot_node_builder_t &spot_node_builder_t::add_actor_transfer_erased (
-  std::string actor_type,
-  std::type_index actor_instance_type,
-  std::function<task_t<message_t> (const void *)> transfer_out,
-  std::function<task_t<std::shared_ptr<void>> (std::string, message_t)> transfer_in)
-{
-    if (actor_type.empty () || is_blank (actor_type)) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "actor transfer name must not be empty");
-    }
-    if (!transfer_out || !transfer_in) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "actor transfer adapter callbacks must not be empty");
-    }
-    const auto [_, inserted] = _state->actor_transfers.emplace (
-      actor_type,
-      detail::spot_node_builder_state_t::actor_transfer_registration_t{
-        actor_instance_type, std::move (transfer_out), std::move (transfer_in)});
-    if (!inserted) {
-        throw framework_exception_t (framework_error_kind_t::actor_already_exists,
-                                     "duplicate actor transfer registration");
-    }
     return *this;
 }
 
@@ -2281,6 +2280,12 @@ task_t<std::vector<spot_info_t>> spot_node_builder_t::list_spots () const
 task_t<bool> spot_node_builder_t::close_spot (spot_id_t spot_id)
 {
     return detail::spot_node_runtime_t (_state).close_spot (std::move (spot_id));
+}
+
+void spot_node_builder_t::retain_factory_builder (std::shared_ptr<void> builder)
+{
+    std::lock_guard<std::recursive_mutex> lock (_state->mutex);
+    _state->factory_builder_lifetimes.push_back (std::move (builder));
 }
 
 std::optional<std::string> spot_node_builder_t::spot_name_for (spot_id_t spot_id) const
@@ -3273,7 +3278,8 @@ spot_node_runtime_t::transfer_actor_out (const actor_ref_t &actor_ref,
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     const auto key = actor_key (actor_ref);
-    const auto transfer = _state->actor_transfers.find (std::string (actor_ref.actor_type ()));
+    const auto factory =
+      _state->actor_factories.find (std::string (actor_ref.actor_type ()));
     const auto actor = _state->actor_instances.find (key);
     const auto source_spot = _state->actor_spot_ids.find (key);
     if (actor == _state->actor_instances.end () || !actor->second
@@ -3281,6 +3287,17 @@ spot_node_runtime_t::transfer_actor_out (const actor_ref_t &actor_ref,
         return result_t<remote_actor_transfer_t>::failure (
           framework_error_kind_t::actor_route_not_found,
           "source actor is not joined to a local spot");
+    }
+    if (factory == _state->actor_factories.end ()) {
+        return result_t<remote_actor_transfer_t>::failure (
+          framework_error_kind_t::actor_route_not_found,
+          "source actor factory is not registered");
+    }
+    if (factory->second.relocation.kind
+        == detail::factory_relocation_kind_t::disabled) {
+        return result_t<remote_actor_transfer_t>::failure (
+          framework_error_kind_t::relocation_disabled,
+          "Actor relocation is disabled");
     }
     if (transfer_id.empty ()) {
         transfer_id = key;
@@ -3309,19 +3326,26 @@ spot_node_runtime_t::transfer_actor_out (const actor_ref_t &actor_ref,
                                static_cast<double> (pending));
         }
     }
-    if (transfer == _state->actor_transfers.end ()) {
+    if (factory->second.relocation.kind
+        != detail::factory_relocation_kind_t::preserve_state) {
         return result_t<remote_actor_transfer_t>::success (
           remote_actor_transfer_t{source_spot->second, zlink::message_t{}});
     }
     try {
-        auto state = transfer->second.transfer_out (actor->second.get ()).result ();
+        auto state = factory->second.capture (
+          actor->second.get (), {}).result ();
         if (!state) {
             _state->actor_transfer_coordinator.cancel_move (key);
             return detail::propagate_failure<remote_actor_transfer_t> (state, "actor transfer-out failed");
         }
+        std::string payload;
+        payload.resize (state.value ().size ());
+        std::transform (
+          state.value ().begin (), state.value ().end (), payload.begin (),
+          [] (std::byte value) { return static_cast<char> (value); });
         return result_t<remote_actor_transfer_t>::success (remote_actor_transfer_t{
           source_spot->second,
-          detail::message_to_raw (state.value (), *_state->channel_runtime->serializers)});
+          zlink::message_t::from (payload)});
     }
     catch (const framework_exception_t &error) {
         _state->actor_transfer_coordinator.cancel_move (key);
@@ -3657,7 +3681,6 @@ spot_node_runtime_t::prepare_remote_actor_to_spot (std::string transfer_id,
           framework_error_kind_t::request_protocol_error,
           "remote actor commit has no matching admission");
     }
-    const auto transfer = _state->actor_transfers.find (std::string (actor_ref.actor_type ()));
     auto factory = actor_factory_unlocked (actor_ref);
     auto context = find_context (target_spot_id);
     if (!factory || !context || !context->_state->spot_instance) {
@@ -3694,33 +3717,36 @@ spot_node_runtime_t::prepare_remote_actor_to_spot (std::string transfer_id,
       context->_state->mesh_name);
     std::shared_ptr<void> actor;
     try {
-        if (transfer == _state->actor_transfers.end ()) {
-            auto &registration = factory.value ().get ();
-            actor = registration.create_context_instance
-                      ? registration.create_context_instance (
-                          std::move (committed_context))
-                      : registration.create_instance (
-                          std::string (actor_ref.actor_id ()));
-        } else {
-            if (factory.value ().get ().create_context_instance) {
+        auto &registration = factory.value ().get ();
+        actor = registration.create_context_instance
+                  ? registration.create_context_instance (
+                      std::move (committed_context))
+                  : registration.create_instance (
+                      std::string (actor_ref.actor_id ()));
+        if (actor && !registration.create_context_instance) {
+            registration.configure_instance (
+              actor.get (), committed, &committed_context);
+        }
+        if (actor
+            && registration.relocation.kind
+                 == detail::factory_relocation_kind_t::preserve_state) {
+            const auto bytes = transfer_state.to_bytes ();
+            std::vector<std::byte> payload;
+            payload.reserve (bytes.size ());
+            std::transform (
+              bytes.begin (), bytes.end (), std::back_inserter (payload),
+              [] (std::uint8_t value) {
+                  return static_cast<std::byte> (value);
+              });
+            auto restored = registration.restore (
+              actor.get (), std::move (payload), {}).result ();
+            if (!restored) {
                 fail_target_commit (false);
                 return result_t<actor_join_reply_t>::failure (
-                  framework_error_kind_t::invalid_configuration,
-                  "Exact Actor factories require restore into the factory-created Actor");
+                  restored.error_kind (),
+                  restored.error () ? restored.error ()->what ()
+                                     : "actor restore failed");
             }
-            auto materialized = transfer->second
-                                  .transfer_in (std::string (actor_ref.actor_id ()),
-                                                message_t::from_raw (
-                                                  std::move (transfer_state),
-                                                  context->_state->channel_runtime->serializers))
-                                  .result ();
-            if (!materialized) {
-                fail_target_commit (false);
-                return result_t<actor_join_reply_t>::failure (
-                  materialized.error_kind (), materialized.error () ? materialized.error ()->what ()
-                                                                    : "actor transfer-in failed");
-            }
-            actor = std::move (materialized.value ());
         }
     }
     catch (const framework_exception_t &error) {
@@ -3743,22 +3769,6 @@ spot_node_runtime_t::prepare_remote_actor_to_spot (std::string transfer_id,
                                                       "actor materialization returned no actor");
     }
 
-    try {
-        if (!factory.value ().get ().create_context_instance) {
-            factory.value ().get ().configure_instance (
-              actor.get (), committed, &committed_context);
-        }
-    }
-    catch (const std::exception &error) {
-        fail_target_commit (false);
-        return result_t<actor_join_reply_t>::failure (framework_error_kind_t::request_failed,
-                                                      error.what ());
-    }
-    catch (...) {
-        fail_target_commit (false);
-        return result_t<actor_join_reply_t>::failure (framework_error_kind_t::request_failed,
-                                                      "target actor configuration failed");
-    }
     const auto admission =
       context->_state->actor_admissions.find (factory.value ().get ().actor_type);
     if (admission == context->_state->actor_admissions.end ()) {

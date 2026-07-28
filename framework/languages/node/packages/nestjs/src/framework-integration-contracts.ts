@@ -10,10 +10,8 @@ import type {
   ZLinkLocationOptionValues,
   ZLinkLocationStore,
   ZLinkRelocationStore,
-  ZLinkRelocationPolicy,
-  ZLinkActorFactoryOptions,
-  ZLinkInstanceSpotFactoryOptions,
-  ZLinkUserSpotFactoryOptions,
+  ZLinkSpotRelocationReadinessMode,
+  ZLinkUserSpotExecutionMode,
   ZLinkInstanceSpot,
   ZLinkMessageSerializer,
   ZLinkMetricsOptions,
@@ -79,7 +77,6 @@ export interface ZLinkFrameworkRegistration {
   readonly codecs: ZLinkCodecRegistration;
   readonly requestTimeoutMs?: number;
   readonly actorFactories: ReadonlyMap<string, Type>;
-  readonly actorTransferAdapters: ReadonlyMap<Type, Type>;
   readonly actorTransferTimeoutMs?: number;
   readonly messageFollowDurationMs: number;
   readonly spotFactories: ReadonlySet<Type<ZLinkSpot>>;
@@ -133,7 +130,6 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly maintenanceWave?: string;
   readonly requestTimeoutMs?: number;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
-  readonly actorTransferAdapters?: ReadonlyMap<Type, Type>;
   readonly actorTransferTimeoutMs?: number;
   readonly messageFollowDurationMs?: number;
   readonly channels?: Readonly<Record<string, ZLinkChannelOptions>>;
@@ -238,7 +234,7 @@ export interface ZLinkSpotNodeOptions {
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly spotFactoryRegistrations?: Readonly<Record<
     string,
-    ZLinkObjectFactoryRegistration<ZLinkSpot, ZLinkSpot, ZLinkUserSpotFactoryOptions>
+    ZLinkObjectFactoryRegistration<ZLinkSpot, ZLinkSpot, ZLinkUserSpotFactoryConfiguration>
   >>;
   readonly instanceSpotFactories?: Readonly<Record<string, Type<ZLinkInstanceSpot>>>;
   readonly instanceSpotFactoryRegistrations?: Readonly<Record<
@@ -246,7 +242,7 @@ export interface ZLinkSpotNodeOptions {
     ZLinkObjectFactoryRegistration<
       ZLinkInstanceSpot,
       ZLinkInstanceSpot,
-      ZLinkInstanceSpotFactoryOptions
+      ZLinkInstanceSpotFactoryConfiguration
     >
   >>;
   readonly actorFactories?: Readonly<Record<string, Type> | Map<string, Type>>;
@@ -255,7 +251,7 @@ export interface ZLinkSpotNodeOptions {
     ZLinkObjectFactoryRegistration<
       ZLinkActor,
       ZLinkActorFactory,
-      ZLinkActorFactoryOptions
+      ZLinkActorFactoryConfiguration
     >
   >>;
   readonly meshChannels?: Readonly<Record<string, ZLinkMeshChannelOptions>>;
@@ -282,7 +278,27 @@ export interface ZLinkSpotNodeOptions {
 interface ZLinkObjectFactoryRegistration<T, TImplementation = T, TOptions = unknown> {
   readonly implementation: Type<TImplementation>;
   readonly options?: TOptions;
-  readonly relocation: ZLinkRelocationPolicy<T>;
+  readonly relocation: ZLinkRelocationConfiguration<T>;
+}
+
+declare const zlinkRelocationConfigurationBrand: unique symbol;
+
+export type ZLinkRelocationConfiguration<T> = (
+  | { readonly kind: 'disabled' }
+  | { readonly kind: 'recreate' }
+  | { readonly kind: 'snapshot'; readonly adapterType: Type }
+) & { readonly [zlinkRelocationConfigurationBrand]?: T };
+
+export interface ZLinkActorFactoryConfiguration {}
+
+export interface ZLinkUserSpotFactoryConfiguration {
+  readonly stableTypeLimit?: number;
+  readonly executionMode: ZLinkUserSpotExecutionMode;
+  readonly relocationReadiness: ZLinkSpotRelocationReadinessMode;
+}
+
+export interface ZLinkInstanceSpotFactoryConfiguration {
+  readonly stableTypeLimit?: number;
 }
 
 export interface ZLinkMeshChannelOptions {

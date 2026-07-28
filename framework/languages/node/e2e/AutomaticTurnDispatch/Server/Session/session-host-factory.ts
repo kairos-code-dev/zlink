@@ -74,8 +74,8 @@ export async function startSessionHost(): Promise<void> {
           for (const endpoint of options.playSpotRouteEndpoints) routeMesh.peerConnections().connect(endpoint);
           const spotMesh = builder.addRouteMesh(AutomaticTurnDispatchNames.spotChannel)
             .routingId(options.rid)
-            .listen(options.spotRouterEndpoint)
-            .addEntrySpot(AwaitSessionEntrySpot);
+            .listen(options.spotRouterEndpoint);
+          spotMesh.objects().server().addEntrySpot(AwaitSessionEntrySpot);
           spotMesh.channelName(AutomaticTurnDispatchNames.spotChannel);
           for (const peer of options.spotRouterPeers) spotMesh.peerConnections().connect(peer.rid, peer.endpoint);
           builder.addStreamNode(AutomaticTurnDispatchNames.streamNode)

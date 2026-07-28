@@ -241,7 +241,9 @@ int main (int argc, char **argv)
           .set_routing_id (zlink::routing_id_t::from (configuration.node_rid))
           .add_entry_spot<to_actor_e2e_spot_t> (
             [evidence_ptr] { return std::make_shared<to_actor_e2e_spot_t> (*evidence_ptr); })
-          .add_actor_factory<to_actor_e2e_actor_t> (e2e::actor_type_name);
+          .add_actor_factory<to_actor_e2e_actor_t> (
+            e2e::actor_type_name,
+            [] (auto &factory) { factory.disable_relocation (); });
         if (!configuration.caller_spot_endpoint.empty ()) {
             mesh.peer_connections ().connect (
               zlink::routing_id_t::from (configuration.caller_rid),

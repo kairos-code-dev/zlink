@@ -47,50 +47,54 @@ class support_user_actor_t
     actor_context_t context;
 };
 
-struct support_user_actor_transfer_state_t
+struct support_user_actor_relocation_state_t
 {
     std::string display_name;
     std::string role;
     std::string participant_id;
 };
 
-inline void to_json (nlohmann::json &json, const support_user_actor_transfer_state_t &value)
+inline void to_json (nlohmann::json &json, const support_user_actor_relocation_state_t &value)
 {
     json = {{"displayName", value.display_name},
             {"role", value.role},
             {"participantId", value.participant_id}};
 }
 
-inline void from_json (const nlohmann::json &json, support_user_actor_transfer_state_t &value)
+inline void from_json (const nlohmann::json &json, support_user_actor_relocation_state_t &value)
 {
     value.display_name = json.value ("displayName", std::string{});
     value.role = json.value ("role", std::string{});
     value.participant_id = json.value ("participantId", std::string{});
 }
 
-class support_user_actor_transfer_adapter_t final
-    : public actor_transfer_adapter_t<support_user_actor_t>
+class support_user_actor_relocation_adapter_t final
+    : public actor_relocation_adapter_t<support_user_actor_t>
 {
   public:
-    task_t<zlink::framework::message_t>
-    transfer_out (const support_user_actor_t &actor) override
+    task_t<std::vector<std::byte>>
+    capture (support_user_actor_t &actor, std::stop_token) override
     {
-        return task_t<zlink::framework::message_t> (
-          result_t<zlink::framework::message_t>::success (zlink::framework::message_t::from (
-            support_user_actor_transfer_state_t{actor.display_name, actor.role,
-                                                actor.participant_id})));
+        const auto message = zlink::message_t::from_json (
+          support_user_actor_relocation_state_t{
+            actor.display_name, actor.role, actor.participant_id});
+        co_return std::vector<std::byte> (
+          message.bytes ().begin (), message.bytes ().end ());
     }
 
-    task_t<support_user_actor_t>
-    transfer_in (std::string actor_id, zlink::framework::message_t state) override
+    task_t<void>
+    restore (support_user_actor_t &actor,
+             std::vector<std::byte> payload,
+             std::stop_token) override
     {
-        auto transferred = state.decode<support_user_actor_transfer_state_t> ();
-        support_user_actor_t actor (std::move (actor_id));
-        actor.display_name = std::move (transferred.display_name);
-        actor.role = std::move (transferred.role);
-        actor.participant_id = std::move (transferred.participant_id);
-        return task_t<support_user_actor_t> (
-          result_t<support_user_actor_t>::success (std::move (actor)));
+        const auto message = zlink::message_t::from (
+          std::span<const std::byte> (payload.data (), payload.size ()));
+        auto relocated =
+          message.parse_json<support_user_actor_relocation_state_t> ();
+        actor.display_name = std::move (relocated.display_name);
+        actor.role = std::move (relocated.role);
+        actor.participant_id = std::move (relocated.participant_id);
+        co_return;
     }
 };
 
@@ -923,13 +927,22 @@ int main (int argc, char **argv)
         support_spot.listen (topology.support_spot_router_endpoint)
           .add_entry_spot<support_entry_spot_t> (
             [runtime_ptr] { return std::make_shared<support_entry_spot_t> (*runtime_ptr); })
-          .add_spot<conversation_spot_t> (
+          .add_spot_factory<conversation_spot_t> (
             support_conversation_spot,
-            [runtime_ptr] { return std::make_shared<conversation_spot_t> (*runtime_ptr); })
-          .add_actor_factory<support_user_actor_factory_t> (support_user_actor_type)
-          .add_actor_transfer_adapter<support_user_actor_t,
-                                      support_user_actor_transfer_adapter_t> (
-            support_user_actor_type);
+            [runtime_ptr] (spot_context_t) {
+                return std::make_shared<conversation_spot_t> (
+                  *runtime_ptr);
+            },
+            [] (auto &factory) {
+                factory.disable_relocation ();
+            })
+          .add_actor_factory<support_user_actor_factory_t> (
+            support_user_actor_type,
+            [] (auto &factory) {
+                factory
+                  .template preserve_state_with<
+                    support_user_actor_relocation_adapter_t> ();
+            });
     });
     return app.run (argc, argv);
 }

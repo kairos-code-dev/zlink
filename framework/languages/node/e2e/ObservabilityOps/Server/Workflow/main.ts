@@ -171,10 +171,14 @@ Module({
           .enablePublisher(options.fanoutEndpoint)
           .enableSubscriber()
           .addPublishHandler('WorkflowProjected', ProjectionHandler);
-        builder.addRouteMesh(WORKFLOW_MESH)
-          .listen(options.routerEndpoint).routingId(options.rid)
-          .addSpotFactory(WorkflowSpot)
-          .channelName(WORKFLOW_MESH);
+        const mesh = builder.addRouteMesh(WORKFLOW_MESH)
+          .listen(options.routerEndpoint).routingId(options.rid);
+        mesh.objects().server().addSpotFactory(
+          WorkflowSpot.name,
+          WorkflowSpot,
+          (factory) => factory.disableRelocation()
+        );
+        mesh.channelName(WORKFLOW_MESH);
         return builder.build();
       }
     })

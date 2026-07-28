@@ -78,10 +78,7 @@ test('successor resumes committed recovery only after the durable lease expires'
 });
 
 test('framework host routes Core TransferControl records to the configured authority store', async () => {
-  class Player {}
-  class PlayerTransferAdapter {}
   const registration = framework.createFrameworkRegistration({
-    actorTransferAdapters: new Map([[Player, PlayerTransferAdapter]]),
     locations: { useInMemoryStores: true }
   });
   const host = new framework.ZLinkFrameworkRuntimeHost({ registration });

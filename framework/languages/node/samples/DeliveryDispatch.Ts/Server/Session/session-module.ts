@@ -40,9 +40,14 @@ function createSessionModule() {
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.routeMesh)
-              .listen(config.sessionSpotRouterEndpoint).setRoutingIdPrefix('delivery-customer')
-              .addEntrySpot(CustomerEntrySpot)
-              .actorFactory(SampleNames.customerActorType, CustomerActorFactory);
+              .listen(config.sessionSpotRouterEndpoint).setRoutingIdPrefix('delivery-customer');
+          const objectServer = mesh.objects().server();
+          objectServer.addEntrySpot(CustomerEntrySpot);
+          objectServer.addActorFactory(
+            SampleNames.customerActorType,
+            CustomerActorFactory,
+            (factory) => factory.disableRelocation()
+          );
           mesh.channelName(SampleNames.routeMesh);
           return builder.addStreamNode(SampleNames.customerStreamNode)
               .bind(config.sessionStreamEndpoint)

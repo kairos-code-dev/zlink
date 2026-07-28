@@ -87,33 +87,6 @@ test('Object Client RouteMesh rejects application Node-direct handlers', () => {
   );
 });
 
-test('Node registration requires durable Actor transfer authority when transfer adapters are enabled', () => {
-  class Player {}
-  class PlayerTransferAdapter {}
-  const base = {
-    actorTransferAdapters: new Map([[Player, PlayerTransferAdapter]])
-  };
-
-  assert.throws(
-    () => framework.createFrameworkRegistration(base),
-    /Actor transfer adapters require a durable location store with Actor transfer authority/
-  );
-  assert.throws(
-    () => framework.createFrameworkRegistration({
-      ...base,
-      locations: { useInMemoryStores: true }
-    }),
-    /Actor transfer adapters require a durable location store with Actor transfer authority/
-  );
-  assert.throws(
-    () => framework.createFrameworkRegistration({
-      ...base,
-      locations: { storeInstance: { updateActor() {} } }
-    }),
-    /Actor transfer adapters require a durable location store with Actor transfer authority/
-  );
-});
-
 test('Node registration rejects invalid Spot timer options before startup', () => {
   class GameSpot {}
   class EntrySpot {}

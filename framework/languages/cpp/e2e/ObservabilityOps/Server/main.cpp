@@ -744,26 +744,36 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
                         return std::make_shared<obs_entry_spot_t> (
                           std::move (context));
                     })
-                  .add_spot<room_spot_t> (
+                  .add_spot_factory<room_spot_t> (
                     spot_type,
                     [timer_enabled = options.room_timer_enabled] (
                       fw::spot_context_t context) {
                         return std::make_shared<room_spot_t> (
                           std::move (context), timer_enabled);
+                    },
+                    [] (auto &factory) {
+                        factory.disable_relocation ();
                     })
-                  .add_actor_factory<obs_actor_factory_t> (obs::actor_type);
+                  .add_actor_factory<obs_actor_factory_t> (
+                    obs::actor_type,
+                    [] (auto &factory) {
+                        factory.disable_relocation ();
+                    });
             } else {
                 auto spot = framework.add_route_mesh (mesh_name);
                 spot.channel_name (mesh_name);
                 spot.set_routing_id (zlink::routing_id_t::from (options.node_rid))
                   .listen (options.spot_router_endpoint)
-                  .add_spot<room_spot_t> (
+                  .add_spot_factory<room_spot_t> (
                     spot_type,
                     [timer_enabled = options.room_timer_enabled,
                      workflow_events] (fw::spot_context_t context) {
                         return std::make_shared<room_spot_t> (
                           std::move (context), timer_enabled,
                           workflow_events);
+                    },
+                    [] (auto &factory) {
+                        factory.disable_relocation ();
                     });
             }
         }

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkMessageFlowLogMode, zlinkDisabledRelocation } from '@zlink-systems/framework';
+import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import type { ZLinkRouteClient, ZLinkSpotManager, ZLinkSpotOutbound } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
@@ -123,20 +123,17 @@ export async function startPlayHost(): Promise<void> {
           objects.addSpotFactory(
             ScenarioUserSpot.name,
             ScenarioUserSpot,
-            undefined,
-            zlinkDisabledRelocation()
+            (factory) => factory.disableRelocation()
           );
           objects.addSpotFactory(
             ScenarioAlternateSpot.name,
             ScenarioAlternateSpot,
-            undefined,
-            zlinkDisabledRelocation()
+            (factory) => factory.disableRelocation()
           );
           objects.addActorFactory(
             SpotServiceNames.actorType,
             ScenarioActorFactory,
-            undefined,
-            zlinkDisabledRelocation()
+            (factory) => factory.disableRelocation()
           );
           spot.channel(SpotServiceNames.spotChannel).server();
           if (options.externalClientEndpoint !== undefined) {

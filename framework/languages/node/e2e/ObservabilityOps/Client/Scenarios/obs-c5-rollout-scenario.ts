@@ -1,4 +1,4 @@
-// OBS-C5: Retire eligible target 부재 시나리오를 검증한다.
+// OBS-C5: Relocate eligible target 부재 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   createActor,

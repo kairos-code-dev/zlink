@@ -107,6 +107,8 @@ public final class ZLinkFrameworkRuntime
         new java.util.concurrent.CopyOnWriteArrayList<>();
     private final java.util.concurrent.atomic.AtomicBoolean drainStarted =
         new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final ZLinkRelocationShutdownGate relocationShutdown =
+        new ZLinkRelocationShutdownGate();
     private final java.util.concurrent.atomic.AtomicBoolean drainTerminalStarted =
         new java.util.concurrent.atomic.AtomicBoolean(false);
     private final ZLinkCloseGate closeGate = new ZLinkCloseGate();
@@ -225,6 +227,8 @@ public final class ZLinkFrameworkRuntime
                     handlerFactory,
                     this.meshDrains));
         }
+        this.meshNodes.nodesByName().forEach((meshName, node) ->
+            this.channels.registerSpotRouterNode(meshName, node.spotNode()));
         if (this.locationStores != null
             && this.locationStores.unifiedStore()
                 instanceof systems.zlink.framework.locations.ZLinkLocationStore store) {
@@ -695,7 +699,9 @@ public final class ZLinkFrameworkRuntime
                 && effectiveTerminationIntent.compareAndSet(
                     ZLinkTerminationIntent.RETIRE,
                     ZLinkTerminationIntent.SHUTDOWN)) {
-                startTermination(current, deadline);
+                if (relocationShutdown.requestShutdown()) {
+                    startTermination(current, deadline);
+                }
             }
             return independentWaiter(current);
         }
@@ -741,14 +747,21 @@ public final class ZLinkFrameworkRuntime
                 activeTermination.compareAndSet(candidate, null);
                 return;
             }
+            if (!relocationShutdown.beginRelocationUnit()) {
+                startTermination(candidate, deadline);
+                return;
+            }
             publishRuntimeState(ZLinkFrameworkRuntimeState.RETIRING);
             java.time.Instant retireDeadline = terminationDeadline.get();
             java.util.concurrent.CompletionStage<Void> relocation =
                 spotRetire == null
                     ? java.util.concurrent.CompletableFuture
                         .completedFuture(null)
-                    : spotRetire.relocateAll(retireDeadline);
+                    : spotRetire.relocateAll(
+                        retireDeadline,
+                        relocationShutdown::stopBeforeNextUnit);
             relocation.whenComplete((ignored, relocationFailure) -> {
+                relocationShutdown.finishRelocationUnit();
                 if (relocationFailure == null) {
                     startTermination(candidate, deadline);
                 } else {

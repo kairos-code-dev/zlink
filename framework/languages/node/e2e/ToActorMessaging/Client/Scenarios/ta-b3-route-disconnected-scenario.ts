@@ -1,7 +1,7 @@
 // TA-B3: route 미연결 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';
-import type { ActorCallResponse, ActorRefSnapshot } from '../../Shared/messages';
+import type { ActorCallResponse, ActorRefPayload } from '../../Shared/messages';
 import {
   type ActorEvidence, assertCall, assertFailure, ensureActor, requireEvidence, requireNoEvidence
 } from '../Support/actor-scenario-support';
@@ -27,7 +27,7 @@ export async function runTaB3(options: ClientOptions): Promise<void> {
 
 async function waitForRouteState(
   options: ClientOptions,
-  actor: ActorRefSnapshot,
+  actor: ActorRefPayload,
   expected: 'connected' | 'disconnected'
 ): Promise<void> {
   await waitUntil(async () => {

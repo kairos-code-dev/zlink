@@ -94,7 +94,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(12):
+    for _ in range(18):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -168,12 +168,15 @@ gradle_run() {
 }
 
 install_dist() {
-  if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-A6" ]]; then
+  if [[ "${SCENARIO}" == "RM-A3" ]]; then
+    gradle_run :Server:ObjectClient:installDist
+  elif [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-A6" ]]; then
     gradle_run \
       :Client:installDist \
       :Server:Provider:installDist \
       :Server:Workflow:installDist \
-      :Server:Consumer:installDist
+      :Server:Consumer:installDist \
+      :Server:ObjectClient:installDist
   else
     gradle_run \
       :Client:installDist \
@@ -197,6 +200,10 @@ workflow_bin() {
 
 consumer_bin() {
   echo "${e2e_build_dir}/Server-Consumer/install/registry-messaging-consumer/bin/registry-messaging-consumer"
+}
+
+object_client_bin() {
+  echo "${e2e_build_dir}/Server-ObjectClient/install/registry-messaging-object-client/bin/registry-messaging-object-client"
 }
 
 start_provider() {
@@ -260,6 +267,227 @@ start_consumer() {
   "$(consumer_bin)" --config "${config_path}" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
   pids+=("$!")
   wait_health "${name}" "${http_port}"
+}
+
+start_object_client() {
+  local rid="$1"
+  local route_endpoint="$2"
+  local http_endpoint="$3"
+  local peer_connections="${4:-}"
+  local server_weight="${5:-}"
+  local config_path="${config_dir}/${rid}-$(date +%s%N).properties"
+  {
+    echo "e2e.client-rid=${rid}"
+    echo "e2e.route-endpoint=${route_endpoint}"
+    echo "e2e.peer-connections=${peer_connections}"
+    echo "e2e.server-weight=${server_weight}"
+    echo "e2e.http-port=$(port_of "${http_endpoint}")"
+    echo 'server.port=${e2e.http-port}'
+    echo "e2e.redis-location-endpoint=${redis_location_endpoint}"
+    echo "e2e.location-key-prefix=${location_key_prefix}"
+  } >"${config_path}"
+  chmod 600 "${config_path}"
+  "$(object_client_bin)" --config "${config_path}" \
+    >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+  LAST_PID="$!"
+  pids+=("${LAST_PID}")
+  wait_port "${rid}-route" "${route_endpoint}"
+  wait_health "${rid}" "${http_endpoint}"
+}
+
+start_connection_proxy() {
+  local name="$1"
+  local listen_endpoint="$2"
+  local upstream_endpoint="$3"
+  local evidence="${log_dir}/${name}-connections.log"
+  local ready="${log_dir}/${name}-ready"
+  python3 Support/tcp_connection_proxy.py \
+    --listen-port "$(port_of "${listen_endpoint}")" \
+    --upstream-port "$(port_of "${upstream_endpoint}")" \
+    --evidence "${evidence}" \
+    --ready "${ready}" \
+    >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
+  LAST_PID="$!"
+  pids+=("${LAST_PID}")
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
+    [[ -f "${ready}" ]] && return 0
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
+  done
+  echo "Timed out waiting for ${name} proxy" >&2
+  return 1
+}
+
+wait_peer_state() {
+  local http_endpoint="$1"
+  local peer_rid="$2"
+  local expected_state="$3"
+  local expected_ready="$4"
+  local timeout_seconds="${5:-10}"
+  python3 - "$(port_of "${http_endpoint}")" "${peer_rid}" \
+    "${expected_state}" "${expected_ready}" "${timeout_seconds}" <<'PY'
+import json
+import sys
+import time
+import urllib.request
+
+port, peer_rid, expected_state, expected_ready, timeout_text = sys.argv[1:]
+expected_ready = expected_ready == "true"
+deadline = time.monotonic() + float(timeout_text)
+last = None
+while time.monotonic() < deadline:
+    try:
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/rm-a3/status",
+                timeout=1) as response:
+            last = json.load(response)
+        matching = [peer for peer in last["peers"]
+                    if peer["rid"] == peer_rid]
+        if (len(matching) == 1
+                and matching[0]["state"] == expected_state
+                and matching[0]["ready"] is expected_ready):
+            print(json.dumps(last, sort_keys=True))
+            raise SystemExit(0)
+    except (OSError, ValueError, KeyError):
+        pass
+    time.sleep(0.1)
+raise SystemExit(
+    f"timed out waiting for {peer_rid}={expected_state}/"
+    f"{expected_ready}; last={last!r}")
+PY
+}
+
+verify_not_required_stable() {
+  local http_endpoint="$1"
+  local peer_rid="$2"
+  python3 - "$(port_of "${http_endpoint}")" "${peer_rid}" <<'PY'
+import json
+import sys
+import time
+import urllib.request
+
+port, peer_rid = sys.argv[1:]
+deadline = time.monotonic() + 20
+observations = 0
+while time.monotonic() < deadline:
+    with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/rm-a3/status",
+            timeout=1) as response:
+        status = json.load(response)
+    matching = [peer for peer in status["peers"]
+                if peer["rid"] == peer_rid]
+    if len(matching) != 1:
+        raise SystemExit(f"expected one monitored peer: {status!r}")
+    peer = matching[0]
+    if (peer["state"] != "not_required" or peer["ready"]
+            or peer["lastFailure"] != ""
+            or status["readyPeerCount"] != 0):
+        raise SystemExit(
+            "NotRequired entered reconnect/liveness accounting: "
+            f"{status!r}")
+    observations += 1
+    time.sleep(0.25)
+print(f"rm-a3 stable-not-required observations={observations}")
+PY
+}
+
+verify_node_direct_not_found() {
+  local http_endpoint="$1"
+  local target_rid="$2"
+  python3 - "$(port_of "${http_endpoint}")" "${target_rid}" <<'PY'
+import json
+import sys
+import urllib.request
+
+port, target_rid = sys.argv[1:]
+request = urllib.request.Request(
+    f"http://127.0.0.1:{port}/rm-a3/node-direct",
+    data=json.dumps({"targetRid": target_rid}).encode(),
+    headers={"Content-Type": "application/json"},
+    method="POST")
+with urllib.request.urlopen(request, timeout=3) as response:
+    result = json.load(response)
+if result.get("terminal") != "NotFound":
+    raise SystemExit(f"Object Client Node direct was not NotFound: {result!r}")
+for field in ("sendErrorKind", "requestErrorKind"):
+    if result.get(field) != "REQUEST_TARGET_NOT_FOUND":
+        raise SystemExit(f"Object Client lost typed {field}: {result!r}")
+print("rm-a3 node-direct send=request=REQUEST_TARGET_NOT_FOUND")
+PY
+}
+
+crash_pid() {
+  local pid="$1"
+  local label="$2"
+  local status
+  kill -9 "${pid}"
+  set +e
+  wait "${pid}"
+  status="$?"
+  set -e
+  if [[ "${status}" != 137 ]]; then
+    echo "${label} exited ${status} after SIGKILL; expected 137" >&2
+    return 1
+  fi
+}
+
+run_rm_a3() {
+  echo "rm-a3 phase=automatic-not-required"
+  start_object_client auto-client-a \
+    "${RM_A3_ROUTE_A}" "${RM_A3_HTTP_A}"
+  local auto_a_pid="${LAST_PID}"
+  start_object_client auto-client-b \
+    "${RM_A3_ROUTE_B}" "${RM_A3_HTTP_B}"
+  local auto_b_pid="${LAST_PID}"
+  wait_peer_state "${RM_A3_HTTP_A}" auto-client-b not_required false
+  wait_peer_state "${RM_A3_HTTP_B}" auto-client-a not_required false
+  verify_node_direct_not_found "${RM_A3_HTTP_A}" auto-client-b
+  verify_not_required_stable "${RM_A3_HTTP_A}" auto-client-b
+  stop_pid "${auto_a_pid}"
+  stop_pid "${auto_b_pid}"
+
+  echo "rm-a3 phase=manual-not-required"
+  start_connection_proxy manual-proxy-a \
+    "${RM_A3_PROXY_A}" "${RM_A3_ROUTE_A}"
+  local proxy_a_pid="${LAST_PID}"
+  start_connection_proxy manual-proxy-b \
+    "${RM_A3_PROXY_B}" "${RM_A3_ROUTE_B}"
+  local proxy_b_pid="${LAST_PID}"
+  start_object_client manual-client-a \
+    "${RM_A3_ROUTE_A}" "${RM_A3_HTTP_A}" \
+    "manual-client-b@${RM_A3_PROXY_B}"
+  local manual_a_pid="${LAST_PID}"
+  start_object_client manual-client-b \
+    "${RM_A3_ROUTE_B}" "${RM_A3_HTTP_B}" \
+    "manual-client-a@${RM_A3_PROXY_A}"
+  local manual_b_pid="${LAST_PID}"
+  wait_peer_state "${RM_A3_HTTP_A}" manual-client-b not_required false
+  wait_peer_state "${RM_A3_HTTP_B}" manual-client-a not_required false
+  verify_not_required_stable "${RM_A3_HTTP_A}" manual-client-b
+  [[ "$(wc -l <"${log_dir}/manual-proxy-a-connections.log")" == 1 ]]
+  [[ "$(wc -l <"${log_dir}/manual-proxy-b-connections.log")" == 1 ]]
+  stop_pid "${manual_a_pid}"
+  stop_pid "${manual_b_pid}"
+  stop_pid "${proxy_a_pid}"
+  stop_pid "${proxy_b_pid}"
+
+  echo "rm-a3 phase=weight-zero-server-required"
+  start_object_client required-client-a \
+    "${RM_A3_ROUTE_A}" "${RM_A3_HTTP_A}"
+  local required_a_pid="${LAST_PID}"
+  start_object_client required-client-b \
+    "${RM_A3_ROUTE_B}" "${RM_A3_HTTP_B}" "" 0
+  local required_b_pid="${LAST_PID}"
+  wait_peer_state "${RM_A3_HTTP_A}" required-client-b ready true
+  wait_peer_state "${RM_A3_HTTP_B}" required-client-a ready true
+  crash_pid "${required_b_pid}" required-client-b
+  wait_peer_state \
+    "${RM_A3_HTTP_A}" required-client-b not_connected false 22
+  stop_pid "${required_a_pid}"
+  local pass_marker_tmp="${log_dir}/RM-A3.result.tmp"
+  local pass_marker="${log_dir}/RM-A3.result"
+  printf '%s\n' "result=passed" >"${pass_marker_tmp}"
+  mv -f "${pass_marker_tmp}" "${pass_marker}"
+  echo "scenario RM-A3 passed"
 }
 
 stop_pid() {
@@ -327,10 +555,15 @@ needs_workflow_role() {
   esac
 }
 
-read -r API_A API_B ROUTE_A ROUTE_B WORKFLOW_A HTTP_API_A HTTP_API_B HTTP_WORKFLOW HTTP_DISCOVERY_CONSUMER HTTP_DIRECT_CONSUMER HTTP_SINGLE_CONSUMER HTTP_BACKPRESSURE_CONSUMER <<<"$(reserve_ports)"
+read -r API_A API_B ROUTE_A ROUTE_B WORKFLOW_A HTTP_API_A HTTP_API_B HTTP_WORKFLOW HTTP_DISCOVERY_CONSUMER HTTP_DIRECT_CONSUMER HTTP_SINGLE_CONSUMER HTTP_BACKPRESSURE_CONSUMER RM_A3_ROUTE_A RM_A3_ROUTE_B RM_A3_HTTP_A RM_A3_HTTP_B RM_A3_PROXY_A RM_A3_PROXY_B <<<"$(reserve_ports)"
 
 start_redis_container
 install_dist
+
+if [[ "${SCENARIO}" == "RM-A3" ]]; then
+  run_rm_a3
+  exit 0
+fi
 
 if is_common_scenario "${SCENARIO}"; then
   SERVER_ROLES=(api-a api-b)
@@ -418,6 +651,10 @@ fi
 if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-A4" ]]; then
   run_client "RM-A4" rm-a4 env
   cat "${log_dir}/client-rm-a4.stdout.log"
+fi
+
+if [[ "${SCENARIO}" == "all" ]]; then
+  run_rm_a3
 fi
 
 grep -Rq "message flow" "${log_dir}"/*-flow.log

@@ -1,4 +1,4 @@
-// MON-C1: claim progress와 observer 격리 시나리오를 검증한다.
+// MON-C1: 느린 status observer 격리 시나리오를 검증한다.
 import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

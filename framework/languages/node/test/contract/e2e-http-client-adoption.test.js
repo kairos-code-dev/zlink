@@ -11,7 +11,11 @@ test('e2e clients use the public HTTP client package instead of raw fetch adapte
     .filter((file) => file.includes(`${path.sep}Client${path.sep}`));
   const combined = clientSources.map((file) => readFileSync(file, 'utf8')).join('\n');
 
-  assert.doesNotMatch(combined, /\bfetch\s*\(/, 'E2E Client source must not call global fetch.');
+  assert.doesNotMatch(
+    combined,
+    /(?:^|[^\w.])fetch\s*\(/m,
+    'E2E Client source must not call global fetch.'
+  );
   assert.doesNotMatch(combined, /\bbrowserE2eFetch\b/, 'E2E Client source must not use a harness HTTP adapter.');
   assert.equal(
     clientSources.filter((file) => file.endsWith(`${path.sep}Support${path.sep}http-client.ts`)).length,

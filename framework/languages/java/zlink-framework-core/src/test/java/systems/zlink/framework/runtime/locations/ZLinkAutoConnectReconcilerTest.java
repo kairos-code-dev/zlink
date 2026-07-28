@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.runtime.internal.locations.*;
 
 final class ZLinkAutoConnectReconcilerTest {
@@ -70,6 +71,52 @@ final class ZLinkAutoConnectReconcilerTest {
         now.set(Duration.ofSeconds(4).toNanos());
         reconciler.tick().toCompletableFuture().join();
         assertEquals(1, executor.disconnects);
+    }
+
+    @Test
+    void objectClientDescriptorIsPublishedAsNotRequiredWithoutConnecting() {
+        MutableResolver resolver = new MutableResolver();
+        RecordingExecutor executor = new RecordingExecutor();
+        AtomicLong now = new AtomicLong();
+        var reconciler = new ZLinkAutoConnectReconciler(
+            new ZLinkAutoConnectPlanner.Local(
+                ZLinkAutoConnectType.ROUTE_MESH,
+                "mesh",
+                ZLinkLocationRole.ROUTER,
+                RoutingId.from("client-a"),
+                "inproc://client-a",
+                ZLinkMeshNodeObjectRole.CLIENT,
+                false),
+            null,
+            null,
+            resolver,
+            executor,
+            new ZLinkLocationOptions(),
+            now::get);
+        resolver.rows = List.of(new ZLinkAutoConnectPeer(
+            ZLinkAutoConnectType.ROUTE_MESH,
+            "mesh",
+            RoutingId.from("client-b"),
+            ZLinkLocationRole.ROUTER,
+            "inproc://client-b",
+            100,
+            false,
+            3,
+            Map.of(),
+            List.of(),
+            "owner-b",
+            4,
+            Instant.EPOCH,
+            ZLinkMeshNodeObjectRole.CLIENT,
+            false));
+
+        reconciler.tick().toCompletableFuture().join();
+        assertEquals(0, executor.connects);
+        assertEquals(1, executor.notRequiredMarks);
+
+        resolver.rows = List.of();
+        reconciler.tick().toCompletableFuture().join();
+        assertEquals(1, executor.notRequiredClears);
     }
 
     private static ZLinkAutoConnectReconciler reconciler(
@@ -130,6 +177,8 @@ final class ZLinkAutoConnectReconcilerTest {
         implements ZLinkAutoConnectExecutor {
         private int connects;
         private int disconnects;
+        private int notRequiredMarks;
+        private int notRequiredClears;
         private boolean connectSucceeds = true;
 
         @Override
@@ -142,6 +191,16 @@ final class ZLinkAutoConnectReconcilerTest {
         public boolean disconnect(ZLinkAutoConnectPlanner.Target target) {
             disconnects++;
             return true;
+        }
+
+        @Override
+        public void markNotRequired(ZLinkAutoConnectPlanner.Target target) {
+            notRequiredMarks++;
+        }
+
+        @Override
+        public void clearNotRequired(ZLinkAutoConnectPlanner.Target target) {
+            notRequiredClears++;
         }
     }
 }

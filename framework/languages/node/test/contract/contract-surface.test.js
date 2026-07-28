@@ -186,7 +186,7 @@ test('runtime topology and supporting exact names are declared by their producti
     'ZLinkFrameworkLifecycleOptions',
     'ZLinkFrameworkRuntimeStatus',
     'ZLinkFrameworkRuntime',
-    'ZLinkMeshNodeState',
+    'ZLinkTopologyState',
     'ZLinkPeerState',
     'ZLinkMeshPeerSnapshot',
     'ZLinkMeshChannelSnapshot',
@@ -655,7 +655,7 @@ test('actor declarations resolve global ActorId calls and expose fluent manager 
   const createCall = declarationBody(declarations, 'ZLinkActorCreateCall');
   const getOrCreateCall = declarationBody(declarations, 'ZLinkActorGetOrCreateCall');
   const sessionActors = declarationBody(declarations, 'ZLinkSessionActors');
-  const snapshot = declarationBody(declarations, 'ZLinkActorRefSnapshot');
+  const actorRef = declarationBody(declarations, 'ActorRef');
 
   assert.match(actorClient, /sendToActor\(actorId: ActorId, message: unknown\): ZLinkActorSendCall/);
   assert.match(actorClient, /requestToActor\(actorId: ActorId, request: unknown\): ZLinkActorRequestCall/);
@@ -682,11 +682,11 @@ test('actor declarations resolve global ActorId calls and expose fluent manager 
     assert.match(call, /yield\(signal\?: AbortSignal\): Promise<ZLinkActorCreateResult>/);
     assert.equal(call.includes('preferredNodeRid'), false);
   }
-  assert.match(snapshot, /readonly nodeRid: RoutingId/);
-  assert.match(snapshot, /readonly actorId: string/);
-  assert.match(snapshot, /readonly generation: bigint/);
-  assert.match(declarations, /export declare function zlinkActorRefSnapshotFrom\(actorRef: ActorRef\): ZLinkActorRefSnapshot/);
-  assert.match(declarations, /export declare function zlinkActorRefSnapshotToActorRef\(snapshot: ZLinkActorRefSnapshot\): ActorRef/);
+  assert.match(actorRef, /readonly nodeRid: RoutingId/);
+  assert.match(actorRef, /readonly actorId: ActorId/);
+  assert.match(actorRef, /readonly objectGeneration: bigint/);
+  assert.match(actorRef, /readonly meshName: string/);
+  assert.doesNotMatch(declarations, /\bZLinkActorRefSnapshot\b/);
   assert.match(sessionActors, /bindOrGet\(actor: ActorRef, signal\?: AbortSignal\): Promise<ZLinkSessionActor>/);
 });
 

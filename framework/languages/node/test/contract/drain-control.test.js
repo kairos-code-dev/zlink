@@ -102,10 +102,10 @@ test('deadline uses the closed snake_case force reason and terminal event exactl
   });
   await observed;
   assert.deepEqual(events.map((event) => event.state), [
-    framework.ZLinkMeshNodeState.Draining,
-    framework.ZLinkMeshNodeState.ForceStopping
+    framework.ZLinkTopologyState.Stopping,
+    framework.ZLinkTopologyState.Failed
   ]);
-  assert.equal(events.filter((event) => event.state === framework.ZLinkMeshNodeState.ForceStopping).length, 1);
+  assert.equal(events.filter((event) => event.state === framework.ZLinkTopologyState.Failed).length, 1);
 });
 
 test('drain classifies publish, owner cleanup, and teardown failures with closed snake_case reasons', async () => {
@@ -266,8 +266,8 @@ test('host drain seals every mesh, drains each resource set, and cleans the shar
   assert.deepEqual(await runtime.drainHost(), { kind: 'drained' });
   assert.equal(gate.accepts('game-a'), false);
   assert.equal(gate.accepts('game-b'), false);
-  assert.equal(runtime.snapshot('game-a').state, framework.ZLinkMeshNodeState.Drained);
-  assert.equal(runtime.snapshot('game-b').state, framework.ZLinkMeshNodeState.Drained);
+  assert.equal(runtime.snapshot('game-a').state, framework.ZLinkTopologyState.Stopped);
+  assert.equal(runtime.snapshot('game-b').state, framework.ZLinkTopologyState.Stopped);
   assert.equal(order.filter((entry) => entry === 'cleanup').length, 1);
   assert.equal(order.filter((entry) => entry === 'publish:host').length, 1);
   assert.deepEqual(
@@ -400,6 +400,18 @@ test('Retire readiness requires exact RID and lifecycle generation in the admitt
     descriptors[0],
     { ...descriptors[1], applicationVersion: 2n }
   ], local, [
+    { routingId: 'node-green', lifecycleGeneration: 7n, state: 3 }
+  ]), false);
+  assert.equal(framework.hasExactPeerReadiness([
+    descriptors[0],
+    { ...descriptors[1], applicationVersion: 0n }
+  ], { ...local, applicationVersion: 0n }, [
+    { routingId: 'node-green', lifecycleGeneration: 7n, state: 3 }
+  ]), false);
+  assert.equal(framework.hasExactPeerReadiness([
+    descriptors[0],
+    { ...descriptors[1], applicationVersion: 2n }
+  ], { ...local, applicationVersion: 2n }, [
     { routingId: 'node-green', lifecycleGeneration: 7n, state: 3 }
   ]), true);
   assert.equal(framework.hasExactPeerReadiness([

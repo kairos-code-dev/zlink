@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.BooleanSupplier;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkRelocationStore;
@@ -165,15 +166,23 @@ public final class ZLinkUserSpotRetireRuntime {
     }
 
     public CompletionStage<Void> relocateAll(Instant deadline) {
+        return relocateAll(deadline, () -> false);
+    }
+
+    public CompletionStage<Void> relocateAll(
+        Instant deadline,
+        BooleanSupplier stopBeforeNextUnit) {
         Objects.requireNonNull(deadline, "deadline");
+        Objects.requireNonNull(
+            stopBeforeNextUnit, "stopBeforeNextUnit");
         ZLinkStoreCancellation cancellation = () ->
             !Instant.now().isBefore(deadline);
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
         for (String spotId : spots.activeUserSpotIds()) {
-            chain = chain.thenCompose(ignored -> relocateOne(
-                spotId,
-                deadline,
-                cancellation));
+            chain = chain.thenCompose(ignored ->
+                stopBeforeNextUnit.getAsBoolean()
+                    ? CompletableFuture.completedFuture(null)
+                    : relocateOne(spotId, deadline, cancellation));
         }
         java.util.HashSet<String> aggregateActors = new java.util.HashSet<>();
         for (String spotId : spots.activeUserSpotIds()) {
@@ -181,10 +190,10 @@ public final class ZLinkUserSpotRetireRuntime {
         }
         for (String actorId : actors.activeActorIds()) {
             if (!aggregateActors.contains(actorId)) {
-                chain = chain.thenCompose(ignored -> relocateActor(
-                    actorId,
-                    deadline,
-                    cancellation));
+                chain = chain.thenCompose(ignored ->
+                    stopBeforeNextUnit.getAsBoolean()
+                        ? CompletableFuture.completedFuture(null)
+                        : relocateActor(actorId, deadline, cancellation));
             }
         }
         return chain;

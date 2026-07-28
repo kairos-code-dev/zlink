@@ -89,7 +89,20 @@ public HTTP client만 사용한다.
   - `RM-C8`: `logs/20260703-202115-75588/`
   - `RM-C9`: `logs/20260707-220422-3590936/`
 
+## Object Client 연결 정책 — 2026-07-29
+
+- `RM-A3`: Java production runtime과 실제 Redis Location Store를 사용하는 별도 process로
+  검증했다.
+- Automatic과 Manual Object Client pair는 양쪽에 RouteMesh Channel Server membership이 없으면
+  `NotRequired`이며 Ready peer 수는 `0`이다. 20초 동안 다시 연결하거나 liveness probe를
+  시작하지 않았다.
+- Manual pair 앞에 둔 TCP proxy는 양방향에서 각각 연결 한 번만 관측했다. 반복 연결은 없었다.
+- Object Client RID로 보낸 Node direct Send와 Request는 모두
+  `REQUEST_TARGET_NOT_FOUND`로 끝났다.
+- RouteMesh Channel Server membership의 weight가 `0`이어도 연결은 필요하다. Ready 상태에서
+  한 process를 `SIGKILL`한 뒤 다른 process의 public 상태는 `NotConnected`로 바뀌었다.
+- 증거: `logs/20260729-015634-1430590/`
+
 ## 공통 scenario parity gap — 2026-07-29
 
-- `RM-A3`, `RM-A7`, `RM-C10`: 공통 scenario는 추가됐지만 Java actual fixture와 runner
-  selector가 없다.
+- `RM-A7`, `RM-C10`: 공통 scenario는 추가됐지만 Java actual fixture와 runner selector가 없다.

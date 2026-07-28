@@ -33,7 +33,7 @@ import {
   type ActorNotify,
   ActorPushNotify,
   type ActorPushReq,
-  type ActorRefSnapshot,
+  type ActorRefPayload,
   type ActorReply
 } from '../../Shared/messages';
 import { EvidenceStore } from './evidence-store';
@@ -299,11 +299,12 @@ async function main(): Promise<void> {
   await app.close();
 }
 
-function actorSnapshot(actor: { readonly nodeRid: unknown; readonly actorId: string; readonly generation: bigint }): ActorRefSnapshot {
+function actorSnapshot(actor: ActorRef): ActorRefPayload {
   return {
     nodeRid: String(actor.nodeRid),
     actorId: actor.actorId,
-    generation: actor.generation.toString()
+    objectGeneration: actor.objectGeneration.toString(),
+    meshName: actor.meshName
   };
 }
 

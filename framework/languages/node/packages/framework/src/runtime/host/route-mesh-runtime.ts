@@ -2,7 +2,7 @@ import type { RoutingId } from '../../contracts';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
-  ZLinkMeshNodeState,
+  ZLinkTopologyState,
   ZLinkPeerState,
   type ZLinkMeshNodeSnapshot,
   type ZLinkMeshRuntimeEvent,
@@ -44,7 +44,7 @@ export interface ZLinkRouteMeshRuntimeCoordinatorOptions {
 }
 
 interface ZLinkMeshDrainState {
-  state: ZLinkMeshNodeState;
+  state: ZLinkTopologyState;
   sequence: bigint;
   deadline?: Date;
   operation?: Promise<ZLinkMeshDrainResult>;
@@ -62,7 +62,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     for (const meshName of options.meshNames) {
       options.admission.register(meshName);
       this.states.set(meshName, {
-        state: ZLinkMeshNodeState.Starting,
+        state: ZLinkTopologyState.Starting,
         sequence: 0n,
         waiters: [],
         observers: new Set()
@@ -72,8 +72,8 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
 
   markServing(): void {
     for (const [meshName, state] of this.states) {
-      if (state.state !== ZLinkMeshNodeState.Starting) continue;
-      this.transition(meshName, state, ZLinkMeshNodeState.Serving);
+      if (state.state !== ZLinkTopologyState.Starting) continue;
+      this.transition(meshName, state, ZLinkTopologyState.Ready);
     }
   }
 
@@ -129,7 +129,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
       applicationVersion: descriptor?.applicationVersion ?? 0n,
       placementReservationFailureCount: 0n,
       objectCapabilities: descriptor?.objectCapabilities ?? [],
-      state: drain.state === ZLinkMeshNodeState.Serving ? backendState(status.state) : drain.state,
+      state: drain.state === ZLinkTopologyState.Ready ? backendState(status.state) : drain.state,
       sequence: drain.sequence > status.lastChangedMs ? drain.sequence : status.lastChangedMs,
       observedAt: new Date(),
       descriptorSources: [],
@@ -156,7 +156,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
 
   isReady(meshName: string): boolean {
     const state = this.requireState(meshName);
-    return state.state === ZLinkMeshNodeState.Serving && this.options.meshNode(meshName) !== undefined;
+    return state.state === ZLinkTopologyState.Ready && this.options.meshNode(meshName) !== undefined;
   }
 
   drain(meshName: string, deadlineMs = 30_000, signal?: AbortSignal): Promise<ZLinkMeshDrainResult> {
@@ -239,7 +239,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
   ): Promise<ZLinkMeshDrainResult> {
     state.deadline = new Date(Date.now() + deadlineMs);
     this.options.admission.seal(meshName);
-    this.transition(meshName, state, ZLinkMeshNodeState.Draining);
+    this.transition(meshName, state, ZLinkTopologyState.Stopping);
     const deadline = new AbortController();
     const timer = setTimeout(() => deadline.abort(new Error('Drain deadline exceeded.')), deadlineMs);
     let result: ZLinkMeshDrainResult;
@@ -250,7 +250,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
       await this.options.drainResources(meshName, deadline.signal);
       await this.options.cleanupHostResources(deadline.signal);
       result = { kind: 'drained' };
-      this.transition(meshName, state, ZLinkMeshNodeState.Drained);
+      this.transition(meshName, state, ZLinkTopologyState.Stopped);
     } catch (error) {
       const classified = drainFailureReason(error);
       const reason: ZLinkDrainForceReason = classified !== 'teardown_failed'
@@ -258,7 +258,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
         : deadline.signal.aborted ? 'deadline_exceeded' : classified;
       await this.options.forceStopResources(meshName).catch(() => undefined);
       result = { kind: 'forceStopped', reason };
-      this.transition(meshName, state, ZLinkMeshNodeState.ForceStopping, reason);
+      this.transition(meshName, state, ZLinkTopologyState.Failed, reason);
     } finally {
       clearTimeout(timer);
     }
@@ -287,7 +287,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
         this.options.drainResources(meshName, deadline.signal)));
       for (const [meshName, state] of entries) {
         this.options.admission.seal(meshName);
-        this.transition(meshName, state, ZLinkMeshNodeState.Draining);
+        this.transition(meshName, state, ZLinkTopologyState.Stopping);
       }
       await Promise.all(entries.map(([meshName]) =>
         this.options.publishDraining(meshName, deadline.signal)));
@@ -297,7 +297,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
       await this.options.cleanupHostResources(deadline.signal);
       result = { kind: 'drained' };
       for (const [meshName, state] of entries) {
-        this.transition(meshName, state, ZLinkMeshNodeState.Drained);
+        this.transition(meshName, state, ZLinkTopologyState.Stopped);
       }
     } catch (error) {
       const classified = drainFailureReason(error);
@@ -308,7 +308,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
         this.options.forceStopResources(meshName).catch(() => undefined)));
       result = { kind: 'forceStopped', reason };
       for (const [meshName, state] of entries) {
-        this.transition(meshName, state, ZLinkMeshNodeState.ForceStopping, reason);
+        this.transition(meshName, state, ZLinkTopologyState.Failed, reason);
       }
     } finally {
       clearTimeout(timer);
@@ -323,7 +323,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
   private transition(
     meshName: string,
     state: ZLinkMeshDrainState,
-    next: ZLinkMeshNodeState,
+    next: ZLinkTopologyState,
     reason?: string
   ): void {
     if (state.state === next) return;
@@ -341,7 +341,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
       reason
     };
     for (const observer of state.observers) observer.push(event);
-    if (next === ZLinkMeshNodeState.Drained || next === ZLinkMeshNodeState.ForceStopping) {
+    if (next === ZLinkTopologyState.Stopped || next === ZLinkTopologyState.Failed) {
       for (const observer of state.observers) observer.close();
       state.observers.clear();
     }
@@ -421,15 +421,15 @@ function multiMeshDrainError(): ZLinkFrameworkException {
   );
 }
 
-function backendState(state: number): ZLinkMeshNodeState {
+function backendState(state: number): ZLinkTopologyState {
   switch (state) {
-    case 1: return ZLinkMeshNodeState.Starting;
+    case 1: return ZLinkTopologyState.Starting;
     case 2:
     case 3:
-    case 4: return ZLinkMeshNodeState.Serving;
-    case 5: return ZLinkMeshNodeState.Draining;
-    case 6: return ZLinkMeshNodeState.Stopped;
-    default: return ZLinkMeshNodeState.Faulted;
+    case 4: return ZLinkTopologyState.Ready;
+    case 5: return ZLinkTopologyState.Stopping;
+    case 6: return ZLinkTopologyState.Stopped;
+    default: return ZLinkTopologyState.Failed;
   }
 }
 

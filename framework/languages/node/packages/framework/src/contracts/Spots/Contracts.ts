@@ -9,7 +9,12 @@ import type {
 } from '../Common';
 import type { ZLinkSpotTimerHandler } from '../Handlers';
 import type { ZLinkTimer, ZLinkTimerOptions } from '../Timers';
-import type { ZLinkEntrySpot, ZLinkInstanceSpot, ZLinkSpot } from './ZLinkSpot';
+import type {
+  ZLinkEntrySpot,
+  ZLinkInstanceSpot,
+  ZLinkSpot,
+  ZLinkSpotRelocationReadyCall
+} from './ZLinkSpot';
 
 export interface ZLinkActorHandlerRegistry {
   addHandler<THandler>(handlerType: Type<THandler>, packetName?: string): this;
@@ -63,6 +68,7 @@ export interface ZLinkSpotContext<
   TSpot extends ZLinkSpot<TActor> = ZLinkSpot<TActor>
 > extends ZLinkSpotCommonContext<TSpot> {
   readonly handlers: ZLinkSpotHandlerRegistry;
+  relocationReady(): ZLinkSpotRelocationReadyCall;
   leaveActor(actor: TActor, signal?: AbortSignal): Promise<void>;
   close(signal?: AbortSignal): Promise<boolean>;
 }

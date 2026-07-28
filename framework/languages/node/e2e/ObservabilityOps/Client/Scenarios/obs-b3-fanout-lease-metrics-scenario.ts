@@ -1,4 +1,4 @@
-// OBS-B3: fanout·lease 계기와 카디널리티 시나리오를 검증한다.
+// OBS-B3: publish 계기 부재·lease 계기와 카디널리티 시나리오를 검증한다.
 import { post, require, unique, workflowA, workflowB } from '../Support/scenario-support.js';
 import { metric, metrics, waitFor } from '../Support/observability-support.js';
 import type { WorkflowApplyRes } from '../../Shared/messages.js';

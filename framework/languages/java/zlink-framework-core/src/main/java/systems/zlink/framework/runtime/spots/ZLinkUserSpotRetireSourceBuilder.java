@@ -174,8 +174,7 @@ final class ZLinkUserSpotRetireSourceBuilder {
         int captures = snapshotCount(admission.inventory());
         ZLinkUserSpotRelocationBarrier barrier = spots.relocationBarrier(
             admission.inventory().spot().id(), actors);
-        Optional<ZLinkUserSpotRelocationBarrier.Seal> sealed =
-            barrier.trySeal(preview -> {
+        return barrier.sealAtTurnBoundary(preview -> {
                 if (!preview.participantActorIds().equals(
                         admission.inventory().actorIds())
                     || cancellation.isCancellationRequested()) {
@@ -189,19 +188,38 @@ final class ZLinkUserSpotRetireSourceBuilder {
                         true));
                 acquired.set(lease);
                 return lease != null;
+            }, cancellation::isCancellationRequested)
+            .thenCompose(sealed -> {
+                if (sealed.isEmpty()) {
+                    close(acquired.get());
+                    return cancellation.isCancellationRequested()
+                        ? cancelled()
+                        : failed(new IllegalStateException(
+                            "User Spot relocation seal or permit was unavailable"));
+                }
+                ZLinkRelocationPermitPool.Lease lease = acquired.get();
+                if (lease == null) {
+                    barrier.abort(sealed.orElseThrow());
+                    return failed(new IllegalStateException(
+                        "User Spot relocation permit was not acquired"));
+                }
+                return captureSealed(
+                    spot,
+                    admission,
+                    cancellation,
+                    barrier,
+                    sealed.orElseThrow(),
+                    lease);
             });
-        if (sealed.isEmpty()) {
-            close(acquired.get());
-            return failed(new IllegalStateException(
-                "User Spot relocation seal or permit was unavailable"));
-        }
-        ZLinkUserSpotRelocationBarrier.Seal seal = sealed.orElseThrow();
-        ZLinkRelocationPermitPool.Lease lease = acquired.get();
-        if (lease == null) {
-            barrier.abort(seal);
-            return failed(new IllegalStateException(
-                "User Spot relocation permit was not acquired"));
-        }
+    }
+
+    private CompletionStage<PreparedSource> captureSealed(
+        ZLinkSpot<?> spot,
+        Admission admission,
+        ZLinkStoreCancellation cancellation,
+        ZLinkUserSpotRelocationBarrier barrier,
+        ZLinkUserSpotRelocationBarrier.Seal seal,
+        ZLinkRelocationPermitPool.Lease lease) {
         return readInventory(
                 admission.inventory().spot().id(),
                 seal.participantActorIds(),

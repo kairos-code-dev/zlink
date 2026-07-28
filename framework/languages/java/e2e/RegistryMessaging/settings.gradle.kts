@@ -20,5 +20,6 @@ if (gradle.parent == null) {
 include(":Shared")
 include(":Client")
 include(":Server:Consumer")
+include(":Server:ObjectClient")
 include(":Server:Provider")
 include(":Server:Workflow")

@@ -76,6 +76,17 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
         // Optional for alternate and test backends that do not retain connection intents.
     }
 
+    default void markPeerConnectionNotRequired(
+        RoutingId peerRid,
+        String endpoint,
+        long lifecycleGeneration) {
+        // Optional for alternate backends without descriptor-backed peer monitoring.
+    }
+
+    default void clearPeerConnectionNotRequired(RoutingId peerRid) {
+        // Optional for alternate backends without descriptor-backed peer monitoring.
+    }
+
     MeshNodeStatus status();
 
     List<MeshPeerEntry> peers();

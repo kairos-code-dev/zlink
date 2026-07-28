@@ -69,6 +69,11 @@ final class ZLinkActorSessionCoordinator {
         return requireActors().trySealActorRelocation(actorId);
     }
 
+    systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+        actorRelocationLane(String actorId) {
+        return requireActors().actorRelocationLane(actorId);
+    }
+
     boolean abortActorRelocation(
         String actorId,
         systems.zlink.framework.execution.ZLinkAsyncSerialQueue.RelocationSeal

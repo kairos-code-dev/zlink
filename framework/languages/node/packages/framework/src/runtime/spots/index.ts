@@ -925,7 +925,7 @@ export class DefaultZLinkSpotManager {
         } as ActorRef
       : resolvedActorRef;
     const ownerActorRef = responseActorRef;
-    let requestTerminalSubmitted = false;
+    const requestTerminalState = { submitted: false };
     const requestTerminal = request
       ? (response: unknown) => {
           requireMeshSpotReply(record.reply(this.encodeMeshActorReply(
@@ -933,7 +933,7 @@ export class DefaultZLinkSpotManager {
             ZLinkStreamMessageKind.Response,
             response
           )));
-          requestTerminalSubmitted = true;
+          requestTerminalState.submitted = true;
         }
       : undefined;
     try {
@@ -963,7 +963,7 @@ export class DefaultZLinkSpotManager {
       if (targetsEntrySpot && this.options.dispatchEntryActorPacket === undefined) {
         throw new ZLinkConfigurationException('MeshNode Entry Spot Actor dispatch is not configured.');
       }
-      if (request && !requestTerminalSubmitted) {
+      if (request && !requestTerminalState.submitted) {
         requireMeshSpotReply(record.reply(this.encodeMeshActorReply(
           record.parts[0],
           ZLinkStreamMessageKind.Response,
@@ -974,7 +974,7 @@ export class DefaultZLinkSpotManager {
       if (!request) {
         throw error;
       }
-      if (requestTerminalSubmitted) {
+      if (requestTerminalState.submitted) {
         throw error;
       }
       requireMeshSpotReply(record.reply(this.encodeMeshActorReply(

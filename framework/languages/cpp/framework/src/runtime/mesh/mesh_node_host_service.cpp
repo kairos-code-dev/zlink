@@ -1052,10 +1052,7 @@ mesh_node_host_service_t::create_user_spot (
                   serializers);
             completion->complete (
               result_t<spot_create_result_t>::success (
-                {{spot_id_t (
-                    zlink::routing_id_t::from (
-                      reply.spot_id)
-                      .to_string ()),
+                {{spot_id_t (reply.spot_id),
                   reply.object_generation,
                   target.mesh_name,
                   node_rid_t::from_string (

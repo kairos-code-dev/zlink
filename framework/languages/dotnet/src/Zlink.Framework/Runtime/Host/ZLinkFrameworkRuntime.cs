@@ -381,6 +381,23 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             return EnterOperationUnderLock(countAsRequest);
     }
 
+    internal ZLinkRuntimeOperationLease RetainOperationForBackgroundWork()
+    {
+        if (AmbientOperation.Value is not { IsActive: true } current
+            || !ReferenceEquals(current.Runtime, this))
+            throw new InvalidOperationException(
+                "Background work can retain only the current runtime operation.");
+
+        lock (_operationGate)
+        {
+            _activeOperations++;
+            return new ZLinkRuntimeOperationLease(
+                this,
+                countsOperation: true,
+                countsRequest: false);
+        }
+    }
+
     internal bool TryEnterInboundOperation(
         bool countAsRequest,
         out ZLinkRuntimeOperationLease lease)
@@ -791,8 +808,17 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         internal ZLinkRuntimeOperationLease(
             ZLinkFrameworkRuntime runtime,
             bool countsRequest)
+            : this(runtime, countsOperation: false, countsRequest)
+        {
+        }
+
+        internal ZLinkRuntimeOperationLease(
+            ZLinkFrameworkRuntime runtime,
+            bool countsOperation,
+            bool countsRequest)
         {
             _runtime = runtime;
+            _countsOperation = countsOperation;
             _countsRequest = countsRequest;
         }
 

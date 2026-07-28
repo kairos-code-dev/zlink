@@ -90,6 +90,10 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         admittedPeerObjectRoles = new ConcurrentHashMap<>();
     private final java.util.Set<RoutingId> notRequiredPeers =
         ConcurrentHashMap.newKeySet();
+    private final java.util.Set<RoutingId> disconnectedPeers =
+        ConcurrentHashMap.newKeySet();
+    private final Map<RoutingId, AutomaticNotRequiredPeer>
+        automaticNotRequiredPeers = new ConcurrentHashMap<>();
     private final AtomicLong nextIntent = new AtomicLong(1);
     private final AtomicLong channelSelectionCursor = new AtomicLong();
     private final AtomicLong nextCorrelation = new AtomicLong(1);
@@ -593,6 +597,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                 admittedPeerChannels.remove(removed.expectedRoutingId());
                 admittedPeerObjectRoles.remove(removed.expectedRoutingId());
                 notRequiredPeers.remove(removed.expectedRoutingId());
+                disconnectedPeers.remove(removed.expectedRoutingId());
                 nextAnnouncementNanos.remove(removed.expectedRoutingId());
                 String connectionId =
                     connectionIds.remove(removed.expectedRoutingId());
@@ -636,7 +641,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
 
     @Override
     public List<MeshPeerEntry> peers() {
-        return peerIntents.entrySet().stream()
+        List<MeshPeerEntry> manualPeers = peerIntents.entrySet().stream()
             .filter(entry -> entry.getValue().expectedRoutingId() != null)
             .sorted(Comparator.comparingLong(Map.Entry::getKey))
             .map(entry -> new MeshPeerEntry(
@@ -650,13 +655,84 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                     : notRequiredPeers.contains(
                         entry.getValue().expectedRoutingId())
                         ? MeshPeerState.NOT_REQUIRED
-                        : MeshPeerState.CONNECTING,
+                        : disconnectedPeers.contains(
+                            entry.getValue().expectedRoutingId())
+                            ? MeshPeerState.CLOSED
+                            : MeshPeerState.CONNECTING,
                 1,
                 1,
                 0,
                 0,
                 entry.getValue().createdAtMs()))
             .toList();
+        List<MeshPeerEntry> automaticPeers = automaticNotRequiredPeers.entrySet().stream()
+            .filter(entry -> manualPeers.stream().noneMatch(
+                peer -> peer.routingId().equals(entry.getKey())))
+            .sorted(Map.Entry.comparingByKey(
+                Comparator.comparing(RoutingId::toHex)))
+            .map(entry -> new MeshPeerEntry(
+                entry.getKey(),
+                entry.getValue().endpoint(),
+                0,
+                MeshPeerSource.DISCOVERY,
+                MeshPeerState.NOT_REQUIRED,
+                entry.getValue().lifecycleGeneration(),
+                1,
+                0,
+                0,
+                entry.getValue().observedAtMs()))
+            .toList();
+        List<MeshPeerEntry> admittedInboundPeers = topology == null
+            ? List.of()
+            : topology.peers().stream()
+                .filter(entry -> manualPeers.stream().noneMatch(
+                    peer -> peer.routingId().equals(
+                        entry.descriptor().nodeRoutingId())))
+                .filter(entry -> automaticPeers.stream().noneMatch(
+                    peer -> peer.routingId().equals(
+                        entry.descriptor().nodeRoutingId())))
+                .map(entry -> new MeshPeerEntry(
+                    entry.descriptor().nodeRoutingId(),
+                    entry.descriptor().advertisedEndpoint(),
+                    0,
+                    MeshPeerSource.DISCOVERY,
+                    MeshPeerState.ADMITTED,
+                    entry.descriptor().lifecycleGeneration(),
+                    entry.descriptor().descriptorRevision(),
+                    0,
+                    0,
+                    currentTimeMillis.getAsLong()))
+                .toList();
+        return java.util.stream.Stream.concat(
+            java.util.stream.Stream.concat(
+                manualPeers.stream(),
+                automaticPeers.stream()),
+            admittedInboundPeers.stream()).toList();
+    }
+
+    @Override
+    public void markPeerConnectionNotRequired(
+        RoutingId peerRid,
+        String endpoint,
+        long lifecycleGeneration) {
+        automaticNotRequiredPeers.put(
+            peerRid,
+            new AutomaticNotRequiredPeer(
+                endpoint,
+                lifecycleGeneration,
+                currentTimeMillis.getAsLong()));
+        admittedPeerObjectRoles.put(
+            peerRid,
+            ZLinkServiceNodeDescriptor.ObjectRole.CLIENT);
+    }
+
+    @Override
+    public void clearPeerConnectionNotRequired(RoutingId peerRid) {
+        automaticNotRequiredPeers.remove(peerRid);
+        if (!notRequiredPeers.contains(peerRid)
+            && !admittedPeerChannels.containsKey(peerRid)) {
+            admittedPeerObjectRoles.remove(peerRid);
+        }
     }
 
     @Override
@@ -2218,6 +2294,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                 validated.put(name, weight);
             });
         admittedPeerChannels.put(peerRoutingId, Map.copyOf(validated));
+        disconnectedPeers.remove(peerRoutingId);
     }
 
     @Override
@@ -3758,7 +3835,10 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     }
 
     private void disconnectAdmitted(RoutingId peer) {
-        admittedPeerChannels.remove(peer);
+        boolean wasAdmitted = admittedPeerChannels.remove(peer) != null;
+        if (wasAdmitted && !notRequiredPeers.contains(peer)) {
+            disconnectedPeers.add(peer);
+        }
         if (!notRequiredPeers.contains(peer)) {
             admittedPeerObjectRoles.remove(peer);
         }
@@ -4104,5 +4184,11 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         String endpoint,
         RoutingId expectedRoutingId,
         long createdAtMs) {
+    }
+
+    private record AutomaticNotRequiredPeer(
+        String endpoint,
+        long lifecycleGeneration,
+        long observedAtMs) {
     }
 }

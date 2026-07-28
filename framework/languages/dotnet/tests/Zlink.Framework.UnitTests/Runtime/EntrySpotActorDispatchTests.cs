@@ -13,8 +13,10 @@ using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Backend.DotNet;
+using Zlink.Framework.Runtime.Execution;
 using Zlink.Framework.Runtime.Locations;
 using Zlink.Framework.Runtime.Service;
+using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
@@ -1579,6 +1581,54 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             await runtime.StopAsync(CancellationToken.None);
         }
+    }
+
+    [Fact]
+    public async Task LogicalMulticast_Worker_Retains_Runtime_After_Public_Terminal()
+    {
+        var node = new CapturingSpotNode();
+        var disposeStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        node.DisposeHandler = () =>
+        {
+            disposeStarted.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+        var (runtime, _) = await CreateStartedRuntimeAsync(node);
+        using var publishRelease = new ManualResetEventSlim(false);
+        var publishStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var callerOperation = runtime.EnterOperation();
+        var workerOperation = runtime.RetainOperationForBackgroundWork();
+
+        var terminal = ZLinkLogicalMulticastSubmitter.SubmitAsync(
+            runtime.WorkerPool,
+            () =>
+            {
+                publishStarted.TrySetResult();
+                publishRelease.Wait();
+            },
+            CancellationToken.None,
+            CancellationToken.None,
+            TimeSpan.FromSeconds(1),
+            workerOperation.Dispose,
+            new ThrowingRuntimeErrorSink()).AsTask();
+
+        await publishStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(
+            SubmitResult.Ok,
+            await terminal.WaitAsync(TimeSpan.FromSeconds(5)));
+        callerOperation.Dispose();
+
+        Task stop;
+        using (ExecutionContext.SuppressFlow())
+            stop = Task.Run(async () => await runtime.StopAsync(CancellationToken.None));
+        await Task.Delay(25);
+        Assert.False(disposeStarted.Task.IsCompleted);
+
+        publishRelease.Set();
+        await disposeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await stop.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Fact]

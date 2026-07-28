@@ -5,7 +5,7 @@ import {
   type ActorEvidence,
   type ActorEnsureResponse,
   type ActorPushNotify,
-  type ActorRefSnapshot,
+  type ActorRefPayload,
   type BindActorReq,
   type BindActorRes,
   type SessionBindingSnapshot
@@ -21,7 +21,7 @@ import { postJson } from '../../../http-client';
 
 export type { ActorEvidence } from '../../Shared/messages';
 
-export async function bindActor(options: ClientOptions, actor: ActorRefSnapshot): Promise<ZlinkStreamConnector> {
+export async function bindActor(options: ClientOptions, actor: ActorRefPayload): Promise<ZlinkStreamConnector> {
   const client = zlinkStreamConnectorFactory.create({
     endpoint: options.sessionStreamEndpoint,
     codec: zlinkStreamJsonCodec,
@@ -34,7 +34,10 @@ export async function bindActor(options: ClientOptions, actor: ActorRefSnapshot)
     .packetName(PacketNames.bindActor).timeout(5000).submit<BindActorRes>();
   requireCondition(reply.actorId === actor.actorId, `bind ${actor.actorId} actor mismatch.`);
   requireCondition(reply.nodeRid === actor.nodeRid, `bind ${actor.actorId} node mismatch.`);
-  requireCondition(reply.generation === actor.generation, `bind ${actor.actorId} generation mismatch.`);
+  requireCondition(
+    reply.objectGeneration === actor.objectGeneration,
+    `bind ${actor.actorId} object generation mismatch.`
+  );
   requireCondition(reply.boundCount >= 1, `bind ${actor.actorId} did not bind any actor.`);
   return client;
 }
@@ -78,7 +81,7 @@ export async function assertCall(
   options: ClientOptions,
   scenario: string,
   actorId: string,
-  actor: ActorRefSnapshot,
+  actor: ActorRefPayload,
   value: string,
   expected: string,
   send: boolean,
@@ -95,7 +98,11 @@ export async function assertCall(
 export async function ensureActor(options: ClientOptions, actorId: string): Promise<ActorEnsureResponse> {
   const response = await postJson<ActorEnsureResponse>(`${options.actorUrl}/actors/${actorId}/ensure`, {});
   requireCondition(response.actor.nodeRid.trim().length > 0, `Actor '${actorId}' node rid is empty.`);
-  requireCondition(BigInt(response.actor.generation) > 0n, `Actor '${actorId}' generation is not positive.`);
+  requireCondition(
+    BigInt(response.actor.objectGeneration) > 0n,
+    `Actor '${actorId}' object generation is not positive.`
+  );
+  requireCondition(response.actor.meshName.length > 0, `Actor '${actorId}' mesh name is empty.`);
   return response;
 }
 
@@ -105,7 +112,7 @@ export async function assertFailure(
   actorId: string,
   expectedKind: string,
   send: boolean,
-  actor?: ActorRefSnapshot
+  actor?: ActorRefPayload
 ): Promise<void> {
   const response = await postJson<ActorCallResponse>(
     `${options.callerUrl}/${send ? 'send' : 'request'}`,

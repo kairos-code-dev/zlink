@@ -722,10 +722,6 @@ export class ZLinkActorHandoffCoordinator {
     packet: ZLinkActorHandoffPacket
   ): Promise<unknown> {
     const context = packet.messageFollowContext;
-    if (context === undefined) {
-      this.options.onMarker?.('message_follow_rejected', actorId);
-      return Promise.reject(actorLocationStale(actorId));
-    }
     const duplicate = entry.operations.get(context.operationId);
     if (duplicate !== undefined) {
       if (duplicate.checksum !== context.payloadChecksumSha256
@@ -794,7 +790,6 @@ export class ZLinkActorHandoffCoordinator {
   ): Promise<unknown> {
     const { target, targetActorRef } = entry;
     const context = packet.messageFollowContext;
-    if (context === undefined) throw actorLocationStale(actorId);
     let advanced: ZLinkActorMessageFollowContext;
     try {
       advanced = advanceActorMessageFollowContext(
@@ -899,19 +894,12 @@ export function decodeHandoffPacket(packet: ZLinkActorHandoffPacket): {
         },
     fallbackActorRef: packet.fallbackActorRef === undefined
       ? undefined
-      : packet.messageFollowContext === undefined
-        ? {
+      : attachActorMessageFollowContext({
           actorId: packet.fallbackActorRef.actorId,
           objectGeneration: BigInt(packet.fallbackActorRef.objectGeneration),
           meshName: packet.fallbackActorRef.meshName,
           nodeRid: packet.fallbackActorRef.nodeRid
-        }
-        : attachActorMessageFollowContext({
-            actorId: packet.fallbackActorRef.actorId,
-            objectGeneration: BigInt(packet.fallbackActorRef.objectGeneration),
-            meshName: packet.fallbackActorRef.meshName,
-            nodeRid: packet.fallbackActorRef.nodeRid
-          }, packet.messageFollowContext)
+        }, packet.messageFollowContext)
   };
 }
 

@@ -2055,8 +2055,9 @@ export function hasExactPeerReadiness(
     !(String(descriptor.rid) === String(local.routingId)
       && descriptor.lifecycleGeneration === local.lifecycleGeneration)
     && descriptor.state === ZLinkFrameworkRuntimeState.Serving
-    && (local.applicationVersion === undefined
-      || descriptor.applicationVersion === local.applicationVersion)
+    && local.applicationVersion !== undefined
+    && descriptor.applicationVersion > 0n
+    && descriptor.applicationVersion === local.applicationVersion
     && (local.maintenanceWave === undefined
       || descriptor.maintenanceWave !== local.maintenanceWave));
   return replacementDescriptors.length > 0

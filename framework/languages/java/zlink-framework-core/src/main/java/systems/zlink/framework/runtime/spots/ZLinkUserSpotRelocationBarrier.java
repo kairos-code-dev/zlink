@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
+import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
@@ -43,35 +44,23 @@ final class ZLinkUserSpotRelocationBarrier {
             context.freezeTimerRelocationEnvelope();
         List<String> participantActorIds =
             actors.actorIdsInSpot(context.spotId());
-        LinkedHashMap<String, ZLinkAsyncSerialQueue> localLanes =
-            new LinkedHashMap<>(context.relocationLanes());
+        LinkedHashMap<String, ZLinkAsyncSerialQueue> lanes =
+            relocationLanes(participantActorIds);
         Optional<ZLinkCompositeRelocationBarrier.Seal> localSeal =
-            barrier.trySeal(localLanes);
+            barrier.trySeal(lanes);
         if (localSeal.isEmpty()) {
             context.resumeTimersAfterRelocationAbort();
             return Optional.empty();
         }
-        LinkedHashMap<String, ZLinkAsyncSerialQueue.RelocationSeal>
-            actorSeals = new LinkedHashMap<>();
-        for (String actorId : participantActorIds) {
-            Optional<ZLinkAsyncSerialQueue.RelocationSeal> actorSeal =
-                actors.trySealActorRelocation(actorId);
-            if (actorSeal.isEmpty()) {
-                rollback(localSeal.get(), actorSeals);
-                context.resumeTimersAfterRelocationAbort();
-                return Optional.empty();
-            }
-            actorSeals.put(actorId, actorSeal.get());
-        }
         List<String> currentActorIds =
             actors.actorIdsInSpot(context.spotId());
         if (!participantActorIds.equals(currentActorIds)) {
-            rollback(localSeal.get(), actorSeals);
+            rollback(localSeal.get());
             context.resumeTimersAfterRelocationAbort();
             return Optional.empty();
         }
         Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> captured =
-            captureRecords(localSeal.get(), actorSeals);
+            captureRecords(localSeal.get());
         boolean admitted;
         try {
             admitted = admission.test(new Preview(
@@ -79,12 +68,12 @@ final class ZLinkUserSpotRelocationBarrier {
                 participantActorIds,
                 captured));
         } catch (RuntimeException failure) {
-            rollback(localSeal.get(), actorSeals);
+            rollback(localSeal.get());
             context.resumeTimersAfterRelocationAbort();
             throw failure;
         }
         if (!admitted) {
-            rollback(localSeal.get(), actorSeals);
+            rollback(localSeal.get());
             context.resumeTimersAfterRelocationAbort();
             return Optional.empty();
         }
@@ -92,7 +81,75 @@ final class ZLinkUserSpotRelocationBarrier {
             localSeal.get(),
             timerEnvelope.clone(),
             participantActorIds,
-            java.util.Collections.unmodifiableMap(actorSeals),
+            captured);
+        return Optional.of(active);
+    }
+
+    CompletionStage<Optional<Seal>> sealAtTurnBoundary(
+        Predicate<Preview> admission,
+        BooleanSupplier cancelled) {
+        java.util.Objects.requireNonNull(admission, "admission");
+        java.util.Objects.requireNonNull(cancelled, "cancelled");
+        List<String> participantActorIds;
+        LinkedHashMap<String, ZLinkAsyncSerialQueue> lanes;
+        synchronized (this) {
+            if (active != null) {
+                return java.util.concurrent.CompletableFuture
+                    .completedFuture(Optional.empty());
+            }
+            participantActorIds =
+                actors.actorIdsInSpot(context.spotId());
+            lanes = relocationLanes(participantActorIds);
+        }
+        return barrier.sealAtTurnBoundary(lanes, cancelled)
+            .thenApply(sealed -> finishTurnBoundarySeal(
+                sealed,
+                participantActorIds,
+                admission,
+                cancelled));
+    }
+
+    private synchronized Optional<Seal> finishTurnBoundarySeal(
+        Optional<ZLinkCompositeRelocationBarrier.Seal> sealed,
+        List<String> participantActorIds,
+        Predicate<Preview> admission,
+        BooleanSupplier cancelled) {
+        if (sealed.isEmpty()) {
+            return Optional.empty();
+        }
+        ZLinkCompositeRelocationBarrier.Seal composite =
+            sealed.orElseThrow();
+        if (active != null
+            || cancelled.getAsBoolean()
+            || !participantActorIds.equals(
+                actors.actorIdsInSpot(context.spotId()))) {
+            rollback(composite);
+            return Optional.empty();
+        }
+        byte[] timerEnvelope =
+            context.freezeTimerRelocationEnvelope();
+        Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> captured =
+            captureRecords(composite);
+        boolean admitted;
+        try {
+            admitted = admission.test(new Preview(
+                timerEnvelope,
+                participantActorIds,
+                captured));
+        } catch (RuntimeException failure) {
+            rollback(composite);
+            context.resumeTimersAfterRelocationAbort();
+            throw failure;
+        }
+        if (!admitted) {
+            rollback(composite);
+            context.resumeTimersAfterRelocationAbort();
+            return Optional.empty();
+        }
+        active = new Seal(
+            composite,
+            timerEnvelope,
+            participantActorIds,
             captured);
         return Optional.of(active);
     }
@@ -108,17 +165,6 @@ final class ZLinkUserSpotRelocationBarrier {
         if (seal == null || seal != active) {
             return false;
         }
-        List<String> actorIds =
-            new java.util.ArrayList<>(seal.actorSeals.keySet());
-        java.util.Collections.reverse(actorIds);
-        for (String actorId : actorIds) {
-            if (!actors.abortActorRelocation(
-                actorId, seal.actorSeals.get(actorId))) {
-                throw new IllegalStateException(
-                    "User Spot barrier abort lost Actor lane: "
-                        + actorId);
-            }
-        }
         if (!barrier.abort(seal.composite)) {
             throw new IllegalStateException(
                 "User Spot barrier abort lost local lane");
@@ -133,22 +179,10 @@ final class ZLinkUserSpotRelocationBarrier {
             return Optional.empty();
         }
         LinkedHashMap<String, List<ZLinkAsyncSerialQueue.QueuedRecord>>
-            heldIngress = new LinkedHashMap<>();
-        for (Map.Entry<String, ZLinkAsyncSerialQueue.RelocationSeal> actor
-            : seal.actorSeals.entrySet()) {
-            heldIngress.put(
-                "actor:" + actor.getKey(),
-                actors.commitActorRelocation(
-                    actor.getKey(), actor.getValue())
-                    .orElseThrow(() -> new IllegalStateException(
-                        "User Spot barrier commit lost Actor lane: "
-                            + actor.getKey())));
-        }
-        Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> localHeld =
+            heldIngress = new LinkedHashMap<>(
             barrier.commit(seal.composite)
                 .orElseThrow(() -> new IllegalStateException(
-                    "User Spot barrier commit lost local lane"));
-        heldIngress.putAll(localHeld);
+                    "User Spot barrier commit lost a lane")));
         active = null;
         return Optional.of(new Committed(
             seal.generation(),
@@ -164,39 +198,16 @@ final class ZLinkUserSpotRelocationBarrier {
         }
         LinkedHashMap<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> held =
             new LinkedHashMap<>();
-        for (Map.Entry<String, ZLinkAsyncSerialQueue.RelocationSeal> actor
-            : seal.actorSeals.entrySet()) {
-            held.put(
-                "actor:" + actor.getKey(),
-                actors.freezeActorRelocationIngress(
-                    actor.getKey(), actor.getValue())
-                    .orElseThrow(() -> new IllegalStateException(
-                        "User Spot barrier freeze lost Actor lane: "
-                            + actor.getKey())));
-        }
         held.putAll(barrier.freezeIngress(seal.composite)
             .orElseThrow(() -> new IllegalStateException(
-                "User Spot barrier freeze lost local lane")));
+                "User Spot barrier freeze lost a lane")));
         return Optional.of(java.util.Collections.unmodifiableMap(held));
     }
 
-    private void rollback(
-        ZLinkCompositeRelocationBarrier.Seal localSeal,
-        Map<String, ZLinkAsyncSerialQueue.RelocationSeal> actorSeals) {
-        List<String> actorIds =
-            new java.util.ArrayList<>(actorSeals.keySet());
-        java.util.Collections.reverse(actorIds);
-        for (String actorId : actorIds) {
-            if (!actors.abortActorRelocation(
-                actorId, actorSeals.get(actorId))) {
-                throw new IllegalStateException(
-                    "partial User Spot barrier rollback lost Actor lane: "
-                        + actorId);
-            }
-        }
-        if (!barrier.abort(localSeal)) {
+    private void rollback(ZLinkCompositeRelocationBarrier.Seal seal) {
+        if (!barrier.abort(seal)) {
             throw new IllegalStateException(
-                "partial User Spot barrier rollback lost local lane");
+                "partial User Spot barrier rollback lost a lane");
         }
     }
 
@@ -208,25 +219,32 @@ final class ZLinkUserSpotRelocationBarrier {
     }
 
     private Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>>
-        captureRecords(
-            ZLinkCompositeRelocationBarrier.Seal localSeal,
-            Map<String, ZLinkAsyncSerialQueue.RelocationSeal> actorSeals) {
-        LinkedHashMap<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> result =
-            new LinkedHashMap<>(barrier.captured(localSeal)
+        captureRecords(ZLinkCompositeRelocationBarrier.Seal seal) {
+        return new LinkedHashMap<>(barrier.captured(seal)
                 .orElseThrow(() -> new IllegalStateException(
-                    "User Spot local relocation seal is not active")));
-        actorSeals.forEach((actorId, actorSeal) -> result.put(
-            "actor:" + actorId,
-            actorSeal.captured()));
-        return java.util.Collections.unmodifiableMap(result);
+                    "User Spot relocation seal is not active")));
+    }
+
+    private LinkedHashMap<String, ZLinkAsyncSerialQueue> relocationLanes(
+        List<String> participantActorIds) {
+        LinkedHashMap<String, ZLinkAsyncSerialQueue> lanes =
+            new LinkedHashMap<>(context.relocationLanes());
+        for (String actorId : participantActorIds) {
+            if (lanes.putIfAbsent(
+                    "actor:" + actorId,
+                    actors.actorRelocationLane(actorId)) != null) {
+                throw new IllegalStateException(
+                    "duplicate User Spot relocation lane: actor:"
+                        + actorId);
+            }
+        }
+        return lanes;
     }
 
     static final class Seal {
         private final ZLinkCompositeRelocationBarrier.Seal composite;
         private final byte[] timerEnvelope;
         private final List<String> participantActorIds;
-        private final Map<
-            String, ZLinkAsyncSerialQueue.RelocationSeal> actorSeals;
         private final Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>>
             capturedRecords;
 
@@ -234,14 +252,12 @@ final class ZLinkUserSpotRelocationBarrier {
             ZLinkCompositeRelocationBarrier.Seal composite,
             byte[] timerEnvelope,
             List<String> participantActorIds,
-            Map<String, ZLinkAsyncSerialQueue.RelocationSeal> actorSeals,
             Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>>
                 capturedRecords) {
             this.composite = composite;
             this.timerEnvelope = timerEnvelope;
             this.participantActorIds = List.copyOf(
                 participantActorIds);
-            this.actorSeals = actorSeals;
             this.capturedRecords = capturedRecords;
         }
 

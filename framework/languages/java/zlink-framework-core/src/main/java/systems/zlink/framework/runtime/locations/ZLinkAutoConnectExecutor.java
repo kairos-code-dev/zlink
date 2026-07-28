@@ -15,6 +15,12 @@ interface ZLinkAutoConnectExecutor {
         return disconnect(current) && connect(replacement);
     }
 
+    default void markNotRequired(ZLinkAutoConnectPlanner.Target target) {
+    }
+
+    default void clearNotRequired(ZLinkAutoConnectPlanner.Target target) {
+    }
+
     ZLinkAutoConnectExecutor NONE = new ZLinkAutoConnectExecutor() {
         @Override
         public boolean connect(ZLinkAutoConnectPlanner.Target target) {

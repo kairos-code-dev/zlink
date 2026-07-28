@@ -58,6 +58,21 @@ final class ZLinkRouteMeshRuntimeServiceTest {
     }
 
     @Test
+    void snapshotDistinguishesNotRequiredFromNotConnected() {
+        FakeNode node = new FakeNode();
+        try (var runtime = runtime(node)) {
+            node.peerState = MeshPeerState.NOT_REQUIRED;
+            var notRequired = runtime.snapshot("mesh").peers().getFirst();
+            assertEquals("not_required", notRequired.admissionState());
+            assertTrue(notRequired.lastFailure().isEmpty());
+
+            node.peerState = MeshPeerState.CLOSED;
+            var notConnected = runtime.snapshot("mesh").peers().getFirst();
+            assertEquals("not_connected", notConnected.admissionState());
+        }
+    }
+
+    @Test
     void observePublishesInitialStateWithoutWaitingForNativeTraffic() throws Exception {
         FakeNode node = new FakeNode();
         try (var runtime = runtime(node)) {
@@ -208,6 +223,7 @@ final class ZLinkRouteMeshRuntimeServiceTest {
         private volatile long maxMessageSize;
         private volatile int channelWeight = 7;
         private volatile int placementWeight = 100;
+        private volatile MeshPeerState peerState = MeshPeerState.ADMITTED;
         private final MeshNodeStatus status = new MeshNodeStatus(
             MeshNodeState.READY,
             local,
@@ -293,7 +309,7 @@ final class ZLinkRouteMeshRuntimeServiceTest {
                 "inproc://peer",
                 1,
                 MeshPeerSource.MANUAL,
-                MeshPeerState.ADMITTED,
+                peerState,
                 4,
                 8,
                 1,

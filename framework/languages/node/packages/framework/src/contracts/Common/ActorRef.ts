@@ -1,7 +1,7 @@
-import type { RoutingId } from './CoreTypes';
+import type { ActorId, RoutingId } from './CoreTypes';
 
 export interface ActorRef {
-  readonly actorId: string;
+  readonly actorId: ActorId;
   readonly objectGeneration: bigint;
   readonly meshName: string;
   readonly nodeRid: RoutingId;

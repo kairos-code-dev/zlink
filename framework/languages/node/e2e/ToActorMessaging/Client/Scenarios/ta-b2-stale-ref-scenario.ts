@@ -9,8 +9,8 @@ export async function runTaB2(options: ClientOptions): Promise<void> {
   const previous = await ensureActor(options, 'ta-b2');
   await postJson(`${options.actorUrl}/actors/ta-b2/destroy`, {});
   const replacement = await ensureActor(options, 'ta-b2');
-  if (replacement.actor.generation === previous.actor.generation) {
-    throw new Error('TA-B2 actor recreation did not change generation.');
+  if (replacement.actor.objectGeneration === previous.actor.objectGeneration) {
+    throw new Error('TA-B2 actor recreation did not change object generation.');
   }
 
   await assertCall(options, 'TA-B2-stale-send', 'ta-b2', previous.actor, 'stale-send', 'sent', true);

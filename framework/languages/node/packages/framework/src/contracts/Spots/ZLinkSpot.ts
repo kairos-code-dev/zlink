@@ -27,6 +27,19 @@ export interface ZLinkSpotClosingContext {
   readonly deadline: Date;
 }
 
+export enum ZLinkSpotRelocationReadyOutcome {
+  Continued = 0,
+  Relocated = 1
+}
+
+export interface ZLinkSpotRelocationReadyCompletion {
+  readonly outcome: ZLinkSpotRelocationReadyOutcome;
+}
+
+export interface ZLinkSpotRelocationReadyCall {
+  defer(): void;
+}
+
 export interface ZLinkSpotActorMembershipLifecycle<
   TActor extends ZLinkActor = ZLinkActor
 > {
@@ -51,6 +64,7 @@ export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor>
   onCreate?(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse>;
   onInitialize?(): Promise<void>;
   onClosing?(context: ZLinkSpotClosingContext, cleanupSignal: AbortSignal): Promise<void>;
+  onRelocationReadyCompleted?(completion: ZLinkSpotRelocationReadyCompletion): Promise<void>;
 }
 
 export interface ZLinkInstanceSpot {

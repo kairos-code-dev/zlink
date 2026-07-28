@@ -408,6 +408,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             }
             socket.connect(target.endpoint());
         }
+
     }
 
     private static final class MeshNodeExecutor implements ZLinkAutoConnectExecutor {
@@ -468,6 +469,23 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             } catch (RuntimeException failure) {
                 connectionIntents.putIfAbsent(target.key(), intent);
                 return false;
+            }
+        }
+
+        @Override
+        public void markNotRequired(ZLinkAutoConnectPlanner.Target target) {
+            if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
+                node.markPeerConnectionNotRequired(
+                    target.nodeRid(),
+                    target.endpoint(),
+                    target.lifecycleGeneration());
+            }
+        }
+
+        @Override
+        public void clearNotRequired(ZLinkAutoConnectPlanner.Target target) {
+            if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
+                node.clearPeerConnectionNotRequired(target.nodeRid());
             }
         }
     }

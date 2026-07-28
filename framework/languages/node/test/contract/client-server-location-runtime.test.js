@@ -84,11 +84,11 @@ test('dedicated ClientServer descriptor store fences immutable identity and muta
   assert.equal((await store.listClientServers('orders')).items.length, 0);
 });
 
-test('automatic ClientServer startup requires the dedicated descriptor store capability', () => {
+test('automatic ClientServer startup requires the minimal Location Store provider SPI', () => {
   assert.throws(() => internal.createFrameworkRegistration({
     channels: { orders: { client: { manualConnections: [] } } },
     locations: { storeInstance: {} }
-  }), /dedicated ClientServer descriptor store operations/);
+  }), /Location Store must implement read, write, and scan/);
 });
 
 test('ClientServer socket identity advertises the concrete port returned after bind', async () => {
@@ -188,7 +188,7 @@ test('same-process ClientServer uses local bound endpoint without a Location Sto
     assert.equal(local.sockets.clientDealerForOutbound('orders'), undefined);
 
     local.dealerMonitor({
-      nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+      nativeEvent: internal.ZLinkSocketNativeEventType.ConnectionReady,
       routingId: identity.serverRid,
       remoteAddr: identity.endpoint
     });
@@ -398,7 +398,7 @@ test('manual ClientServer endpoints use dedicated monitored admission and reconn
   assert.equal(sockets.clientDealerForOutbound('orders'), undefined);
 
   monitorHandler({
-    nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+    nativeEvent: internal.ZLinkSocketNativeEventType.ConnectionReady,
     routingId: 'server-a',
     remoteAddr: endpoint
   });
@@ -414,13 +414,13 @@ test('manual ClientServer endpoints use dedicated monitored admission and reconn
   assert.equal(sockets.clientDealerForOutbound('orders'), dealers[0]);
 
   monitorHandler({
-    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    nativeEvent: internal.ZLinkSocketNativeEventType.Disconnected,
     routingId: 'server-a',
     remoteAddr: endpoint
   });
   assert.equal(sockets.clientDealerForOutbound('orders'), undefined);
   monitorHandler({
-    nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+    nativeEvent: internal.ZLinkSocketNativeEventType.ConnectionReady,
     routingId: 'server-a',
     remoteAddr: endpoint
   });
@@ -457,7 +457,7 @@ test('manual ClientServer reconnect fences a late admission from the previous ph
   );
   sockets.startManualClientServerConnections();
   monitorHandler({
-    nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+    nativeEvent: internal.ZLinkSocketNativeEventType.ConnectionReady,
     routingId: 'server-a',
     remoteAddr: endpoint
   });
@@ -465,12 +465,12 @@ test('manual ClientServer reconnect fences a late admission from the previous ph
   assert.equal(requests.length, 1);
 
   monitorHandler({
-    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    nativeEvent: internal.ZLinkSocketNativeEventType.Disconnected,
     routingId: 'server-a',
     remoteAddr: endpoint
   });
   monitorHandler({
-    nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+    nativeEvent: internal.ZLinkSocketNativeEventType.ConnectionReady,
     routingId: 'server-a',
     remoteAddr: endpoint
   });

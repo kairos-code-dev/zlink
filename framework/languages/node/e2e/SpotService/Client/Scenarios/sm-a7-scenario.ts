@@ -1,4 +1,4 @@
-// SM-A7: spot 타입 불일치 (SpotTypeMismatch) 시나리오를 검증한다.
+// SM-A7: spot 타입 불일치 (`TypeMismatch`) 시나리오를 검증한다.
 import type { EvidenceWaitReq, SpotTypeMismatchRes, SpotTypeMismatchReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

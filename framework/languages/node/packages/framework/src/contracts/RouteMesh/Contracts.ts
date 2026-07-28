@@ -103,14 +103,13 @@ export interface ZLinkMeshPeerSnapshot {
   readonly lastFailure?: string;
 }
 
-export enum ZLinkMeshNodeState {
+export enum ZLinkTopologyState {
   Starting = 0,
-  Serving = 1,
-  Draining = 2,
-  Drained = 3,
-  ForceStopping = 4,
-  Stopped = 5,
-  Faulted = 6
+  Ready = 1,
+  Degraded = 2,
+  Stopping = 3,
+  Stopped = 4,
+  Failed = 5
 }
 
 export interface ZLinkMeshChannelSnapshot {
@@ -154,7 +153,7 @@ export interface ZLinkMeshNodeSnapshot {
   readonly placementReservationFailureCount: bigint;
   readonly lastPlacementReservationFailure?: string;
   readonly objectCapabilities: readonly ZLinkObjectCapability[];
-  readonly state: ZLinkMeshNodeState;
+  readonly state: ZLinkTopologyState;
   readonly sequence: bigint;
   readonly observedAt: Date;
   readonly descriptorSources: readonly string[];
@@ -190,7 +189,7 @@ export interface ZLinkMeshRuntimeEvent {
   readonly populationCapacity?: ZLinkMeshNodeSnapshot['populationCapacity'];
   readonly activationConcurrency?: ZLinkMeshNodeSnapshot['activationConcurrency'];
   readonly reason?: string;
-  readonly state?: ZLinkMeshNodeState;
+  readonly state?: ZLinkTopologyState;
 }
 
 export interface ZLinkRouteMeshRuntime {

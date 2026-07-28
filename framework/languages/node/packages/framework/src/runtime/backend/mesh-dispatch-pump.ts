@@ -129,7 +129,9 @@ export class ZLinkMeshDispatchPump {
                   }
                 }
               }
-              await yieldToEventLoop();
+              // A continuously readable owner must not keep the timers phase
+              // from running while the pump consumes successive batches.
+              await yieldToTimers();
               receiveBatch.reset();
             }
           } finally {

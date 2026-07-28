@@ -85,6 +85,24 @@ final class ZLinkAutoConnectPlanner {
         return desired;
     }
 
+    static Map<String, Target> computeNotRequired(
+        Local local,
+        List<ZLinkAutoConnectPeer> peers) {
+        Map<String, Target> notRequired = new HashMap<>();
+        if (local.type() != ZLinkAutoConnectType.ROUTE_MESH) {
+            return notRequired;
+        }
+        for (ZLinkAutoConnectPeer peer : peers) {
+            PeerDecision validated = validate(local, peer);
+            if (validated.skipReason() == null
+                && isRouteMeshConnectionNotRequired(local, peer)) {
+                Target target = targetOf(peer);
+                notRequired.put(target.key(), target);
+            }
+        }
+        return notRequired;
+    }
+
     static Target trackableTarget(Local local, ZLinkAutoConnectPeer peer) {
         PeerDecision decision = validate(local, peer);
         return decision.skipReason() == null ? targetOf(peer) : null;

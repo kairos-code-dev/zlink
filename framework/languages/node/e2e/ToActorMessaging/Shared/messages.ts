@@ -53,25 +53,26 @@ export interface ActorEvidence {
   readonly value: string;
 }
 
-export interface ActorRefSnapshot {
+export interface ActorRefPayload {
   readonly nodeRid: string;
   readonly actorId: string;
-  readonly generation: string;
+  readonly objectGeneration: string;
+  readonly meshName: string;
 }
 
 export interface ActorEnsureResponse {
   readonly actorId: string;
-  readonly actor: ActorRefSnapshot;
+  readonly actor: ActorRefPayload;
 }
 
 export interface BindActorReq {
-  readonly actor: ActorRefSnapshot;
+  readonly actor: ActorRefPayload;
 }
 
 export interface BindActorRes {
   readonly actorId: string;
   readonly nodeRid: string;
-  readonly generation: string;
+  readonly objectGeneration: string;
   readonly boundCount: number;
 }
 
@@ -83,7 +84,7 @@ export interface SessionBindingSnapshot {
 export interface ActorCallRequest {
   readonly scenario: string;
   readonly actorId: string;
-  readonly actor?: ActorRefSnapshot;
+  readonly actor?: ActorRefPayload;
   readonly value: string;
 }
 

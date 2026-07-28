@@ -240,12 +240,17 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
                 drainState = "draining";
             }
             case CLOSED -> {
-                admissionState = "disconnected";
+                admissionState = "not_connected";
                 ready = false;
                 drainState = "serving";
             }
             default -> {
                 admissionState = "rejected";
+                ready = false;
+                drainState = "serving";
+            }
+            case NOT_REQUIRED -> {
+                admissionState = "not_required";
                 ready = false;
                 drainState = "serving";
             }

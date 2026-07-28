@@ -1,5 +1,6 @@
-// ST-F4: delay two deliveries after global Actor resolution. G1 is released
-// inside Message Follow duration; G2 is released after expiry.
+// ST-F4: Message Follow duration 전후 결과 시나리오를 검증한다.
+// Two deliveries are delayed after global Actor resolution: G1 is released
+// inside the Message Follow duration, while G2 is released after expiry.
 import {
   SpotActorTransferNames,
   actorNode,

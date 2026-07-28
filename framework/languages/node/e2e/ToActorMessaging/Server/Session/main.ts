@@ -58,13 +58,14 @@ class ToActorSession implements ZLinkSession {
       await this.context.actors.bindOrGet({
         actorId: request.actor.actorId,
         nodeRid: request.actor.nodeRid,
-        generation: BigInt(request.actor.generation)
+        objectGeneration: BigInt(request.actor.objectGeneration),
+        meshName: request.actor.meshName
       }, signal);
       sessionBindings.bind(request.actor.actorId, this.context.sessionId);
       this.context.client.reply({
         actorId: request.actor.actorId,
         nodeRid: request.actor.nodeRid,
-        generation: request.actor.generation,
+        objectGeneration: request.actor.objectGeneration,
         boundCount: this.context.actors.bound.length
       } satisfies BindActorRes).submit();
       return;

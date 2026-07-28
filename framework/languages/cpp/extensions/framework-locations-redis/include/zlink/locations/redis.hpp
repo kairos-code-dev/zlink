@@ -109,6 +109,34 @@ if exists then
                 redis.call('HGET', KEYS[1], 'updatedAtMs') or tostring(nowMs)}
     end
 end
+local entrySpotId = ARGV[18]
+if entrySpotId ~= '' then
+    if redis.call('EXISTS', KEYS[7]) == 1
+        or redis.call('EXISTS', KEYS[8]) == 1 then
+        return {'conflict', '0', tostring(nowMs)}
+    end
+    local claimDescriptor =
+        redis.call('HGET', KEYS[6], 'descriptorKey')
+    local claimLifecycle =
+        redis.call(
+            'HGET', KEYS[6],
+            'descriptorLifecycleGeneration')
+    local claimOwner =
+        redis.call('HGET', KEYS[6], 'ownerId')
+    local claimLease =
+        redis.call(
+            'HGET', KEYS[6], 'ownerLeaseGeneration')
+    if claimOwner
+        and redis.call('PTTL', KEYS[9]) > 0
+        and redis.call('HGET', KEYS[9], 'ownerId') == claimOwner
+        and redis.call('HGET', KEYS[9], 'generation') == claimLease
+        and (claimDescriptor ~= ARGV[9]
+            or claimLifecycle ~= ARGV[5]
+            or claimOwner ~= ARGV[3]
+            or claimLease ~= ARGV[4]) then
+        return {'conflict', '0', tostring(nowMs)}
+    end
+end
 redis.call('HSET', KEYS[1],
     'owner', ARGV[3],
     'gen', ARGV[5],
@@ -130,6 +158,15 @@ redis.call('HSET', KEYS[4],
     'activationConcurrencyLimit', ARGV[17],
     'entrySpotId', ARGV[18],
     'immutableDigest', ARGV[6])
+if entrySpotId ~= '' then
+    redis.call('HSET', KEYS[6],
+        'state', 'Claimed',
+        'spotId', entrySpotId,
+        'descriptorKey', ARGV[9],
+        'descriptorLifecycleGeneration', ARGV[5],
+        'ownerId', ARGV[3],
+        'ownerLeaseGeneration', ARGV[4])
+end
 redis.call('SADD', KEYS[2], ARGV[9])
 redis.call('SADD', KEYS[5], ARGV[9])
 return {'stored', ARGV[2], tostring(nowMs)}
@@ -140,6 +177,17 @@ if redis.call('EXISTS', KEYS[1]) == 0
     or redis.call('HGET', KEYS[1], 'owner') ~= ARGV[1]
     or redis.call('HGET', KEYS[3], 'ownerLeaseGeneration') ~= ARGV[2] then
     return 'stale'
+end
+if KEYS[5] ~= KEYS[3]
+    and redis.call('HGET', KEYS[5], 'descriptorKey') == ARGV[3]
+    and redis.call(
+        'HGET', KEYS[5],
+        'descriptorLifecycleGeneration')
+        == redis.call('HGET', KEYS[3], 'lifecycleGeneration')
+    and redis.call('HGET', KEYS[5], 'ownerId') == ARGV[1]
+    and redis.call(
+        'HGET', KEYS[5], 'ownerLeaseGeneration') == ARGV[2] then
+    redis.call('DEL', KEYS[5])
 end
 redis.call('DEL', KEYS[1])
 redis.call('DEL', KEYS[3])
@@ -1322,6 +1370,19 @@ local function snapshot(status)
         redis.call('HGET', KEYS[1], 'pendingCreationSha256') or '',
         redis.call('HGET', KEYS[1], 'pendingCreationEncodedSize') or '0',
         tostring(nowMs)}
+end
+if ARGV[11] ~= 'actor'
+    and redis.call('EXISTS', KEYS[16]) == 1 then
+    local claimGeneration =
+        redis.call(
+            'HGET', KEYS[16], 'ownerLeaseGeneration')
+    if claimGeneration
+        and liveLease(KEYS[17], claimGeneration) then
+        return {'conflict', '', '', '0', '0', '', '0',
+            '', '0', '', '', '', '0', '0', '', '', '', '0',
+            tostring(nowMs)}
+    end
+    redis.call('DEL', KEYS[16])
 end
 if redis.call('EXISTS', KEYS[1]) == 1 then
     if redis.call('HGET', KEYS[1], 'stableType') ~= ARGV[3] then
@@ -2686,6 +2747,15 @@ class redis_location_key_schema_t
         return join (domain_prefix (prefix), "schema");
     }
 
+    static std::string entry_spot_identity_claim_key (
+      std::string_view prefix,
+      std::string_view spot_id)
+    {
+        return join (
+          domain_prefix (prefix), "identity", "entry-spot",
+          sha256_hex (spot_id));
+    }
+
     static std::string authority_key (
       std::string_view prefix,
       std::string_view key)
@@ -3933,6 +4003,24 @@ class redis_location_store_t final : public location_store_t
                       encode_mesh_node_key (
                         {descriptor.mesh_name,
                          descriptor.rid});
+                  const auto entry_spot_id =
+                    descriptor.entry_spot_id.value_or (
+                      std::string{});
+                  const auto entry_claim_key =
+                    entry_spot_id.empty ()
+                      ? detail::redis_location_key_schema_t::
+                          schema_key (_options.key_prefix)
+                      : detail::redis_location_key_schema_t::
+                          entry_spot_identity_claim_key (
+                            _options.key_prefix,
+                            entry_spot_id);
+                  sw::redis::OptionalString claim_owner;
+                  if (!entry_spot_id.empty ())
+                      claim_owner =
+                        redis_get (
+                          client ().hget (
+                            entry_claim_key,
+                            "ownerId"));
                   const auto keys = std::vector<std::string>{
                     detail::redis_location_key_schema_t::
                       mesh_node_key (
@@ -3956,7 +4044,36 @@ class redis_location_store_t final : public location_store_t
                       mesh_node_owner_keys_key (
                         _options.key_prefix,
                         descriptor.owner_id,
-                        descriptor.lease_generation)};
+                        descriptor.lease_generation),
+                    entry_claim_key,
+                    entry_spot_id.empty ()
+                      ? detail::redis_location_key_schema_t::
+                          schema_key (_options.key_prefix)
+                      : detail::redis_location_key_schema_t::
+                          authority_key (
+                            _options.key_prefix,
+                            object_key (
+                              {placement_object_kind_t::
+                                 user_spot,
+                               entry_spot_id})),
+                    entry_spot_id.empty ()
+                      ? detail::redis_location_key_schema_t::
+                          schema_key (_options.key_prefix)
+                      : detail::redis_location_key_schema_t::
+                          authority_key (
+                            _options.key_prefix,
+                            object_key (
+                              {placement_object_kind_t::
+                                 instance_spot,
+                               entry_spot_id})),
+                    claim_owner
+                      ? detail::redis_location_key_schema_t::
+                          lease_key (
+                            _options.key_prefix,
+                            *claim_owner)
+                      : detail::redis_location_key_schema_t::
+                          schema_key (
+                            _options.key_prefix)};
                   auto args = std::vector<std::string>{
                     intent_name (intent),
                     std::to_string (
@@ -3993,8 +4110,7 @@ class redis_location_store_t final : public location_store_t
                       descriptor.capacity.spots.limit),
                     std::to_string (
                       descriptor.activation_concurrency.limit),
-                    descriptor.entry_spot_id.value_or (
-                      std::string{})};
+                    entry_spot_id};
                   const auto result = redis_get (
                     client ().eval<std::tuple<
                       std::string,
@@ -4048,6 +4164,16 @@ class redis_location_store_t final : public location_store_t
                   const auto row_id =
                     detail::redis_location_key_schema_t::
                       encode_mesh_node_key (key);
+                  const auto admission_key =
+                    detail::redis_location_key_schema_t::
+                      mesh_node_admission_key (
+                        _options.key_prefix, key.mesh_name,
+                        key.rid.to_string ());
+                  const auto entry_spot_id =
+                    redis_get (
+                      client ().hget (
+                        admission_key,
+                        "entrySpotId"));
                   const auto keys = std::vector<std::string>{
                     detail::redis_location_key_schema_t::
                       mesh_node_key (
@@ -4056,15 +4182,19 @@ class redis_location_store_t final : public location_store_t
                     detail::redis_location_key_schema_t::
                       mesh_node_keys_key (
                         _options.key_prefix, key.mesh_name),
-                    detail::redis_location_key_schema_t::
-                      mesh_node_admission_key (
-                        _options.key_prefix, key.mesh_name,
-                        key.rid.to_string ()),
+                    admission_key,
                     detail::redis_location_key_schema_t::
                       mesh_node_owner_keys_key (
                         _options.key_prefix,
                         owner.owner_id,
-                        owner.lease_generation)};
+                        owner.lease_generation),
+                    entry_spot_id
+                      && !entry_spot_id->empty ()
+                      ? detail::redis_location_key_schema_t::
+                          entry_spot_identity_claim_key (
+                            _options.key_prefix,
+                            *entry_spot_id)
+                      : admission_key};
                   const auto args = std::vector<std::string>{
                     owner.owner_id,
                     std::to_string (owner.lease_generation),
@@ -6160,6 +6290,23 @@ class redis_location_store_t final : public location_store_t
                   const auto key = object_key (request.key);
                   const auto reservation_id =
                     random_lower_hex_128 ();
+                  const auto entry_claim_key =
+                    request.key.kind
+                        == placement_object_kind_t::actor
+                      ? detail::redis_location_key_schema_t::
+                          schema_key (_options.key_prefix)
+                      : detail::redis_location_key_schema_t::
+                          entry_spot_identity_claim_key (
+                            _options.key_prefix,
+                            request.key.global_id);
+                  sw::redis::OptionalString claim_owner;
+                  if (request.key.kind
+                      != placement_object_kind_t::actor)
+                      claim_owner =
+                        redis_get (
+                          client ().hget (
+                            entry_claim_key,
+                            "ownerId"));
                   const auto keys = std::vector<std::string>{
                     detail::redis_location_key_schema_t::
                       authority_key (_options.key_prefix, key),
@@ -6207,7 +6354,16 @@ class redis_location_store_t final : public location_store_t
                         _options.key_prefix),
                     detail::redis_location_key_schema_t::
                       capacity_spot_active_key (
-                        _options.key_prefix)};
+                        _options.key_prefix),
+                    entry_claim_key,
+                    claim_owner
+                      ? detail::redis_location_key_schema_t::
+                          lease_key (
+                            _options.key_prefix,
+                            *claim_owner)
+                      : detail::redis_location_key_schema_t::
+                          schema_key (
+                            _options.key_prefix)};
                   const auto args = std::vector<std::string>{
                     key,
                     object_reservation_fingerprint (request),
@@ -6277,6 +6433,22 @@ class redis_location_store_t final : public location_store_t
                   if (result.size () != 19)
                       throw sw::redis::Error (
                         "invalid object reserve result");
+                  if (result[0] == "capacity")
+                      return object_reserve_result_t{
+                        object_placement_capacity_exhausted_t{}};
+                  if (result[0] == "conflict"
+                      && result[1].empty ())
+                      return object_reserve_result_t{
+                        object_reserve_conflict_t{
+                          authority_missing_t{
+                            detail::
+                              redis_location_script_result_t::
+                                from_unix_ms (
+                                  std::stoll (
+                                    result[18]))}}};
+                  if (result[0] == "exhausted")
+                      return object_reserve_result_t{
+                        authority_generation_exhausted_t{}};
                   const auto snapshot =
                     parse_object_snapshot_result (result);
                   if (result[0] == "already_exists")
@@ -6285,22 +6457,11 @@ class redis_location_store_t final : public location_store_t
                   if (result[0] == "type_mismatch")
                       return object_reserve_result_t{
                         object_type_mismatch_t{snapshot}};
-                  if (result[0] == "capacity")
-                      return object_reserve_result_t{
-                        object_placement_capacity_exhausted_t{}};
                   if (result[0] == "conflict"
                       && !result[1].empty ())
                       return object_reserve_result_t{
                         object_reserve_conflict_t{
                           snapshot}};
-                  if (result[0] == "conflict")
-                      return object_reserve_result_t{
-                        object_reserve_conflict_t{
-                          authority_missing_t{
-                            snapshot.store_now}}};
-                  if (result[0] == "exhausted")
-                      return object_reserve_result_t{
-                        authority_generation_exhausted_t{}};
                   if (result[0] != "reserved")
                       throw sw::redis::Error (
                         "unknown object reserve result");
@@ -7172,6 +7333,85 @@ class redis_location_store_t final : public location_store_t
                        owner.lease_generation))
                 return std::int64_t{0};
             std::int64_t removed = 0;
+            const auto mesh_node_owner_index =
+              detail::redis_location_key_schema_t::
+                mesh_node_owner_keys_key (
+                  _options.key_prefix,
+                  owner.owner_id,
+                  owner.lease_generation);
+            std::vector<std::string> mesh_node_keys;
+            redis.smembers (
+              mesh_node_owner_index,
+              std::back_inserter (mesh_node_keys));
+            for (const auto &row_id : mesh_node_keys) {
+                const auto descriptor_key =
+                  detail::redis_location_key_schema_t::
+                    decode_mesh_node_key (row_id);
+                const auto row_key =
+                  detail::redis_location_key_schema_t::
+                    mesh_node_key (
+                      _options.key_prefix,
+                      descriptor_key.mesh_name,
+                      descriptor_key.rid.to_string ());
+                const auto admission_key =
+                  detail::redis_location_key_schema_t::
+                    mesh_node_admission_key (
+                      _options.key_prefix,
+                      descriptor_key.mesh_name,
+                      descriptor_key.rid.to_string ());
+                const auto stored_owner =
+                  redis.hget (row_key, "owner");
+                const auto stored_generation =
+                  redis.hget (
+                    admission_key,
+                    "ownerLeaseGeneration");
+                if (!stored_owner
+                    || *stored_owner != owner.owner_id
+                    || !stored_generation
+                    || *stored_generation
+                         != std::to_string (
+                           owner.lease_generation)) {
+                    redis.srem (
+                      mesh_node_owner_index, row_id);
+                    continue;
+                }
+                const auto entry_spot_id =
+                  redis.hget (
+                    admission_key, "entrySpotId");
+                const auto keys =
+                  std::vector<std::string>{
+                    row_key,
+                    detail::redis_location_key_schema_t::
+                      mesh_node_keys_key (
+                        _options.key_prefix,
+                        descriptor_key.mesh_name),
+                    admission_key,
+                    mesh_node_owner_index,
+                    entry_spot_id
+                        && !entry_spot_id->empty ()
+                      ? detail::redis_location_key_schema_t::
+                          entry_spot_identity_claim_key (
+                            _options.key_prefix,
+                            *entry_spot_id)
+                      : admission_key};
+                const auto args =
+                  std::vector<std::string>{
+                    owner.owner_id,
+                    std::to_string (
+                      owner.lease_generation),
+                    row_id};
+                const auto result = redis_get (
+                  client ().eval<std::string> (
+                    std::string (
+                      detail::redis_location_scripts_t::
+                        remove_mesh_node),
+                    keys.begin (), keys.end (),
+                    args.begin (), args.end ()));
+                if (result == "stored")
+                    ++removed;
+            }
+            redis.del (mesh_node_owner_index);
+
             const auto descriptor_owner_index =
               detail::redis_location_key_schema_t::
                 client_server_owner_keys_key (

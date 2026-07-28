@@ -1,4 +1,5 @@
-// ST-F5: two consecutive relocations preserve a bounded Message Follow chain.
+// ST-F5: Message Follow route 제거 시나리오를 검증한다.
+// Two consecutive relocations preserve a bounded Message Follow chain.
 import {
   SpotActorTransferNames,
   actorNode,

@@ -2010,6 +2010,15 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return dispatches.trySeal(actorId);
     }
 
+    /**
+     * Returns the Framework-owned serial lane used to coordinate an Actor as
+     * part of a User Spot aggregate relocation barrier.
+     */
+    public ZLinkAsyncSerialQueue actorRelocationLane(String actorId) {
+        java.util.Objects.requireNonNull(actorId, "actorId");
+        return dispatches.relocationLane(actorId);
+    }
+
     public boolean abortActorRelocation(
         String actorId,
         ZLinkAsyncSerialQueue.RelocationSeal seal) {

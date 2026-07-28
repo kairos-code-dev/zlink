@@ -581,19 +581,17 @@ test('route packet dispatcher sends channel envelopes to route handlers before S
       correlationId: 'route-corr',
       hasRouterAlias: false
     }]);
-    assert.deepEqual(filterInvocations.map((invocation) => ({
-      ownerKind: invocation.ownerKind,
-      messageContext: invocation.messageContext,
-      hasLegacyContext: 'context' in invocation,
-      hasMessage: 'message' in invocation
+    assert.deepEqual(filterInvocations.map((context) => ({
+      meshName: context.meshName,
+      packetName: context.packetName,
+      hasLegacyContext: 'context' in context,
+      hasMessage: 'message' in context
     })), [{
-      ownerKind: 'routeMeshChannel',
-      messageContext: filterInvocations[0].messageContext,
+      meshName: 'bingo.play',
+      packetName: 'AllocateBingoRoomReq',
       hasLegacyContext: false,
       hasMessage: false
     }]);
-    assert.equal(filterInvocations[0].messageContext.meshName, 'bingo.play');
-    assert.equal(filterInvocations[0].messageContext.packetName, 'AllocateBingoRoomReq');
     assert.equal(replyParts.length, 2);
   } finally {
     parts.forEach((part) => part.close());
@@ -2482,23 +2480,24 @@ test('CH-002 manual endpoint round-robin distributes requests across three serve
 });
 
 test('DSC-008 requestToChannel traffic survives location scale-out and scale-in', async () => {
-  const locationStore = new framework.ZLinkInMemoryLocationStore();
+  const locationProvider = new framework.ZLinkInMemoryProviderLocationStore();
+  const locationQuery = new framework.ZLinkLocationStoreRepository(locationProvider);
   const heldPorts = await reserveHeldPorts(3);
   const providerAEndpoint = `tcp://127.0.0.1:${heldPorts.ports[0]}`;
   const providerBEndpoint = `tcp://127.0.0.1:${heldPorts.ports[1]}`;
   const providerCEndpoint = `tcp://127.0.0.1:${heldPorts.ports[2]}`;
-  const providerA = createScaleoutProvider(locationStore, providerAEndpoint, 'provider-a');
-  const providerB = createScaleoutProvider(locationStore, providerBEndpoint, 'provider-b');
-  const providerC = createScaleoutProvider(locationStore, providerCEndpoint, 'provider-c');
+  const providerA = createScaleoutProvider(locationProvider, providerAEndpoint, 'provider-a');
+  const providerB = createScaleoutProvider(locationProvider, providerBEndpoint, 'provider-b');
+  const providerC = createScaleoutProvider(locationProvider, providerCEndpoint, 'provider-c');
   let clientAppA;
   let clientAppB;
 
   try {
     await heldPorts.release(providerAEndpoint);
     await providerA.runtime.start();
-    await waitForReadyEndpoints(locationStore, [providerAEndpoint]);
-    clientAppA = await createScaleoutClientApp(locationStore);
-    clientAppB = await createScaleoutClientApp(locationStore);
+    await waitForReadyEndpoints(locationQuery, [providerAEndpoint]);
+    clientAppA = await createScaleoutClientApp(locationProvider);
+    clientAppB = await createScaleoutClientApp(locationProvider);
     const clientA = clientAppA.get(nestjs.ZLINK_CHANNEL_CLIENT);
     const clientB = clientAppB.get(nestjs.ZLINK_CHANNEL_CLIENT);
 
@@ -2513,15 +2512,15 @@ test('DSC-008 requestToChannel traffic survives location scale-out and scale-in'
 
     await heldPorts.release(providerBEndpoint);
     await providerB.runtime.start();
-    await waitForReadyEndpoints(locationStore, [providerAEndpoint, providerBEndpoint]);
+    await waitForReadyEndpoints(locationQuery, [providerAEndpoint, providerBEndpoint]);
     await heldPorts.release(providerCEndpoint);
     await providerC.runtime.start();
-    await waitForReadyEndpoints(locationStore, [providerAEndpoint, providerBEndpoint, providerCEndpoint]);
+    await waitForReadyEndpoints(locationQuery, [providerAEndpoint, providerBEndpoint, providerCEndpoint]);
     const scaleoutTraffic = await waitForScaleoutTrafficProviders([clientA, clientB], 'node-scaleout', ['provider-b', 'provider-c']);
     assertRequestIdsHandledOnce(scaleoutTraffic.completedRequestIds, providerA, providerB, providerC);
 
     await providerA.runtime.stop();
-    await waitUntilEndpointIsNotReady(locationStore, providerAEndpoint);
+    await waitUntilEndpointIsNotReady(locationQuery, providerAEndpoint);
     await waitForAutoConnectPollCycle();
 
     const providerACountBeforeScaleIn = providerA.evidence.length;

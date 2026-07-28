@@ -1476,6 +1476,126 @@ TEST (ZLinkFrameworkLocationsRedis,
 #endif
 }
 
+TEST (ZLinkFrameworkLocationsRedis,
+      EntrySpotIdentityClaimUsesExactOwnerCleanup)
+{
+#if !defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+    GTEST_SKIP () << "redis-plus-plus is not available in this build";
+#else
+    using namespace zlink::framework;
+    auto options = find_redis_options ();
+    if (!options)
+        GTEST_SKIP () << "Redis server is not available";
+    options->key_prefix = unique_prefix ();
+    redis_location_store_t store (*options);
+    const auto first_owner =
+      claim_owner (store, "entry-owner-a");
+    const auto second_owner =
+      claim_owner (store, "entry-owner-b");
+    const std::string entry_id =
+      "game-entry-00000000-0000-4000-8000-000000000099";
+    const auto descriptor = [&] (
+      std::string rid,
+      std::uint64_t lifecycle,
+      const location_owner_token_t &owner) {
+        return mesh_node_descriptor_t{
+          .mesh_name = "entry-mesh",
+          .rid = zlink::routing_id_t::from (
+            std::move (rid)),
+          .lifecycle_generation = lifecycle,
+          .descriptor_revision = 1,
+          .endpoint = "tcp://127.0.0.1:5001",
+          .entry_spot_id = entry_id,
+          .application_version = 1,
+          .object_capabilities =
+            {{.object_kind =
+                placement_object_kind_t::user_spot,
+              .stable_type = "room"}},
+          .object_role = object_role_t::server,
+          .capacity = {.spots = {.limit = 8}},
+          .activation_concurrency = {.limit = 2},
+          .state = framework_runtime_state_t::serving,
+          .security_identity = "entry-test",
+          .owner_id = owner.owner_id,
+          .lease_generation = owner.lease_generation};
+    };
+    const auto first =
+      descriptor ("entry-node-a", 41, first_owner);
+    const auto second =
+      descriptor ("entry-node-b", 42, second_owner);
+    ASSERT_EQ (
+      location_write_status_t::stored,
+      store.update_mesh_node (
+        first, location_write_intent_t::new_claim)
+        .result ().value ().status);
+
+    sw::redis::Redis redis (
+      options->connection_string);
+    const auto claim_key =
+      redis_location_key_schema_t::
+        entry_spot_identity_claim_key (
+          options->key_prefix, entry_id);
+    const auto claim_state =
+      redis.hget (claim_key, "state");
+    const auto claimed_spot_id =
+      redis.hget (claim_key, "spotId");
+    ASSERT_TRUE (claim_state);
+    ASSERT_TRUE (claimed_spot_id);
+    EXPECT_EQ ("Claimed", *claim_state);
+    EXPECT_EQ (entry_id, *claimed_spot_id);
+    EXPECT_EQ (-1, redis.pttl (claim_key));
+
+    object_reserve_request_t request{
+      .key = {
+        placement_object_kind_t::user_spot,
+        entry_id},
+      .intent = {.stable_type = "room"},
+      .target =
+        {.mesh_name = first.mesh_name,
+         .node_rid = node_rid_t::from_string (
+           first.rid.to_string ()),
+         .node_lifecycle_generation =
+           first.lifecycle_generation,
+         .owner = first_owner},
+      .capacity_bundle =
+        {.spot_slots = 1,
+         .spot_type =
+           spot_type_capacity_delta_t{
+             placement_object_kind_t::user_spot,
+             "room",
+             1}}};
+    EXPECT_TRUE (
+      std::holds_alternative<object_reserve_conflict_t> (
+        store.reserve (request).result ().value ()));
+    EXPECT_EQ (
+      location_write_status_t::rejected_conflict,
+      store.update_mesh_node (
+        second, location_write_intent_t::new_claim)
+        .result ().value ().status);
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store.remove_mesh_node (
+        {first.mesh_name, first.rid}, first_owner)
+        .result ().value ());
+    EXPECT_EQ (0, redis.exists (claim_key));
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store.update_mesh_node (
+        second, location_write_intent_t::new_claim)
+        .result ().value ().status);
+    EXPECT_EQ (
+      location_write_status_t::ignored_stale,
+      store.remove_mesh_node (
+        {first.mesh_name, first.rid}, first_owner)
+        .result ().value ());
+    EXPECT_EQ (
+      1,
+      store.remove_all_by_owner (second_owner)
+        .result ().value ());
+    EXPECT_EQ (0, redis.exists (claim_key));
+#endif
+}
+
 
 
 TEST (ZLinkFrameworkLocationsRedis,

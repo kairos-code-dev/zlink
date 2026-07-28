@@ -225,9 +225,10 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
     this.throwIfKnownStale(meshName, actor);
     const operationId = createMessageFollowId();
     const correlationId = createMessageFollowId();
+    const requestSequence = BigInt(`0x${operationId.slice(16)}`);
     const parts = this.createPacketParts(
       ZLinkStreamMessageKind.Request,
-      BigInt(`0x${operationId.slice(16)}`) || 1n,
+      requestSequence === 0n ? 1n : requestSequence,
       explicitPacketName,
       request,
       new Map([

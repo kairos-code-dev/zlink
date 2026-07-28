@@ -8,7 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.runtime.internal.relocation
     .ZLinkCompositeRelocationBarrier;
@@ -123,6 +125,119 @@ final class ZLinkCompositeRelocationBarrierTest {
             () -> barrier.runCapture(
                 null,
                 () -> CompletableFuture.completedFuture(null)));
+        assertTrue(barrier.abort(seal));
+    }
+
+    @Test
+    void turnBoundarySealWaitsForActiveTurnAndCapturesAcceptedQueue()
+        throws Exception {
+        ZLinkAsyncSerialQueue spot = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue actor = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue timer = new ZLinkAsyncSerialQueue();
+        ZLinkCompositeRelocationBarrier barrier =
+            new ZLinkCompositeRelocationBarrier();
+        CompletableFuture<Void> active = new CompletableFuture<>();
+        CompletableFuture<Void> started = new CompletableFuture<>();
+
+        actor.enqueue(() -> {
+            started.complete(null);
+            return active;
+        });
+        started.get(3, TimeUnit.SECONDS);
+        AtomicBoolean acceptedRan = new AtomicBoolean();
+        CompletableFuture<Void> accepted = actor.enqueueRelocatable(
+            new byte[] {7},
+            () -> {
+                acceptedRan.set(true);
+                return CompletableFuture.completedFuture(null);
+            })
+            .toCompletableFuture();
+
+        CompletableFuture<java.util.Optional<
+            ZLinkCompositeRelocationBarrier.Seal>> sealing =
+                barrier.sealAtTurnBoundary(
+                    lanes(spot, actor, timer),
+                    () -> false)
+                .toCompletableFuture();
+
+        assertFalse(sealing.isDone());
+        active.complete(null);
+        var seal = sealing.get(3, TimeUnit.SECONDS).orElseThrow();
+        assertEquals(
+            1,
+            barrier.captured(seal).orElseThrow()
+                .get("actor:a").size());
+        assertFalse(acceptedRan.get());
+        assertTrue(barrier.abort(seal));
+        accepted.get(3, TimeUnit.SECONDS);
+        assertTrue(acceptedRan.get());
+    }
+
+    @Test
+    void cancelledTurnBoundaryRestoresAcceptedQueueWithoutPartialSeal()
+        throws Exception {
+        ZLinkAsyncSerialQueue spot = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue actor = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue timer = new ZLinkAsyncSerialQueue();
+        ZLinkCompositeRelocationBarrier barrier =
+            new ZLinkCompositeRelocationBarrier();
+        CompletableFuture<Void> active = new CompletableFuture<>();
+        CompletableFuture<Void> started = new CompletableFuture<>();
+        AtomicBoolean cancelled = new AtomicBoolean();
+
+        actor.enqueue(() -> {
+            started.complete(null);
+            return active;
+        });
+        started.get(3, TimeUnit.SECONDS);
+        CompletableFuture<Void> accepted = actor.enqueueRelocatable(
+            new byte[] {9},
+            () -> CompletableFuture.completedFuture(null))
+            .toCompletableFuture();
+        CompletableFuture<java.util.Optional<
+            ZLinkCompositeRelocationBarrier.Seal>> sealing =
+                barrier.sealAtTurnBoundary(
+                    lanes(spot, actor, timer),
+                    cancelled::get)
+                .toCompletableFuture();
+
+        cancelled.set(true);
+        active.complete(null);
+        assertTrue(sealing.get(3, TimeUnit.SECONDS).isEmpty());
+        accepted.get(3, TimeUnit.SECONDS);
+        assertTrue(barrier.trySeal(lanes(spot, actor, timer)).isPresent());
+    }
+
+    @Test
+    void turnBoundarySealWaitsForYieldedTerminalContinuation()
+        throws Exception {
+        ZLinkAsyncSerialQueue spot = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue actor = new ZLinkAsyncSerialQueue(true);
+        ZLinkAsyncSerialQueue timer = new ZLinkAsyncSerialQueue();
+        ZLinkCompositeRelocationBarrier barrier =
+            new ZLinkCompositeRelocationBarrier();
+        CompletableFuture<Void> remote = new CompletableFuture<>();
+        CompletableFuture<Void> yielded = new CompletableFuture<>();
+
+        CompletableFuture<Void> dispatch = actor.enqueue(() -> {
+            CompletionStage<Void> continuation =
+                ZLinkAsyncSerialQueue.yieldCurrent(remote);
+            yielded.complete(null);
+            return continuation;
+        }).toCompletableFuture();
+        yielded.get(3, TimeUnit.SECONDS);
+
+        CompletableFuture<java.util.Optional<
+            ZLinkCompositeRelocationBarrier.Seal>> sealing =
+                barrier.sealAtTurnBoundary(
+                    lanes(spot, actor, timer),
+                    () -> false)
+                .toCompletableFuture();
+        assertFalse(sealing.isDone());
+
+        remote.complete(null);
+        dispatch.get(3, TimeUnit.SECONDS);
+        var seal = sealing.get(3, TimeUnit.SECONDS).orElseThrow();
         assertTrue(barrier.abort(seal));
     }
 

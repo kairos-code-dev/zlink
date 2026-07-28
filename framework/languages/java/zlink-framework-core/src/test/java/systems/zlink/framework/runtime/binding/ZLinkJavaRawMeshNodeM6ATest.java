@@ -71,6 +71,29 @@ final class ZLinkJavaRawMeshNodeM6ATest {
     }
 
     @Test
+    void descriptorBackedObjectClientIsNotRequiredAndNodeDirectIsNotFound() {
+        RoutingId localRid = RoutingId.from("jvm-auto-client-local");
+        RoutingId peerRid = RoutingId.from("jvm-auto-client-peer");
+        try (var context = Zlink.createContext();
+             var local = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            local.setRoutingId(localRid);
+            local.setBind("inproc://jvm-auto-client-local-" + System.nanoTime());
+            local.setObjectRole(ZLinkMeshNodeObjectRole.CLIENT);
+            local.start();
+
+            local.markPeerConnectionNotRequired(
+                peerRid,
+                "inproc://jvm-auto-client-peer",
+                7);
+
+            assertEquals(MeshPeerState.NOT_REQUIRED, local.peers().getFirst().state());
+            assertEquals(
+                ZLinkOneWayCalls.TARGET_NOT_FOUND,
+                local.spotNode().classifyNodeSendTarget(peerRid).orElseThrow());
+        }
+    }
+
+    @Test
     void command44ReceivesCommand45ThroughInfrastructureDispatcher()
         throws Exception {
         String endpoint = "inproc://jvm-m6c-session-route-" + System.nanoTime();

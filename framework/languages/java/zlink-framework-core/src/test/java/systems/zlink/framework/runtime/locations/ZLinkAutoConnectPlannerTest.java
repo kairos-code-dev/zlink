@@ -86,7 +86,16 @@ final class ZLinkAutoConnectPlannerTest {
             false);
 
         assertFalse(hasTarget(clientOnly, remoteClientOnly));
+        assertEquals(
+            1,
+            ZLinkAutoConnectPlanner.computeNotRequired(
+                clientOnly,
+                List.of(remoteClientOnly)).size());
         assertTrue(hasTarget(clientOnly, remoteClientServerChannel));
+        assertTrue(
+            ZLinkAutoConnectPlanner.computeNotRequired(
+                clientOnly,
+                List.of(remoteClientServerChannel)).isEmpty());
         assertTrue(hasTarget(clientOnly, remoteObjectServer));
 
         var localWeightZeroServerMembership =
@@ -101,6 +110,10 @@ final class ZLinkAutoConnectPlannerTest {
         assertTrue(hasTarget(
             localWeightZeroServerMembership,
             remoteClientOnly));
+        assertTrue(
+            ZLinkAutoConnectPlanner.computeNotRequired(
+                localWeightZeroServerMembership,
+                List.of(remoteClientOnly)).isEmpty());
     }
 
     @Test

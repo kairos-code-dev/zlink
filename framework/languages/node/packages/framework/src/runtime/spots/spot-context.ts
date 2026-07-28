@@ -12,6 +12,7 @@ import type {
   ZLinkSpotContext,
   ZLinkSpotHandlerRegistry,
   ZLinkSpotOutbound,
+  ZLinkSpotRelocationReadyCall,
   ZLinkSpotTimerHandler,
   ZLinkTimerOptions
 } from '../../contracts';
@@ -62,6 +63,7 @@ interface ZLinkSpotContextOptions {
   readonly workerRuntime: ZLinkWorkerRuntime;
   readonly close: (signal?: AbortSignal) => Promise<boolean>;
   readonly leaveActor: (actor: ZLinkActor, signal?: AbortSignal) => Promise<void>;
+  readonly relocationReady?: () => ZLinkSpotRelocationReadyCall;
 }
 
 export function createEntrySpotContext(options: ZLinkEntrySpotContextOptions): ZLinkEntrySpotContext {
@@ -123,6 +125,13 @@ export function createSpotContext(options: ZLinkSpotContextOptions): ZLinkSpotCo
     nodeRid: contextNodeRid(options.nodeRidProvider?.() ?? options.nodeRid),
     handlers: options.handlers,
     outbound: options.outbound,
+    relocationReady: options.relocationReady ?? (() => ({
+      defer() {
+        throw new ZLinkConfigurationException(
+          'Spot relocation readiness is not configured for application signaling.'
+        );
+      }
+    })),
     leaveActor: options.leaveActor,
     close: options.close,
     addTimer: <THandler extends ZLinkSpotTimerHandler<ZLinkSpot>>(

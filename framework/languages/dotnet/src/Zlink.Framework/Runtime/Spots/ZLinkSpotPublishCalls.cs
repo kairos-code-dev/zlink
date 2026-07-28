@@ -98,29 +98,46 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
             runtime.Flow.CaptureEnabled);
         var bundle = runtime.GetSpotPublisherBundle(channelName);
         var packetName = _messageName;
+        var metadata = _metadata.Encode();
         var parts = ZLinkSpotPublishEnvelope.EncodeParts(
             channelName,
             packetName,
             topic,
             message,
             runtime.Registration.Codecs);
-        var metadata = _metadata.Encode();
+        var backgroundOperation = runtime.RetainOperationForBackgroundWork();
+        var released = 0;
 
-        var result = await ZLinkLogicalMulticastSubmitter.SubmitAsync(
-                runtime.WorkerPool,
-                () => bundle.Spot.Publish(
-                    channelName,
-                    topic,
-                    parts,
-                    SendFlags.None,
-                    metadata),
-                cancellationToken,
-                runtime.ShutdownToken,
-                runtime.Registration.DefaultSocketSendTimeout,
-                () => ZLinkMessageParts.DisposeAll(parts),
-                runtime.ErrorSink)
-            .ConfigureAwait(false);
-        ZLinkLogicalMulticastOutcome.EnsureCompleted(result);
+        void ReleaseWorkerResources()
+        {
+            if (Interlocked.Exchange(ref released, 1) != 0) return;
+            ZLinkMessageParts.DisposeAll(parts);
+            backgroundOperation.Dispose();
+        }
+
+        try
+        {
+            var result = await ZLinkLogicalMulticastSubmitter.SubmitAsync(
+                    runtime.WorkerPool,
+                    () => bundle.Spot.Publish(
+                        channelName,
+                        topic,
+                        parts,
+                        SendFlags.None,
+                        metadata),
+                    cancellationToken,
+                    runtime.ShutdownToken,
+                    runtime.Registration.DefaultSocketSendTimeout,
+                    ReleaseWorkerResources,
+                    runtime.ErrorSink)
+                .ConfigureAwait(false);
+            ZLinkLogicalMulticastOutcome.EnsureCompleted(result);
+        }
+        catch
+        {
+            ReleaseWorkerResources();
+            throw;
+        }
     }
 }
 

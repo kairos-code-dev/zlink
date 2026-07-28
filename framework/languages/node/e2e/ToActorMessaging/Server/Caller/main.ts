@@ -11,7 +11,7 @@ import {
 } from '@zlink-systems/framework';
 import { ZLINK_ACTOR_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
-import { actorAsk, actorNotify, actorPush, type ActorCallRequest, type ActorCallResponse, type ActorRefSnapshot, type ActorReply } from '../../Shared/messages';
+import { actorAsk, actorNotify, actorPush, type ActorCallRequest, type ActorCallResponse, type ActorRefPayload, type ActorReply } from '../../Shared/messages';
 import { closeHttpServer, startHttpServer } from '../Support/http-server';
 import { TO_ACTOR_OPTIONS, createToActorConfigurationModule } from '../../configuration';
 import type { ServerOptions } from '../../configuration';
@@ -129,11 +129,12 @@ function requireActorRef(request: ActorCallRequest): ActorRef {
   return actorRefFromSnapshot(request.actor);
 }
 
-function actorRefFromSnapshot(actor: ActorRefSnapshot): ActorRef {
+function actorRefFromSnapshot(actor: ActorRefPayload): ActorRef {
   return {
     nodeRid: actor.nodeRid,
     actorId: actor.actorId,
-    generation: BigInt(actor.generation)
+    objectGeneration: BigInt(actor.objectGeneration),
+    meshName: actor.meshName
   } as ActorRef;
 }
 

@@ -1,4 +1,4 @@
-// OBS-A3: create-if-absent · off 노드 전파 시나리오를 검증한다.
+// OBS-A3: create-if-absent · off 노드의 flow 생략 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   assertBoundPush,

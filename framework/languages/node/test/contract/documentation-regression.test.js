@@ -37,7 +37,7 @@ const nodeGapDocument = path.join(
   'framework',
   'common',
   'spec',
-  '90-implementation-gap.ko.md'
+  '30-implementation-gap.ko.md'
 );
 
 const guideFiles = [
@@ -275,10 +275,10 @@ test('typescript stream connector specification matches the browser package decl
 test('canonical common spec owns server semantics without the deleted duplicate tree', () => {
   const deletedSpecRoot = path.join(workspaceRoot, '..', '..', 'doc', 'framework', 'spec');
   const required = [
-    '10-channel-topology.ko.md',
-    '22-actor-model.ko.md',
-    '31-session-actor-dispatch.ko.md',
-    '55-transport-liveness.ko.md'
+    '07-channel-topology.ko.md',
+    '15-spot-actor.ko.md',
+    '19-stream-session.ko.md',
+    '29-transport-liveness.ko.md'
   ];
 
   assert.equal(fs.existsSync(deletedSpecRoot), false);

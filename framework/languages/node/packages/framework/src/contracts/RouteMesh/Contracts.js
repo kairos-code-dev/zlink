@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ZLinkMeshNodeState = exports.ZLinkRequestFailureError = void 0;
+exports.ZLinkTopologyState = exports.ZLinkRequestFailureError = void 0;
 class ZLinkRequestFailureError extends Error {
     reason;
     constructor(reason, message, cause) {
@@ -10,13 +10,12 @@ class ZLinkRequestFailureError extends Error {
     }
 }
 exports.ZLinkRequestFailureError = ZLinkRequestFailureError;
-var ZLinkMeshNodeState;
-(function (ZLinkMeshNodeState) {
-    ZLinkMeshNodeState[ZLinkMeshNodeState["Starting"] = 0] = "Starting";
-    ZLinkMeshNodeState[ZLinkMeshNodeState["Serving"] = 1] = "Serving";
-    ZLinkMeshNodeState[ZLinkMeshNodeState["Draining"] = 2] = "Draining";
-    ZLinkMeshNodeState[ZLinkMeshNodeState["Drained"] = 3] = "Drained";
-    ZLinkMeshNodeState[ZLinkMeshNodeState["ForceStopping"] = 4] = "ForceStopping";
-    ZLinkMeshNodeState[ZLinkMeshNodeState["Stopped"] = 5] = "Stopped";
-    ZLinkMeshNodeState[ZLinkMeshNodeState["Faulted"] = 6] = "Faulted";
-})(ZLinkMeshNodeState || (exports.ZLinkMeshNodeState = ZLinkMeshNodeState = {}));
+var ZLinkTopologyState;
+(function (ZLinkTopologyState) {
+    ZLinkTopologyState[ZLinkTopologyState["Starting"] = 0] = "Starting";
+    ZLinkTopologyState[ZLinkTopologyState["Ready"] = 1] = "Ready";
+    ZLinkTopologyState[ZLinkTopologyState["Degraded"] = 2] = "Degraded";
+    ZLinkTopologyState[ZLinkTopologyState["Stopping"] = 3] = "Stopping";
+    ZLinkTopologyState[ZLinkTopologyState["Stopped"] = 4] = "Stopped";
+    ZLinkTopologyState[ZLinkTopologyState["Failed"] = 5] = "Failed";
+})(ZLinkTopologyState || (exports.ZLinkTopologyState = ZLinkTopologyState = {}));

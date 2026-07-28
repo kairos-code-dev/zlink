@@ -19,6 +19,7 @@ final class ZLinkAutoConnectReconciler {
     private final ZLinkLocationOptions options;
     private final LongSupplier nanoTime;
     private final Map<String, ZLinkAutoConnectPlanner.Target> active = new HashMap<>();
+    private final Map<String, ZLinkAutoConnectPlanner.Target> notRequired = new HashMap<>();
     private Map<String, ZLinkAutoConnectPlanner.Target> lastDesired = Map.of();
     private final Map<String, ZLinkAutoConnectPlanner.Target> observedManual = new HashMap<>();
     private boolean storeFailed;
@@ -70,7 +71,9 @@ final class ZLinkAutoConnectReconciler {
 
     CompletionStage<Void> shutdown() {
         active.values().forEach(executor::disconnect);
+        notRequired.values().forEach(executor::clearNotRequired);
         active.clear();
+        notRequired.clear();
         return CompletableFuture.completedFuture(null);
     }
 
@@ -87,7 +90,26 @@ final class ZLinkAutoConnectReconciler {
         }
         Map<String, ZLinkAutoConnectPlanner.Target> desired =
             ZLinkAutoConnectPlanner.computeDesired(local, rows);
+        Map<String, ZLinkAutoConnectPlanner.Target> nextNotRequired =
+            ZLinkAutoConnectPlanner.computeNotRequired(local, rows);
         lastDesired = Map.copyOf(desired);
+        notRequired.keySet().stream()
+            .filter(key -> !nextNotRequired.containsKey(key))
+            .map(notRequired::get)
+            .forEach(executor::clearNotRequired);
+        nextNotRequired.forEach((key, target) -> {
+            ZLinkAutoConnectPlanner.Target current = notRequired.get(key);
+            if (current == null
+                || !current.endpoint().equals(target.endpoint())
+                || current.lifecycleGeneration() != target.lifecycleGeneration()) {
+                if (current != null) {
+                    executor.clearNotRequired(current);
+                }
+                executor.markNotRequired(target);
+            }
+        });
+        notRequired.clear();
+        notRequired.putAll(nextNotRequired);
         Map<String, ZLinkAutoConnectPlanner.Target> manualSnapshot = new HashMap<>();
         for (ZLinkAutoConnectPeer row : rows) {
             ZLinkAutoConnectPlanner.Target target = ZLinkAutoConnectPlanner.trackableTarget(local, row);

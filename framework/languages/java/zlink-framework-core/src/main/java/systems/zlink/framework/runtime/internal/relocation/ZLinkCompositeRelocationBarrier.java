@@ -5,7 +5,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 
@@ -64,6 +66,98 @@ public final class ZLinkCompositeRelocationBarrier {
             nextGeneration++,
             java.util.Collections.unmodifiableMap(
                 new LinkedHashMap<>(laneSnapshot)),
+            java.util.Collections.unmodifiableMap(
+                new LinkedHashMap<>(seals)));
+        active = result;
+        return Optional.of(result);
+    }
+
+    /**
+     * Waits until every lane reaches the next turn boundary and seals the
+     * fixed lane inventory as one generation. Queued application records do
+     * not run while the boundary is being acquired.
+     */
+    public CompletionStage<Optional<Seal>> sealAtTurnBoundary(
+        Map<String, ZLinkAsyncSerialQueue> lanes,
+        BooleanSupplier cancelled) {
+        java.util.Objects.requireNonNull(cancelled, "cancelled");
+        LinkedHashMap<String, ZLinkAsyncSerialQueue> snapshot =
+            validateLanes(lanes);
+        return attemptTurnBoundary(snapshot, cancelled);
+    }
+
+    private CompletionStage<Optional<Seal>> attemptTurnBoundary(
+        LinkedHashMap<String, ZLinkAsyncSerialQueue> lanes,
+        BooleanSupplier cancelled) {
+        if (cancelled.getAsBoolean()) {
+            return CompletableFuture.completedFuture(Optional.empty());
+        }
+        LinkedHashMap<String, ZLinkAsyncSerialQueue.RelocationBoundary>
+            boundaries = new LinkedHashMap<>();
+        for (Map.Entry<String, ZLinkAsyncSerialQueue> lane
+            : lanes.entrySet()) {
+            Optional<ZLinkAsyncSerialQueue.RelocationBoundary> boundary =
+                lane.getValue().reserveRelocationTurnBoundary();
+            if (boundary.isEmpty()) {
+                release(boundaries);
+                return awaitFinished(boundaries).thenApply(
+                    ignored -> Optional.empty());
+            }
+            boundaries.put(lane.getKey(), boundary.orElseThrow());
+        }
+        CompletableFuture<?>[] reached = boundaries.values().stream()
+            .map(boundary -> boundary.reached().toCompletableFuture())
+            .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(reached).thenCompose(ignored -> {
+            if (cancelled.getAsBoolean()) {
+                release(boundaries);
+                return awaitFinished(boundaries).thenApply(
+                    finished -> Optional.empty());
+            }
+            Optional<Seal> sealed =
+                trySealAtReservedBoundaries(lanes, boundaries);
+            release(boundaries);
+            return awaitFinished(boundaries).thenCompose(finished -> {
+                if (sealed.isPresent() || cancelled.getAsBoolean()) {
+                    return CompletableFuture.completedFuture(sealed);
+                }
+                return attemptTurnBoundary(lanes, cancelled);
+            });
+        });
+    }
+
+    private synchronized Optional<Seal> trySealAtReservedBoundaries(
+        Map<String, ZLinkAsyncSerialQueue> lanes,
+        Map<String, ZLinkAsyncSerialQueue.RelocationBoundary> boundaries) {
+        if (active != null) {
+            return Optional.empty();
+        }
+        if (nextGeneration == Long.MAX_VALUE) {
+            throw new IllegalStateException(
+                "composite relocation generation exhausted");
+        }
+        LinkedHashMap<String, ZLinkAsyncSerialQueue.RelocationSeal> seals =
+            new LinkedHashMap<>();
+        try {
+            for (Map.Entry<String, ZLinkAsyncSerialQueue> lane
+                : lanes.entrySet()) {
+                Optional<ZLinkAsyncSerialQueue.RelocationSeal> sealed =
+                    lane.getValue().trySealRelocation(
+                        boundaries.get(lane.getKey()));
+                if (sealed.isEmpty()) {
+                    rollback(lanes, seals);
+                    return Optional.empty();
+                }
+                seals.put(lane.getKey(), sealed.orElseThrow());
+            }
+        } catch (RuntimeException failure) {
+            rollback(lanes, seals);
+            throw failure;
+        }
+        Seal result = new Seal(
+            nextGeneration++,
+            java.util.Collections.unmodifiableMap(
+                new LinkedHashMap<>(lanes)),
             java.util.Collections.unmodifiableMap(
                 new LinkedHashMap<>(seals)));
         active = result;
@@ -167,6 +261,41 @@ public final class ZLinkCompositeRelocationBarrier {
                     "partial relocation seal rollback lost a lane fence");
             }
         }
+    }
+
+    private static LinkedHashMap<String, ZLinkAsyncSerialQueue>
+        validateLanes(Map<String, ZLinkAsyncSerialQueue> lanes) {
+        if (lanes == null || lanes.isEmpty()) {
+            throw new IllegalArgumentException(
+                "at least one relocation lane is required");
+        }
+        LinkedHashMap<String, ZLinkAsyncSerialQueue> snapshot =
+            new LinkedHashMap<>();
+        lanes.forEach((laneId, queue) -> {
+            String required = requireLaneId(laneId);
+            if (snapshot.putIfAbsent(
+                    required,
+                    java.util.Objects.requireNonNull(
+                        queue, "relocation lane")) != null) {
+                throw new IllegalArgumentException(
+                    "duplicate relocation lane: " + required);
+            }
+        });
+        return snapshot;
+    }
+
+    private static void release(
+        Map<String, ZLinkAsyncSerialQueue.RelocationBoundary> boundaries) {
+        boundaries.values().forEach(
+            ZLinkAsyncSerialQueue.RelocationBoundary::release);
+    }
+
+    private static CompletionStage<Void> awaitFinished(
+        Map<String, ZLinkAsyncSerialQueue.RelocationBoundary> boundaries) {
+        CompletableFuture<?>[] finished = boundaries.values().stream()
+            .map(boundary -> boundary.finished().toCompletableFuture())
+            .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(finished);
     }
 
     private static String requireLaneId(String laneId) {

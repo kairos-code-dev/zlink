@@ -74,7 +74,8 @@ public final class ZLinkAsyncSerialQueue {
             operation,
             () -> { },
             new CompletableFuture<>(),
-            ZLinkFlowContext.current());
+            ZLinkFlowContext.current(),
+            null);
         if (relocation != null) {
             relocation.held.addFirst(entry);
         } else {
@@ -153,7 +154,8 @@ public final class ZLinkAsyncSerialQueue {
             operation,
             relocationRelease,
             new CompletableFuture<>(),
-            ZLinkFlowContext.current());
+            ZLinkFlowContext.current(),
+            null);
         if (relocation != null) {
             relocation.held.addLast(entry);
         } else {
@@ -165,6 +167,10 @@ public final class ZLinkAsyncSerialQueue {
 
     private void startNext() {
         if (active != null || pending.isEmpty()) {
+            return;
+        }
+        if (pending.peekFirst().relocationBoundary != null
+            && suspendedContinuations != 0) {
             return;
         }
         Entry entry = pending.removeFirst();
@@ -179,6 +185,7 @@ public final class ZLinkAsyncSerialQueue {
     private void finish(Entry entry) {
         Runnable notify = null;
         List<CompletableFuture<Void>> quiescent = List.of();
+        RelocationBoundary boundary = entry.relocationBoundary;
         synchronized (this) {
             if (active != entry) {
                 return;
@@ -194,6 +201,9 @@ public final class ZLinkAsyncSerialQueue {
         }
         if (notify != null) {
             HANDLER_EXECUTOR.execute(notify);
+        }
+        if (boundary != null) {
+            boundary.finished.complete(null);
         }
         quiescent.forEach(waiter -> waiter.complete(null));
     }
@@ -213,11 +223,60 @@ public final class ZLinkAsyncSerialQueue {
     }
 
     public synchronized Optional<RelocationSeal> trySealRelocation() {
+        return trySealRelocation(null);
+    }
+
+    /**
+     * Reserves the next turn boundary without running queued application
+     * records. The reservation remains active until {@link
+     * RelocationBoundary#release()} is called.
+     */
+    public synchronized Optional<RelocationBoundary>
+        reserveRelocationTurnBoundary() {
         if (relocated || relocation != null) {
             return Optional.empty();
         }
-        if (active != null && CURRENT.get() != this) {
+        if (nextSequence == Long.MAX_VALUE) {
+            throw new IllegalStateException("queue sequence exhausted");
+        }
+        RelocationBoundary boundary = new RelocationBoundary(this);
+        Entry entry = new Entry(
+            nextSequence++,
+            null,
+            boundary::reach,
+            () -> { },
+            new CompletableFuture<>(),
+            ZLinkFlowContext.current(),
+            boundary);
+        boundary.entry = entry;
+        outstanding++;
+        pending.addFirst(entry);
+        startNext();
+        return Optional.of(boundary);
+    }
+
+    /**
+     * Seals this queue while the supplied lifecycle boundary owns its active
+     * turn. Only the exact reservation instance can cross that boundary.
+     */
+    public synchronized Optional<RelocationSeal> trySealRelocation(
+        RelocationBoundary boundary) {
+        if (relocated || relocation != null) {
             return Optional.empty();
+        }
+        if (boundary != null
+            && (boundary.owner != this
+                || boundary.entry != active
+                || !boundary.reached.isDone()
+                || boundary.released.isDone())) {
+            return Optional.empty();
+        }
+        if (active != null) {
+            if (boundary == null) {
+                if (CURRENT.get() != this) {
+                    return Optional.empty();
+                }
+            }
         }
         if (suspendedContinuations != 0
             || pending.stream().anyMatch(entry -> entry.record == null)) {
@@ -512,7 +571,47 @@ public final class ZLinkAsyncSerialQueue {
                 "suspended continuation count is inconsistent");
         }
         suspendedContinuations--;
-        return enqueueAccepted(null, operation);
+        if (nextSequence == Long.MAX_VALUE) {
+            throw new IllegalStateException("queue sequence exhausted");
+        }
+        outstanding++;
+        Entry continuation = new Entry(
+            nextSequence++,
+            null,
+            operation,
+            () -> { },
+            new CompletableFuture<>(),
+            ZLinkFlowContext.current(),
+            null);
+        if (relocation != null) {
+            relocation.held.addLast(continuation);
+        } else {
+            insertBeforeRelocationBoundary(continuation);
+            startNext();
+        }
+        return continuation.result;
+    }
+
+    private void insertBeforeRelocationBoundary(Entry continuation) {
+        if (pending.stream().noneMatch(
+                entry -> entry.relocationBoundary != null)) {
+            pending.addLast(continuation);
+            return;
+        }
+        ArrayDeque<Entry> reordered = new ArrayDeque<>();
+        boolean inserted = false;
+        while (!pending.isEmpty()) {
+            Entry entry = pending.removeFirst();
+            if (!inserted && entry.relocationBoundary != null) {
+                reordered.addLast(continuation);
+                inserted = true;
+            }
+            reordered.addLast(entry);
+        }
+        if (!inserted) {
+            reordered.addLast(continuation);
+        }
+        pending.addAll(reordered);
     }
 
     private boolean isQuiescent() {
@@ -668,6 +767,38 @@ public final class ZLinkAsyncSerialQueue {
         }
     }
 
+    public static final class RelocationBoundary {
+        private final ZLinkAsyncSerialQueue owner;
+        private final CompletableFuture<Void> reached =
+            new CompletableFuture<>();
+        private final CompletableFuture<Void> released =
+            new CompletableFuture<>();
+        private final CompletableFuture<Void> finished =
+            new CompletableFuture<>();
+        private Entry entry;
+
+        private RelocationBoundary(ZLinkAsyncSerialQueue owner) {
+            this.owner = owner;
+        }
+
+        private CompletionStage<Void> reach() {
+            reached.complete(null);
+            return released;
+        }
+
+        public CompletionStage<Void> reached() {
+            return reached;
+        }
+
+        public CompletionStage<Void> finished() {
+            return finished;
+        }
+
+        public void release() {
+            released.complete(null);
+        }
+    }
+
     private static final class Entry {
         private final long sequence;
         private final byte[] record;
@@ -675,6 +806,7 @@ public final class ZLinkAsyncSerialQueue {
         private final Runnable relocationRelease;
         private final CompletableFuture<Void> result;
         private final ZLinkFlowContext.State flow;
+        private final RelocationBoundary relocationBoundary;
 
         private Entry(
             long sequence,
@@ -682,13 +814,15 @@ public final class ZLinkAsyncSerialQueue {
             Supplier<CompletionStage<Void>> operation,
             Runnable relocationRelease,
             CompletableFuture<Void> result,
-            ZLinkFlowContext.State flow) {
+            ZLinkFlowContext.State flow,
+            RelocationBoundary relocationBoundary) {
             this.sequence = sequence;
             this.record = record;
             this.operation = operation;
             this.relocationRelease = relocationRelease;
             this.result = result;
             this.flow = flow;
+            this.relocationBoundary = relocationBoundary;
         }
 
         private QueuedRecord queuedRecord() {

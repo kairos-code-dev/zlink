@@ -138,13 +138,6 @@ export class ZLinkActorCreationCoordinator {
         nodeRid = toFrameworkRoutingId(actorRef.nodeRid);
       } else {
         nodeRid = this.options.actorCreatedNodeRidProvider?.();
-        if (nodeRid !== undefined) {
-          state.setNativeActorRef({
-            nodeRid: nodeRid as never,
-            actorId,
-            generation: 0n
-          });
-        }
       }
       const response = nodeRid === undefined
         ? { accepted: true }

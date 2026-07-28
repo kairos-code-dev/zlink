@@ -90,9 +90,19 @@ class in_memory_location_store_t : public location_store_t
             return completed (location_write_result_t{
               location_write_status_t::rejected_conflict, 0, {}});
         }
+        if (!can_publish_entry_spot_id (
+              descriptor, key, now))
+            return completed (location_write_result_t{
+              location_write_status_t::rejected_conflict, 0, {}});
 
         descriptor.updated_at = now;
+        const auto previous =
+          found == _mesh_nodes.end ()
+            ? std::optional<mesh_node_descriptor_t>{}
+            : std::make_optional (found->second);
         _mesh_nodes[key] = descriptor;
+        publish_entry_spot_id (
+          previous, descriptor, key);
         return completed (
           location_write_result_t::stored (
             static_cast<std::int64_t> (
@@ -113,6 +123,9 @@ class in_memory_location_store_t : public location_store_t
                  != owner.lease_generation)
             return completed (
               location_write_status_t::ignored_stale);
+        remove_entry_spot_id_claim (
+          found->second,
+          mesh_node_key (key.mesh_name, key.rid));
         _mesh_nodes.erase (found);
         return completed (location_write_status_t::stored);
     }
@@ -933,6 +946,18 @@ class in_memory_location_store_t : public location_store_t
         std::lock_guard lock (_gate);
         const auto now = clock_t::now ();
         const auto key = object_key (request.key);
+        if (request.key.kind != placement_object_kind_t::actor) {
+            const auto claim =
+              _entry_spot_id_claims.find (
+                request.key.global_id);
+            if (claim != _entry_spot_id_claims.end ()
+                && owner_token_is_live (
+                  claim->second.owner, now))
+                return completed (
+                  object_reserve_result_t{
+                    object_reserve_conflict_t{
+                      authority_missing_t{now}}});
+        }
         const auto authority = _authorities.find (key);
         if (authority != _authorities.end ()) {
             const auto type = _object_types.find (key);
@@ -1595,7 +1620,13 @@ class in_memory_location_store_t : public location_store_t
                 mesh_node_keys.push_back (key);
         }
         for (const auto &key : mesh_node_keys)
+        {
+            const auto descriptor = _mesh_nodes.find (key);
+            if (descriptor != _mesh_nodes.end ())
+                remove_entry_spot_id_claim (
+                  descriptor->second, key);
             _mesh_nodes.erase (key);
+        }
         removed += static_cast<std::int64_t> (mesh_node_keys.size ());
         std::vector<std::string> client_server_keys;
         for (const auto &[key, descriptor] : _client_servers) {
@@ -2129,6 +2160,89 @@ class in_memory_location_store_t : public location_store_t
                + ":" + key.global_id;
     }
 
+    struct entry_spot_id_claim_t
+    {
+        std::string descriptor_key;
+        std::uint64_t descriptor_lifecycle_generation = 0;
+        location_owner_token_t owner;
+    };
+
+    bool can_publish_entry_spot_id (
+      const mesh_node_descriptor_t &descriptor,
+      const std::string &descriptor_key,
+      clock_t::time_point now) const
+    {
+        if (!descriptor.entry_spot_id)
+            return true;
+        const auto claim =
+          _entry_spot_id_claims.find (
+            *descriptor.entry_spot_id);
+        if (claim != _entry_spot_id_claims.end ()
+            && owner_token_is_live (
+              claim->second.owner, now)
+            && (claim->second.descriptor_key
+                  != descriptor_key
+                || claim->second
+                     .descriptor_lifecycle_generation
+                     != descriptor.lifecycle_generation
+                || !same_owner (
+                  claim->second.owner,
+                  {descriptor.owner_id,
+                   descriptor.lease_generation})))
+            return false;
+        return !_authorities.contains (
+          object_key (
+            {placement_object_kind_t::user_spot,
+             *descriptor.entry_spot_id}))
+          && !_authorities.contains (
+            object_key (
+              {placement_object_kind_t::instance_spot,
+               *descriptor.entry_spot_id}));
+    }
+
+    void publish_entry_spot_id (
+      const std::optional<mesh_node_descriptor_t> &previous,
+      const mesh_node_descriptor_t &descriptor,
+      const std::string &descriptor_key)
+    {
+        if (previous
+            && previous->entry_spot_id
+            != descriptor.entry_spot_id)
+            remove_entry_spot_id_claim (
+              *previous, descriptor_key);
+        if (descriptor.entry_spot_id)
+            _entry_spot_id_claims.insert_or_assign (
+              *descriptor.entry_spot_id,
+              entry_spot_id_claim_t{
+                descriptor_key,
+                descriptor.lifecycle_generation,
+                {descriptor.owner_id,
+                 descriptor.lease_generation}});
+    }
+
+    void remove_entry_spot_id_claim (
+      const mesh_node_descriptor_t &descriptor,
+      const std::string &descriptor_key)
+    {
+        if (!descriptor.entry_spot_id)
+            return;
+        const auto claim =
+          _entry_spot_id_claims.find (
+            *descriptor.entry_spot_id);
+        if (claim == _entry_spot_id_claims.end ()
+            || claim->second.descriptor_key
+                 != descriptor_key
+            || claim->second
+                 .descriptor_lifecycle_generation
+                 != descriptor.lifecycle_generation
+            || !same_owner (
+              claim->second.owner,
+              {descriptor.owner_id,
+               descriptor.lease_generation}))
+            return;
+        _entry_spot_id_claims.erase (claim);
+    }
+
     static std::string creation_operation_key (
       const creation_operation_identity_t &identity)
     {
@@ -2616,6 +2730,8 @@ class in_memory_location_store_t : public location_store_t
 
     mutable std::mutex _gate;
     std::map<std::string, mesh_node_descriptor_t> _mesh_nodes;
+    std::map<std::string, entry_spot_id_claim_t>
+      _entry_spot_id_claims;
     std::map<std::string, client_server_server_descriptor_t>
       _client_servers;
     std::map<std::string, fanout_publisher_descriptor_t>

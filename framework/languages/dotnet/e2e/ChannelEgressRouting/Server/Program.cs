@@ -160,6 +160,14 @@ app.MapGet("/client-server/{channel}", (
         })
     });
 });
+app.MapPost("/client-server/{channel}/weight/{weight:int}", (
+    string channel,
+    int weight,
+    IZLinkRouteMeshRuntimeOptions runtime) =>
+{
+    runtime.Channel(channel).Weight = weight;
+    return Results.Ok(new { channel, weight });
+});
 app.MapPost("/request", async (
     RouteInvokeRequest request,
     IZLinkRouteClient routes,

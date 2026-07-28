@@ -611,6 +611,11 @@ void verify_global_identity_remote_create_and_generation_fence ()
     assert (joined.status == stateful::create_status_t::joined);
     assert (joined.attempt == first.attempt);
     assert (!joined.factory_owner);
+    const auto actor_type_mismatch = runtime.begin_create (
+      {stateful::object_kind_t::actor, "actor-1", "administrator",
+       std::string ("mesh-b"), {}, false, false});
+    assert (actor_type_mismatch.status == stateful::create_status_t::failed);
+    assert (actor_type_mismatch.error == stateful::stateful_error_t::type_mismatch);
     assert (runtime.commit_create (first.attempt)
             == stateful::stateful_error_t::none);
 
@@ -619,6 +624,31 @@ void verify_global_identity_remote_create_and_generation_fence ()
        std::string ("mesh-b"), {}, false, false});
     assert (global_existing.status == stateful::create_status_t::existing);
     assert (global_existing.object.mesh_name == "mesh-a");
+    assert (global_existing.object.object_generation
+            == first.object.object_generation);
+
+    const stateful::object_ref_t reserved_spot{
+      stateful::object_kind_t::user_spot, "spot-1", 1, 1, "mesh-a", "node-a"};
+    auto first_spot = runtime.begin_reserved_user_spot (
+      reserved_spot, "lobby", {});
+    assert (first_spot.status == stateful::create_status_t::reserved);
+    const auto joined_spot = runtime.begin_reserved_user_spot (
+      reserved_spot, "lobby", {});
+    assert (joined_spot.status == stateful::create_status_t::joined);
+    assert (joined_spot.attempt == first_spot.attempt);
+    const auto spot_type_mismatch = runtime.begin_reserved_user_spot (
+      reserved_spot, "match", {});
+    assert (spot_type_mismatch.status == stateful::create_status_t::failed);
+    assert (spot_type_mismatch.error == stateful::stateful_error_t::type_mismatch);
+    assert (runtime.commit_create (first_spot.attempt)
+            == stateful::stateful_error_t::none);
+    const auto existing_spot = runtime.begin_create (
+      {stateful::object_kind_t::user_spot, "spot-1", "lobby",
+       std::string ("mesh-b"), {}, false, false});
+    assert (existing_spot.status == stateful::create_status_t::existing);
+    assert (existing_spot.object.mesh_name == "mesh-a");
+    assert (existing_spot.object.object_generation
+            == first_spot.object.object_generation);
 
     const auto original = *runtime.find (
       stateful::object_kind_t::actor, "actor-1");

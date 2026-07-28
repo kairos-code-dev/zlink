@@ -72,6 +72,11 @@ async Task RunAsync(string scenario)
             break;
         case "CH-E2E-04":
             await AssertWeightedWorkflowAsync("workflow-client", 160);
+            await SetClientServerWeightAsync("workflow300", 0);
+            await WaitClientServerTargetCountAsync("workflow-client", 1);
+            await AssertOnlyWorkflowServerAsync("workflow-client", "workflow-100", 32);
+            await SetClientServerWeightAsync("workflow300", 300);
+            await WaitClientServerTargetCountAsync("workflow-client", 2);
             break;
         case "CH-E2E-05":
             AssertClientServerDirectionSurface();
@@ -114,6 +119,11 @@ async Task RunAsync(string scenario)
         case "CH-E2E-12":
         case "CH-REG-10":
             await AssertWeightedWorkflowAsync("workflow100", 100);
+            await SetClientServerWeightAsync("workflow100", 0);
+            await WaitClientServerTargetCountAsync("workflow100", 1);
+            await AssertOnlyWorkflowServerAsync("workflow100", "workflow-300", 32);
+            await SetClientServerWeightAsync("workflow100", 100);
+            await WaitClientServerTargetCountAsync("workflow100", 2);
             break;
         case "CH-REG-04":
             await AssertTerminalOnceAsync();
@@ -434,6 +444,47 @@ async Task AssertWeightedWorkflowAsync(string source, int count)
     var ratio = count300 / (double)Math.Max(1, count100);
     Require(ratio is >= 2.0 and <= 4.5,
         $"workflow weight ratio did not approach 1:3: {count100}:{count300}.");
+}
+
+async Task AssertOnlyWorkflowServerAsync(
+    string source,
+    string expectedRole,
+    int count)
+{
+    for (var index = 0; index < count; index++)
+    {
+        var result = await InvokeRequestAsync(
+            source,
+            ChannelEgressNames.Workflow,
+            $"single-weight-{source}-{index}");
+        Require(result.Succeeded && result.Reply?.Role == expectedRole,
+            $"weight-zero exclusion selected {result.Reply?.Role ?? result.Error}.");
+    }
+}
+
+async Task SetClientServerWeightAsync(string role, int weight)
+{
+    await http[role]
+        .Post($"/client-server/{ChannelEgressNames.Workflow}/weight/{weight}")
+        .Async<JsonElement>();
+}
+
+async Task WaitClientServerTargetCountAsync(string role, int expected)
+{
+    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
+    do
+    {
+        var status = (await http[role]
+                .Get($"/client-server/{ChannelEgressNames.Workflow}")
+                .Async<JsonElement>())
+            .Body;
+        if (status.GetProperty("readyTargetCount").GetInt32() == expected)
+            return;
+        await Task.Delay(50);
+    } while (DateTimeOffset.UtcNow < deadline);
+
+    throw new InvalidOperationException(
+        $"{role} did not converge to {expected} ready ClientServer target(s).");
 }
 
 void AssertClientServerDirectionSurface()

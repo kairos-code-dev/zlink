@@ -87,6 +87,14 @@ artifact provenance만 검증한다.
   Snapshot relocation policy와 adapter를 등록하며 호출자는 owner RID, endpoint, generation과 route frame을
   만들지 않는다. MultiNode·Client focused build와 actual process가 통과했고 증거는
   `framework/languages/node/e2e/SpotService/log/20260729-050702-1863756/`에 있다.
+- .NET Config 12는 public `IZLinkRouteMeshRuntimeOptions`로 ClientServer Server weight를
+  runtime에 `0`으로 변경하고 discovery 수렴 뒤 신규 선택에서 제외했다. 독립 Client는
+  `100:300` 비율을 확인한 뒤 weight `0` Server를 한 번도 선택하지 않았고, 같은 process의
+  Client+Server도 local weight가 `0`인 동안 remote Server만 선택했다. Weight를 복원하면
+  Ready target 수가 다시 2로 수렴했다. 증거는
+  `ChannelEgressRouting/logs/20260729-051159-2058781`,
+  `logs/20260729-051215-2078936`, `logs/20260729-051223-2078916`이다.
+  Accepted request drain·shutdown과 새 lifecycle generation 재시작 경쟁은 아직 남아 있다.
 - C++은 application ingress에서 exact owner lease와 128-bit operation ID를 mailbox·accepted journal까지
   보존하고 command 31 typed capture를 production path에 연결 중이다. Lifecycle generation과 correlation으로
   operation ID를 다시 만드는 기존 dispatch 코드는 제거 대상이다.
@@ -6934,3 +6942,26 @@ ChannelName을 다시 검사한 actual-process 증거는
 `PreferredNodeRid`와 `PreferredRoutingId`가 남아 있지 않음을 확인했다. Actual-process
 증거는
 `framework/languages/dotnet/e2e/ChannelEgressRouting/logs/20260729-050242-1677966`이다.
+
+## 2026-07-29 C++ Config 1 RM-A7 구현 checkpoint
+
+C++ global Actor·Spot identity의 상태 전이를
+`test_cpp_framework_m6b_runtime`에 보강했다.
+
+- 서로 다른 initial Mesh에서 같은 Actor ID와 stable type을 생성하면 하나의 create attempt에
+  합류한다.
+- 같은 Actor ID에 다른 stable type을 사용하면 `type_mismatch`다.
+- Store가 예약한 같은 User Spot reference도 하나의 attempt에 합류하고, 다른 stable type을
+  거부한다.
+- Commit 뒤 반대 Mesh를 지정해 다시 생성해도 Actor·Spot의 기존 Mesh와 object generation을
+  유지한다.
+- `cmake --build framework/languages/cpp/build --target
+  test_cpp_framework_m6b_runtime -j2`와 해당 executable 실행은 exit code 0이다.
+
+이 checkpoint는 actual-process 증거가 아니다. Public Object fixture인 `SpotActorTransfer`
+ActorNode는 current exact interface와 맞지 않아 compile되지 않는다. 확인된 차이는
+Spot Actor handler context, Spot·Entry Spot context 소유권, factory callback, relocation
+adapter 반환형과 Location option이다. 이 상태에서 private Store 조회나 이전 helper로
+`Find`·direct messaging evidence를 대신 만들지 않는다. Fixture를 current public contract로
+이관한 뒤 `profile`·`workflow` 두 process의 public `GetOrCreate`, `Find`, direct Actor·Spot
+request를 실행해야 `RM-A7`을 완료할 수 있다.

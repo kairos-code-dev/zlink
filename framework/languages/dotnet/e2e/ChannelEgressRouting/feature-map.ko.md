@@ -12,7 +12,7 @@
 | CH-E2E-01 | actual 통과 | 실제 port 0 endpoint를 Location Store에 게시한 뒤 RouteMesh peer가 Ready로 수렴한다. 양방향 Channel request와 물리 연결 identity 중복 부재를 검증한다. Client는 정식 `ZLinkHttpClient`를 사용하고 runner는 공통 typed config writer를 사용한다. 최신 증거: `logs/20260729-044618-974448` |
 | CH-E2E-02 | actual 통과 | RouteMesh handler가 `audit.record`와 `workflow.command`를 순서대로 호출하고 원래 reply에 두 downstream 결과를 보존한다. 증거: `logs/20260729-045524-1297423` |
 | CH-E2E-03 | actual 통과 | Play Entry Spot Actor handler와 timer가 ClientServer `Async` 뒤 같은 turn에서 state 변경과 resume을 완료한다. 증거: `logs/20260729-003016-3958766` |
-| CH-E2E-04 | 부분 구현·실행 대기 | `100:300` weighted selection 구현. drain·shutdown·새 RID 재시작은 미구현 |
+| CH-E2E-04 | 부분 actual | `100:300` weighted selection과 runtime weight `0` 제외·`300` 복원 수렴을 검증했다. accepted request drain·shutdown·새 RID 재시작은 미구현. `logs/20260729-051159-2058781` |
 | CH-E2E-05 | 부분 구현·실행 대기 | public server builder outbound surface 부재 검증. protocol unsolicited 주입은 미구현 |
 | CH-E2E-06 | actual 통과 | RouteMesh·ClientServer가 같은 ChannelName을 등록한 경우와 ClientServer Client 역할을 중복 등록한 경우가 각각 별도 process startup configuration error로 끝난다. 증거: `logs/20260729-045555-1335584` |
 | CH-E2E-07 | 부분 구현·실행 대기 | process-local 미등록 `NotFound` 즉시 완료와 Ready Api 정상 호출 구현. known-but-not-ready `Unavailable`은 미구현 |
@@ -20,7 +20,7 @@
 | CH-E2E-09 | 부분 구현·실행 대기 | RouteMesh·ClientServer·fanout의 port 0 actual endpoint와 AdvertiseHost 분리 구현. STREAM은 미구현 |
 | CH-E2E-10 | actual 통과 | Result-free ClientServer send를 제출하고 두 Server가 선택 구간에서 handler를 각각 실행하며 전체 handler 수가 제출 수와 정확히 일치한다. 증거: `logs/20260729-045617-1359918` |
 | CH-E2E-11 | actual 통과 | Session이 target RID나 endpoint 없이 `game.api` ChannelName만 사용해 remote Api request와 send를 처리한다. 증거: `logs/20260729-045637-1365103` |
-| CH-E2E-12 | 부분 구현·실행 대기 | 같은 process Client+Server와 remote Server weighted 후보 검증. drain variant는 미구현 |
+| CH-E2E-12 | 부분 actual | 같은 process Client+Server와 remote Server weighted 후보를 검증하고 local weight를 `0`으로 바꾼 동안 remote만 선택한 뒤 복원했다. drain variant는 미구현. `logs/20260729-051215-2078936` |
 | CH-REG-01 | actual 통과 | Session과 Play가 같은 RouteMesh의 서로 다른 ChannelName으로 양방향 request를 실행하고, 각 handler가 원래 ChannelName과 reply context를 보존한다. 증거: `logs/20260729-045702-1376921` |
 | CH-REG-02 | actual 통과 | Session·Play Object Server의 Redis Location·Relocation Store, stable Snapshot actor/spot factory, Node·Spot·Actor direct, Session Entry→Play User Spot deferred join과 bound-session push를 검증한다. 증거: `logs/20260729-003347-3978117` |
 | CH-REG-03 | actual 통과 | Logical Multicast의 remote subscribed Spot delivery와 classic Pub/Sub remote delivery를 각각 exactly-once로 검증한다. 증거: `logs/20260729-004432-4150890` |
@@ -30,7 +30,7 @@
 | CH-REG-07 | actual 통과 | 공통 fixture의 일곱 sample·RouteMesh·ChannelName과 .NET sample source 일치. `logs/20260729-050208-1671604` |
 | CH-REG-08 | 부분 구현·실행 대기 | peer RID 중복 부재 검증. listener topology별 개수 검증은 미구현 |
 | CH-REG-09 | actual 통과 | sample source에 `PreferredNodeRid`·`PreferredRoutingId`가 없는지 검증. `logs/20260729-050242-1677966` |
-| CH-REG-10 | 부분 구현·실행 대기 | 같은 ChannelName Client+Server와 weighted local·remote 선택 구현. drain variant는 미구현 |
+| CH-REG-10 | 부분 actual | 같은 ChannelName Client+Server, weighted local·remote 선택과 local weight `0` 제외·복원을 검증했다. drain variant는 미구현. `logs/20260729-051223-2078916` |
 
 2026-07-29 actual 과정에서 `ZLinkManagedMeshNode`가 port 0 bind 요청값을 그대로 게시해 모든
 descriptor endpoint가 `tcp://127.0.0.1:0`이 되는 production gap을 발견했다. Runtime은 bind 직후

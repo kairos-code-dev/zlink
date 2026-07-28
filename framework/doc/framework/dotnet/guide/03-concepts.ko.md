@@ -20,7 +20,8 @@ ZLink framework는 **다섯 가지 핵심 개념**을 제공한다:
 추가한다.
 
 - **Object role** — spot·actor를 배치하는 자리다.
-  [spot](#2-spot--상태-단위), [actor](#3-actor--id로-식별되는-상태-객체)에서 각각
+  [spot](#2-spot--상태를-소유하고-순서대로-처리하는-단위),
+  [actor](#3-actor--id로-식별되는-상태-객체)에서 각각
   설명한다.
 - **Channel role** — request·send·publish를 주고받는 자리다. 이 절이 다룬다.
 
@@ -149,27 +150,29 @@ Server가 둘이라 select-one은 똑같이 동작한다. 다른 건 소켓이�
 (`tictactoe.api` ClientServer channel)을 Game Spot 생성(MeshNode의 Object role)과
 분리하는 이유다([02-getting-started §7](02-getting-started.ko.md)).
 
-**pub/sub도 두 갈래다.** route mesh channel 위에서 spot끼리 주고받는 걸 **Logical
-Multicast**라 한다 — spot 안에서 `Context.Outbound.Publish(channelName, topic, event)`로
-보내고(spot 밖에서는 `IZLinkSpotPublisherClient`로 같은 걸 한다), 받는 spot은
-`Configure()`에서 `Context.Handlers.AddSubscribe<THandler>(channelName, topic)`로
-구독한다. 그 channel에 이미 참여한 node를 그대로 쓰므로 별도 소켓이 없고, 대상은
-"그 `ChannelName`에 같은 `topic`을 구독한 spot들"로 한정된다.
+**pub/sub도 두 갈래다.** route mesh channel 위에서 spot끼리 이벤트를 주고받는 것을
+**Logical Multicast**라 한다. 앞의 다이어그램처럼 이미 연결된 mesh 소켓을 그대로 쓰므로
+별도 소켓이 없고, 받는 쪽은 그 channel에서 같은 topic을 구독한 spot으로 한정된다.
 
 ```csharp
-// 발행: TicTacToeGame spot 안에서
+// 발행 — TicTacToeGame spot 안에서.
 await Context.Outbound
-    .Publish(SampleTopics.PlayerMilestoneChannel, SampleTopics.PlayerMilestone, milestoneEvent)
+    .Publish(SampleTopics.PlayerMilestoneChannel,   // 전달 범위를 정하는 ChannelName.
+             SampleTopics.PlayerMilestone,          // 그 안에서 받을 spot을 고르는 topic.
+             milestoneEvent)
     .Async(cancellationToken);
 
-// 구독: PlayEntrySpot의 Configure()에서
+// 구독 — PlayEntrySpot이 시작할 때.
 Context.Handlers.AddSubscribe<PlayerWinMilestoneEventHandler>(
-    SampleTopics.PlayerMilestoneChannel, SampleTopics.PlayerMilestone);
+    SampleTopics.PlayerMilestoneChannel,            // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
+    SampleTopics.PlayerMilestone);
 ```
 
-반대로 **fanout channel**(`AddFanoutChannel`, 스펙에서는 **Classic fanout**)은 그 자체로
-독립된 PUB/SUB 소켓 쌍을 연다. Spot이나 MeshNode 여부와 상관없이 발행자 하나가
-연결된 구독자 전원에게 전달하며, 구독자는 `IZLinkFanoutHandler<TEvent>`로 받는다.
+spot 밖에서 발행해야 하면 `IZLinkSpotPublisherClient`를 주입받아 같은 방식으로 보낸다.
+
+반대로 **fanout channel**(스펙에서는 **Classic fanout**)은 그 자체로 독립된 PUB/SUB
+소켓 쌍을 연다. spot이나 MeshNode와 무관하게 발행자 하나가 연결된 구독자 전원에게
+전달한다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -179,71 +182,124 @@ graph LR
     P --> S3["subscriber C"]
 ```
 
-둘 다 **완료가 전달 보장을 뜻하지 않는다** — `Publish(...).Async()`가 끝났다는 건
-발행이 로컬에서 접수됐다는 뜻이지, 구독자 handler가 실행됐거나 메시지가 도착했다는
-확인이 아니다. 저장·재전송·ack도 없다. 차이는 **대상 범위**다 — Logical Multicast는
-그 mesh 안, 같은 `ChannelName`을 구독한 spot으로 한정되고, Classic fanout은 mesh
-구성과 무관하게 연결된 구독자 전체로 퍼진다. request/send/pub-sub 사용법과 handler
-노출은 [05-channel-messaging](05-channel-messaging.ko.md)이 다룬다.
+둘 다 **발행이 끝났다고 전달이 보장되지는 않는다.** 발행 호출이 완료됐다는 건 보낼
+준비가 로컬에서 접수됐다는 뜻이지, 구독자가 그 이벤트를 처리했다는 확인이 아니다.
+저장·재전송·ack도 없다.
 
-## 2. spot — 상태 단위
+차이는 **대상 범위**다. Logical Multicast는 그 mesh 안에서 같은 channel·topic을 구독한
+spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된 구독자 전체로 퍼진다.
+request/send/pub-sub 사용법과 handler 노출은
+[05-channel-messaging](05-channel-messaging.ko.md)이 다룬다.
 
-spot은 room/zone/stage처럼 **동적으로 생성되고 제거되는 상태 단위**다.
-[앞에서 본](#1-channel--서버-간-연결) MeshNode의 **Object role** 위에 등록한다 — 같은
-MeshNode의 Channel role과는 별개 표면이다. 같은 spot의 direct packet과 timer는
-Spot queue에서 차례로 실행한다. Actor 작업까지 한 번에 하나씩 실행할지는 User Spot의
-execution mode가 정한다. 실행 위치와 순서가 channel handler와 다르다
-([핸들러 모델](#71-핸들러-모델--채널http-핸들러-vs-spot-핸들러)).
+## 2. spot — 상태를 소유하고 순서대로 처리하는 단위
 
-| | channel handler | SPOT handler |
+게임 방, 주문 하나, 길드 하나처럼 **여러 요청이 같은 상태를 건드리는 대상**이 있다.
+이걸 직접 만들면 두 가지를 챙겨야 한다. 그 상태를 지금 어느 process가 들고 있는지 찾아
+요청을 그리로 보내는 일과, 도착한 요청들이 상태를 동시에 건드리지 않게 막는 일이다.
+상태를 process 메모리에 두면 앞의 라우팅을 직접 관리해야 하고, DB나 Redis에 두면
+요청마다 읽고 쓰면서 락을 잡아야 한다.
+
+spot은 이 둘을 framework가 맡는다. 대상을 **메모리에 살아 있는 객체 하나**로 두고,
+그 앞으로 온 요청을 **한 줄로 세워 차례로** 처리한다. 동시에 두 요청이 같은 상태를
+건드리는 상황 자체가 생기지 않으니 락이 필요 없다.
+
+id로 주소를 지정한다는 점이 channel과 다르다. `"orders"` channel을 부르면 그 일을
+할 수 있는 아무 node나 처리하지만, `room-42` spot으로 보낸 요청은 지금 그 spot을
+들고 있는 node의 그 객체 하나가 처리한다. 어느 node인지는
+[앞에서 본](#1-channel--서버-간-연결) 위치 투명성 그대로 framework가 찾는다.
+
+spot은 MeshNode의 **Object role**에 등록한다. 같은 MeshNode의 Channel role과는
+별개 표면이다.
+
+| | channel handler | spot handler |
 | --- | --- | --- |
-| 위치 | MeshNode가 맡은 `ChannelName` | `MeshNode` 안의 entry/user Spot |
-| 실행 | 서로 다른 요청은 동시에 실행 가능 | 같은 Spot queue에서는 직렬 실행 |
-| 상태 | 공유 상태를 직접 멤버에 두지 않음 | execution mode가 보장하는 범위에서 Spot이 상태를 소유 |
-
-`SpotWide` User Spot은 Spot handler, member Actor handler, timer와 lifecycle callback
-전체를 한 번에 하나씩 실행한다. 이 mode에서는 spot과 actor가 공유하는 상태에도 lock이
-필요 없다. Entry Spot과 `PerActor` User Spot은 Actor별 queue와 Spot queue를 서로
-독립적으로 실행할 수 있다. 따라서 여러 lane이 함께 바꾸는 상태에는 별도 동기화가
-필요하며, 보통 공유 상태는 Redis나 database 같은 외부 저장소에 둔다. Instance Spot에는
-Actor가 없으므로 direct handler와 timer만 Spot queue에서 직렬 실행한다.
-
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-graph LR
-    M1["direct packet"] --> Q["Spot queue<br/>직렬 실행"]
-    M2["timer"] --> Q
-    Q --> ST["Spot handler"]
-```
+| 주소 | `ChannelName` — 처리할 수 있는 node 아무거나 | spot id — 그 상태를 가진 객체 하나 |
+| 수명 | 요청마다 새로 만들고 버린다 | 만들어진 뒤 닫힐 때까지 살아 있다 |
+| 실행 | 서로 다른 요청은 동시에 실행 | 같은 queue의 작업은 한 번에 하나씩 |
+| 상태 | handler에 두지 않는다 | spot이 직접 소유한다 |
 
 상세(등록·lifecycle·timer·outbound)는 [06-spot](06-spot.ko.md).
 
-### 2.1 spot 종류 — Entry · User · Instance
+### 2.1 spot 세 종류 — Entry · User · Instance
 
-spot은 **누가 언제 만드는지**에 따라 세 종류로 나뉜다.
+세 종류 모두 id와 상태를 가지고 순서대로 실행하는 spot이지만, **누가 언제 만드는지**와
+**actor를 담을 수 있는지**가 다르다.
 
-| 종류 | 만드는 시점 |
-| --- | --- |
-| Entry Spot | Object Server가 시작할 때 framework가 자동으로 만든다 |
-| User Spot | application이 "지금 만들자"고 명시적으로 만든다 |
-| Instance Spot | 별도 create 호출 없이, 그 id로 온 **최초 message**가 만든다(cold activation) |
+| | Entry Spot | User Spot | Instance Spot |
+| --- | --- | --- | --- |
+| 만드는 시점 | Object Server가 시작할 때 framework가 자동으로 | application이 "지금 만들자"고 명시적으로 | 그 id로 **첫 message**가 왔을 때 자동으로(cold activation) |
+| id | framework가 발급 | `Create`는 framework가, `GetOrCreate`는 caller가 지정 | caller가 보낸 message의 대상 id |
+| actor를 담을 수 있나 | 담는다 — actor가 처음 놓이는 자리 | 담는다 — actor가 join·leave로 드나든다 | 담지 못한다 |
+| 닫기 | application이 닫지 않는다(server 수명과 함께) | application이 닫는다 | application이 닫는다 |
+| 쓰는 곳 | 로그인 직후처럼 아직 아무 User Spot에도 들어가지 않은 actor의 대기 자리 | 게임 방·대전 판처럼 참가자가 모였다 흩어지는 단위 | 주문·길드처럼 id만 있으면 되는 단위 |
 
-Entry Spot은 actor가 생성 직후 머무는 기본 실행 위치다. User Spot은 방·판·주문처럼
-application이 만들 시점을 정하는 상태 단위다
-([02-getting-started](02-getting-started.ko.md)에서 만든 `TicTacToeGame`이 이 종류다).
-Instance Spot은 그 판단 자체를 생략한다 — 길드 id·주문 id처럼 **id만 있으면** 첫
-요청이 온 순간 spot이 준비된다.
+**Entry Spot**은 actor의 기본 자리다. actor를 만들면 그 node의 Entry Spot에 놓이고,
+User Spot에 join하면 그리로 옮겨가고, leave하면 다시 Entry Spot으로 돌아온다.
+Object Server마다 하나씩 있고 application이 만들거나 닫지 않는다.
+
+**User Spot**은 application이 수명을 직접 쥐는 단위다. 언제 만들고 언제 닫을지가
+코드에 드러난다. actor가 join·leave로 드나들 수 있어서, 게임 방처럼 참가자가 모였다
+흩어지는 대상에 맞는다.
+
+**Instance Spot**은 만들 시점을 결정하는 일 자체를 없앤다. 주문 id·길드 id로 첫
+요청이 오면 그 자리에서 만들어진다(cold activation). actor를 담지 못하는 대신, "이걸
+언제 만들지"를 고민할 필요가 없는 게 장점이다.
 
 ```csharp
 mesh.Objects().Server()
-    .AddEntrySpot<PlayEntrySpot>()                  // 시작할 때 자동 생성.
+    .AddEntrySpot<PlayEntrySpot>()                  // 시작할 때 자동 생성. stable type이 없다.
     .AddSpotFactory<TicTacToeGame>(                 // 만들라고 할 때 생성.
-        "tictactoe-game",
+        "tictactoe-game",                           // stable type — 이 이름으로 만들 spot을 고른다.
         factory => factory.DisableRelocation())
     .AddInstanceSpotFactory<GuildSpot>(             // 그 id로 첫 message가 오면 생성.
         "guild",
         factory => factory.RecreateOnRelocation());
 ```
+
+### 2.2 실행 모델 — 무엇이 무엇과 동시에 실행되나
+
+spot에 들어오는 작업은 두 갈래로 줄을 선다. spot 자신에게 온 direct packet과 timer는
+**Spot queue**로, 그 spot에 속한 actor 앞으로 온 message는 **actor별 queue**로 간다.
+그 줄들을 동시에 실행해도 되는지가 종류마다 다르다.
+
+| | 무엇이 한 줄로 서나 | 상태를 어디에 두나 |
+| --- | --- | --- |
+| Entry Spot | actor는 각자 자기 순서대로. Spot 작업은 그와 별개로 실행 | actor가 각자 소유. actor끼리 공유할 상태는 외부 저장소 |
+| User Spot `SpotWide`(기본) | Spot·actor·timer **전부** 한 번에 하나씩 | spot이 직접 소유. actor와 공유해도 락이 필요 없다 |
+| User Spot `PerActor` | actor별로, Spot lane별로 각각. 서로 다른 줄은 동시 실행 | actor가 각자 소유. 공유 상태는 외부 저장소 |
+| Instance Spot | direct packet과 timer가 한 줄로(actor 없음) | spot이 직접 소유 |
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+flowchart LR
+  subgraph SW["User Spot — SpotWide (기본)"]
+    direction LR
+    P1["direct packet<br/>timer"] --> SQ1["Spot queue"]
+    A1["actor A message"] --> AQ1["actor A queue"]
+    B1["actor B message"] --> BQ1["actor B queue"]
+    SQ1 --> G1{{"공통 gate<br/>한 번에 하나"}}
+    AQ1 --> G1
+    BQ1 --> G1
+  end
+  subgraph PA["Entry Spot · User Spot PerActor"]
+    direction LR
+    P2["direct packet<br/>timer"] --> SQ2["Spot queue"] --> R2["실행"]
+    A2["actor A message"] --> AQ2["actor A queue"] --> R2A["실행"]
+    B2["actor B message"] --> BQ2["actor B queue"] --> R2B["실행"]
+  end
+  SW ~~~ PA
+```
+
+**`SpotWide`가 기본**이고, 대부분 이걸 쓰면 된다. 그 spot의 모든 일이 한 줄로
+처리되니 spot과 actor가 같은 상태를 함께 봐도 락이 필요 없다 — 게임 방이라면 보드판과
+참가자 목록이 그런 상태다. 대신 느린 작업 하나가 그 spot 전체를 멈춘다.
+
+**`PerActor`**는 actor마다 독립적으로 돌아야 처리량이 나오는 경우에 고른다. 대신
+여러 줄이 동시에 실행되므로, actor들이 함께 바꾸는 상태를 spot 필드에 두면 경합이
+생긴다. 그런 공유 상태는 Redis나 database처럼 node 밖에 둔다. **Entry Spot도 같은
+모델**이라 같은 제약을 받는다.
+
+execution mode는 factory를 등록할 때 정하고 실행 중에는 바꾸지 않는다.
 
 ## 3. actor — ID로 식별되는 상태 객체
 
@@ -393,41 +449,17 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot
 }
 ```
 
-| 실행 위치 | 동시에 실행할 수 있는 범위 | 상태를 두는 기준 |
-| --- | --- | --- |
-| 채널/HTTP handler | 서로 다른 요청 | handler 멤버에 가변 상태를 두지 않는다 |
-| `SpotWide` User Spot | Spot·member Actor 전체에서 한 callback만 실행 | spot과 actor가 공유하는 상태를 둘 수 있다 |
-| Entry Spot·`PerActor` User Spot | Spot lane과 서로 다른 Actor lane을 함께 실행할 수 있음 | lane 밖에서 공유하는 상태는 별도 동기화하거나 외부 저장소에 둔다 |
-| Instance Spot | direct handler와 timer를 한 번에 하나씩 실행 | Spot instance가 상태를 소유할 수 있다 |
-
-다음 그림은 `SpotWide` User Spot의 순서 보장을 보여준다. Queue는 분리되어 있지만
-공통 gate가 한 callback만 통과시킨다.
-
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-graph LR
-    D["direct packet · timer"] --> SQ["Spot queue"]
-    A["Actor A payload"] --> AQ["Actor A queue"]
-    B["Actor B payload"] --> BQ["Actor B queue"]
-    SQ --> G["SpotWide gate"]
-    AQ --> G
-    BQ --> G
-    G --> H["한 callback씩 실행"]
-```
+어느 작업이 어느 작업과 동시에 실행되는지는 spot 종류와 execution mode가 정한다 —
+[실행 모델](#22-실행-모델--무엇이-무엇과-동시에-실행되나) 참고.
 
 직렬 실행은 스레드 하나를 계속 점유한다는 뜻이 아니다. Handler가 `await`에 도달하면
-실행 스레드는 다른 일을 처리할 수 있지만, 해당 lane의 logical turn은 handler가
-완료될 때까지 유지된다. `SpotWide`에서는 그동안 같은 spot의 다음 callback을 시작하지
-않는다. 오래 걸리는 I/O를 기다리는 동안 다음 turn을 실행해야 한다면
-[06-spot](06-spot.ko.md)의 `Yield` 계약을 사용한다.
+실행 스레드는 다른 일을 처리할 수 있지만, 해당 줄의 turn은 handler가 완료될 때까지
+유지된다. `SpotWide`에서는 그동안 같은 spot의 다음 callback을 시작하지 않는다. 오래
+걸리는 I/O를 기다리는 동안 다음 turn을 실행해야 한다면 [06-spot](06-spot.ko.md)의
+`Yield` 계약을 사용한다.
 
-Entry Spot과 User Spot은 둘 다 순서 보장을 제공하지만, 메시지가 들어오는 경로와
-실행 기준이 다르다. User Spot은 `SpotId`로 주소를 지정하는 도메인 상태 단위이고,
-Entry Spot의 Actor packet은 대상 Actor queue 기준으로 처리된다. 자세한 차이는
-[06-spot](06-spot.ko.md)의 실행 직렬화 설명에서 다룬다.
-
-가변 도메인 상태(게임 룸 등)는 **SPOT**, 불변 구성(topology)은 싱글톤 서비스, 공유
-인프라(캐시·카운터)는 싱글톤 + 자체 동기화에 둔다. SPOT 핸들러 작성과 직렬 실행
+가변 도메인 상태(게임 룸 등)는 **spot**, 불변 구성(topology)은 싱글톤 서비스, 공유
+인프라(캐시·카운터)는 싱글톤 + 자체 동기화에 둔다. Spot handler 작성과 직렬 실행
 보장은 [06-spot](06-spot.ko.md), 채널 핸들러 노출은 [05-channel-messaging](05-channel-messaging.ko.md).
 
 **handler 노출은 명시적이다.** Assembly scan은 handler type을 발견하고, typed registration은

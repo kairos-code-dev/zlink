@@ -212,11 +212,15 @@ role로 등록하지 않아도 된다. 이 MeshNode가 특정 ChannelName으로 
 MeshNode의 같은 ROUTER와 peer 연결을 사용한다. 차이는 Channel target 목록에
 membership을 게시하는지, handler와 선택 weight를 제공하는지에 있다.
 
-Object role을 `Client`로 선택한 MeshNode는 outbound-only object node다. 이 MeshNode에
-Channel `Server` role이나 application Node direct handler를 함께 등록하면 startup
-configuration error다. Object `Server` role은 Client 기능을 포함하므로 Channel
-`Client`와 `Server` role을 모두 사용할 수 있다. Object role이 `None`인 Channel-only
-topology의 기존 role 조합은 유지한다.
+Object role을 `Client`로 선택한 MeshNode는 object 호출만 시작하고 Actor·Spot을
+배치받지 않는다. 이 제한은 RouteMesh Channel 역할에는 적용하지 않는다. 따라서
+Object Client에도 Channel `Client` 또는 `Server` role을 등록할 수 있다. Channel
+`Server` role을 등록하면 해당 ChannelName의 message를 처리하는 target이 된다.
+
+다만 Object Client에는 application Node direct handler를 등록할 수 없다. 이 조합은
+startup configuration error다. Object `Server` role은 Object Client 기능을 포함하며
+Channel `Client`와 `Server` role을 모두 사용할 수 있다. Object role이 `None`인
+Channel-only topology의 기존 role 조합도 유지한다.
 
 | 현재 MeshNode의 ChannelName 등록 | 시작할 수 있는 작업 | Remote target으로 게시 |
 |---|---|---|

@@ -67,7 +67,7 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
 | SM-E4 | 구현 | public `spot.context.addTimer(...)`의 `ZLinkTimerOverrunPolicy` 세 가지를 등록하고 `delivery`/`scheduled`/`skipped` evidence로 skip, bounded catch-up, delay-next-tick 의미를 검증한다. 로그: `logs/20260630-074201-3148526` |
 | SM-F1 | 구현 | target spot을 만든 뒤 route client 경로의 `/spot/state/request`와 `/spot/state/command`를 검증한다. 선택 PASS: `logs/20260630-082100-3253769` |
 | SM-F2 | 구현 | target spot request/command selectable scenario가 public route-to-spot path로 state reply와 command evidence를 검증한다. 선택 PASS: `logs/20260630-082100-3253756` |
-| SM-F3 | 전환 필요 | Dynamic owner RID와 current public Node direct·ChannelName·SpotId 호출로 fixture를 이관했다. 선택 실행 `log/20260729-042802-225540`에서 Node direct request가 Mesh Channel에 등록한 `ChannelEchoReq`를 route dispatcher에서 찾지 못했다. Mesh Channel handler를 Node direct dispatch에도 연결할지 계약 owner를 확인하고 runtime registration을 맞춘 뒤 exactly-once evidence를 고정해야 한다. |
+| SM-F3 | 구현 | Spot 생성 결과의 dynamic owner RID를 사용한다. Mesh-level `addRequestHandler(...)`, Channel-level `channel(...).server().addRequestHandler(...)`와 global SpotId request를 같은 process에서 제출하고 세 handler의 exactly-once evidence를 검증했다. 선택 PASS: `log/20260729-043537-560993` |
 | SM-F4 | 구현 | 존재하지 않는 location의 request 실패를 selectable scenario로 검증했다. malformed relay packet 주입은 public route-client 표면이 아니므로 runtime 내부 검증이나 별도 bridge-level 테스트 대상으로 분리한다. `all` PASS: `logs/20260713-063253-3989258` |
 | SM-F5 | 구현 | Framework가 선택한 owner와 반대 node에서 ChannelName request와 global SpotId request를 처리한다. owner에서 Spot을 닫은 뒤 같은 caller의 Spot request만 typed failure로 끝나고 ChannelName request는 계속 처리된다. 선택 PASS: `log/20260729-041927-3968` |
 | SM-F6 | 전환 필요 | 같은 MeshName의 MeshNode 두 개만 구성한 MultiNode role에서 target Spot request가 owner Spot으로 도달하고 reply/evidence가 남는지 검증한다. 별도 channel·Spot socket은 만들지 않는다. |
@@ -81,7 +81,7 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
 | 묶음 | Scenario | 판정 | 다음 작업 |
 |------|----------|------|-----------|
 | routed spot request | `SM-A2`, `SM-A3`, `SM-A4`, `SM-A5`, `SM-C1`, `SM-C3`, `SM-E1`, `SM-E3`, `SM-G2`, `sm-q9` | 구현 | Node spot spec의 Spot context outbound와 resolver 기반 route를 기존 public surface로 검증했다. 선택 PASS 로그는 각 scenario 행에 남겼다. |
-| route client target spot | `SM-F1`, `SM-F2`, `SM-F3`, `SM-F4`, `SM-F5` | 혼합 | `SM-F1`·`SM-F2`·`SM-F4`·`SM-F5`는 current public surface로 검증했다. `SM-F3`은 ChannelName·RID direct·Spot direct 혼재와 handler evidence를 아직 전환해야 한다. |
+| route client target spot | `SM-F1`, `SM-F2`, `SM-F3`, `SM-F4`, `SM-F5` | 구현 | 다섯 scenario를 current public surface로 검증했다. `SM-F3`은 Mesh-level RID direct, ChannelName과 global SpotId handler namespace를 별도 evidence로 구분한다. |
 | stream TLS server | `SM-D14` | 전환 필요 | Node stream node builder의 public `setTlsServer(...)`와 `wss://` endpoint를 사용한다. connector가 지원하지 않는 인증서 검증 생략 option을 전제로 하지 않고, 공개 TLS 신뢰 설정과 실제 auth/request/push 증거가 마련된 뒤 완료로 바꾼다. |
 
 검증:

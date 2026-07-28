@@ -305,16 +305,6 @@ export function createPlayEndpoints(
           )
           .timeout(5000)
           .submit<ChannelEchoRes>();
-        const node = request.nodeRid !== undefined && request.nodeValue !== undefined
-          ? await routeClient
-              .requestToNode(
-                SpotServiceNames.externalSpotChannel,
-                request.nodeRid,
-                spotServicePacket(ChannelEchoReq, { value: request.nodeValue })
-              )
-              .timeout(5000)
-              .submit<ChannelEchoRes>()
-          : undefined;
         return { value: channel.value } satisfies ChannelRouteRes;
       }
     },
@@ -346,6 +336,16 @@ export function createPlayEndpoints(
           )
           .timeout(5000)
           .submit<ChannelEchoRes>();
+        const node = request.nodeRid !== undefined && request.nodeValue !== undefined
+          ? await routeClient
+              .requestToNode(
+                SpotServiceNames.externalSpotChannel,
+                request.nodeRid,
+                spotServicePacket(ChannelEchoReq, { value: request.nodeValue })
+              )
+              .timeout(5000)
+              .submit<ChannelEchoRes>()
+          : undefined;
         const spot = await requireSpotRef(spotRefs, request.spotId);
         const state = await spotOutbound
           .requestToSpot(spot.spotId, spotServicePacket(StateReq, { operation: 'add', delta: request.delta }))

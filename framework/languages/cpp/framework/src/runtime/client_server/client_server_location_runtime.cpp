@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/client_server/client_server_location_runtime.hpp"
+#include "runtime/client_server/weighted_selector.hpp"
 
 #include <zlink.hpp>
 
@@ -128,7 +129,7 @@ struct client_server_location_runtime_t::client_channel_t
     channel_snapshot_t snapshot;
     std::vector<std::uint8_t> routing_id;
     std::map<std::string, client_connection_t> connections;
-    std::uint64_t weighted_cursor = 0;
+    smooth_weighted_selector_t selector;
 };
 
 client_server_location_runtime_t::client_server_location_runtime_t (
@@ -718,34 +719,26 @@ client_server_location_runtime_t::select_ready (
             : "ClientServer has no selectable target snapshot");
     }
     auto &channel = *_clients.at (channel_name);
-    std::vector<client_connection_t *> ready;
-    std::uint64_t total = 0;
-    for (auto &[_, connection] : channel.connections) {
+    std::vector<weighted_candidate_t> candidates;
+    for (auto &[key, connection] : channel.connections) {
         if (!connection.owner->ready ()
             || connection.descriptor.state
                  != framework_runtime_state_t::serving
             || connection.descriptor.weight <= 0)
             continue;
-        ready.push_back (&connection);
-        total += static_cast<std::uint64_t> (
-          connection.descriptor.weight);
+        candidates.push_back (
+          {key,
+           static_cast<std::uint32_t> (
+             connection.descriptor.weight)});
     }
-    if (ready.empty () || total == 0) {
+    const auto selected = channel.selector.select (candidates);
+    if (!selected) {
         return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
           framework_error_kind_t::request_target_not_found,
           "ClientServer has no selectable target snapshot");
     }
-    auto slot = channel.weighted_cursor++ % total;
-    for (auto *connection : ready) {
-        const auto weight = static_cast<std::uint64_t> (
-          connection->descriptor.weight);
-        if (slot < weight)
-            return result_t<std::shared_ptr<raw_client_server_client_t>>::success (
-              connection->owner);
-        slot -= weight;
-    }
     return result_t<std::shared_ptr<raw_client_server_client_t>>::success (
-      ready.back ()->owner);
+      channel.connections.at (*selected).owner);
 }
 
 void client_server_location_runtime_t::stop () noexcept

@@ -6596,6 +6596,30 @@ ST-A2를 current Deferred Join terminal 계약으로 전환했다. Actor request
 
 ST-A3의 joined callback 대기와 moving dispatch 계약은 이 checkpoint에 포함하지 않았다.
 
+## 2026-07-29 .NET Config 10 ST-A3 local membership barrier checkpoint
+
+ST-A3를 current Deferred Join과 same-node membership ordering에 맞췄다. 이전 scenario는
+target `OnJoinedActorAsync`가 끝나기 전에 source leave를 기다렸다. Runtime은 joined callback
+성공 뒤에 leave와 completion을 진행하므로 scenario 자체가 gate를 해제하지 못하고 deadline을
+소진했다. Source leave를 선행 조건에서 제거하고 실제 membership barrier를 검증했다.
+
+- Actor와 target User Spot이 같은 node에 배치됐는지 public ref로 먼저 확인한다.
+- `Defer()` registration 뒤 target admission과 `joined_wait`를 확인한다. Gate가 닫힌 동안
+  leave, joined, completion callback과 Actor handler는 모두 0건이다.
+- Source application endpoint가 public Actor request를 제출했다는 `probe_submitted` evidence를
+  확인한 뒤에도 request는 완료되지 않고 handler evidence는 0건이다.
+- Gate release 뒤 queued request와 별도 follow-up request는 target Spot에서 state 13으로
+  각각 정확히 한 번 처리된다. Evidence 순서는
+  `admission → joined_wait → joined_released → joined → success_reply → queued request → follow-up request`다.
+- Capture, Restore, transfer in/out, relocation completed와 Message Follow evidence는 0건이다.
+- ActorNode와 Client build는 warning 0, error 0이다. Deferred Join focused 7/7과
+  Actor Handoff focused 63/63이 통과했다. ST-A2 actual regression도
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-043656-565185`에서 통과했다.
+- ST-A3 actual-process 증거는
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-043746-628620`이다.
+
+Private hook, reflection, retry와 timeout 확대는 추가하지 않았다.
+
 ## 2026-07-29 Node.js Config 2 SM-F5 actual-process 증거
 
 Node.js SpotService의 Play fixture를 current SpotId·manager·handler context·RouteMesh Channel role
@@ -6640,14 +6664,60 @@ ClientServer runtime을 시작한다.
 weight 0 제외, draining 제외와 bounded selector state를 focused test로 먼저 고정한 뒤
 두 target actual assertion을 다시 통과해야 한다. 이 checkpoint를 actual 완료로 판정하지 않는다.
 
-## 2026-07-29 Node.js Config 2 SM-F3 전환 checkpoint
+## 2026-07-29 C++ Config 1 RM-A2 완료 증거
 
-`SM-F3` fixture를 fixed Node RID 대신 Spot 생성 결과의 owner RID를 사용하는 current public
-호출로 이관했다. Play와 Client는 build되지만 actual
-`framework/languages/node/e2e/SpotService/log/20260729-042802-225540`은 완료되지 않았다.
+앞 checkpoint의 weighted selection gap을 bounded smooth weighted selector로 해소했다. Selector는
+ready·Serving·positive-weight ClientServer member만 입력으로 받는다. Candidate가 바뀌면 제거된
+member의 state를 즉시 삭제하고, 각 credit의 절댓값을 현재 active weight 합계 이내로 제한한다.
 
-Node direct request가 Mesh Channel에 등록한 `ChannelEchoReq`를 route dispatcher에서 찾지 못해
-typed handler-missing error로 끝났다. Retry, timeout 확대나 별도 handler 우회는 추가하지 않았다.
-Mesh Channel handler를 Node direct dispatch에도 연결하는 것이 public contract인지 확인하고
-registration owner를 정렬한 뒤 ChannelName, Node direct와 SpotId direct의 exactly-once evidence를
-다시 실행해야 한다. 따라서 `SM-F3`은 계속 `전환 필요`다.
+- Focused test는 `api-a=300`, `api-b=100`을 400회 선택해 정확히 `300:100`을 기록한다.
+- Weight `0` member는 선택하지 않고 selector state에도 남기지 않는다.
+- Draining member를 candidate 입력에서 제외한 뒤 Serving member만 32회 선택한다. 이때 state는
+  한 member만 유지하고 credit 절댓값은 active total `300`을 넘지 않는다.
+- RegistryMessaging Client·Consumer target build와 `test_cpp_framework_m6a_runtime`이 통과했다.
+- Actual 증거는
+  `framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-043646-565086`이다. 최초 manual
+  request, automatic descriptor 추가 중 in-flight request, 이후 `api-a`·`api-b` 두 target 처리와
+  각 Provider evidence가 모두 통과했고 runner exit code는 0이다.
+
+따라서 C++ Config 1 `RM-A2` actual-process gap은 완료했다. Manual connection을 automatic
+descriptor key로 옮기는 handoff와 최초 handshake identity fence는 그대로 유지한다.
+
+## 2026-07-29 Node.js Config 2 SM-F3 actual-process 증거
+
+`SM-F3` fixture는 fixed Node RID를 사용하지 않는다. Spot 생성 결과가 반환한 owner RID를
+Node direct target으로 사용한다. Mesh-level Node direct handler와 ChannelName handler는 current
+public builder가 제공하는 서로 다른 등록 위치에 배치했다.
+
+- Mesh-level `addRequestHandler(...)`는 RID direct request를 처리한다.
+- `channel(...).server().addRequestHandler(...)`는 ChannelName request를 처리한다.
+- global SpotId request는 Location Store가 가리키는 Spot handler를 처리한다.
+- 세 요청은 같은 packet name을 사용해도 각각 `node-echo`, `channel-echo`,
+  `spot-state-request` evidence를 정확히 한 번 남긴다.
+
+Actual 증거는
+`framework/languages/node/e2e/SpotService/log/20260729-043537-560993`이다.
+Play와 Client build, M6A focused runtime test 12/12와 `SM-F3` actual-process가 통과했다.
+이전 실패는 Mesh Channel handler를 Node direct handler로 재사용한 fixture 등록 오류였으며,
+새 public API나 runtime compatibility 경로는 추가하지 않았다.
+
+## 2026-07-29 RouteMesh Object Client connection 계약 재검증
+
+Object role과 RouteMesh Channel role은 서로 독립이다. Object Client는 Actor·Spot의
+배치 target이 아니지만 RouteMesh Channel Server로는 등록할 수 있다. 공통
+`07-channel-topology.ko.md`에 남아 있던 반대 설명을 제거해 다른 공통 spec 및 다섯
+언어 exact interface와 뜻을 맞췄다.
+
+`.NET` Config 1 `RM-A3`를 현재 main에서 다시 실행했다.
+
+- 양쪽 모두 Object Client이고 양쪽 모두 RouteMesh Channel Server membership이 없으면
+  `NotRequired`이며 Ready peer는 0이다.
+- 어느 한쪽에 RouteMesh Channel Server membership이 있으면 weight가 `100` 또는 `0`이어도
+  connection이 필요하며 Ready peer를 유지한다.
+- Channel Client role, ClientServer와 classic fanout role은 이 판정에 포함하지 않는다.
+- Object Client를 Node direct target으로 지정하면 peer를 새로 만들지 않고 `NotFound`로 끝난다.
+
+Actual-process 증거는
+`framework/languages/dotnet/e2e/LocationMessaging/logs/20260729-043637-564415`이다.
+Fixture에서 제거된 `Contracts.Eventing` namespace의 사용하지 않는 import도 삭제해
+현재 public contract source로 build되도록 정리했다.

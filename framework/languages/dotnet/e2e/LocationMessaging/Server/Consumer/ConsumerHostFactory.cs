@@ -8,7 +8,6 @@ using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Locations.Redis;
 using LocationMessaging.Server.Consumer.Configuration;

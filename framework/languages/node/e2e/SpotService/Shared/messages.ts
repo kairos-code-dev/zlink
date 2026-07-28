@@ -247,7 +247,7 @@ export interface ChannelRouteRes {
 
 export interface SpotMixedRouteReq {
   readonly spotId: string;
-  readonly nodeRid: string;
+  readonly nodeRid?: string;
   readonly channelValue: string;
   readonly nodeValue?: string;
   readonly delta: number;

@@ -4,6 +4,7 @@
 #include "runtime/locations/service_descriptor_registry.hpp"
 #include "runtime/fanout/raw_fanout_owner.hpp"
 #include "runtime/client_server/raw_client_server_owner.hpp"
+#include "runtime/client_server/weighted_selector.hpp"
 #include "runtime/protocol/service_wire_codec.hpp"
 
 #include <algorithm>
@@ -11,6 +12,7 @@
 #include <chrono>
 #include <cstdint>
 #include <future>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -653,6 +655,40 @@ void verify_client_server_independent_raw_path ()
 
 }
 
+void verify_client_server_weighted_selection ()
+{
+    client_server::smooth_weighted_selector_t selector;
+    const std::vector<client_server::weighted_candidate_t> weighted{
+      {"api-a", 300}, {"api-b", 100}, {"disabled", 0}};
+    std::map<std::string, std::size_t> selected;
+    for (std::size_t index = 0; index < 400; ++index) {
+        const auto key = selector.select (weighted);
+        assert (key);
+        ++selected[*key];
+        assert (selector.state_size () == 2);
+        assert (selector.maximum_absolute_credit () <= 400);
+    }
+    assert (selected["api-a"] == 300);
+    assert (selected["api-b"] == 100);
+    assert (!selected.contains ("disabled"));
+
+    const std::vector<client_server::weighted_candidate_t>
+      after_api_b_enters_draining{
+      {"api-a", 300}};
+    for (std::size_t index = 0; index < 32; ++index) {
+        const auto key = selector.select (
+          after_api_b_enters_draining);
+        assert (key && *key == "api-a");
+        assert (selector.state_size () == 1);
+        assert (selector.maximum_absolute_credit () <= 300);
+    }
+
+    const std::vector<client_server::weighted_candidate_t> none{
+      {"disabled", 0}};
+    assert (!selector.select (none));
+    assert (selector.state_size () == 0);
+}
+
 void verify_raw_owner_node_send_and_liveness ()
 {
     mesh::raw_mesh_node_owner_t first (
@@ -851,6 +887,7 @@ int main ()
     verify_location_descriptor_cas_snapshot_and_watch ();
     verify_manual_and_automatic_classic_fanout ();
     verify_client_server_independent_raw_path ();
+    verify_client_server_weighted_selection ();
     verify_raw_owner_node_send_and_liveness ();
     return 0;
 }

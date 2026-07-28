@@ -6,7 +6,7 @@
 |----------|------|------|
 | RM-A1 | 구현 | Store 자동 연결 request와 public topology query의 두 Ready node, RouteMesh status의 Ready peer를 검증한다(run_e2e.sh 전량 그린 실측). |
 | RM-A2 | 구현 | 수동 endpoint request marker가 있다. |
-| RM-A3 | 구현 | Linux actual-process에서 Automatic·Manual Object Client pair가 `NotRequired`와 Ready peer 0을 유지하고 20초 동안 reconnect하지 않음을 확인했다. 한쪽에 RouteMesh Channel Server를 등록하면 weight `100`과 `0` 모두 Automatic·Manual에서 Ready peer 1을 유지한다. Channel Client-only와 별도 ClientServer·classic fanout 등록은 연결 필요 판정을 바꾸지 않는다. 연결이 필요한 descriptor-only peer는 `NotConnected`·`Degraded`, Object Client Node-direct Send·Request는 `NotFound`이며 peer 수는 변하지 않는다. Object Client↔Object Server와 Object Server↔Object Server 대조군은 Ready다. 증거는 `logs/20260728-215606-1356039/`에 있다. |
+| RM-A3 | 구현 | Linux actual-process에서 Automatic·Manual Object Client pair가 `NotRequired`와 Ready peer 0을 유지하고 20초 동안 reconnect하지 않음을 확인했다. 한쪽에 RouteMesh Channel Server를 등록하면 weight `100`과 `0` 모두 Automatic·Manual에서 Ready peer 1을 유지한다. Channel Client-only와 별도 ClientServer·classic fanout 등록은 연결 필요 판정을 바꾸지 않는다. 연결이 필요한 descriptor-only peer는 `NotConnected`·`Degraded`, Object Client Node-direct Send·Request는 `NotFound`이며 peer 수는 변하지 않는다. Object Client↔Object Server와 Object Server↔Object Server 대조군은 Ready다. 최신 증거는 `logs/20260729-043637-564415/`에 있다. |
 | RM-A4 | 구현 | 같은 RID 교체 전·후 descriptor generation/endpoint와 ready peer 전환 marker가 있다. |
 | RM-A6 | 구현 | MeshName 별 descriptor 집합·runtime snapshot 분리 marker가 있다. |
 | RM-A7 | 미구현 | 같은 global ID를 Actor와 Spot에 동시에 예약하는 충돌, 실패 terminal 공유와 callback 단일 실행을 검증하는 role server·selector가 없다. |

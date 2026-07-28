@@ -7,6 +7,8 @@ source "$ROOT_DIR/../redis-common.sh"
 
 SCENARIO="${*:-all}"
 SCENARIO="${SCENARIO// /,}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
 if [[ "$SCENARIO" == "all" ]]; then
   cat >&2 <<'EOF'
 ChannelEgressRouting 'all' is not executable yet.
@@ -75,39 +77,29 @@ write_role_config() {
   local config="$CONFIG_DIR/$role.json"
   local evidence="$LOG_DIR/$role.evidence.log"
   EVIDENCE["$role"]="$evidence"
-  python3 - "$config" "$role" "$rid" "$url" "$REDIS_ENDPOINT" \
-    "channel-egress:$RUN_ID:" "$evidence" "$route_servers" "$route_clients" \
-    "$workflow_client" "$workflow_server" "$weight" "$workflow_endpoint" \
-    "$stream_endpoint" <<'PY'
-import json
-import os
-import stat
-import sys
-
-(path, role, rid, url, redis, prefix, evidence, servers, clients,
- workflow_client, workflow_server, weight, workflow_endpoint,
- stream_endpoint) = sys.argv[1:]
-value = {
-    "Options": {
-        "Role": role,
-        "Rid": rid,
-        "HttpUrl": url,
-        "RedisEndpoint": redis,
-        "RedisKeyPrefix": prefix,
-        "EvidenceFile": evidence,
-        "StreamEndpoint": stream_endpoint or None,
-        "RouteServers": [v for v in servers.split(",") if v],
-        "RouteClients": [v for v in clients.split(",") if v],
-        "WorkflowClient": workflow_client == "true",
-        "WorkflowServer": workflow_server == "true",
-        "WorkflowWeight": int(weight),
-        "WorkflowEndpoint": workflow_endpoint or None,
-    }
-}
-with open(path, "w", encoding="utf-8") as stream:
-    json.dump(value, stream, indent=2)
-os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
-PY
+  local args=(
+    --role "$role"
+    --rid "$rid"
+    --http-url "$url"
+    --redis-endpoint "$REDIS_ENDPOINT"
+    --redis-key-prefix "channel-egress:$RUN_ID:"
+    --evidence-file "$evidence"
+    --workflow-client "$workflow_client"
+    --workflow-server "$workflow_server"
+    --workflow-weight "$weight"
+  )
+  local channel
+  IFS=',' read -ra channels <<<"$route_servers"
+  for channel in "${channels[@]}"; do
+    [[ -z "$channel" ]] || args+=(--route-server "$channel")
+  done
+  IFS=',' read -ra channels <<<"$route_clients"
+  for channel in "${channels[@]}"; do
+    [[ -z "$channel" ]] || args+=(--route-client "$channel")
+  done
+  [[ -z "$workflow_endpoint" ]] || args+=(--workflow-endpoint "$workflow_endpoint")
+  [[ -z "$stream_endpoint" ]] || args+=(--stream-endpoint "$stream_endpoint")
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- "${args[@]}"
 }
 
 start_role() {
@@ -131,14 +123,14 @@ start_role() {
 
 wait_json() {
   local url="$1" expression="$2" name="$3"
-  local deadline=$((SECONDS + 5))
+  local deadline=$((SECONDS + LOCAL_READINESS_TIMEOUT_SECONDS))
   while (( SECONDS < deadline )); do
     if curl --max-time 1 --connect-timeout 1 -fsS "$url" 2>/dev/null \
       | python3 -c "import json,sys; value=json.load(sys.stdin); assert ($expression)" \
         >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.1
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
   echo "Timed out waiting for $name at $url" >&2
   curl --max-time 1 --connect-timeout 1 -fsS "$url" >&2 || true

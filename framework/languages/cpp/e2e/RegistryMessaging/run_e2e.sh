@@ -776,9 +776,9 @@ fi
 if [[ "$SCENARIO" == "RM-A4" || "$SCENARIO" == "rm-a4" ]]; then
   if ! rg -q 'options.store_consumer_url' \
       "$SCRIPT_DIR/Client/Scenarios/rm_a4_same_rid_failover_scenario.hpp" \
-    || ! rg -q 'locations/peers' \
+    || rg -q 'locations/peers' \
       "$SCRIPT_DIR/Client/Scenarios/rm_a4_same_rid_failover_scenario.hpp"; then
-    echo "RM-A4 contract gate failed: persistent consumer handover assertions are missing" >&2
+    echo "RM-A4 contract gate failed: persistent consumer public messaging assertions are invalid" >&2
     exit 1
   fi
   start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a-v1

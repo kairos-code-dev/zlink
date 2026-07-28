@@ -78,16 +78,22 @@ internal sealed class HttpAwaitHandler(
     {
         evidence.Add(
             $"http-{request.Terminator}-started|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}");
-        var call = client.Get("/delay")
-            .Query("requestId", request.RequestId)
-            .Query("marker", request.Terminator)
-            .Query("delayMs", request.DelayMs.ToString());
         evidence.Add(
             $"http-{request.Terminator}-{(request.Terminator == "yield" ? "released" : "held")}|rid={evidence.Rid}"
             + $"|spot={spot.Context.SpotId}|request={request.RequestId}");
         var response = request.Terminator == "yield"
-            ? await call.Yield<ExternalDelayRes>(cancellationToken)
-            : await call.Async<ExternalDelayRes>(cancellationToken);
+            ? await spot.Context.RunIoWorker(async ct =>
+                await client.Get("/delay")
+                    .Query("requestId", request.RequestId)
+                    .Query("marker", request.Terminator)
+                    .Query("delayMs", request.DelayMs.ToString())
+                    .Async<ExternalDelayRes>(ct))
+                .Yield(cancellationToken)
+            : await client.Get("/delay")
+                .Query("requestId", request.RequestId)
+                .Query("marker", request.Terminator)
+                .Query("delayMs", request.DelayMs.ToString())
+                .Async<ExternalDelayRes>(cancellationToken);
         evidence.Add(
             $"http-{request.Terminator}-resumed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|request={request.RequestId}|marker={response.Body.Marker}");

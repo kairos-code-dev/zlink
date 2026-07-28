@@ -9,7 +9,6 @@ using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
-using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.E2E.Diagnostics;
 

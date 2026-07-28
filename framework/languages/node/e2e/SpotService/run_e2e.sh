@@ -182,7 +182,7 @@ wait_port redis "tcp://$REDIS_ENDPOINT"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
 case "$SCENARIO" in
-  SM-F3|SM-F5)
+  SM-F3|SM-F4|SM-F5)
     build_package "$ROOT_DIR/Server/Play"
     ;;
   *)
@@ -443,7 +443,7 @@ wait_topology_routes() {
   if [[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "SM-G2" || "$SCENARIO" == "SM-Q9" ]]; then
     return 0
   fi
-  if [[ "$SCENARIO" == "SM-F3" ]]; then
+  if [[ "$SCENARIO" == "SM-F3" || "$SCENARIO" == "SM-F4" ]]; then
     return 0
   fi
   if [[ "$SCENARIO" == "SM-F5" ]]; then
@@ -470,7 +470,7 @@ wait_topology_routes() {
 case "$SCENARIO" in
   SM-G2) SERVER_ROLES=(multi-node-a) ;;
   SM-F6|SM-Q9) SERVER_ROLES=(multi-node-a multi-node-b) ;;
-  SM-F3) SERVER_ROLES=(play-a) ;;
+  SM-F3|SM-F4) SERVER_ROLES=(play-a) ;;
   SM-F5) SERVER_ROLES=(play-a play-b) ;;
   *) SERVER_ROLES=(play-a play-b session-a session-b gateway multi-node-a multi-node-b) ;;
 esac

@@ -9,7 +9,7 @@
 
 | 시나리오 | 상태 | 필요한 actual-process 증거 |
 |---|---|---|
-| CH-E2E-01 | actual 통과 | 실제 port 0 endpoint를 Location Store에 게시한 뒤 RouteMesh peer가 Ready로 수렴한다. 양방향 Channel request와 물리 연결 identity 중복 부재를 검증한다. 증거: `logs/20260729-000549-3638572` |
+| CH-E2E-01 | actual 통과 | 실제 port 0 endpoint를 Location Store에 게시한 뒤 RouteMesh peer가 Ready로 수렴한다. 양방향 Channel request와 물리 연결 identity 중복 부재를 검증한다. Client는 정식 `ZLinkHttpClient`를 사용하고 runner는 공통 typed config writer를 사용한다. 최신 증거: `logs/20260729-044618-974448` |
 | CH-E2E-02 | 구현·실행 대기 | RouteMesh handler가 `audit.record`와 `workflow.command`를 순서대로 호출하고 원래 reply에 결과 포함 |
 | CH-E2E-03 | actual 통과 | Play Entry Spot Actor handler와 timer가 ClientServer `Async` 뒤 같은 turn에서 state 변경과 resume을 완료한다. 증거: `logs/20260729-003016-3958766` |
 | CH-E2E-04 | 부분 구현·실행 대기 | `100:300` weighted selection 구현. drain·shutdown·새 RID 재시작은 미구현 |

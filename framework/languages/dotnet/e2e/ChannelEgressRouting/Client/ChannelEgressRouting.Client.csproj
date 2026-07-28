@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="../Shared/ChannelEgressRouting.Shared.csproj" />
     <ProjectReference Include="../../../src/Zlink.Framework/Zlink.Framework.csproj" />
+    <ProjectReference Include="../../../src/Zlink.HttpClient/Zlink.HttpClient.csproj" />
     <ProjectReference Include="../../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" />
   </ItemGroup>
 </Project>

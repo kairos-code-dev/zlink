@@ -24,6 +24,8 @@ export interface CreateSpotReq {
 export interface CreateSpotRes {
   readonly spotId: string;
   readonly nodeRid?: string;
+  readonly objectGeneration?: string;
+  readonly meshName?: string;
   readonly state: string;
 }
 
@@ -57,6 +59,20 @@ export interface CloseSpotReq {
 export interface CloseSpotRes {
   readonly spotId: string;
   readonly closed: boolean;
+}
+
+export interface CloseSpotExactReq {
+  readonly spotId: string;
+  readonly objectGeneration: string;
+  readonly meshName: string;
+  readonly nodeRid: string;
+}
+
+export interface CloseSpotExactRes {
+  readonly spotId: string;
+  readonly closed: boolean;
+  readonly staleGeneration: boolean;
+  readonly errorKind?: string;
 }
 
 export interface StateReq {
@@ -242,6 +258,15 @@ export interface ChannelRouteReq {
 }
 
 export interface ChannelRouteRes {
+  readonly value: string;
+}
+
+export interface NodeRouteReq {
+  readonly nodeRid: string;
+  readonly value: string;
+}
+
+export interface NodeRouteRes {
   readonly value: string;
 }
 
@@ -478,6 +503,7 @@ export interface SpotMissingTargetReq {
 export interface SpotMissingTargetRes {
   readonly spotId: string;
   readonly failed: boolean;
+  readonly errorKind?: string;
   readonly evidence: readonly string[];
 }
 
@@ -490,6 +516,8 @@ export interface SpotMissingTargetMsgRes {
   readonly spotId: string;
   readonly marker: string;
   readonly sent: boolean;
+  readonly failed?: boolean;
+  readonly errorKind?: string;
   readonly evidence: readonly string[];
 }
 

@@ -14,6 +14,8 @@ def property_name(option: str) -> str:
 COLLECTION_OPTIONS = {
     "ProviderEndpoint": "ProviderEndpoints",
     "RoutePeer": "RoutePeers",
+    "RouteServer": "RouteServers",
+    "RouteClient": "RouteClients",
 }
 
 

@@ -6683,6 +6683,54 @@ member의 state를 즉시 삭제하고, 각 credit의 절댓값을 현재 active
 따라서 C++ Config 1 `RM-A2` actual-process gap은 완료했다. Manual connection을 automatic
 descriptor key로 옮기는 handoff와 최초 handshake identity fence는 그대로 유지한다.
 
+## 2026-07-29 .NET solution과 sample compile gate
+
+`framework/languages/dotnet/Zlink.Framework.sln`을 current main source로 build했다.
+Bingo, TicTacToe, ZoneWorld, DeliveryDispatch, SupportChat, ShoppingMall과 GameQuest를
+포함한 모든 sample project가 compile됐다.
+
+처음 build에서 sample 밖의 낡은 contract 참조 5건을 확인해 다음과 같이 정리했다.
+
+- 제거된 `Zlink.Framework.Contracts.Eventing` namespace의 사용하지 않는 import를
+  test application과 LocationMessaging fixture에서 제거했다.
+- HTTP request builder에 제거된 `Yield<T>` 호출을 직접 되살리지 않았다. 공통 계약대로
+  `RunIoWorker(...)` 안에서 HTTP `Async<T>`를 실행하고 Worker call의 `Yield`로 Spot
+  turn을 반납한다.
+- `ZLinkHttpServerClient` 공개 주석에서 제거된 `Submit`·`Yield` 설명을 없애 현재
+  one-way `Async` terminal과 맞췄다.
+
+수정 뒤 solution 전체 build는 warning 0, error 0으로 통과했다. Sample regression은
+126/126이 통과했다. 새 Config 12 runner와 ST-H1 scenario를 정확한 inventory에 포함했고
+assertion을 제거하거나 완화하지 않았다.
+
+ChannelEgressRouting fixture도 raw `HttpClient`와 자체 JSON config writer를 제거했다.
+정식 `ZLinkHttpClient`와 공통 `write_role_config.py`를 사용하며, shared writer가
+Route Server·Client collection을 정확히 기록하도록 보강했다. Client build와 실제
+`CH-E2E-01`이 통과했다. Actual 증거는
+`framework/languages/dotnet/e2e/ChannelEgressRouting/logs/20260729-044618-974448`이다.
+
+## 2026-07-29 C++ Config 1 RM-A4 public messaging 증거
+
+C++ `RM-A4`의 persistent Consumer replacement 경로를 current public ClientServer messaging으로
+실행했다. 이전 fixture가 조회한 `/locations/peers`는 별도 RouteMesh의 fixed RID row이며
+ClientServer replacement 상태가 아니므로 제거했다.
+
+- Actual 증거는
+  `framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-044350-867543`이다.
+- Consumer를 유지한 채 v1 request와 `api-a-v1` evidence를 먼저 확인했다.
+- v1 process 종료 후 다른 endpoint에서 v2를 시작했다.
+- Retry 없이 제출한 첫 request부터 연속 20개가 모두 `api-a-v2` reply로 끝났고 v2 evidence가
+  정확히 20개 기록됐다.
+- Client target build, runner syntax와 actual runner exit code 0을 확인했다.
+
+Canonical `RM-A4` 전체 완료 조건은 아직 남아 있다. 새 process의 automatic RID suffix, old RID
+제외와 new RID Ready public status, `Shutdown` terminal `Stopped/None`, active descriptor conflict
+반복을 검증해야 한다. Exact C++ 문서에는
+`mesh_node_builder_t::set_automatic_routing_id_prefix(...)`와 `client_server_runtime_t`가 있지만
+current source에는 두 public surface가 없다. Fixed RouteMesh RID 또는 Location Store provider
+query를 evidence로 사용하지 않는다. 따라서 public messaging subflow만 통과로 기록하고 전체
+`RM-A4`는 public-contract implementation gap으로 유지한다.
+
 ## 2026-07-29 Node.js Config 2 SM-F3 actual-process 증거
 
 `SM-F3` fixture는 fixed Node RID를 사용하지 않는다. Spot 생성 결과가 반환한 owner RID를
@@ -6700,6 +6748,32 @@ Actual 증거는
 Play와 Client build, M6A focused runtime test 12/12와 `SM-F3` actual-process가 통과했다.
 이전 실패는 Mesh Channel handler를 Node direct handler로 재사용한 fixture 등록 오류였으며,
 새 public API나 runtime compatibility 경로는 추가하지 않았다.
+
+## 2026-07-29 Node.js Config 2 SM-F4 actual-process 증거
+
+`SM-F4`를 current canonical 절차 전체로 전환했다. Fixture는 Spot 존재 여부를 `find()`로 먼저
+판단하지 않고 public SpotId send와 request를 직접 제출한다.
+
+- 존재하지 않는 SpotId request는 `requestTargetNotFound`로 끝난다.
+- 같은 SpotId send는 `spotRouteNotFound`로 끝난다. Instance activation이나 Spot 초기화 evidence는 없다.
+- User Spot을 닫고 같은 SpotId로 다시 만들면 ObjectGeneration이 증가한다.
+- 이전 `SpotRef` exact close는 `spotGenerationStale`로 끝난다.
+- 새 `SpotRef` exact close는 성공한다. 이전 close가 새 incarnation을 변경하지 않았음을 확인했다.
+- stale close 뒤 ChannelName과 dynamic RID direct request가 각각 정상 reply를 반환한다.
+
+Actual 증거는
+`framework/languages/node/e2e/SpotService/log/20260729-044819-1007998`이다.
+Play와 Client build, M6B focused runtime test 39/39와 `SM-F4` actual-process가 통과했다.
+
+Public Spot manager가 create 또는 close로 authority를 변경하면 같은 host의 Spot route cache에서
+해당 SpotId를 무효화하도록 기존 manager 책임 경계도 보강했다. Retry, timeout 확대, raw frame과
+private runtime hook은 사용하지 않았다.
+
+추가로 recreate 직후 새 incarnation에 global SpotId request를 제출하면 local raw registry fence가
+terminal result 102와 failure errno 21을 반환하는 별도 구현 gap을 확인했다. Canonical `SM-F4`는
+새 incarnation 유지 여부를 current `SpotRef` exact close로 확인하고 ChannelName·RID direct 지속을
+요구하므로 scenario 완료와 분리했다. 이 gap은 raw registry가 복원한 generation과 Location authority가
+전달한 generation의 정렬을 focused test로 고정한 뒤 해결해야 한다.
 
 ## 2026-07-29 RouteMesh Object Client connection 계약 재검증
 

@@ -74,7 +74,7 @@ public class ZLinkHttpClient : IDisposable
 
 /// <summary>
 ///     HTTP client injected into framework server code. Its request builders add the server-only
-///     <c>Submit</c> and <c>Yield</c> terminators.
+///     one-way <c>Async</c> terminator.
 /// </summary>
 public sealed class ZLinkHttpServerClient : ZLinkHttpClient
 {

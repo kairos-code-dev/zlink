@@ -12,7 +12,7 @@ public sealed partial class RegressionTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(12, runners.Length);
+        Assert.Equal(13, runners.Length);
         foreach (var runner in runners)
         {
             var text = File.ReadAllText(runner);
@@ -409,7 +409,7 @@ public sealed partial class RegressionTests
     public void Config_9_And_10_Keep_One_Client_Scenario_Per_File()
     {
         var root = ResolveE2eRoot();
-        AssertScenarioFiles(root, "SpotActorTransfer", "St", 30);
+        AssertScenarioFiles(root, "SpotActorTransfer", "St", 31);
         AssertScenarioFiles(root, "ToActorMessaging", "Ta", 7);
     }
 

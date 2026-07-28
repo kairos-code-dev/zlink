@@ -1,14 +1,19 @@
 using System.Diagnostics;
-using System.Net.Http.Json;
 using System.Reflection;
 using System.Text.Json;
 using ChannelEgressRouting.Client;
 using ChannelEgressRouting.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Configuration;
+using Zlink.HttpClient;
 
 var options = ClientOptions.Parse(args);
-using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+var http = options.Urls.ToDictionary(
+    static entry => entry.Key,
+    static entry => ZLinkHttpClient.Create(entry.Value)
+        .Timeout(TimeSpan.FromSeconds(5))
+        .Build(),
+    StringComparer.Ordinal);
 string[] knownScenarios =
 [
     "CH-E2E-01", "CH-E2E-02", "CH-E2E-03", "CH-E2E-04", "CH-E2E-05",
@@ -29,6 +34,8 @@ foreach (var scenario in selected)
 }
 
 Console.WriteLine("channel-egress-routing client result=passed");
+foreach (var client in http.Values)
+    client.Dispose();
 
 async Task RunAsync(string scenario)
 {
@@ -176,12 +183,11 @@ async Task AssertRoleReplacementAsync()
 async Task AssertSpotWorkflowAndTimerAsync()
 {
     var actor = await CreateActorOnAsync("play", "10-play", "spot-workflow");
-    var response = await http.PostAsJsonAsync(
-        $"{options.Urls["play"]}/objects/actors/{actor.ActorId}/workflow",
-        new ChannelSpotWorkflowRequest("spot-workflow"));
-    response.EnsureSuccessStatusCode();
-    var reply = await response.Content.ReadFromJsonAsync<ChannelSpotWorkflowReply>()
-                ?? throw new InvalidOperationException("Spot workflow reply is missing.");
+    var reply = (await http["play"]
+            .Post($"/objects/actors/{actor.ActorId}/workflow")
+            .Body(new ChannelSpotWorkflowRequest("spot-workflow"))
+            .Async<ChannelSpotWorkflowReply>())
+        .Body;
     Require(reply.StateVersion == 2, "Spot state was not changed after the awaited reply.");
     Require(reply.WorkflowRole is "workflow-100" or "workflow-300" or "workflow-300-new",
         $"Spot workflow selected an unexpected server: {reply.WorkflowRole}.");
@@ -199,12 +205,14 @@ async Task AssertClientServerStateAddressAsync()
 {
     var actor = await CreateActorOnAsync("session", null, "state-address");
     var spot = await CreateSpotOnAsync("play", null, "state-address-room");
-    var response = await http.PostAsJsonAsync(
-        $"{options.Urls["workflow100"]}/objects/state-address",
-        new ChannelObjectScenarioRequest(actor.ActorId, spot.SpotId, "state-address"));
-    response.EnsureSuccessStatusCode();
-    var reply = await response.Content.ReadFromJsonAsync<ChannelProbeReply>()
-                ?? throw new InvalidOperationException("State address reply is missing.");
+    var reply = (await http["workflow100"]
+            .Post("/objects/state-address")
+            .Body(new ChannelObjectScenarioRequest(
+                actor.ActorId,
+                spot.SpotId,
+                "state-address"))
+            .Async<ChannelProbeReply>())
+        .Body;
     Require(reply.Downstream.Length == 2
             && reply.Downstream[0].StartsWith($"spot:{spot.SpotId}:", StringComparison.Ordinal)
             && reply.Downstream[1].StartsWith($"actor:{actor.ActorId}:", StringComparison.Ordinal),
@@ -220,12 +228,11 @@ async Task AssertStateAddressRegressionAsync()
     Require(before.ActorId == actor.ActorId && before.StateVersion == 1,
         "Actor direct request failed before Snapshot join.");
 
-    var nodeResponse = await http.PostAsJsonAsync(
-        $"{options.Urls["workflow100"]}/objects/nodes/{Uri.EscapeDataString(actor.NodeRid)}/probe",
-        new ChannelObjectProbeRequest("node-direct"));
-    nodeResponse.EnsureSuccessStatusCode();
-    var node = await nodeResponse.Content.ReadFromJsonAsync<ChannelProbeReply>()
-               ?? throw new InvalidOperationException("Node direct reply is missing.");
+    var node = (await http["workflow100"]
+            .Post($"/objects/nodes/{Uri.EscapeDataString(actor.NodeRid)}/probe")
+            .Body(new ChannelObjectProbeRequest("node-direct"))
+            .Async<ChannelProbeReply>())
+        .Body;
     Require(node.Role == "session" && node.Channel == ChannelEgressNames.GameMesh,
         "Node direct request selected the wrong MeshNode.");
 
@@ -233,12 +240,11 @@ async Task AssertStateAddressRegressionAsync()
     Require(spotProbe.SpotId == spot.SpotId,
         "Spot direct request selected a different Spot.");
 
-    var joinResponse = await http.PostAsJsonAsync(
-        $"{options.Urls["session"]}/objects/actors/{actor.ActorId}/join",
-        new ChannelActorJoinRequest("snapshot-join", spot.SpotId));
-    joinResponse.EnsureSuccessStatusCode();
-    var join = await joinResponse.Content.ReadFromJsonAsync<ChannelActorJoinReply>()
-               ?? throw new InvalidOperationException("Actor join reply is missing.");
+    var join = (await http["session"]
+            .Post($"/objects/actors/{actor.ActorId}/join")
+            .Body(new ChannelActorJoinRequest("snapshot-join", spot.SpotId))
+            .Async<ChannelActorJoinReply>())
+        .Body;
     Require(join.Submitted, "Snapshot Actor join was not submitted.");
 
     var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
@@ -285,12 +291,11 @@ async Task AssertStateAddressRegressionAsync()
         .WaitFor<ChannelBoundPushNotification>()
         .Async()
         .AsTask();
-    var pushResponse = await http.PostAsJsonAsync(
-        $"{options.Urls["play"]}/objects/actors/{actor.ActorId}/bound-push",
-        new ChannelBoundPushRequest("after-snapshot-join"));
-    pushResponse.EnsureSuccessStatusCode();
-    var push = await pushResponse.Content.ReadFromJsonAsync<ChannelBoundPushReply>()
-               ?? throw new InvalidOperationException("Bound push reply is missing.");
+    var push = (await http["play"]
+            .Post($"/objects/actors/{actor.ActorId}/bound-push")
+            .Body(new ChannelBoundPushRequest("after-snapshot-join"))
+            .Async<ChannelBoundPushReply>())
+        .Body;
     var notification = await notificationTask.WaitAsync(TimeSpan.FromSeconds(5));
     Require(push.Submitted
             && notification.Payload.ActorId == actor.ActorId
@@ -307,12 +312,11 @@ async Task<ChannelActorCreateReply> CreateActorOnAsync(
     for (var attempt = 0; attempt < 32; attempt++)
     {
         var actorId = $"{idPrefix}-{Guid.NewGuid():N}";
-        var response = await http.PostAsJsonAsync(
-            $"{options.Urls[source]}/objects/actors",
-            new ChannelActorCreateRequest(actorId));
-        response.EnsureSuccessStatusCode();
-        var actor = await response.Content.ReadFromJsonAsync<ChannelActorCreateReply>()
-                    ?? throw new InvalidOperationException("Actor create reply is missing.");
+        var actor = (await http[source]
+                .Post("/objects/actors")
+                .Body(new ChannelActorCreateRequest(actorId))
+                .Async<ChannelActorCreateReply>())
+            .Body;
         if (nodeRidPrefix is null
             || actor.NodeRid.StartsWith(nodeRidPrefix, StringComparison.Ordinal))
             return actor;
@@ -329,12 +333,11 @@ async Task<ChannelSpotCreateReply> CreateSpotOnAsync(
     for (var attempt = 0; attempt < 32; attempt++)
     {
         var spotId = $"{idPrefix}-{Guid.NewGuid():N}";
-        var response = await http.PostAsJsonAsync(
-            $"{options.Urls[source]}/objects/spots",
-            new ChannelSpotCreateRequest(spotId));
-        response.EnsureSuccessStatusCode();
-        var spot = await response.Content.ReadFromJsonAsync<ChannelSpotCreateReply>()
-                   ?? throw new InvalidOperationException("Spot create reply is missing.");
+        var spot = (await http[source]
+                .Post("/objects/spots")
+                .Body(new ChannelSpotCreateRequest(spotId))
+                .Async<ChannelSpotCreateReply>())
+            .Body;
         if (nodeRidPrefix is null
             || spot.NodeRid.StartsWith(nodeRidPrefix, StringComparison.Ordinal))
             return spot;
@@ -348,12 +351,11 @@ async Task<ChannelObjectProbeReply> ProbeActorAsync(
     string actorId,
     string id)
 {
-    var response = await http.PostAsJsonAsync(
-        $"{options.Urls[source]}/objects/actors/{actorId}/probe",
-        new ChannelObjectProbeRequest(id));
-    response.EnsureSuccessStatusCode();
-    return await response.Content.ReadFromJsonAsync<ChannelObjectProbeReply>()
-           ?? throw new InvalidOperationException("Actor probe reply is missing.");
+    return (await http[source]
+            .Post($"/objects/actors/{actorId}/probe")
+            .Body(new ChannelObjectProbeRequest(id))
+            .Async<ChannelObjectProbeReply>())
+        .Body;
 }
 
 async Task<ChannelObjectProbeReply> ProbeSpotAsync(
@@ -361,12 +363,11 @@ async Task<ChannelObjectProbeReply> ProbeSpotAsync(
     string spotId,
     string id)
 {
-    var response = await http.PostAsJsonAsync(
-        $"{options.Urls[source]}/objects/spots/{spotId}/probe",
-        new ChannelObjectProbeRequest(id));
-    response.EnsureSuccessStatusCode();
-    return await response.Content.ReadFromJsonAsync<ChannelObjectProbeReply>()
-           ?? throw new InvalidOperationException("Spot probe reply is missing.");
+    return (await http[source]
+            .Post($"/objects/spots/{spotId}/probe")
+            .Body(new ChannelObjectProbeRequest(id))
+            .Async<ChannelObjectProbeReply>())
+        .Body;
 }
 
 async Task<RouteInvokeResult> InvokeRequestAsync(
@@ -375,12 +376,11 @@ async Task<RouteInvokeResult> InvokeRequestAsync(
     string id,
     string mode = "echo")
 {
-    var response = await http.PostAsJsonAsync(
-        $"{options.Urls[role]}/request",
-        new RouteInvokeRequest(channel, id, mode));
-    response.EnsureSuccessStatusCode();
-    return await response.Content.ReadFromJsonAsync<RouteInvokeResult>()
-           ?? throw new InvalidOperationException("Missing route invoke response.");
+    return (await http[role]
+            .Post("/request")
+            .Body(new RouteInvokeRequest(channel, id, mode))
+            .Async<RouteInvokeResult>())
+        .Body;
 }
 
 async Task AssertRequestAsync(
@@ -401,12 +401,11 @@ async Task AssertRequestAsync(
 
 async Task AssertSendAsync(string source, string channel, string id)
 {
-    var response = await http.PostAsJsonAsync(
-        $"{options.Urls[source]}/send",
-        new RouteInvokeRequest(channel, id));
-    response.EnsureSuccessStatusCode();
-    var result = await response.Content.ReadFromJsonAsync<SendInvokeResult>()
-                 ?? throw new InvalidOperationException("Missing send invoke response.");
+    var result = (await http[source]
+            .Post("/send")
+            .Body(new RouteInvokeRequest(channel, id))
+            .Async<SendInvokeResult>())
+        .Body;
     Require(result.Succeeded, $"send failed: {result.Error}");
 }
 
@@ -520,10 +519,7 @@ async Task AssertClassicFanoutAsync()
         "logical-multicast|",
         $"spot={spot.SpotId}",
         $"id={logicalId}");
-    var logicalResponse = await http.PostAsync(
-        $"{options.Urls["session"]}/logical/{logicalId}",
-        content: null);
-    logicalResponse.EnsureSuccessStatusCode();
+    await http["session"].Post($"/logical/{logicalId}").AsyncRaw();
     var logicalDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
     do
     {
@@ -543,10 +539,7 @@ async Task AssertClassicFanoutAsync()
         "Logical Multicast did not reach the subscribed remote Spot exactly once.");
 
     var before = EvidenceCount("play", "fanout|", "id=fanout-regression");
-    var response = await http.PostAsync(
-        $"{options.Urls["audit"]}/fanout/fanout-regression",
-        content: null);
-    response.EnsureSuccessStatusCode();
+    await http["audit"].Post("/fanout/fanout-regression").AsyncRaw();
     var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
     do
     {
@@ -559,9 +552,10 @@ async Task AssertClassicFanoutAsync()
 
 async Task AssertAutomaticEndpointsAsync()
 {
-    var rows = await http.GetFromJsonAsync<JsonElement[]>(
-                   $"{options.Urls["session"]}/locations")
-               ?? throw new InvalidOperationException("location rows are missing.");
+    var rows = (await http["session"]
+            .Get("/locations")
+            .Async<JsonElement[]>())
+        .Body;
     Require(rows.Length >= 7, $"expected topology descriptors, got {rows.Length}.");
     var meshNames = rows
         .Select(row => row.GetProperty("meshName").GetString())
@@ -588,8 +582,10 @@ async Task AssertAutomaticEndpointsAsync()
 
 async Task AssertSinglePhysicalPeerAsync(string role, string mesh)
 {
-    var response = await http.GetFromJsonAsync<JsonElement>(
-        $"{options.Urls[role]}/topology/{mesh}");
+    var response = (await http[role]
+            .Get($"/topology/{mesh}")
+            .Async<JsonElement>())
+        .Body;
     Require(response.GetProperty("readyPeerCount").GetInt32() > 0,
         $"{role} has no ready {mesh} peer.");
     var peers = response.GetProperty("peers")

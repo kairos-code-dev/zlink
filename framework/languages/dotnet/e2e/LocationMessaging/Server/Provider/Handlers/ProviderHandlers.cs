@@ -4,7 +4,6 @@ using LocationMessaging.Server.Provider.Infrastructure;
 using LocationMessaging.Shared;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Contracts.Handlers;
 
 namespace LocationMessaging.Server.Provider.Handlers;

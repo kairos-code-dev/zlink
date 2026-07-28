@@ -96,13 +96,15 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
     if (resolved === undefined) return false;
     const current = resolved.spot;
     if (this.options.isLocalNode(current.meshName, current.nodeRid)) {
-      return await this.options.coordinator.close(
+      const closed = await this.options.coordinator.close(
         spot,
         (local) => this.options.local.close(local.meshName, local.spotId, signal),
         signal,
         (local) => this.options.local.hasActiveSpot(local.spotId),
         (local) => this.options.local.canCloseUserSpot(local.meshName, local.spotId)
       );
+      if (closed) this.options.resolver()?.invalidate?.(spot.spotId);
+      return closed;
     }
     if (this.options.remoteClose === undefined) {
       throw new ZLinkFrameworkException(
@@ -148,6 +150,7 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
           || kind === ZLinkFrameworkErrorKind.DeadlineExceeded
       );
     }
+    if (result.tail.closed) this.options.resolver()?.invalidate?.(spot.spotId);
     return result.tail.closed;
   }
 
@@ -269,6 +272,7 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
             await this.options.local.close(meshName, spotId, cleanupSignal);
           }
         });
+    this.options.resolver()?.invalidate?.(spotId);
     return coordinated.result;
   }
 

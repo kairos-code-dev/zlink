@@ -9,7 +9,8 @@ SM-D7, SM-D8, SM-D9, SM-D10, SM-D11, SM-D12, SM-D13, SM-D14, SM-D15, SM-E1, SM-E
 SM-F2, SM-F3, SM-F4, SM-F5를 operation group 단위로 실행하고,
 outer `all`은 이어서 SM-F6, SM-G2, SM-G3, SM-G4, SM-G1을 별도 child scenario로 실행한다.
 공통 Config 2에 없는 SM-Q9는 보조 operation으로만 선택 실행한다.
-SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 검증했다. malformed relay packet 주입은 public route-client 표면으로 만들 수 없으므로 public E2E 직접 대상에서 제외한다. 이 문서는 `.NET`
+SM-F4는 존재하지 않는 SpotId의 request·send terminal, close 뒤 같은 SpotId 재생성, stale `SpotRef`
+close 거절과 새 incarnation 유지, ChannelName·RID direct 지속을 public surface로 검증한다. 이 문서는 `.NET`
 `framework/languages/dotnet/e2e/SpotService/feature-map.ko.md`와 공통 문서의 scenario ID를 기준으로
 포팅 범위를 고정한다. 내부 helper나 raw-frame 우회로 gap을 완료 표시하지 않는다.
 서버 역할은 `E2E_START_ORDER=reverse`와 고정 seed `shuffle:20260715`로도 시작하며, 선택된 순서로
@@ -68,7 +69,7 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
 | SM-F1 | 구현 | target spot을 만든 뒤 route client 경로의 `/spot/state/request`와 `/spot/state/command`를 검증한다. 선택 PASS: `logs/20260630-082100-3253769` |
 | SM-F2 | 구현 | target spot request/command selectable scenario가 public route-to-spot path로 state reply와 command evidence를 검증한다. 선택 PASS: `logs/20260630-082100-3253756` |
 | SM-F3 | 구현 | Spot 생성 결과의 dynamic owner RID를 사용한다. Mesh-level `addRequestHandler(...)`, Channel-level `channel(...).server().addRequestHandler(...)`와 global SpotId request를 같은 process에서 제출하고 세 handler의 exactly-once evidence를 검증했다. 선택 PASS: `log/20260729-043537-560993` |
-| SM-F4 | 구현 | 존재하지 않는 location의 request 실패를 selectable scenario로 검증했다. malformed relay packet 주입은 public route-client 표면이 아니므로 runtime 내부 검증이나 별도 bridge-level 테스트 대상으로 분리한다. `all` PASS: `logs/20260713-063253-3989258` |
+| SM-F4 | 구현 | Missing SpotId request는 `requestTargetNotFound`, send는 `spotRouteNotFound`로 끝나며 activation evidence가 없다. close·recreate 뒤 이전 `SpotRef` exact close는 `spotGenerationStale`이고, 새 `SpotRef` exact close와 ChannelName·RID direct request는 성공한다. 선택 PASS: `log/20260729-044819-1007998` |
 | SM-F5 | 구현 | Framework가 선택한 owner와 반대 node에서 ChannelName request와 global SpotId request를 처리한다. owner에서 Spot을 닫은 뒤 같은 caller의 Spot request만 typed failure로 끝나고 ChannelName request는 계속 처리된다. 선택 PASS: `log/20260729-041927-3968` |
 | SM-F6 | 전환 필요 | 같은 MeshName의 MeshNode 두 개만 구성한 MultiNode role에서 target Spot request가 owner Spot으로 도달하고 reply/evidence가 남는지 검증한다. 별도 channel·Spot socket은 만들지 않는다. |
 | SM-G1 | 구현 | stream auth로 `play-a`/`play-b` actor를 각각 bind하고, `play-a` `/crash` endpoint로 프로세스를 종료한 뒤 `play-a` actor request 실패, `play-b` survivor request 유지, `session-b`에서 `play-b`로 재auth/rebind 복구를 검증했다. 선택 PASS: `logs/20260629-223922-1778101`; `all` PASS: `logs/20260708-062230-357711` |
@@ -103,8 +104,8 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
   - PASS: `logs/20260630-082100-3253769` (target spot request/command)
 - 선택 scenario: `timeout 420s framework/languages/node/e2e/SpotService/run_e2e.sh SM-F2`
   - PASS: `logs/20260630-082100-3253756` (target spot request/command)
-- 선택 scenario: `timeout 420s framework/languages/node/e2e/SpotService/run_e2e.sh SM-F4`
-  - PASS: `logs/20260630-101412-3466073` (missing target request failure와 send drop evidence 확인)
+- 선택 scenario: `framework/languages/node/e2e/SpotService/run_e2e.sh SM-F4`
+  - PASS: `log/20260729-044819-1007998` (missing request·send typed failure, recreate generation fence, stale exact close, ChannelName·RID direct 지속)
 - 선택 scenario: `timeout 420s framework/languages/node/e2e/SpotService/run_e2e.sh SM-G1`
   - PASS: `logs/20260629-223922-1778101` (play-a crash isolation, play-b survivor, play-b rebind recovery)
 - 선택 scenario: `timeout 420s framework/languages/node/e2e/SpotService/run_e2e.sh SM-G2`

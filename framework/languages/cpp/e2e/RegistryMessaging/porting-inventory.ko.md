@@ -30,7 +30,7 @@ C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터�
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/client_support.hpp` | client-support | done | `ensure` helper가 C++ support header에 있다. |
 | `Client/Scenarios/RmA1LocationStoreAutoConnectScenario.cs` | `Client/Scenarios/rm_a1_discovery_request_scenario.hpp` | scenario | partial | Endpoint 없는 Redis automatic discovery의 첫 request, reply와 선택된 Provider evidence는 forward·reverse·shuffle actual에서 통과했다. Ready Server 2개 public snapshot은 C++ `client_server_runtime_t` 구현이 없어 남아 있다. |
 | `Client/Scenarios/RmA2ManualEndpointScenario.cs` | `Client/Scenarios/rm_a2_manual_endpoint_scenario.hpp` | scenario | done | 최초 manual request, in-flight 보존, automatic descriptor 병합과 두 ready target 선택을 actual-process로 검증한다. |
-| `Client/Scenarios/RmA4SameRidFailoverScenario.cs` | `Client/Scenarios/rm_a4_same_rid_failover_scenario.hpp` | scenario | done | RM-A4 same-rid failover request flow를 provider HTTP endpoint와 runner barrier로 검증한다. |
+| `Client/Scenarios/RmA4SameRidFailoverScenario.cs` | `Client/Scenarios/rm_a4_same_rid_failover_scenario.hpp` | scenario | partial | Persistent Consumer의 v1→v2 public messaging replacement는 actual-process로 검증한다. Automatic RID와 public ClientServer status 조건은 source 구현 gap으로 남아 있다. |
 | `Client/Scenarios/RmA6MultipleChannelsScenario.cs` | `Client/Scenarios/rm_a6_multiple_channels_scenario.hpp` | scenario | done | RM-A6 api/workflow channel 분리 검증을 provider/workflow HTTP endpoint로 실행한다. |
 | `Client/Scenarios/RmB1ScaleOutScenario.cs` | `Client/Scenarios/rm_b1_scale_out_scenario.hpp` | scenario | done | RM-B1 scale-out barrier와 post-scale 검증을 provider HTTP endpoint로 실행한다. |
 | `Client/Scenarios/RmB2ScaleInScenario.cs` | `Client/Scenarios/rm_b2_scale_in_scenario.hpp` | scenario | done | RM-B2 scale-in barrier와 stale 회피 검증을 provider HTTP endpoint로 실행한다. |
@@ -69,7 +69,7 @@ C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터�
 |-------------|---------------|------|------|
 | `RM-A1` | `Client/Scenarios/rm_a1_discovery_request_scenario.hpp` | partial | Automatic request actual 세 축은 통과했다. ClientServer public snapshot과 automatic RID prefix의 exact source 구현이 필요하다. |
 | `RM-A2` | `Client/Scenarios/rm_a2_manual_endpoint_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
-| `RM-A4` | `Client/Scenarios/rm_a4_same_rid_failover_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
+| `RM-A4` | `Client/Scenarios/rm_a4_same_rid_failover_scenario.hpp` | partial | Public messaging replacement는 통과했다. Automatic identity/status/Shutdown/conflict 조건은 남아 있다. |
 | `RM-A6` | `Client/Scenarios/rm_a6_multiple_channels_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-B1` | `Client/Scenarios/rm_b1_scale_out_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-B2` | `Client/Scenarios/rm_b2_scale_in_scenario.hpp` | done | scenario 파일이 직접 검증한다. |

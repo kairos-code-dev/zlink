@@ -9,8 +9,12 @@ import type {
   ChannelEchoRes,
   ChannelRouteRes,
   ChannelRouteReq,
+  CloseSpotExactReq,
+  CloseSpotExactRes,
   CloseSpotReq,
   CrossRoleActorPushRes,
+  NodeRouteReq,
+  NodeRouteRes,
   CreateSpotReq,
   EvidenceWaitReq,
   SpotIdleCloseReq,
@@ -103,7 +107,47 @@ export function createPlayEndpoints(
           .submit();
         const state = typeof created.state === 'string' ? created.state : String(created.state);
         evidence.add(`create-spot|rid=${evidence.rid}|spot=${created.spot.spotId}|state=${state}`);
-        return { spotId: String(created.spot.spotId), nodeRid: String(created.spot.nodeRid), state };
+        return {
+          spotId: String(created.spot.spotId),
+          nodeRid: String(created.spot.nodeRid),
+          objectGeneration: created.spot.objectGeneration.toString(),
+          meshName: created.spot.meshName,
+          state
+        };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/spot/close-exact',
+      handle: async (body) => {
+        const request = body as CloseSpotExactReq;
+        try {
+          const closed = await spotManager.close({
+            spotId: request.spotId,
+            objectGeneration: BigInt(request.objectGeneration),
+            meshName: request.meshName,
+            nodeRid: request.nodeRid
+          });
+          return {
+            spotId: request.spotId,
+            closed,
+            staleGeneration: false
+          } satisfies CloseSpotExactRes;
+        } catch (error) {
+          if (
+            error instanceof ZLinkFrameworkException
+            && error.kind === ZLinkFrameworkErrorKind.SpotGenerationStale
+          ) {
+            evidence.add(`close-spot-stale|rid=${evidence.rid}|spot=${request.spotId}`);
+            return {
+              spotId: request.spotId,
+              closed: false,
+              staleGeneration: true,
+              errorKind: error.kind
+            } satisfies CloseSpotExactRes;
+          }
+          throw error;
+        }
       }
     },
     {
@@ -326,6 +370,22 @@ export function createPlayEndpoints(
     },
     {
       method: 'POST',
+      path: '/node/route/request',
+      handle: async (body) => {
+        const request = body as NodeRouteReq;
+        const reply = await routeClient
+          .requestToNode(
+            SpotServiceNames.externalSpotChannel,
+            request.nodeRid,
+            spotServicePacket(ChannelEchoReq, { value: request.value })
+          )
+          .timeout(5000)
+          .submit<ChannelEchoRes>();
+        return { value: reply.value } satisfies NodeRouteRes;
+      }
+    },
+    {
+      method: 'POST',
       path: '/spot/mixed-route/request',
       handle: async (body) => {
         const request = body as SpotMixedRouteReq;
@@ -499,16 +559,21 @@ export function createPlayEndpoints(
       path: '/spot/missing-target/request',
       handle: async (body) => {
         const request = body as SpotMissingTargetReq;
-        const failed = await fails(async () => {
-          const spot = await requireSpotRef(spotRefs, request.spotId);
+        let failed = false;
+        let errorKind: string | undefined;
+        try {
           await spotOutbound
-            .requestToSpot(spot.spotId, spotServicePacket(StateReq, { operation: 'noop', delta: 0 }))
+            .requestToSpot(request.spotId, spotServicePacket(StateReq, { operation: 'noop', delta: 0 }))
             .timeout(2000)
             .submit<StateRes>();
-        });
+        } catch (error) {
+          failed = true;
+          if (error instanceof ZLinkFrameworkException) errorKind = error.kind;
+        }
         return {
           spotId: request.spotId,
           failed,
+          errorKind,
           evidence: evidence.snapshot()
         };
       }
@@ -518,19 +583,23 @@ export function createPlayEndpoints(
       path: '/spot/missing-target/command',
       handle: async (body) => {
         const request = body as SpotMissingTargetMsgReq;
-        const before = evidence.snapshot();
-        const spot = await requireSpotRef(spotRefs, request.spotId);
-        await spotOutbound
-          .sendToSpot(spot.spotId, spotServicePacket(StateMsg, { marker: request.marker }))
-          .submit();
-        const snapshot = await evidence.waitUntil((entries) =>
-          countNew(entries, before, 'dispatch-error|surface=spot|kind=send|reason=no_handler|action=drop|packet=StateMsg') >= 1,
-          10000);
+        let failed = false;
+        let errorKind: string | undefined;
+        try {
+          await spotOutbound
+            .sendToSpot(request.spotId, spotServicePacket(StateMsg, { marker: request.marker }))
+            .submit();
+        } catch (error) {
+          failed = true;
+          if (error instanceof ZLinkFrameworkException) errorKind = error.kind;
+        }
         return {
           spotId: request.spotId,
           marker: request.marker,
-          sent: true,
-          evidence: snapshot
+          sent: !failed,
+          failed,
+          errorKind,
+          evidence: evidence.snapshot()
         };
       }
     },

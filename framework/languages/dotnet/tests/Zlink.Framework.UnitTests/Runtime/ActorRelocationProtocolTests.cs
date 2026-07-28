@@ -12,6 +12,111 @@ namespace Zlink.Framework.UnitTests.Runtime;
 public sealed class ActorRelocationProtocolTests
 {
     [Fact]
+    public void Startup_recovery_rejects_mismatched_enclosing_identity_before_callback()
+    {
+        var recovery = CreateRecovery([1], [2]);
+        recovery = recovery with
+        {
+            Request = recovery.Request with
+            {
+                RelocationReference = "pending",
+                RelocationChecksumCrc32c = 0,
+                RelocationInventoryDigest = new byte[32]
+            }
+        };
+        var key = ZLinkActorAuthorityPayloadCodec.AuthorityKey("actor-1");
+        var canonical = new ZLinkCanonicalParticipantRecovery(
+            key,
+            ZLinkPlacementObjectKind.Actor,
+            7,
+            3,
+            "v1",
+            "player",
+            ReadOnlyMemory<byte>.Empty,
+            ReadOnlyMemory<byte>.Empty);
+        var participant = new ZLinkRelocationParticipantEnvelope(
+            key,
+            ZLinkPlacementObjectKind.Actor,
+            7,
+            3,
+            ReadOnlyMemory<byte>.Empty,
+            [],
+            [],
+            ZLinkCanonicalParticipantRecoveryCodec.Encode(canonical));
+        var envelope = new ZLinkRelocationEnvelope(
+            recovery.Request.RelocationAggregateId,
+            recovery.Request.RelocationAggregateGeneration,
+            new byte[32],
+            [participant]);
+        var candidate = new ZLinkRelocationRecoveryCandidate(
+            new ZLinkRelocationManifestReference(
+                "root-1",
+                17,
+                envelope.AggregateId,
+                envelope.AggregateGeneration,
+                envelope.InventoryDigest),
+            envelope,
+            []);
+
+        ZLinkFrameworkRuntime.ValidateCanonicalRemoteJoinRecoveryIdentity(
+            candidate,
+            participant,
+            canonical,
+            recovery);
+
+        var wrongDigest = new byte[32];
+        wrongDigest[0] = 1;
+        AssertDataLost(
+            candidate with
+            {
+                Reference = candidate.Reference with
+                {
+                    InventoryDigest = wrongDigest
+                }
+            },
+            participant,
+            canonical,
+            recovery);
+        AssertDataLost(
+            candidate,
+            participant with { AuthorityOwnerGeneration = 4 },
+            canonical,
+            recovery);
+        AssertDataLost(
+            candidate,
+            participant,
+            canonical with { StableType = "mage" },
+            recovery);
+        AssertDataLost(
+            candidate,
+            participant,
+            canonical,
+            recovery with
+            {
+                Request = recovery.Request with
+                {
+                    RelocationReference = "substituted-root"
+                }
+            });
+
+        static void AssertDataLost(
+            ZLinkRelocationRecoveryCandidate candidate,
+            ZLinkRelocationParticipantEnvelope participant,
+            ZLinkCanonicalParticipantRecovery canonical,
+            ZLinkActorRelocationRecoveryRecord recovery)
+        {
+            var error = Assert.Throws<ZLinkFrameworkException>(() =>
+            ZLinkFrameworkRuntime.ValidateCanonicalRemoteJoinRecoveryIdentity(
+                candidate,
+                participant,
+                canonical,
+                recovery));
+
+            Assert.Equal(ZLinkFrameworkErrorKind.DataLost, error.Kind);
+        }
+    }
+
+    [Fact]
     public void Remote_join_recovery_preserves_independent_one_megabyte_messages()
     {
         const int maximumMessageBytes = 1024 * 1024;

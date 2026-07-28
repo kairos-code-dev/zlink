@@ -630,10 +630,18 @@ internal static class ZLinkDeferredJoinCompletionCodec
 {
     private const uint Magic = 0x5a4c4a43; // ZLJC
     private const byte Version = 2;
-    private const int MaxBytes = 1024 * 1024;
+    private const int MaximumReplyBytes = 1024 * 1024;
+    private const int MaximumEncodedBytes =
+        MaximumReplyBytes
+        + 3 * (sizeof(ushort) + ushort.MaxValue)
+        + sizeof(byte) + byte.MaxValue
+        + 4 * sizeof(ulong)
+        + sizeof(uint) + 4 * sizeof(byte);
 
     internal static byte[] Encode(ZLinkDeferredJoinCompletionRecord value)
     {
+        if (value.Reply.Length > MaximumReplyBytes)
+            throw new InvalidDataException();
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
         writer.Write(Magic);
@@ -651,13 +659,15 @@ internal static class ZLinkDeferredJoinCompletionCodec
         writer.Write(value.Reply.Span);
         writer.Write((byte)value.Cursor);
         writer.Flush();
-        if (stream.Length > MaxBytes) throw new InvalidDataException();
+        if (stream.Length > MaximumEncodedBytes)
+            throw new InvalidDataException();
         return stream.ToArray();
     }
 
     internal static ZLinkDeferredJoinCompletionRecord Decode(ReadOnlySpan<byte> encoded)
     {
-        if (encoded.Length is <= 0 or > MaxBytes) throw new InvalidDataException();
+        if (encoded.Length is <= 0 or > MaximumEncodedBytes)
+            throw new InvalidDataException();
         using var stream = new MemoryStream(encoded.ToArray(), writable: false);
         using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
         if (reader.ReadUInt32() != Magic || reader.ReadByte() != Version)
@@ -672,7 +682,8 @@ internal static class ZLinkDeferredJoinCompletionCodec
         var actorGeneration = reader.ReadUInt64();
         var contentType = reader.ReadBoolean() ? ReadString(reader) : null;
         var replyLength = reader.ReadInt32();
-        if (replyLength < 0 || replyLength > MaxBytes) throw new InvalidDataException();
+        if (replyLength < 0 || replyLength > MaximumReplyBytes)
+            throw new InvalidDataException();
         var reply = reader.ReadBytes(replyLength);
         if (reply.Length != replyLength) throw new EndOfStreamException();
         var cursor = (ZLinkDeferredJoinCompletionCursor)reader.ReadByte();

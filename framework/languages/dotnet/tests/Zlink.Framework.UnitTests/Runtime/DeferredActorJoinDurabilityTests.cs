@@ -201,6 +201,10 @@ public sealed class DeferredActorJoinDurabilityTests
             actorAuthority.MeshName,
             actorAuthority.NodeRid);
         var operation = new ZLinkActorJoinOperationId(23, 47);
+        var completionReply = Enumerable.Repeat(
+                (byte)0x5a,
+                1024 * 1024)
+            .ToArray();
         var prepared =
             await new ZLinkDeferredActorJoinCompletionJournal(
                     authority,
@@ -210,7 +214,7 @@ public sealed class DeferredActorJoinDurabilityTests
                     operation,
                     actor,
                     "raw",
-                    new byte[] { 9, 7 },
+                    completionReply,
                     CancellationToken.None);
 
         var startupPublication =
@@ -292,6 +296,9 @@ public sealed class DeferredActorJoinDurabilityTests
             Assert.NotNull(recovered);
             Assert.Equal(operation, recovered.Completion.OperationId);
             Assert.Equal(cursor, recovered.Completion.Cursor);
+            Assert.Equal(
+                completionReply,
+                recovered.Completion.Reply.ToArray());
             Assert.Equal(expected.Reference, recovered.Reference);
             var recoveredParticipant =
                 Assert.Single(recovered.Envelope.Participants);

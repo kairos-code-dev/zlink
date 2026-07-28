@@ -558,11 +558,14 @@ internal sealed class ZLinkActorRemoteJoiner(
         var relocationId = Guid.ParseExact(handoffId, "N");
         var authorityKey = ZLinkActorAuthorityPayloadCodec.AuthorityKey(
             actor.Context.ActorId);
+        // The immutable root cannot contain its own reference, checksum, or
+        // digest. Recovery persists this exact sentinel; startup verifies the
+        // real root against the published authority instead.
         var pendingReference = new ZLinkRelocationManifestReference(
             "pending",
             0,
             relocationId,
-            actorAuthorityOwnerGeneration,
+            1,
             new byte[32]);
         var requestTemplate = ZLinkRemoteActorJoinPackets.CreateJoinRequest(
             actor.Context.ActorId,

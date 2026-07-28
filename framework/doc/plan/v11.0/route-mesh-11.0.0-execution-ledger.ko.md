@@ -7134,3 +7134,29 @@ root reference, `Completed` phase와 source cleanup state `1`을 모두 만족�
 - .NET UnitTests: 1,262/1,262
 - .NET ContractTests: 70/70
 - .NET solution build: warning 0, error 0
+
+### Completion reply 경계와 startup identity 검증
+
+Completion journal은 reply 자체에만 1 MiB 제한을 적용한다. Actor ID, operation ID,
+Actor ref와 cursor 같은 bounded metadata는 별도 여유 공간에 저장한다. 정확히 1 MiB인 reply가
+`Prepared`, `Committed`, `Delivered` cursor를 거치고 각 cursor에서 restart recovery로 byte-exact
+복원되는 것을 검증했다.
+
+Startup recovery는 application callback을 실행하기 전에 canonical participant와 published
+authority를 다시 대조한다. Actor authority key, stable type, object generation과 source·target
+owner generation을 확인한다. Aggregate ID·generation·inventory digest, target Spot·Node
+generation과 owner fence도 확인한다. Published authority가 가리키는 root reference와 checksum은
+recovery candidate와 정확히 같아야 한다. 하나라도 다르면 callback 전에 `DataLost`로 종료한다.
+
+Immutable root는 자신의 reference·checksum·digest를 payload에 포함할 수 없다. Remote Join
+recovery request에는 `pending`, checksum `0`, aggregate generation `1`, 32-byte zero digest로
+구성한 고정 sentinel을 저장한다. Startup은 이 sentinel을 정확히 확인하고, 실제 root identity는
+Location Store에 publish된 authority와 recovery candidate를 대조해 확인한다.
+
+- `ActorRelocationProtocolTests`: 7/7
+- `DeferredActorJoinDurabilityTests` + `StandaloneActorRelocationRuntimeTests`
+  + `RelocationRuntimeTests`: 159/159
+- mismatch 검증: root digest, source owner generation, stable type, sentinel reference
+- .NET UnitTests: 1,264/1,264
+- .NET ContractTests: 70/70
+- .NET solution build: warning 0, error 0

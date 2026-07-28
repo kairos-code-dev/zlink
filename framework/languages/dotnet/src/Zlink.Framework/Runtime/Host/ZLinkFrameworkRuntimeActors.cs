@@ -1265,6 +1265,13 @@ internal sealed partial class ZLinkFrameworkRuntime
                 error);
         }
         var wire = recovery.Request;
+        await ValidateCanonicalRemoteJoinRecoveryAsync(
+                candidate,
+                participant,
+                canonical,
+                recovery,
+                cancellationToken)
+            .ConfigureAwait(false);
         await CompleteRoutedActorHandoffAsync(
                 recovery.TargetSpotId,
                 new ZLinkRemoteActorHandoffCompletionRequest(
@@ -1292,6 +1299,189 @@ internal sealed partial class ZLinkFrameworkRuntime
                 cancellationToken)
             .ConfigureAwait(false);
     }
+
+    private async ValueTask ValidateCanonicalRemoteJoinRecoveryAsync(
+        ZLinkRelocationRecoveryCandidate candidate,
+        ZLinkRelocationParticipantEnvelope participant,
+        ZLinkCanonicalParticipantRecovery canonical,
+        ZLinkActorRelocationRecoveryRecord recovery,
+        CancellationToken cancellationToken)
+    {
+        var wire = recovery.Request;
+        var actorKey =
+            ZLinkActorAuthorityPayloadCodec.AuthorityKey(wire.ActorId);
+        ValidateCanonicalRemoteJoinRecoveryIdentity(
+            candidate,
+            participant,
+            canonical,
+            recovery);
+        var matchingAuthorities = candidate.Authorities
+            .Where(entry => entry.Key == actorKey)
+            .ToArray();
+        if (matchingAuthorities.Length != 1)
+            throw RemoteJoinRecoveryMismatch(
+                wire.ActorId,
+                "published Actor authority cardinality");
+        var authority = matchingAuthorities[0];
+        var targetRid = RoutingId.From(recovery.TargetNodeRid);
+        var aggregateBytes =
+            candidate.Envelope.AggregateId.ToByteArray(bigEndian: true);
+        if (authority.Snapshot.ObjectGeneration
+               != participant.ObjectGeneration
+            || authority.Snapshot.AuthorityOwnerGeneration
+               != recovery.TargetAuthorityOwnerGeneration
+            || authority.Snapshot.Allocation.ObjectKind
+               != ZLinkPlacementObjectKind.Actor
+            || !string.Equals(
+                authority.Snapshot.Allocation.StableType,
+                wire.ActorType,
+                StringComparison.Ordinal)
+            || authority.Snapshot.Allocation.Descriptor.Rid != targetRid
+            || authority.Snapshot.Allocation.DescriptorLifecycleGeneration
+               != recovery.TargetNodeGeneration
+            || !ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                authority.Snapshot.Payload.Span,
+                out var publication)
+            || publication.RelocationReference
+               != candidate.Reference.Reference
+            || publication.RelocationChecksumCrc32c
+               != candidate.Reference.ChecksumCrc32c
+            || publication.RelocationHigh
+               != System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(
+                   aggregateBytes.AsSpan(0, 8))
+            || publication.RelocationLow
+               != System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(
+                   aggregateBytes.AsSpan(8, 8))
+            || !string.Equals(
+                publication.State.TargetNodeRid,
+                targetRid.ToHex(),
+                StringComparison.Ordinal)
+            || publication.State.TargetNodeGeneration
+               != recovery.TargetNodeGeneration
+            || authority.Snapshot.OwnerId != publication.TargetOwnerId
+            || authority.Snapshot.OwnerLeaseGeneration <= 0
+            || checked((ulong)authority.Snapshot.OwnerLeaseGeneration)
+               != publication.TargetOwnerLeaseGeneration
+            || !ZLinkActorAuthorityPayloadCodec.TryDecode(
+                publication.SteadyAuthorityPayload.Span,
+                out var steady)
+            || steady.ActorId != wire.ActorId
+            || steady.StableType != wire.ActorType
+            || steady.CurrentSpotId != recovery.TargetSpotId
+            || steady.CurrentSpotGeneration
+               != recovery.TargetSpotGeneration
+            || steady.NodeRid != targetRid
+            || steady.NodeGeneration != recovery.TargetNodeGeneration
+            || steady.OwnerId != publication.TargetOwnerId
+            || steady.OwnerLeaseGeneration
+               != publication.TargetOwnerLeaseGeneration)
+            throw RemoteJoinRecoveryMismatch(
+                wire.ActorId,
+                "published Actor authority or target owner fence");
+
+        if (ResolveActorHandoffTarget(recovery.TargetSpotId)
+                is not { } target
+            || target.NodeRid != targetRid)
+            throw RemoteJoinRecoveryMismatch(
+                wire.ActorId,
+                "target Spot runtime fence");
+        var targetNodeGeneration = GetSpotNodeRuntime(target.NodeRid)
+            .Node
+            .MeshStatus()
+            .LifecycleGeneration;
+        var targetSpotGeneration = target.UserSpot?.ObjectGeneration
+                                   ?? target.EntrySpot?.ObjectGeneration
+                                   ?? 0;
+        if (targetNodeGeneration != recovery.TargetNodeGeneration
+            || targetSpotGeneration != recovery.TargetSpotGeneration)
+            throw RemoteJoinRecoveryMismatch(
+                wire.ActorId,
+                "target Spot generation");
+        if (target.EntrySpot is not null)
+        {
+            if (wire.TargetSpotAuthorityOwnerGeneration
+                != targetNodeGeneration)
+                throw RemoteJoinRecoveryMismatch(
+                    wire.ActorId,
+                    "target Entry Spot owner fence");
+            return;
+        }
+
+        var locationStore = Registration.Locations.ResolveStore()
+                            ?? throw new ZLinkConfigurationException(
+                                "Actor relocation recovery requires a Location Store.");
+        var targetSpot = await locationStore.ReadAuthorityAsync(
+                ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(
+                    recovery.TargetSpotId),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (targetSpot is not ZLinkAuthorityReadResult.Found targetFound
+            || targetFound.Snapshot.ObjectGeneration
+               != recovery.TargetSpotGeneration
+            || targetFound.Snapshot.AuthorityOwnerGeneration
+               != wire.TargetSpotAuthorityOwnerGeneration
+            || targetFound.Snapshot.Allocation.ObjectKind
+               != ZLinkPlacementObjectKind.UserSpot
+            || targetFound.Snapshot.Allocation.Descriptor.Rid != targetRid
+            || targetFound.Snapshot.Allocation.DescriptorLifecycleGeneration
+               != recovery.TargetNodeGeneration)
+            throw RemoteJoinRecoveryMismatch(
+                wire.ActorId,
+                "target User Spot authority fence");
+    }
+
+    internal static void ValidateCanonicalRemoteJoinRecoveryIdentity(
+        ZLinkRelocationRecoveryCandidate candidate,
+        ZLinkRelocationParticipantEnvelope participant,
+        ZLinkCanonicalParticipantRecovery canonical,
+        ZLinkActorRelocationRecoveryRecord recovery)
+    {
+        var wire = recovery.Request;
+        var actorKey =
+            ZLinkActorAuthorityPayloadCodec.AuthorityKey(wire.ActorId);
+        if (participant.AuthorityKey != actorKey
+            || participant.ObjectKind != ZLinkPlacementObjectKind.Actor
+            || participant.ObjectGeneration != wire.ActorGeneration
+            || participant.AuthorityOwnerGeneration
+               != wire.ActorAuthorityOwnerGeneration
+            || canonical.AuthorityKey != participant.AuthorityKey
+            || canonical.ObjectKind != participant.ObjectKind
+            || canonical.ObjectGeneration != participant.ObjectGeneration
+            || canonical.AuthorityOwnerGeneration
+               != participant.AuthorityOwnerGeneration
+            || !string.Equals(
+                canonical.StableType,
+                wire.ActorType,
+                StringComparison.Ordinal)
+            || !string.Equals(
+                wire.RelocationReference,
+                "pending",
+                StringComparison.Ordinal)
+            || wire.RelocationChecksumCrc32c != 0
+            || wire.RelocationAggregateId
+               != candidate.Envelope.AggregateId
+            || wire.RelocationAggregateGeneration
+               != candidate.Envelope.AggregateGeneration
+            || wire.RelocationInventoryDigest.Length != 32
+            || wire.RelocationInventoryDigest.Any(static value => value != 0)
+            || candidate.Envelope.AggregateId
+               != candidate.Reference.AggregateId
+            || candidate.Envelope.AggregateGeneration
+               != candidate.Reference.AggregateGeneration
+            || !candidate.Envelope.InventoryDigest.Span.SequenceEqual(
+                candidate.Reference.InventoryDigest.Span))
+            throw RemoteJoinRecoveryMismatch(
+                wire.ActorId,
+                "participant or aggregate identity");
+    }
+
+    private static ZLinkFrameworkException RemoteJoinRecoveryMismatch(
+        string actorId,
+        string field) =>
+        new(
+            ZLinkFrameworkErrorKind.DataLost,
+            $"Actor '{actorId}' canonical Join recovery mismatches its {field}.",
+            retryAdvice: ZLinkRetryAdvice.DoNotRetry);
 
     internal void ScheduleDeferredJoinCompletionRecovery(
         ZLinkActorRuntimeState actorState)

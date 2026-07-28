@@ -64,7 +64,12 @@ public final class Program {
             ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.SPOT_MESH)
                 .listen(spotOnly ? gateway.spotEndpoint() : gateway.routeEndpoint())
                 .setRoutingId(RoutingId.from(gatewayRid));
-            node.addSpotFactory(GatewayOperationSpot.class);
+            node.objects()
+                .server()
+                .addSpotFactory(
+                    "gateway-operation",
+                    GatewayOperationSpot.class,
+                    factory -> factory.disableRelocation());
             if (spotOnly) {
                 System.out.println("[topology] role=gateway route_mesh=enabled route_channel=disabled");
             } else {

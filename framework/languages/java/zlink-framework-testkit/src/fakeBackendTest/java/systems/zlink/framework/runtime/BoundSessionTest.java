@@ -170,8 +170,8 @@ final class BoundSessionTest {
         options.addHandlersFromPackageOf(BoundSessionTest.class);
         var node = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game");
         node.enableRouter("inproc://bound-session-entry-node");
-        node.addEntrySpot(BoundSessionEntrySpot.class);
-        node.addActorFactory("player", RemoteSessionRelayTest.PlayerActorFactory.class);
+        node.objects().server().addEntrySpot(BoundSessionEntrySpot.class);
+        node.objects().server().addActorFactory("player", RemoteSessionRelayTest.PlayerActor.class, RemoteSessionRelayTest.PlayerActorFactory.class, factory -> factory.recreateOnRelocation());
         var stream = options.addStreamNode("gateway");
         stream.bind("inproc://fake-gateway");
         stream.registerSession(RemoteSessionRelayTest.GameSession.class);

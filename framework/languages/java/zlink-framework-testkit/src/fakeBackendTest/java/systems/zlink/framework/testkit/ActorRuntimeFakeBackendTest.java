@@ -60,7 +60,7 @@ final class ActorRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://actor-manager-router");
-                node.addSpotFactory(GameSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation()); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -106,7 +106,7 @@ final class ActorRuntimeFakeBackendTest {
     void actorContextJoinEntrySpotUsesBackendSpotNodeJoinOperation() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                node.addEntrySpot(EntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(EntrySpot.class); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -138,7 +138,7 @@ final class ActorRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://actor-join-router");
-                node.addSpotFactory(GameSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation()); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         String spotId = RoutingId.from("game-1");
@@ -189,7 +189,7 @@ final class ActorRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://actor-custom-codec-router");
-                node.addSpotFactory(CustomCodecJoinSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addSpotFactory("CustomCodecJoinSpot", CustomCodecJoinSpot.class, factory -> factory.disableRelocation()); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         CustomJoinSerializer serializer = new CustomJoinSerializer();
@@ -231,7 +231,7 @@ final class ActorRuntimeFakeBackendTest {
         options.codecs().use(ZLinkProtobufCodec.defaultCodec());
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://actor-protobuf-router");
-                node.addSpotFactory(ProtobufJoinSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addSpotFactory("ProtobufJoinSpot", ProtobufJoinSpot.class, factory -> factory.disableRelocation()); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         ZLinkMessageSerializer serializer = serializerWith(ZLinkProtobufCodec.defaultCodec());
@@ -268,7 +268,7 @@ final class ActorRuntimeFakeBackendTest {
         options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://actor-messagepack-router");
-                node.addSpotFactory(MessagePackJoinSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addSpotFactory("MessagePackJoinSpot", MessagePackJoinSpot.class, factory -> factory.disableRelocation()); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         ZLinkMessageSerializer serializer = serializerWith(ZLinkMessagePackCodec.defaultCodec());
@@ -306,9 +306,9 @@ final class ActorRuntimeFakeBackendTest {
         EntrySpot.disconnectCount = 0;
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                node.addEntrySpot(EntrySpot.class);
-                node.addSpotFactory(GameSpot.class);
-                node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(EntrySpot.class);
+                node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation());
+                node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://fake-gateway");
             stream.registerSession(DestroySession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -444,7 +444,7 @@ final class ActorRuntimeFakeBackendTest {
         { var route = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "game"); route.enableServer("inproc://local-route");
             route.enableClient("inproc://remote-route");};
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://local-router");
-                node.connectRouter(RoutingId.from("remote-node"), "inproc://remote-router");node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.connectRouter(RoutingId.from("remote-node"), "inproc://remote-router");node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -483,7 +483,7 @@ final class ActorRuntimeFakeBackendTest {
         { var route = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "game"); route.enableServer("inproc://local-route");
             route.enableClient("inproc://remote-route");};
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://local-router");
-                node.connectRouter(RoutingId.from("remote-node"), "inproc://remote-router");node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.connectRouter(RoutingId.from("remote-node"), "inproc://remote-router");node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -511,7 +511,7 @@ final class ActorRuntimeFakeBackendTest {
             route.enableClient("inproc://remote-route");};
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://local-router");
                 node.connectRouter(RoutingId.from("remote-node"), "inproc://remote-router");
-                node.addActorFactory("player", PlayerActorFactory.class);}; };
+                node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation());}; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://fake-gateway");
             stream.registerSession(DestroySession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -559,8 +559,8 @@ final class ActorRuntimeFakeBackendTest {
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://native-local-router")
                     .connectRouter(RoutingId.from("native-remote-node"), "inproc://native-remote-router");
-                node.addSpotFactory(GameSpot.class);
-                node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation());
+                node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://fake-gateway");
             stream.registerSession(DestroySession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -597,9 +597,9 @@ final class ActorRuntimeFakeBackendTest {
         SecondEntrySpot.createCount = 0;
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "first"); { var node = mesh; node.enableRouter("inproc://first-node").setRoutingId(RoutingId.from("first-node"));
-                node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "second"); { var node = mesh; node.enableRouter("inproc://second-node").setRoutingId(RoutingId.from("second-node"));
-                node.addEntrySpot(SecondEntrySpot.class); }; };
+                node.objects().server().addEntrySpot(SecondEntrySpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -614,7 +614,7 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void actorEntrySpotRouteJoinHandlerCreatesLocalActorAndReturnsActorRefReply() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router"); node.addActorFactory("player", PlayerActorFactory.class); }; };
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router"); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 

@@ -441,8 +441,8 @@ final class KotlinSuspendAnnotationHandlerTest {
         options.addHandlersFromPackageOf(KotlinSuspendHandlerMarker::class.java)
         val node = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "rooms")
         node.enableRouter("inproc://rooms")
-        node.addSpotFactory(InterfaceSpot::class.java)
-        node.addActorFactory("player", PlayerActorFactory::class.java)
+        node.objects().server().addSpotFactory("InterfaceSpot", InterfaceSpot::class.java) { factory -> factory.disableRelocation() }
+        node.objects().server().addActorFactory("player", PlayerActor::class.java, PlayerActorFactory::class.java) { factory -> factory.recreateOnRelocation() }
 
         val lifecycle = ZLinkFrameworkLifecycle(
             options,

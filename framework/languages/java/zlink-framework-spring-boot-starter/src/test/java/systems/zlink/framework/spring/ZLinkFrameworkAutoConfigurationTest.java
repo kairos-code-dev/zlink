@@ -816,7 +816,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer spotNodeConfigurer() {
             return options -> { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                    node.addSpotFactory(GameSpot.class); }; };
+                    node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation()); }; };
         }
     }
 
@@ -827,8 +827,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkConfigurer spotNodeWithActorConfigurer() {
             return options -> {
                 { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                        node.addSpotFactory(GameSpot.class);
-                        node.addActorFactory("player", PlayerActorFactory.class); }; };
+                        node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation());
+                        node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
             };
         }
     }
@@ -856,7 +856,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer privateConstructorSpotConfigurer() {
             return options -> { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                    node.addSpotFactory(PrivateConstructorSpot.class); }; };
+                    node.objects().server().addSpotFactory("PrivateConstructorSpot", PrivateConstructorSpot.class, factory -> factory.disableRelocation()); }; };
         }
     }
 
@@ -872,8 +872,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkConfigurer injectedSpotAndActorConfigurer() {
             return options -> {
                 { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                        node.addSpotFactory(InjectedGameSpot.class);
-                        node.addActorFactory("player", InjectedPlayerActorFactory.class); }; };
+                        node.objects().server().addSpotFactory("InjectedGameSpot", InjectedGameSpot.class, factory -> factory.disableRelocation());
+                        node.objects().server().addActorFactory("player", InjectedPlayerActor.class, InjectedPlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
             };
         }
     }
@@ -887,7 +887,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game");
                 mesh.enableRouter("inproc://spot-router");
                 mesh.enablePubSub("inproc://spot-pub");
-                mesh.addSpotFactory(GameSpot.class);
+                mesh.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation());
             };
         }
     }

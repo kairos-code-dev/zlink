@@ -10,7 +10,8 @@ import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLogging
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActorFactory
-import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActorTransferAdapter
+import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActorRelocationAdapter
+import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActor
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.handlers.CreateGameHandler
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.entryspot.PlayEntrySpot
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.TicTacToeGame
@@ -46,10 +47,19 @@ object PlayServer {
                 .setRoutingIdPrefix("tictactoe-play")
             node.channelName(SampleNames.PlayNode)
             node.peerConnections().connect(settings.peerSpotEndpoint)
-            node.addEntrySpot(PlayEntrySpot::class.java)
-            node.addSpotFactory(TicTacToeGame::class.java)
-            node.addActorFactory(SampleNames.PlayActor, PlayActorFactory::class.java)
-            node.addActorTransferAdapter(SampleNames.PlayActor, PlayActorTransferAdapter::class.java)
+            node.objects().server()
+                .addEntrySpot(PlayEntrySpot::class.java)
+                .addSpotFactory(
+                    "tictactoe.game",
+                    TicTacToeGame::class.java,
+                ) { factory -> factory.disableRelocation() }
+                .addActorFactory(
+                    SampleNames.PlayActor,
+                    PlayActor::class.java,
+                    PlayActorFactory::class.java,
+                ) { factory ->
+                    factory.preserveStateWith(PlayActorRelocationAdapter::class.java)
+                }
             options.addStreamNode(SampleNames.PlayStream)
                 .bind(settings.playEndpoint)
                 .enableActorDispatch(SampleNames.SpotMesh)

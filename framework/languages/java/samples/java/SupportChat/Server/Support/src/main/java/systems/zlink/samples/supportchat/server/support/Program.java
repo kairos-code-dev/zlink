@@ -25,8 +25,9 @@ import systems.zlink.samples.supportchat.server.configuration.SampleLocationStor
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTopology;
 import systems.zlink.samples.supportchat.server.support.actors.SupportActorDirectory;
+import systems.zlink.samples.supportchat.server.support.actors.SupportUserActor;
 import systems.zlink.samples.supportchat.server.support.actors.SupportUserActorFactory;
-import systems.zlink.samples.supportchat.server.support.actors.SupportUserActorTransferAdapter;
+import systems.zlink.samples.supportchat.server.support.actors.SupportUserActorRelocationAdapter;
 import systems.zlink.samples.supportchat.server.support.application.AgentAssignmentService;
 import systems.zlink.samples.supportchat.server.support.application.ConversationAllocator;
 import systems.zlink.samples.supportchat.server.support.application.ConversationSpotFactory;
@@ -79,12 +80,19 @@ public final class Program {
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.SupportActorMesh);
             node.listen(support.routerEndpoint())
                 .useAllocatedRoutingId(16, "support-owner");
-            node.addEntrySpot(SupportEntrySpot.class);
-            node.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory.class);
-            node.addActorTransferAdapter(
-                SampleNames.SupportActorType,
-                SupportUserActorTransferAdapter.class);
-            node.addSpotFactory(ConversationSpot.class);
+            node.objects()
+                .server()
+                .addEntrySpot(SupportEntrySpot.class)
+                .addActorFactory(
+                    SampleNames.SupportActorType,
+                    SupportUserActor.class,
+                    SupportUserActorFactory.class,
+                    factory -> factory.preserveStateWith(
+                        SupportUserActorRelocationAdapter.class))
+                .addSpotFactory(
+                    "supportchat.conversation",
+                    ConversationSpot.class,
+                    factory -> factory.disableRelocation());
         };
     }
 

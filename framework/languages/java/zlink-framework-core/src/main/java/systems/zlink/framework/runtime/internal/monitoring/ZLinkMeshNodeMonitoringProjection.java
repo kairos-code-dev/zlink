@@ -14,6 +14,8 @@ import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.locations.ZLinkSpotTypeCapacity;
 import systems.zlink.framework.locations.ZLinkActivationConcurrency;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.RelocationPolicy;
 
 /**
  * Internal projection shared by descriptor publication and runtime monitoring.
@@ -114,19 +116,19 @@ public record ZLinkMeshNodeMonitoringProjection(
         ZLinkPlacementObjectKind kind,
         String stableType,
         int stableTypeLimit,
-        MeshNodeRegistration.RelocationPolicy policy) {
+        RelocationPolicy policy) {
         return new ZLinkObjectCapability(
             kind,
             stableType,
             policy
-                instanceof MeshNodeRegistration.RelocationPolicy.PreserveState
+                instanceof RelocationPolicy.PreserveState
                 ? ZLinkObjectMaintenancePolicyKind.SNAPSHOT
                 : policy
-                    instanceof MeshNodeRegistration.RelocationPolicy.Recreate
+                    instanceof RelocationPolicy.Recreate
                     ? ZLinkObjectMaintenancePolicyKind.RECREATE
                     : ZLinkObjectMaintenancePolicyKind.DISABLED,
             policy
-                instanceof MeshNodeRegistration.RelocationPolicy.PreserveState,
+                instanceof RelocationPolicy.PreserveState,
             kind == ZLinkPlacementObjectKind.ACTOR ? 0 : stableTypeLimit);
     }
 }

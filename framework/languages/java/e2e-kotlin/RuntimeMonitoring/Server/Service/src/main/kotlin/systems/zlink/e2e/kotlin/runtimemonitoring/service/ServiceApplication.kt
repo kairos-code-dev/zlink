@@ -80,7 +80,11 @@ class ServiceApplication {
             node.listen(Env.get("ZLINK_KOTLIN_E2E_MESH_ENDPOINT"))
                 .setRoutingId(RoutingId.from("svc-a-spot"))
             node.channelName(Contracts.SPOT_CHANNEL)
-            node.addSpotFactory(MonitoringSpot::class.java)
+            node.objects().server()
+                .addSpotFactory(
+                    "monitoring",
+                    MonitoringSpot::class.java,
+                ) { factory -> factory.disableRelocation() }
         }
     }
 

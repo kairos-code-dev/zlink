@@ -9,6 +9,8 @@ import systems.zlink.framework.actors.ZLinkRelocationCancellation;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.RelocationPolicy;
 import systems.zlink.framework.spots.ZLinkSpotRelocationAdapter;
 
 public final class ZLinkRelocationAdapterRegistry {
@@ -115,9 +117,9 @@ public final class ZLinkRelocationAdapterRegistry {
     private static void addPreservedState(
         Map<String, Class<?>> adapters,
         String stableType,
-        MeshNodeRegistration.RelocationPolicy policy) {
+        RelocationPolicy policy) {
         if (policy
-            instanceof MeshNodeRegistration.RelocationPolicy.PreserveState
+            instanceof RelocationPolicy.PreserveState
                 preserveState) {
             adapters.put(stableType, preserveState.adapterClass());
         }

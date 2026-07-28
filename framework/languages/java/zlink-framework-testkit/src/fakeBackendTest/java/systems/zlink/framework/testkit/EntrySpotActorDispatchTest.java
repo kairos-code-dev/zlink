@@ -144,8 +144,8 @@ final class EntrySpotActorDispatchTest {
         options.addHandlersFromPackageOf(EntrySpotActorDispatchTest.class);
         var node = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "entry-actor-dispatch");
         node.enableRouter("inproc://entry-actor-dispatch-router");
-        node.addEntrySpot(EntryActorDispatchSpot.class);
-        node.addActorFactory("player", PlayerActorFactory.class);
+        node.objects().server().addEntrySpot(EntryActorDispatchSpot.class);
+        node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation());
         return options;
     }
 

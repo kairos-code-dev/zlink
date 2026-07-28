@@ -84,7 +84,12 @@ public class Program {
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.PlayerQuestSpotDiscovery);
             node.listen(mission.spotRouterEndpoint())
                 .useAllocatedRoutingId(16, "gamequest-mission-owner");
-            node.addSpotFactory(PlayerQuestSpot.class);
+            node.objects()
+                .server()
+                .addSpotFactory(
+                    "gamequest.player-quest",
+                    PlayerQuestSpot.class,
+                    factory -> factory.disableRelocation());
         };
     }
 

@@ -249,8 +249,8 @@ endpoint로 connect하며 automatic subscriber는 Publisher RID와 lifecycle gen
 
 Object role을 생략하면 `None`이다. `client()`는 global object operation만 제공하고 placement target이 되지
 않으며 `server()`는 Client capability와 Entry Spot·factory registration을 제공한다. Client와 Server는
-[Location Store](../../../../01-glossary.ko.md#location-store)가 필수다. Actor·User Spot·Instance Spot [factory](../../../../01-glossary.ko.md#factory)는 stable type과 explicit relocation policy를
-반드시 받으며 policy를 생략하는 overload는 없다.
+[Location Store](../../../../01-glossary.ko.md#location-store)가 필수다. Actor·User Spot·Instance Spot [factory](../../../../01-glossary.ko.md#factory)는 stable type과 configure callback을
+반드시 받으며 relocation 동작 선택을 생략하는 overload는 없다.
 
 Object Client에도 RouteMesh Channel Server를 등록할 수 있다. Application Node direct handler는 등록할
 수 없으며 Object Client RID를 Node direct target으로 지정하면 다른 RID로 바꾸지 않고 not-found로 끝낸다.
@@ -259,6 +259,10 @@ Configure callback은 `disableRelocation()`, `recreateOnRelocation()`, `preserve
 호출해야 한다. 누락하거나 둘 이상 호출하면 socket bind 전에 startup configuration error다. Actor builder는
 같은 Actor type의 `ZLinkActorRelocationAdapter`, User·Instance Spot builder는 같은 Spot type의
 `ZLinkSpotRelocationAdapter`만 받는다.
+
+Framework는 configure callback을 등록 호출 안에서 동기적으로 한 번만 실행한다. Callback이 반환된 뒤
+보관한 builder를 다시 호출하면 configuration error다. Callback이 예외를 던지면 해당 factory를 등록하지
+않고 같은 예외를 호출자에게 전달한다.
 
 `ZLinkUserSpotExecutionMode.PER_ACTOR`는 `recreateOnRelocation()`만
 허용한다. 다른 policy를 함께 등록하면 startup configuration
@@ -272,8 +276,9 @@ method이므로 application override는 필수가 아니다.
 
 Node placement weight는 0..10000이고 기본값은 100이다. 범위 밖 값은 startup 설정과 runtime 변경에서
 configuration error다. Node capacity 기본값은 active 10,000, pending 128이다.
-Type별 limit은 `null`이면 node limit을 공유하고 명시하면 1..`Integer.MAX_VALUE`이며 node limit보다 작은 값을
-적용한다. Capacity filter를 weight보다 먼저 적용한다.
+Type별 limit을 생략하면 node limit을 공유한다. 명시한 값은 1..`Integer.MAX_VALUE`여야 하며 node limit보다
+작은 값을 적용한다. `stableTypeLimit(0)`과 음수는 callback 실행 중 configuration error다. Capacity filter를
+weight보다 먼저 적용한다.
 `enableActorDispatch()`는 인자가 없으며 global ActorId가 Mesh를 resolve한다.
 
 Object Server의 Entry Spot ID는 MeshNode diagnostic prefix를 사용한
@@ -285,9 +290,9 @@ active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시 `SPOT
 
 Location provider는 `ZLinkLocationStore`를 통해 Framework의 opaque record read, version 조건부 atomic
 batch와 bounded snapshot scan을 제공한다. 별도 domain별 Store instance를 host에 등록하지 않는다.
-`RecreateOnRelocation` 또는 `PreserveStateWith` policy를
-하나라도 등록했거나 Instance Spot factory를 하나라도 등록한 host는 `ZLinkRelocationStore`를 정확히 하나 등록한다.
-Instance Spot factory가 없고 `Disabled` factory와 same-node join만 사용하는 host는 Relocation Store가 없어도 된다.
+`recreateOnRelocation()` 또는 `preserveStateWith(...)`를
+하나라도 선택했거나 Instance Spot factory를 하나라도 등록한 host는 `ZLinkRelocationStore`를 정확히 하나 등록한다.
+Instance Spot factory가 없고 모든 factory가 `disableRelocation()`을 선택하며 same-node join만 사용하는 host는 Relocation Store가 없어도 된다.
 Missing 또는 duplicate Store registration은 socket bind 전에 startup
 configuration error다. Location과 Relocation capability를 함께 등록하는 API와 Redis 전용 registration helper는
 제공하지 않는다.

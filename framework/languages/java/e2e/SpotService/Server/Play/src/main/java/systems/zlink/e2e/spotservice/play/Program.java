@@ -19,6 +19,7 @@ import systems.zlink.e2e.spotservice.shared.MultiBindHandler;
 import systems.zlink.e2e.spotservice.shared.NoopIngressHandler;
 import systems.zlink.e2e.spotservice.shared.RouteReqHandler;
 import systems.zlink.e2e.spotservice.shared.ScenarioActorFactory;
+import systems.zlink.e2e.spotservice.shared.ScenarioActor;
 import systems.zlink.e2e.spotservice.shared.ScenarioEntrySpot;
 import systems.zlink.e2e.spotservice.shared.ScenarioSession;
 import systems.zlink.e2e.spotservice.shared.ScenarioState;
@@ -140,11 +141,26 @@ public final class Program {
                 Contracts.StateReq.class,
                 String.class,
                 "StateReq");
-            node.addEntrySpot(ScenarioEntrySpot.class);
-            node.addSpotFactory(UserSpot.class);
-            node.addSpotFactory(MismatchedSpot.class);
-            node.addSpotFactory(TimerScenarioSpot.class);
-            node.addActorFactory("scenario", ScenarioActorFactory.class);
+            node.objects()
+                .server()
+                .addEntrySpot(ScenarioEntrySpot.class)
+                .addSpotFactory(
+                    "user",
+                    UserSpot.class,
+                    factory -> factory.disableRelocation())
+                .addSpotFactory(
+                    "mismatched",
+                    MismatchedSpot.class,
+                    factory -> factory.disableRelocation())
+                .addSpotFactory(
+                    "timer",
+                    TimerScenarioSpot.class,
+                    factory -> factory.disableRelocation())
+                .addActorFactory(
+                    "scenario",
+                    ScenarioActor.class,
+                    ScenarioActorFactory.class,
+                    factory -> factory.recreateOnRelocation());
             String streamEndpoint = play.streamEndpoint();
             String tlsStreamEndpoint = play.tlsStreamEndpoint();
             if (!streamEndpoint.isBlank() || !tlsStreamEndpoint.isBlank()) {

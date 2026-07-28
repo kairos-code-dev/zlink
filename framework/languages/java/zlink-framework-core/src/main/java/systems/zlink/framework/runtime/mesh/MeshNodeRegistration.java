@@ -14,7 +14,6 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorRelocationAdapter;
-import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
@@ -36,6 +35,18 @@ import systems.zlink.framework.configuration.ZLinkMeshPeerConnection;
 import systems.zlink.framework.configuration.ZLinkMeshPeerConnections;
 import systems.zlink.framework.configuration.ZLinkSpotPublisherConfig;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.InstanceSpotFactoryConfiguration;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.RelocatableActorFactory;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.RelocatableInstanceSpotFactory;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.RelocatableSpotFactory;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.RelocationPolicy;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.UserSpotFactoryConfiguration;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkInstanceSpot;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -49,8 +60,6 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     private final List<Class<? extends ZLinkSpot<?>>> spotFactories = new ArrayList<>();
     private final List<Class<? extends ZLinkEntrySpot<?>>> entrySpots = new ArrayList<>();
     private final Map<String, Class<? extends ZLinkActorFactory>> actorFactories =
-        new LinkedHashMap<>();
-    private final Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> transferAdapters =
         new LinkedHashMap<>();
     private final Map<String, RelocatableSpotFactory<?>> relocatableSpotFactories =
         new LinkedHashMap<>();
@@ -178,10 +187,6 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         return Map.copyOf(actorFactories);
     }
 
-    public Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> actorTransferAdapters() {
-        return Map.copyOf(transferAdapters);
-    }
-
     public Map<String, RelocatableSpotFactory<?>> relocatableSpotFactories() {
         return Map.copyOf(relocatableSpotFactories);
     }
@@ -225,7 +230,6 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         types.addAll(spotFactories);
         types.addAll(entrySpots);
         types.addAll(actorFactories.values());
-        types.addAll(transferAdapters.values());
         relocatableSpotFactories.values().forEach(factory -> {
             types.add(factory.spotType());
             addRelocationAdapterType(types, factory.relocationPolicy());
@@ -420,33 +424,9 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         return this;
     }
 
-    @Override
-    public ZLinkMeshNodeBuilder addSpotFactory(Class<? extends ZLinkSpot<?>> spotType) {
-        spotFactories.add(Objects.requireNonNull(spotType, "spotType"));
-        return this;
-    }
-
-    @Override
-    public ZLinkMeshNodeBuilder addEntrySpot(
+    private void registerEntrySpot(
         Class<? extends ZLinkEntrySpot<?>> entrySpotType) {
         entrySpots.add(Objects.requireNonNull(entrySpotType, "entrySpotType"));
-        return this;
-    }
-
-    @Override
-    public ZLinkMeshNodeBuilder addActorFactory(
-        String actorType,
-        Class<? extends ZLinkActorFactory> factoryType) {
-        putUnique(actorFactories, actorType, factoryType, "actor factory");
-        return this;
-    }
-
-    @Override
-    public ZLinkMeshNodeBuilder addActorTransferAdapter(
-        String actorType,
-        Class<? extends ZLinkActorTransferAdapter<?>> adapterType) {
-        putUnique(transferAdapters, actorType, adapterType, "actor transfer adapter");
-        return this;
     }
 
     public void validate() {
@@ -470,12 +450,6 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
             if (!spotTypes.add(spotFactory)) {
                 throw new ZLinkConfigurationException(
                     "duplicate spot factory type on MeshNode: " + meshName);
-            }
-        }
-        for (String actorType : transferAdapters.keySet()) {
-            if (!actorFactories.containsKey(actorType)) {
-                throw new ZLinkConfigurationException(
-                    "actor transfer adapter requires an actor factory: " + actorType);
             }
         }
         relocatableSpotFactories.values().forEach(factory ->
@@ -550,7 +524,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         @Override
         public ZLinkMeshObjectServerBuilder addEntrySpot(
             Class<? extends ZLinkEntrySpot<?>> entrySpotType) {
-            MeshNodeRegistration.this.addEntrySpot(entrySpotType);
+            MeshNodeRegistration.this.registerEntrySpot(entrySpotType);
             return this;
         }
 
@@ -562,12 +536,14 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
             Consumer<ZLinkUserSpotFactoryBuilder<TSpot>> configure) {
             String type = requireStableType(stableType);
             UserSpotFactoryBuilder<TSpot> builder = new UserSpotFactoryBuilder<>();
-            Objects.requireNonNull(configure, "configure").accept(builder);
+            builder.configure(Objects.requireNonNull(configure, "configure"));
+            RelocationPolicy relocationPolicy =
+                builder.requireRelocationPolicy();
             RelocatableSpotFactory<TSpot> value = new RelocatableSpotFactory<>(
                 type,
                 Objects.requireNonNull(spotType, "spotType"),
-                builder.build(),
-                builder.requireRelocationPolicy());
+                builder.build(relocationPolicy),
+                relocationPolicy);
             putUnique(relocatableSpotFactories, type, value, "Spot stable type");
             spotFactories.add(spotType);
             return this;
@@ -582,7 +558,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
             String type = requireStableType(stableType);
             InstanceSpotFactoryBuilder<TSpot> builder =
                 new InstanceSpotFactoryBuilder<>();
-            Objects.requireNonNull(configure, "configure").accept(builder);
+            builder.configure(Objects.requireNonNull(configure, "configure"));
             RelocatableInstanceSpotFactory<TSpot> value =
                 new RelocatableInstanceSpotFactory<>(
                     type,
@@ -606,7 +582,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
             Consumer<ZLinkActorFactoryBuilder<TActor>> configure) {
             String type = requireStableType(stableType);
             ActorFactoryBuilder<TActor> builder = new ActorFactoryBuilder<>();
-            Objects.requireNonNull(configure, "configure").accept(builder);
+            builder.configure(Objects.requireNonNull(configure, "configure"));
             RelocatableActorFactory<TActor> value = new RelocatableActorFactory<>(
                 type,
                 Objects.requireNonNull(actorType, "actorType"),
@@ -670,57 +646,22 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         }
     }
 
-    public record RelocatableSpotFactory<TSpot extends ZLinkSpot<?>>(
-        String stableType,
-        Class<TSpot> spotType,
-        UserSpotFactoryConfiguration options,
-        RelocationPolicy relocationPolicy) {
-    }
-
-    public record RelocatableInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
-        String stableType,
-        Class<TSpot> spotType,
-        InstanceSpotFactoryConfiguration options,
-        RelocationPolicy relocationPolicy) {
-    }
-
-    public record RelocatableActorFactory<TActor extends ZLinkActor>(
-        String stableType,
-        Class<TActor> actorType,
-        Class<? extends ZLinkActorFactory> factoryType,
-        RelocationPolicy relocationPolicy) {
-    }
-
-    public sealed interface RelocationPolicy
-        permits RelocationPolicy.Disabled,
-                RelocationPolicy.Recreate,
-                RelocationPolicy.PreserveState {
-        record Disabled() implements RelocationPolicy {
-        }
-
-        record Recreate() implements RelocationPolicy {
-        }
-
-        record PreserveState(Class<?> adapterClass) implements RelocationPolicy {
-            public PreserveState {
-                Objects.requireNonNull(adapterClass, "adapterClass");
-            }
-        }
-    }
-
-    public record UserSpotFactoryConfiguration(
-        int stableTypeLimit,
-        ZLinkUserSpotExecutionMode executionMode,
-        ZLinkSpotRelocationReadinessMode relocationReadiness) {
-    }
-
-    public record InstanceSpotFactoryConfiguration(int stableTypeLimit) {
-    }
-
     private abstract static class RelocationSelection {
         private RelocationPolicy relocationPolicy;
+        private boolean accepting = true;
+
+        final <TBuilder> void configure(Consumer<TBuilder> configure) {
+            try {
+                @SuppressWarnings("unchecked")
+                TBuilder builder = (TBuilder) this;
+                configure.accept(builder);
+            } finally {
+                accepting = false;
+            }
+        }
 
         final void select(RelocationPolicy value) {
+            requireAccepting();
             if (relocationPolicy != null) {
                 throw new ZLinkConfigurationException(
                     "factory relocation behavior must be selected exactly once");
@@ -734,6 +675,21 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
                     "factory relocation behavior must be selected exactly once");
             }
             return relocationPolicy;
+        }
+
+        final void requireAccepting() {
+            if (!accepting) {
+                throw new ZLinkConfigurationException(
+                    "factory builder is valid only during its configure callback");
+            }
+        }
+
+        final Class<?> requireAdapterClass(Class<?> adapterClass) {
+            if (adapterClass == null) {
+                throw new ZLinkConfigurationException(
+                    "relocation adapterClass is required");
+            }
+            return adapterClass;
         }
     }
 
@@ -753,7 +709,8 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         @Override
         public void preserveStateWith(
             Class<? extends ZLinkActorRelocationAdapter<TActor>> adapterClass) {
-            select(new RelocationPolicy.PreserveState(adapterClass));
+            select(new RelocationPolicy.PreserveState(
+                requireAdapterClass(adapterClass)));
         }
     }
 
@@ -768,13 +725,15 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
 
         @Override
         public ZLinkUserSpotFactoryBuilder<TSpot> stableTypeLimit(int limit) {
-            stableTypeLimit = requireNonNegative(limit, "stableTypeLimit");
+            requireAccepting();
+            stableTypeLimit = requirePositiveLimit(limit, "stableTypeLimit");
             return this;
         }
 
         @Override
         public ZLinkUserSpotFactoryBuilder<TSpot> executionMode(
             ZLinkUserSpotExecutionMode mode) {
+            requireAccepting();
             executionMode = Objects.requireNonNull(mode, "mode");
             return this;
         }
@@ -782,6 +741,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         @Override
         public ZLinkUserSpotFactoryBuilder<TSpot> relocationReadiness(
             ZLinkSpotRelocationReadinessMode mode) {
+            requireAccepting();
             relocationReadiness = Objects.requireNonNull(mode, "mode");
             return this;
         }
@@ -799,15 +759,21 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         @Override
         public void preserveStateWith(
             Class<? extends ZLinkSpotRelocationAdapter<TSpot>> adapterClass) {
-            select(new RelocationPolicy.PreserveState(adapterClass));
+            select(new RelocationPolicy.PreserveState(
+                requireAdapterClass(adapterClass)));
         }
 
-        UserSpotFactoryConfiguration build() {
+        UserSpotFactoryConfiguration build(RelocationPolicy policy) {
             if (executionMode != ZLinkUserSpotExecutionMode.SPOT_WIDE
                 && relocationReadiness
                     != ZLinkSpotRelocationReadinessMode.ANY_TURN_BOUNDARY) {
                 throw new ZLinkConfigurationException(
                     "relocationReadiness applies only to SpotWide User Spots");
+            }
+            if (executionMode == ZLinkUserSpotExecutionMode.PER_ACTOR
+                && !(policy instanceof RelocationPolicy.Recreate)) {
+                throw new ZLinkConfigurationException(
+                    "PerActor User Spots require RecreateOnRelocation");
             }
             return new UserSpotFactoryConfiguration(
                 stableTypeLimit,
@@ -824,7 +790,8 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
 
         @Override
         public ZLinkInstanceSpotFactoryBuilder<TSpot> stableTypeLimit(int limit) {
-            stableTypeLimit = requireNonNegative(limit, "stableTypeLimit");
+            requireAccepting();
+            stableTypeLimit = requirePositiveLimit(limit, "stableTypeLimit");
             return this;
         }
 
@@ -841,7 +808,8 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         @Override
         public void preserveStateWith(
             Class<? extends ZLinkSpotRelocationAdapter<TSpot>> adapterClass) {
-            select(new RelocationPolicy.PreserveState(adapterClass));
+            select(new RelocationPolicy.PreserveState(
+                requireAdapterClass(adapterClass)));
         }
 
         InstanceSpotFactoryConfiguration build() {
@@ -849,9 +817,9 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         }
     }
 
-    private static int requireNonNegative(int value, String label) {
-        if (value < 0) {
-            throw new ZLinkConfigurationException(label + " must not be negative");
+    private static int requirePositiveLimit(int value, String label) {
+        if (value <= 0) {
+            throw new ZLinkConfigurationException(label + " must be positive");
         }
         return value;
     }

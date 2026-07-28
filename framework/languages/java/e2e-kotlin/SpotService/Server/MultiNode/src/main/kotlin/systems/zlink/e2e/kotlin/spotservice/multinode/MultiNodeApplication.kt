@@ -89,9 +89,19 @@ class MultiNodeApplication {
             if (!options.spotOnly) {
                 mesh.channelName(node.routeChannel)
             }
-            mesh.addEntrySpot(MultiNodeEntrySpot::class.java)
-            mesh.addSpotFactory(node.spotClass)
-            mesh.addActorFactory("multi-node", MultiNodeActorFactory::class.java)
+            @Suppress("UNCHECKED_CAST")
+            val spotClass = node.spotClass as Class<ZLinkSpot<*>>
+            mesh.objects().server()
+                .addEntrySpot(MultiNodeEntrySpot::class.java)
+                .addSpotFactory(
+                    "multi-node",
+                    spotClass,
+                ) { factory -> factory.disableRelocation() }
+                .addActorFactory(
+                    "multi-node",
+                    MultiNodeActor::class.java,
+                    MultiNodeActorFactory::class.java,
+                ) { factory -> factory.recreateOnRelocation() }
         }
 
     @Bean

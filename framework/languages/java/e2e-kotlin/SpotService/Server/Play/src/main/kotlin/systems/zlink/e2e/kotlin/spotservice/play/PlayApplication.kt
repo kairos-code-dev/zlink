@@ -121,11 +121,25 @@ class PlayApplication {
                 Contracts.OutboundMsg::class.java
             )
             ingress.addRequestHandler(NoopIngressHandler::class.java, String::class.java, String::class.java)
-            node.addEntrySpot(ScenarioEntrySpot::class.java)
-            node.addSpotFactory(UserSpot::class.java)
-            node.addSpotFactory(MismatchedSpot::class.java)
-            node.addSpotFactory(TimerScenarioSpot::class.java)
-            node.addActorFactory("scenario", ScenarioActorFactory::class.java)
+            node.objects().server()
+                .addEntrySpot(ScenarioEntrySpot::class.java)
+                .addSpotFactory(
+                    "user",
+                    UserSpot::class.java,
+                ) { factory -> factory.disableRelocation() }
+                .addSpotFactory(
+                    "mismatched",
+                    MismatchedSpot::class.java,
+                ) { factory -> factory.disableRelocation() }
+                .addSpotFactory(
+                    "timer",
+                    TimerScenarioSpot::class.java,
+                ) { factory -> factory.disableRelocation() }
+                .addActorFactory(
+                    "scenario",
+                    ScenarioActor::class.java,
+                    ScenarioActorFactory::class.java,
+                ) { factory -> factory.recreateOnRelocation() }
             val streamEndpoint = Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT")
             val tlsStreamEndpoint = Env.get("ZLINK_KOTLIN_E2E_TLS_STREAM_ENDPOINT", "")
             if (streamEndpoint.isNotBlank() || tlsStreamEndpoint.isNotBlank()) {

@@ -26,7 +26,8 @@ import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.actors.ActorRef;
-import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
+import systems.zlink.framework.actors.ZLinkActorRelocationAdapter;
+import systems.zlink.framework.actors.ZLinkRelocationCancellation;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
@@ -380,14 +381,14 @@ final class SpotActorTransferContractTest {
             this.context = context;
         }
 
-        @Override public String actorId() { return actorId; }
         @Override public ZLinkActorContext context() { return context; }
     }
 
     public static final class ContractActorFactory implements ZLinkActorFactory {
         @Override
         public java.util.concurrent.CompletionStage<ZLinkActor> create(
-            String actorId, ZLinkActorContext context) {
+            ZLinkActorContext context) {
+            String actorId = context.actorId();
             ContractActor actor = new ContractActor(actorId, context);
             ACTORS.put(actorId, actor);
             return CompletableFuture.completedFuture(actor);
@@ -395,45 +396,48 @@ final class SpotActorTransferContractTest {
     }
 
     public static final class StatefulAdapter
-        implements ZLinkActorTransferAdapter<ContractActor> {
+        implements ZLinkActorRelocationAdapter<ContractActor> {
         @Override
-        public java.util.concurrent.CompletionStage<ZLinkMessage> transferOut(
-            ContractActor actor) {
+        public java.util.concurrent.CompletionStage<byte[]> capture(
+            ContractActor actor,
+            ZLinkRelocationCancellation cancellation) {
             EVENTS.add("transfer-out");
-            return CompletableFuture.completedFuture(ZLinkMessage.of(actor.stateVersion));
+            return CompletableFuture.completedFuture(
+                java.nio.ByteBuffer.allocate(Integer.BYTES)
+                    .putInt(actor.stateVersion)
+                    .array());
         }
 
         @Override
-        public java.util.concurrent.CompletionStage<ContractActor> transferIn(
-            String actorId,
-            ZLinkActorContext context,
-            ZLinkMessage state) {
+        public java.util.concurrent.CompletionStage<Void> restore(
+            ContractActor actor,
+            byte[] state,
+            ZLinkRelocationCancellation cancellation) {
             EVENTS.add("transfer-in");
-            ContractActor actor = new ContractActor(actorId, context);
-            actor.stateVersion = state.decode(Integer.class);
-            ACTORS.put(actorId, actor);
-            return CompletableFuture.completedFuture(actor);
+            actor.stateVersion = java.nio.ByteBuffer.wrap(state).getInt();
+            ACTORS.put(actor.context().actorId(), actor);
+            return CompletableFuture.completedFuture(null);
         }
     }
 
     public static final class EmptyAdapter
-        implements ZLinkActorTransferAdapter<ContractActor> {
+        implements ZLinkActorRelocationAdapter<ContractActor> {
         @Override
-        public java.util.concurrent.CompletionStage<ZLinkMessage> transferOut(
-            ContractActor actor) {
+        public java.util.concurrent.CompletionStage<byte[]> capture(
+            ContractActor actor,
+            ZLinkRelocationCancellation cancellation) {
             EVENTS.add("transfer-out-empty");
-            return CompletableFuture.completedFuture(ZLinkMessage.empty());
+            return CompletableFuture.completedFuture(new byte[0]);
         }
 
         @Override
-        public java.util.concurrent.CompletionStage<ContractActor> transferIn(
-            String actorId,
-            ZLinkActorContext context,
-            ZLinkMessage state) {
+        public java.util.concurrent.CompletionStage<Void> restore(
+            ContractActor actor,
+            byte[] state,
+            ZLinkRelocationCancellation cancellation) {
             EVENTS.add("transfer-in-empty");
-            ContractActor actor = new ContractActor(actorId, context);
-            ACTORS.put(actorId, actor);
-            return CompletableFuture.completedFuture(actor);
+            ACTORS.put(actor.context().actorId(), actor);
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -618,15 +622,32 @@ final class SpotActorTransferContractTest {
             if (peerEndpoint != null) {
                 node.peerConnections().connect(peerEndpoint);
             }
-            node.addActorFactory("stateful", ContractActorFactory.class);
-            node.addActorTransferAdapter("stateful", StatefulAdapter.class);
-            node.addActorFactory("empty", ContractActorFactory.class);
-            node.addActorTransferAdapter("empty", EmptyAdapter.class);
-            node.addActorFactory("stateless", ContractActorFactory.class);
-            node.addEntrySpot(ContractEntrySpot.class);
-            node.addSpotFactory(ContractTargetSpot.class);
+            var objects = node.objects().server();
+            objects.addActorFactory(
+                "stateful",
+                ContractActor.class,
+                ContractActorFactory.class,
+                factory -> factory.preserveStateWith(StatefulAdapter.class));
+            objects.addActorFactory(
+                "empty",
+                ContractActor.class,
+                ContractActorFactory.class,
+                factory -> factory.preserveStateWith(EmptyAdapter.class));
+            objects.addActorFactory(
+                "stateless",
+                ContractActor.class,
+                ContractActorFactory.class,
+                factory -> factory.recreateOnRelocation());
+            objects.addEntrySpot(ContractEntrySpot.class);
+            objects.addSpotFactory(
+                "contract-target",
+                ContractTargetSpot.class,
+                factory -> factory.disableRelocation());
             if (sourceNode) {
-                node.addSpotFactory(ContractSourceSpot.class);
+                objects.addSpotFactory(
+                    "contract-source",
+                    ContractSourceSpot.class,
+                    factory -> factory.disableRelocation());
             }
             return options;
         }

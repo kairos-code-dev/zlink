@@ -39,8 +39,13 @@ class CourierSpotNodeApplication {
             val spotNode = options.addRouteMesh(SampleNames.CourierSpotMesh)
             spotNode.listen(selected.routerEndpoint)
                 .useAllocatedRoutingId(16, "delivery-courier")
-            spotNode.addEntrySpot(CourierEntrySpot::class.java)
-            spotNode.addActorFactory(SampleNames.CourierActorType, CourierActorFactory::class.java)
+            spotNode.objects().server()
+                .addEntrySpot(CourierEntrySpot::class.java)
+                .addActorFactory(
+                    SampleNames.CourierActorType,
+                    CourierActor::class.java,
+                    CourierActorFactory::class.java,
+                ) { factory -> factory.recreateOnRelocation() }
             // The courier's decision goes back to dispatch as its own one-way message, so this
             // node needs a way to speak to the dispatch channel (common sample spec section 7.4).
             options.addClientServerChannel(SampleNames.DispatchChannel)

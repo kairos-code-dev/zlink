@@ -19,6 +19,7 @@ import systems.zlink.e2e.automaticturn.shared.ShutdownAwaitSessionHandlers;
 import systems.zlink.e2e.automaticturn.shared.SpotCommandHandler;
 import systems.zlink.e2e.automaticturn.shared.RemoteSpotAwaitSessionHandler;
 import systems.zlink.e2e.automaticturn.shared.AwaitActorFactory;
+import systems.zlink.e2e.automaticturn.shared.AwaitActor;
 import systems.zlink.e2e.automaticturn.shared.AwaitEntrySpot;
 import systems.zlink.e2e.automaticturn.shared.AwaitProbeHandlers;
 import systems.zlink.e2e.automaticturn.shared.AwaitProbeSpot;
@@ -112,9 +113,18 @@ public final class Program {
             }
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
                 .enableClient(config.delayEndpoint());
-            mesh.addEntrySpot(AwaitEntrySpot.class);
-            mesh.addSpotFactory(AwaitProbeSpot.class);
-            mesh.addActorFactory(Contracts.ACTOR_TYPE, AwaitActorFactory.class);
+            mesh.objects()
+                .server()
+                .addEntrySpot(AwaitEntrySpot.class)
+                .addSpotFactory(
+                    "await-probe",
+                    AwaitProbeSpot.class,
+                    factory -> factory.disableRelocation())
+                .addActorFactory(
+                    Contracts.ACTOR_TYPE,
+                    AwaitActor.class,
+                    AwaitActorFactory.class,
+                    factory -> factory.recreateOnRelocation());
             options.addStreamNode("session")
                 .bind(config.streamEndpoint())
                 .registerSession(AwaitSession.class);

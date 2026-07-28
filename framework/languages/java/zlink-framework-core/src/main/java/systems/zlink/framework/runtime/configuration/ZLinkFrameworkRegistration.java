@@ -154,7 +154,6 @@ public final class ZLinkFrameworkRegistration {
             types.addAll(spotNode.spotFactories());
             types.addAll(spotNode.entrySpots());
             types.addAll(spotNode.actorFactories().values());
-            types.addAll(spotNode.actorTransferAdapters().values());
         }
         for (StreamNodeRegistration streamNode : streamNodes) {
             types.addAll(streamNode.applicationTypes());

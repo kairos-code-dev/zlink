@@ -40,8 +40,14 @@ public final class CourierSpotNodeApplication {
             ZLinkMeshNodeBuilder spotNode = options.addRouteMesh(SampleNames.CourierSpotDiscovery);
             spotNode.listen(selected.routerEndpoint())
                 .useAllocatedRoutingId(16, "delivery-courier");
-            spotNode.addEntrySpot(CourierEntrySpot.class);
-            spotNode.addActorFactory(SampleNames.CourierActorType, CourierActorFactory.class);
+            spotNode.objects()
+                .server()
+                .addEntrySpot(CourierEntrySpot.class)
+                .addActorFactory(
+                    SampleNames.CourierActorType,
+                    CourierActor.class,
+                    CourierActorFactory.class,
+                    factory -> factory.recreateOnRelocation());
             // The courier's decision goes back to dispatch as its own one-way message, so this
             // node needs a way to speak to the dispatch channel (common sample spec section 7.4).
             options.addClientServerChannel(SampleNames.DispatchChannel)

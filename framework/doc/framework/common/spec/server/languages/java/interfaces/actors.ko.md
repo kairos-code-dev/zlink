@@ -36,7 +36,7 @@ public interface ZLinkActorRelocationAdapter<TActor extends ZLinkActor> {
 ```
 
 [Factory](../../../../01-glossary.ko.md#factory) registration의 정확한 builder member는
-[구성과 host](configuration-host.ko.md)가 소유한다. Cross-node relocation policy는 Actor factory 등록에
+[구성과 host](configuration-host.ko.md)가 소유한다. Cross-node relocation 동작은 Actor factory configure callback에
 직접 연결한다. Runtime은 factory가 반환한 Actor를 명시한 `actorClass`로 검사해 type 불일치를 startup
 오류로 반환한다. Factory와 분리된 relocation registry는 제공하지 않는다.
 `preserveStateWith(...)`의 `adapterClass`는 해당 Actor type의
@@ -44,20 +44,20 @@ public interface ZLinkActorRelocationAdapter<TActor extends ZLinkActor> {
 [Spot 인터페이스](spots.ko.md)가 소유한다. `Class<?>`를 받는 것은 Java type erasure 때문에 policy value를
 공통으로 유지하기 위한 표현이며, Framework는 factory type과 adapter generic target이 일치하는지 socket bind
 전에 검사한다. Mismatch는 startup configuration error다.
-`snapshot(null)`과 null adapter class를 가진 policy도 socket bind 전에 startup configuration error로 거부한다.
+`preserveStateWith(null)`은 callback 실행 중 configuration error로 거부한다.
 
 Actor adapter는 application state를 최대 64 MiB의 opaque `byte[]`로 capture·restore한다. Public state DTO, `TState`,
 `stateContractId`, state class와 `ZLinkMessage`를 relocation surface에 두지 않는다. Framework는 capture가 정상
 완료한 배열을 즉시 복사한다. Capture가 반환한 배열은 adapter가 계속 소유하며 completion 뒤 재사용하거나
 변경해도 저장 payload가 바뀌지 않는다. Restore에는 호출마다 저장 payload의 fresh defensive copy를 전달하고
-adapter는 stage가 끝난 뒤 그 배열을 보관하지 않는다. 길이가 0인 배열도 유효한 Snapshot state이며 `Recreate`로
-해석하거나 Restore를 생략하지 않는다. Adapter는 owner claim, relocation envelope, generation과 recovery phase를
+adapter는 stage가 끝난 뒤 그 배열을 보관하지 않는다. 길이가 0인 배열도 유효한 보존 state이며
+`recreateOnRelocation()`을 선택한 것으로 해석하거나 restore를 생략하지 않는다. Adapter는 owner claim, relocation envelope, generation과 recovery phase를
 받지 않는다.
 
 Cross-node materialization에서 Actor factory가 `preserveStateWith(...)`를 사용하면 maintenance Actor relocation,
 remote User·[Entry Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) join과 whole User Spot relocation의 각 Actor participant에 같은 Actor adapter를 사용한다.
-Same-node join과 `Disabled` policy에서는 adapter를 호출하지 않는다. `Recreate`는 application state를 capture하지
-않으므로 adapter가 없다.
+Same-node join과 `disableRelocation()` 또는 `recreateOnRelocation()`을 선택한 factory에서는 adapter를 호출하지
+않는다. `recreateOnRelocation()`은 application state를 capture하지 않으므로 adapter가 없다.
 
 Target이 `Activated`에 도달해도 application과 session ingress는 sealed 상태를 유지하고 restore, accepted
 journal replay와 bound-session route는 staged 상태로만 준비한다. Source cleanup이 terminal 상태에 도달하고
@@ -97,10 +97,10 @@ Source는 connection-bound one-way를 포함해 admission한 모든 connection-b
 Entry Spot과 `PerActor` User Spot의 Actor는 독립된 relocation unit이다. `SpotWide`
 User Spot member Actor만 Spot과 current member 전체를 하나의 aggregate로 함께
 옮긴다. User Spot membership 자체는 relocation blocker가 아니며 participant 하나라도
-`Disabled`이거나 호환 target을 확보할 수 없을 때만 해당 Actor unit 또는
-`SpotWide` aggregate를 차단한다. `Disabled` participant는
+`disableRelocation()`을 선택했거나 호환 target을 확보할 수 없을 때만 해당 Actor unit 또는
+`SpotWide` aggregate를 차단한다. Relocation을 비활성화한 participant는
 `BLOCKED/RELOCATION_DISABLED`, target·capacity·reservation 부재는
-`BLOCKED/TARGET_UNAVAILABLE`, application version·type·[Snapshot](../../../../01-glossary.ko.md#relocation-policy) adapter capability 불일치는
+`BLOCKED/TARGET_UNAVAILABLE`, application version·type·state 보존 adapter capability 불일치는
 `BLOCKED/STATE_INCOMPATIBLE`다. Actor unit은 target factory와 restore를 끝내고 accepted journal을
 application handler가 실행하지 않은 staging queue로 준비한 뒤 `NEW_OWNER` CAS를 수행한다. 이 CAS는
 owner, authority owner generation과 current [Spot](../../../../01-glossary.ko.md#spot)을

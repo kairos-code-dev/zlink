@@ -81,9 +81,17 @@ class SessionApplication {
             mesh.channelName(Contracts.ROUTE_CHANNEL)
             mesh.peerConnections().connect(Env.get("ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT", ""))
             mesh.peerConnections().connect(Env.get("ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT", ""))
-            mesh.addEntrySpot(ScenarioEntrySpot::class.java)
-            mesh.addSpotFactory(UserSpot::class.java)
-            mesh.addActorFactory("scenario", ScenarioActorFactory::class.java)
+            mesh.objects().server()
+                .addEntrySpot(ScenarioEntrySpot::class.java)
+                .addSpotFactory(
+                    "user",
+                    UserSpot::class.java,
+                ) { factory -> factory.disableRelocation() }
+                .addActorFactory(
+                    "scenario",
+                    ScenarioActor::class.java,
+                    ScenarioActorFactory::class.java,
+                ) { factory -> factory.recreateOnRelocation() }
             options.addStreamNode("gateway")
                 .bind(Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT"))
                 .enableActorDispatch(Contracts.SPOT_MESH)

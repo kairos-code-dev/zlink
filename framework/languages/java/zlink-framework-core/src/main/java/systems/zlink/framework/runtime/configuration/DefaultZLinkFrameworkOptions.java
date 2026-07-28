@@ -151,7 +151,7 @@ public final class DefaultZLinkFrameworkOptions
     }
 
     @Override
-    public ZLinkSpotMeshBuilder addLegacySpotMesh(String channelName)
+    public SpotBuilders.Mesh addLegacySpotMesh(String channelName)
     {
         String meshName = requireName(channelName, "spot mesh");
         addUnique(spotMeshNames, meshName, "spot mesh");

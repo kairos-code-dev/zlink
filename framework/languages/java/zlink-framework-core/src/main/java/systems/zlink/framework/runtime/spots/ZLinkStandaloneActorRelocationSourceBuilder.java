@@ -25,6 +25,10 @@ import systems.zlink.framework.runtime.internal.relocation
 import systems.zlink.framework.runtime.locations.ZLinkActorAuthorityPayloadCodec;
 import systems.zlink.framework.runtime.locations.ZLinkAuthorityKeyCodec;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.RelocatableActorFactory;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.RelocationPolicy;
 
 /**
  * Builds the reversible source half of one Entry Spot Actor relocation from
@@ -44,7 +48,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
     private final ZLinkRelocationPermitPool permits;
     private final ZLinkActorSessionCoordinator actors;
     private final ZLinkRelocationAdapterRegistry adapters;
-    private final Map<String, MeshNodeRegistration.RelocatableActorFactory<?>>
+    private final Map<String, RelocatableActorFactory<?>>
         factories;
     private final ZLinkActorAuthorityPayloadCodec authorities =
         new ZLinkActorAuthorityPayloadCodec();
@@ -58,7 +62,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
         ZLinkRelocationPermitPool permits,
         ZLinkActorSessionCoordinator actors,
         ZLinkRelocationAdapterRegistry adapters,
-        Map<String, MeshNodeRegistration.RelocatableActorFactory<?>>
+        Map<String, RelocatableActorFactory<?>>
             factories) {
         this.meshName = requireText(meshName, "meshName");
         this.localNodeRid = Objects.requireNonNull(
@@ -198,7 +202,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
             var factory = factories.get(stableType);
             if (factory == null
                 || factory.relocationPolicy()
-                    instanceof MeshNodeRegistration.RelocationPolicy.Disabled) {
+                    instanceof RelocationPolicy.Disabled) {
                 return failed(new IllegalStateException(
                     "Actor relocation policy is unavailable: " + stableType));
             }
@@ -219,7 +223,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
                 stableType,
                 snapshot,
                 factory.relocationPolicy()
-                    instanceof MeshNodeRegistration.RelocationPolicy.PreserveState));
+                    instanceof RelocationPolicy.PreserveState));
         });
     }
 
@@ -293,7 +297,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
         var factory = factories.get(actor.stableType());
         ZLinkObjectMaintenancePolicyKind policy =
             factory.relocationPolicy()
-                instanceof MeshNodeRegistration.RelocationPolicy.PreserveState
+                instanceof RelocationPolicy.PreserveState
                 ? ZLinkObjectMaintenancePolicyKind.SNAPSHOT
                 : ZLinkObjectMaintenancePolicyKind.RECREATE;
         return candidate.objectCapabilities().stream().anyMatch(capability ->

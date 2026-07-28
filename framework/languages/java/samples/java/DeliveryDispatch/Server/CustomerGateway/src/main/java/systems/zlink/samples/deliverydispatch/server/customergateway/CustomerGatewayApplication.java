@@ -40,8 +40,14 @@ public final class CustomerGatewayApplication {
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.CustomerSpotDiscovery);
             node.listen(topology.customerSpotRouterEndpoint())
                 .useAllocatedRoutingId(16, "delivery-customer");
-            node.addEntrySpot(CustomerEntrySpot.class);
-            node.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory.class);
+            node.objects()
+                .server()
+                .addEntrySpot(CustomerEntrySpot.class)
+                .addActorFactory(
+                    SampleNames.CustomerActorType,
+                    CustomerActor.class,
+                    CustomerActorFactory.class,
+                    factory -> factory.recreateOnRelocation());
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(topology.customerStreamEndpoint())
                 .enableActorDispatch(SampleNames.CustomerSpotDiscovery)

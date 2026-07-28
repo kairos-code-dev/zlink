@@ -13,7 +13,7 @@ public final class ZLinkLegacyTopology {
         return access(options).addLegacyRouteMeshChannel(channelName);
     }
 
-    public static ZLinkSpotMeshBuilder addSpotMesh(
+    public static systems.zlink.framework.runtime.spots.SpotBuilders.Mesh addSpotMesh(
         ZLinkFrameworkOptions options,
         String meshName) {
         return access(options).addLegacySpotMesh(meshName);

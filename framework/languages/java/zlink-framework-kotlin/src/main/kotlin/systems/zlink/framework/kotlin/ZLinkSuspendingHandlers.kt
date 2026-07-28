@@ -9,7 +9,6 @@ import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.actors.ZLinkActorFactory
 import systems.zlink.framework.actors.ZLinkActorJoinCompletion
-import systems.zlink.framework.actors.ZLinkActorTransferAdapter
 import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.channels.ZLinkPublishMessageContext
 import systems.zlink.framework.channels.ZLinkRouteMessageContext
@@ -165,33 +164,6 @@ abstract class ZLinkSuspendingActor : ZLinkActor {
     abstract suspend fun onJoinCompletedSuspending(
         completion: ZLinkActorJoinCompletion,
     )
-}
-
-abstract class ZLinkSuspendingActorTransferAdapter<TActor : ZLinkActor> :
-    ZLinkActorTransferAdapter<TActor> {
-    final override fun transferOut(
-        actor: TActor,
-    ): CompletionStage<ZLinkMessage> = coroutineStage {
-        transferOutSuspending(actor)
-    }
-
-    final override fun transferIn(
-        actorId: String,
-        context: ZLinkActorContext,
-        state: ZLinkMessage,
-    ): CompletionStage<TActor> = coroutineStage {
-        transferInSuspending(actorId, context, state)
-    }
-
-    protected abstract suspend fun transferOutSuspending(
-        actor: TActor,
-    ): ZLinkMessage
-
-    protected abstract suspend fun transferInSuspending(
-        actorId: String,
-        context: ZLinkActorContext,
-        state: ZLinkMessage,
-    ): TActor
 }
 
 abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {

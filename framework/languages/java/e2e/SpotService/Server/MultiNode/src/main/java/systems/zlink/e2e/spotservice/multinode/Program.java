@@ -12,6 +12,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.spotservice.shared.Contracts;
 import systems.zlink.e2e.spotservice.shared.MultiNodeSpot;
 import systems.zlink.e2e.spotservice.shared.ScenarioActorFactory;
+import systems.zlink.e2e.spotservice.shared.ScenarioActor;
 import systems.zlink.e2e.spotservice.shared.ScenarioEntrySpot;
 import systems.zlink.e2e.spotservice.shared.ScenarioState;
 import systems.zlink.framework.actors.ZLinkActorClient;
@@ -87,9 +88,18 @@ public final class Program {
             ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.SPOT_MESH)
                 .listen(multi.spotOnly() ? multi.spotEndpoint() : multi.routeEndpoint())
                 .setRoutingId(RoutingId.from(nodeRid));
-            node.addEntrySpot(ScenarioEntrySpot.class);
-            node.addActorFactory("scenario", ScenarioActorFactory.class);
-            node.addSpotFactory(MultiNodeSpot.class);
+            node.objects()
+                .server()
+                .addEntrySpot(ScenarioEntrySpot.class)
+                .addActorFactory(
+                    "scenario",
+                    ScenarioActor.class,
+                    ScenarioActorFactory.class,
+                    factory -> factory.recreateOnRelocation())
+                .addSpotFactory(
+                    "multi-node",
+                    MultiNodeSpot.class,
+                    factory -> factory.disableRelocation());
             if (!multi.spotOnly()) {
                 node.channelName(Contracts.ROUTE_CHANNEL);
                 if (!multi.routeEndpoint().equals(multi.routeAEndpoint())) {

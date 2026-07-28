@@ -110,11 +110,11 @@ Kotlin은 Java `ZLinkSpotRelocationAdapter<TSpot>`를 그대로 구현한다. Op
 전에 검증한다.
 
 State를 보존하는 whole User Spot relocation은 Spot 자체에 Spot adapter를, member Actor마다 Actor adapter를 사용한다.
-State를 보존하는 Instance Spot relocation은 Spot adapter를 사용한다. Same-node operation, `disableRelocation`과 `recreateOnRelocation`에서는
+State를 보존하는 Instance Spot relocation은 Spot adapter를 사용한다. Same-node operation, `disableRelocation()`과 `recreateOnRelocation()`에서는
 adapter를 호출하지 않는다. Capture `ByteArray`는 최대 64 MiB이며 adapter가 completion까지 소유한다. Java
 runtime은 completion에서 복사한다.
 Restore는 호출마다 fresh defensive copy를 받고 completion 뒤 보관하지 않는다. Empty `ByteArray`도 유효한
-Snapshot state다. Factory는 target attempt마다 fresh Spot instance를 만들며 source나 이전 attempt instance를
+보존 state다. Factory는 target attempt마다 fresh Spot instance를 만들며 source나 이전 attempt instance를
 재사용하지 않는다. 같은 attempt의 restore는 반복될 수 있다. Capture exception은 source authority와 admission을
 유지하고 restore exception은 target을 sealed 상태로 유지한 채 same payload retry 또는 target replacement로
 처리한다. Null stage와 null capture payload는 contract 위반이다. Host relocation의 precommit adapter
@@ -388,7 +388,7 @@ Target shell은 authority 전에는 public lookup에 노출하지 않는다. Sta
 generation, deadline, correlation과 reply route를 보존해 relay한다. Actor queue seal부터 target
 admission까지 1초는 운영 목표이며 초과해도 relocation을 취소하거나 rollback하지 않는다.
 
-Java `ZLinkUserSpotFactoryOptions.relocationReadiness`를 생략하면
+Factory configure callback에서 `relocationReadiness(...)`를 생략하면
 `ANY_TURN_BOUNDARY`다. `APPLICATION_SIGNALED`은 `SPOT_WIDE`에서만 허용한다.
 이 mode의 Spot turn에서는 `context.relocationReady().defer()`로 현재 turn 뒤의
 경계를 등록한다. Framework는 source의 `CONTINUED` 또는 target의 `RELOCATED`

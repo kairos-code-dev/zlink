@@ -19,7 +19,8 @@ import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActorFactory
-import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActorTransferAdapter
+import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActorRelocationAdapter
+import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.matchmaking.RedisBingoMatchQueue
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSettingsInitializer
@@ -60,13 +61,19 @@ class PlayServerApplication {
                 .setRoutingIdAllocationGroup(SampleNames.PlayAllocationGroup)
             node.channelName(SampleNames.ApiChannel).setWeight(0)
             node.channelName(SampleNames.RoomSpotDiscovery)
-            node.addEntrySpot(BingoEntrySpot::class.java)
-            node.addSpotFactory(BingoRoomSpot::class.java)
-            node.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory::class.java)
-            node.addActorTransferAdapter(
-                SampleNames.PlayerActorType,
-                PlayerActorTransferAdapter::class.java,
-            )
+            node.objects().server()
+                .addEntrySpot(BingoEntrySpot::class.java)
+                .addSpotFactory(
+                    "bingo.room",
+                    BingoRoomSpot::class.java,
+                ) { factory -> factory.disableRelocation() }
+                .addActorFactory(
+                    SampleNames.PlayerActorType,
+                    PlayerActor::class.java,
+                    PlayerActorFactory::class.java,
+                ) { factory ->
+                    factory.preserveStateWith(PlayerActorRelocationAdapter::class.java)
+                }
         }
 
     @Bean

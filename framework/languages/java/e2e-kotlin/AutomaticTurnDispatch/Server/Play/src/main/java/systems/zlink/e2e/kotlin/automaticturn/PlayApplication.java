@@ -58,9 +58,18 @@ public final class PlayApplication {
                 Contracts.BindActorsRes.class);
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
                 .enableClient(Env.get("delayEndpoint"));
-            mesh.addEntrySpot(ProbeEntrySpot.class);
-            mesh.addSpotFactory(ProbeSpot.class);
-            mesh.addActorFactory("probe", ProbeActorFactory.class);
+            mesh.objects()
+                .server()
+                .addEntrySpot(ProbeEntrySpot.class)
+                .addSpotFactory(
+                    "probe",
+                    ProbeSpot.class,
+                    factory -> factory.disableRelocation())
+                .addActorFactory(
+                    "probe",
+                    ProbeActor.class,
+                    ProbeActorFactory.class,
+                    factory -> factory.recreateOnRelocation());
         };
     }
 

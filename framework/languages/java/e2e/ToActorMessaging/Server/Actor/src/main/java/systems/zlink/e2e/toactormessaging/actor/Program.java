@@ -129,10 +129,15 @@ public final class Program {
             spotMesh.setRoutingId(RoutingId.from(config.actorRid()));
             boot("setRoutingId done");
             boot("addEntrySpot");
-            spotMesh.addEntrySpot(TestEntrySpot.class);
+            var objects = spotMesh.objects().server();
+            objects.addEntrySpot(TestEntrySpot.class);
             boot("addEntrySpot done");
             boot("addActorFactory");
-            spotMesh.addActorFactory(Contracts.ACTOR_TYPE, TestActorFactory.class);
+            objects.addActorFactory(
+                Contracts.ACTOR_TYPE,
+                TestActor.class,
+                TestActorFactory.class,
+                factory -> factory.recreateOnRelocation());
             boot("addActorFactory done");
         };
     }

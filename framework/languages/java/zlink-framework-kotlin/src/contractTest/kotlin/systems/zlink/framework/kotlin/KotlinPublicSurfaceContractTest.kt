@@ -172,7 +172,6 @@ class KotlinPublicSurfaceContractTest {
             "ZLinkSuspendingSpotActorRequestHandler",
             "ZLinkSuspendingTypedSessionPacketHandler",
             "ZLinkSuspendingActorFactory",
-            "ZLinkSuspendingActorTransferAdapter",
             "ZLinkSuspendingSpot",
             "ZLinkSuspendingEntrySpot",
             "ZLinkSuspendingSession",

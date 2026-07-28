@@ -43,7 +43,7 @@ final class StreamSessionTest {
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://stream-relay-play-node");
                 node.setRoutingId(RoutingId.from("play-node"));
-                node.addSpotFactory(GameSpot.class); }; };
+                node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation()); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.registerSession(GameSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -341,8 +341,8 @@ final class StreamSessionTest {
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://stream-context-play-node");
                 node.setRoutingId(RoutingId.from("play-node"));
-                node.addSpotFactory(GameSpot.class);
-                node.addActorFactory("player", ActorRuntimeFakeBackendTest.PlayerActorFactory.class); }; };
+                node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation());
+                node.objects().server().addActorFactory("player", ActorRuntimeFakeBackendTest.PlayerActor.class, ActorRuntimeFakeBackendTest.PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.registerSession(ContextSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =

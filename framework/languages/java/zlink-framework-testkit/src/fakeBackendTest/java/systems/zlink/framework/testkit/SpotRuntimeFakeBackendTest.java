@@ -78,7 +78,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://spot-router");
                 node.enablePubSub("inproc://spot-pub");
-                node.addSpotFactory(GameSpot.class); }; };
+                node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         RoutingId rid = RoutingId.from("game-1");
@@ -147,7 +147,7 @@ final class SpotRuntimeFakeBackendTest {
         PayloadSpot.lastCreatePayload.set(null);
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://payload-router");
-                node.addSpotFactory(PayloadSpot.class); }; };
+                node.objects().server().addSpotFactory("PayloadSpot", PayloadSpot.class, factory -> factory.disableRelocation()); }; };
         RoutingId rid = RoutingId.from("payload-spot");
 
         try (ZLinkFrameworkRuntime runtime =
@@ -172,7 +172,7 @@ final class SpotRuntimeFakeBackendTest {
     void spotManagerListAndCloseCanRunConcurrently() throws Exception {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://spot-router-concurrent");
-                node.addSpotFactory(GameSpot.class); }; };
+                node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation()); }; };
         List<RoutingId> rids = java.util.stream.IntStream.range(0, 32)
             .mapToObj(index -> RoutingId.from("game-concurrent-" + index))
             .toList();
@@ -211,7 +211,7 @@ final class SpotRuntimeFakeBackendTest {
         PayloadSpot.lastCreatePayload.set(null);
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://payload-codec-router");
-                node.addSpotFactory(PayloadSpot.class); }; };
+                node.objects().server().addSpotFactory("PayloadSpot", PayloadSpot.class, factory -> factory.disableRelocation()); }; };
         RoutingId rid = RoutingId.from("payload-codec-spot");
         CreatePayloadSerializer serializer = new CreatePayloadSerializer();
         Message encoded = messageFrom(serializer.serialize(new CreatePayload("custom")));
@@ -249,7 +249,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         options.codecs().use(ZLinkProtobufCodec.defaultCodec());
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://payload-protobuf-router");
-                node.addSpotFactory(ProtobufCreateSpot.class); }; };
+                node.objects().server().addSpotFactory("ProtobufCreateSpot", ProtobufCreateSpot.class, factory -> factory.disableRelocation()); }; };
         RoutingId rid = RoutingId.from("payload-protobuf-spot");
         ZLinkMessageSerializer serializer = serializerWith(ZLinkProtobufCodec.defaultCodec());
         Message encoded = messageFrom(serializer.serialize(StringValue.of("proto-create")));
@@ -286,7 +286,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://payload-messagepack-router");
-                node.addSpotFactory(MessagePackCreateSpot.class); }; };
+                node.objects().server().addSpotFactory("MessagePackCreateSpot", MessagePackCreateSpot.class, factory -> factory.disableRelocation()); }; };
         RoutingId rid = RoutingId.from("payload-messagepack-spot");
         ZLinkMessageSerializer serializer = serializerWith(ZLinkMessagePackCodec.defaultCodec());
         Message encoded = messageFrom(serializer.serialize(new PackedCreatePayload("msgpack-create")));
@@ -324,7 +324,7 @@ final class SpotRuntimeFakeBackendTest {
         { var channel = options.addClientServerChannel("play-rpc"); channel.enableClient("inproc://play-rpc"); };
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://outbound-channel-router");
-                node.addSpotFactory(OutboundSpot.class); }; };
+                node.objects().server().addSpotFactory("OutboundSpot", OutboundSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -359,7 +359,7 @@ final class SpotRuntimeFakeBackendTest {
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://handler-spot-router");
                 node.enablePubSub("inproc://spot-pub");
-                node.addSpotFactory(HandlerSpot.class); }; };
+                node.objects().server().addSpotFactory("HandlerSpot", HandlerSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
@@ -408,7 +408,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://serial-release-router");
-                node.addSpotFactory(SerialSpot.class); }; };
+                node.objects().server().addSpotFactory("SerialSpot", SerialSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
@@ -442,8 +442,8 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://serial-join-router");
-                node.addSpotFactory(SerialSpot.class);
-                node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addSpotFactory("SerialSpot", SerialSpot.class, factory -> factory.disableRelocation());
+                node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
         ZLinkHandlerActivator reflection = ZLinkHandlerActivator.reflection();
         ZLinkHandlerActivator handlerFactory = handlerType -> {
@@ -489,7 +489,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://outbound-spot-router");
-                node.addSpotFactory(OutboundSpot.class); }; };
+                node.objects().server().addSpotFactory("OutboundSpot", OutboundSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -559,7 +559,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://outbound-packet-name-router");
-                node.addSpotFactory(OutboundSpot.class); }; };
+                node.objects().server().addSpotFactory("OutboundSpot", OutboundSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -611,7 +611,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://outbound-reply-packet-router");
-                node.addSpotFactory(OutboundSpot.class); }; };
+                node.objects().server().addSpotFactory("OutboundSpot", OutboundSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         backendFactory.nextSpotRequestReplyParts(List.of(
@@ -641,7 +641,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://outbound-error-router");
-                node.addSpotFactory(OutboundSpot.class); }; };
+                node.objects().server().addSpotFactory("OutboundSpot", OutboundSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         backendFactory.nextSpotRequestReplyParts(List.of(
@@ -673,7 +673,7 @@ final class SpotRuntimeFakeBackendTest {
         { var channel = options.addClientServerChannel("egress").enableClient("inproc://ingress-server");};
         { var channel = options.addClientServerChannel("ingress").enableServer("inproc://ingress-server");
             channel.addSendHandler(NoopSendHandler.class, String.class, "Noop"); };
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");node.objects().server().addSpotFactory("OutboundSpot", OutboundSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -704,7 +704,7 @@ final class SpotRuntimeFakeBackendTest {
         { var route = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "ingress"); route.setRoutingId(RoutingId.from("ingress-route"));
             route.enableServer("inproc://ingress-route");
             route.enableClient("inproc://ingress-peer"); };
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");node.objects().server().addSpotFactory("OutboundSpot", OutboundSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -737,7 +737,7 @@ final class SpotRuntimeFakeBackendTest {
             route.enableClient("inproc://egress-peer");};
         { var route = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "ingress"); route.enableServer("inproc://ingress-route");
             route.enableClient("inproc://ingress-peer"); };
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");node.objects().server().addSpotFactory("OutboundSpot", OutboundSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -765,7 +765,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var route = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "egress-a"); route.enableServer("inproc://egress-a"); };
         { var route = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "egress-b"); route.enableServer("inproc://egress-b"); };
-        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");node.addSpotFactory(OutboundSpot.class); }; };
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");node.objects().server().addSpotFactory("OutboundSpot", OutboundSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -794,7 +794,7 @@ final class SpotRuntimeFakeBackendTest {
         { var channel = options.addClientServerChannel("play-events"); channel.enableClient("inproc://play-events"); };
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://ambient-outbound-router");
-                node.addSpotFactory(AmbientOutboundSpot.class); }; };
+                node.objects().server().addSpotFactory("AmbientOutboundSpot", AmbientOutboundSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -989,7 +989,7 @@ final class SpotRuntimeFakeBackendTest {
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://entry-join-router");
                 node.enableRouter("inproc://spot-router");
-                node.addEntrySpot(LifecycleEntrySpot.class); }; };
+                node.objects().server().addEntrySpot(LifecycleEntrySpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1027,7 +1027,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://entry-reject-router");
-                node.addEntrySpot(LifecycleEntrySpot.class); }; };
+                node.objects().server().addEntrySpot(LifecycleEntrySpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1051,7 +1051,7 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://entry-actor-send-router");
-                node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(LifecycleEntrySpot.class); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1083,7 +1083,7 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://entry-actor-request-router");
-                node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(LifecycleEntrySpot.class); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1112,7 +1112,7 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://entry-interface-request-router");
-                node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(LifecycleEntrySpot.class); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1137,7 +1137,7 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://entry-shared-request-router");
-                node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(LifecycleEntrySpot.class); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1165,7 +1165,7 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://entry-interface-request-router");
-                node.addEntrySpot(InterfaceEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(InterfaceEntrySpot.class); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1197,8 +1197,8 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://entry-shared-request-router");
-                node.addEntrySpot(SharedEntrySpot.class); node.addSpotFactory(SharedUserSpot.class);
-                node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(SharedEntrySpot.class); node.objects().server().addSpotFactory("SharedUserSpot", SharedUserSpot.class, factory -> factory.disableRelocation());
+                node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1227,8 +1227,8 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://leave-during-request-router");
-                node.addSpotFactory(LeaveDuringRequestSpot.class);
-                node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addSpotFactory("LeaveDuringRequestSpot", LeaveDuringRequestSpot.class, factory -> factory.disableRelocation());
+                node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1269,7 +1269,7 @@ final class SpotRuntimeFakeBackendTest {
     void creatingSecondUserSpotOfSameTypeDoesNotDuplicateActorPacketRegistration() {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://same-type-router");
-                node.addSpotFactory(SharedUserSpot.class); }; };
+                node.objects().server().addSpotFactory("SharedUserSpot", SharedUserSpot.class, factory -> factory.disableRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1295,8 +1295,8 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://interface-user-router");
-                node.addSpotFactory(InterfaceUserSpot.class);
-                node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addSpotFactory("InterfaceUserSpot", InterfaceUserSpot.class, factory -> factory.disableRelocation());
+                node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1330,8 +1330,8 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://context-leave-router");
-                node.addEntrySpot(LifecycleEntrySpot.class);
-                node.addSpotFactory(OutboundSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(LifecycleEntrySpot.class);
+                node.objects().server().addSpotFactory("OutboundSpot", OutboundSpot.class, factory -> factory.disableRelocation()); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1371,7 +1371,7 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://entry-left-router");
-                node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(LifecycleEntrySpot.class); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -1396,8 +1396,8 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://entry-joined-router");
-                node.addEntrySpot(LifecycleEntrySpot.class);
-                node.addSpotFactory(OutboundSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(LifecycleEntrySpot.class);
+                node.objects().server().addSpotFactory("OutboundSpot", OutboundSpot.class, factory -> factory.disableRelocation()); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         String spotId = RoutingId.from("game-joined");

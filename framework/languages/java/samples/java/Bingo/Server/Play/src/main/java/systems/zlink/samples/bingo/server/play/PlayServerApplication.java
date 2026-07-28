@@ -13,7 +13,8 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActorFactory;
-import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActorTransferAdapter;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActorRelocationAdapter;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActor;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.matchmaking.RedisBingoMatchQueue;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSettingsInitializer;
@@ -59,12 +60,19 @@ public final class PlayServerApplication {
                 .setRoutingIdAllocationGroup(SampleNames.PlayAllocationGroup);
             node.channelName(SampleNames.ApiChannel).setWeight(0);
             node.channelName(SampleNames.RoomSpotDiscovery);
-            node.addEntrySpot(BingoEntrySpot.class);
-            node.addSpotFactory(BingoRoomSpot.class);
-            node.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);
-            node.addActorTransferAdapter(
-                SampleNames.PlayerActorType,
-                PlayerActorTransferAdapter.class);
+            node.objects()
+                .server()
+                .addEntrySpot(BingoEntrySpot.class)
+                .addSpotFactory(
+                    "bingo.room",
+                    BingoRoomSpot.class,
+                    factory -> factory.disableRelocation())
+                .addActorFactory(
+                    SampleNames.PlayerActorType,
+                    PlayerActor.class,
+                    PlayerActorFactory.class,
+                    factory -> factory.preserveStateWith(
+                        PlayerActorRelocationAdapter.class));
         };
     }
 

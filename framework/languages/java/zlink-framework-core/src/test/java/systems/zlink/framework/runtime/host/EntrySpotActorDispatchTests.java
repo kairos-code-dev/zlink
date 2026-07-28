@@ -177,11 +177,18 @@ final class EntrySpotActorDispatchTests {
         options.setDefaultRequestTimeout(Duration.ofSeconds(1));
         options.addHandlersFromPackageOf(EntrySpotActorDispatchTests.class);
         options.configureDispatch().setMessageFlowObserver(new CapturingFlowObserver());
-        var node = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "entry");
+        var node = systems.zlink.framework.runtime.internal.configuration
+            .ZLinkLegacyTopology.addSpotMesh(options, "entry");
         node.setRoutingId(RoutingId.from("entry-node"));
         node.enableRouter("inproc://entry-actor-dispatch");
-        node.addEntrySpot(ProbeEntrySpot.class);
-        node.addActorFactory("probe", ProbeActorFactory.class);
+        node.objects()
+            .server()
+            .addEntrySpot(ProbeEntrySpot.class)
+            .addActorFactory(
+                "probe",
+                ProbeActor.class,
+                ProbeActorFactory.class,
+                factory -> factory.disableRelocation());
         return ZLinkFrameworkRuntime.start(options, backend);
     }
 

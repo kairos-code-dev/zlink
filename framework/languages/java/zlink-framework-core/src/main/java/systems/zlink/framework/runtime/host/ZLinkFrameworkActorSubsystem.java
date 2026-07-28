@@ -68,11 +68,26 @@ final class ZLinkFrameworkActorSubsystem {
             : meshActorNode == null ? java.util.Map.<String,
                 Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>>of()
                 : meshActorNode.actorFactories();
-        var transferAdapters = legacyActorNode != null
-            ? legacyActorNode.actorTransferAdapters()
-            : meshActorNode == null ? java.util.Map.<String,
-                Class<? extends systems.zlink.framework.actors.ZLinkActorTransferAdapter<?>>>of()
-                : meshActorNode.actorTransferAdapters();
+        java.util.Map<String, Class<? extends
+            systems.zlink.framework.actors.ZLinkActorRelocationAdapter<?>>>
+            transferAdapters = new java.util.LinkedHashMap<>();
+        if (meshActorNode != null) {
+            meshActorNode.relocatableActorFactories().forEach(
+                (stableType, factory) -> {
+                    if (factory.relocationPolicy()
+                        instanceof systems.zlink.framework.runtime.internal
+                            .configuration.ZLinkObjectFactoryRegistration
+                            .RelocationPolicy.PreserveState preserveState) {
+                        @SuppressWarnings("unchecked")
+                        Class<? extends systems.zlink.framework.actors
+                            .ZLinkActorRelocationAdapter<?>> adapter =
+                            (Class<? extends systems.zlink.framework.actors
+                                .ZLinkActorRelocationAdapter<?>>)
+                                preserveState.adapterClass();
+                        transferAdapters.put(stableType, adapter);
+                    }
+                });
+        }
         ZLinkActorRuntime actors = spots != null && actorNodeName != null
             ? new ZLinkActorRuntime(
                 spots.node(actorNodeName),

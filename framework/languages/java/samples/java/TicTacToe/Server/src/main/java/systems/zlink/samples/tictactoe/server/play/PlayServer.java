@@ -8,7 +8,8 @@ import systems.zlink.samples.tictactoe.server.configuration.SampleLogging;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.configuration.PlaySettings;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActorFactory;
-import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActorTransferAdapter;
+import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActorRelocationAdapter;
+import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActor;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.handlers.CreateGameHandler;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.PlayEntrySpot;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.TicTacToeGame;
@@ -45,10 +46,19 @@ public final class PlayServer {
                 .setRoutingIdPrefix("tictactoe-play");
             node.channelName(SampleNames.PlayNode);
             node.peerConnections().connect(settings.peerSpotEndpoint());
-            node.addEntrySpot(PlayEntrySpot.class);
-            node.addSpotFactory(TicTacToeGame.class);
-            node.addActorFactory(SampleNames.PlayActor, PlayActorFactory.class);
-            node.addActorTransferAdapter(SampleNames.PlayActor, PlayActorTransferAdapter.class);
+            node.objects()
+                .server()
+                .addEntrySpot(PlayEntrySpot.class)
+                .addSpotFactory(
+                    "tictactoe.game",
+                    TicTacToeGame.class,
+                    factory -> factory.disableRelocation())
+                .addActorFactory(
+                    SampleNames.PlayActor,
+                    PlayActor.class,
+                    PlayActorFactory.class,
+                    factory -> factory.preserveStateWith(
+                        PlayActorRelocationAdapter.class));
             options.addStreamNode(SampleNames.PlayStream)
                 .bind(settings.playEndpoint())
                 .enableActorDispatch(SampleNames.SpotMesh)

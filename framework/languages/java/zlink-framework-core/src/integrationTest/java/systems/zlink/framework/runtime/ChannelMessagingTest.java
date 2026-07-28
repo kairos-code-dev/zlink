@@ -978,7 +978,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(sourceOptions, "game");
             { var node = mesh;
                 node.enableRouter(sourceSpotEndpoint)
-                    .setRoutingId(RoutingId.from("spot-egress-source-node"));node.addSpotFactory(OutboundChannelSpot.class); }; };
+                    .setRoutingId(RoutingId.from("spot-egress-source-node"));node.objects().server().addSpotFactory("OutboundChannelSpot", OutboundChannelSpot.class, factory -> factory.disableRelocation()); }; };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.addLocationStore(locations);
@@ -993,7 +993,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
             { var node = mesh;
                 node.enableRouter(targetSpotEndpoint)
                     .setRoutingId(SPOT_EGRESS_TARGET_NODE_RID);
-                node.addSpotFactory(RemoteStateSpot.class); }; };
+                node.objects().server().addSpotFactory("RemoteStateSpot", RemoteStateSpot.class, factory -> factory.disableRelocation()); }; };
 
         try (ZLinkFrameworkRuntime source =
                  RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());

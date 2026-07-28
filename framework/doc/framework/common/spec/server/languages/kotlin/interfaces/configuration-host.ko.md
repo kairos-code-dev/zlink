@@ -32,13 +32,15 @@ Object Client에도 RouteMesh Channel Server를 등록할 수 있지만 applicat
 수 없다. Object Client RID를 Node direct target으로 지정하면 다른 RID로 바꾸지 않고 not-found로 끝낸다.
 
 `ZLinkFrameworkOptions.addLocationStore(...)`와 `addRelocationStore(...)`는 Java public member를 그대로 사용한다.
-`RECREATE` 또는 `SNAPSHOT` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있으면 Relocation Store를
-정확히 하나 등록해야 하며 missing·duplicate는 socket bind 전에 configuration error다. [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가
-없고 `DISABLED` factory와 same-node join만 사용하는 host에는 Relocation Store가 필수가 아니다. 두 capability를
-묶는 Kotlin DSL이나 Redis 전용 registration helper는 제공하지 않는다.
-완료 가능한 모든 cross-node Actor·[Spot](../../../../01-glossary.ko.md#spot) 이동은 Relocation Store를 사용한다. `RECREATE`도 accepted journal과 recovery
-payload를 저장하며 `SNAPSHOT`은 application state를 추가로 저장한다. Same-node Actor join은 Relocation payload를
-만들지 않고, `DISABLED` cross-node 이동은 capture 전에 거부한다.
+`recreateOnRelocation()` 또는 `preserveStateWith(...)`를 선택한 factory가 하나라도 있거나 Instance Spot
+factory가 하나라도 있으면 Relocation Store를 정확히 하나 등록해야 한다. Missing·duplicate registration은
+socket bind 전에 configuration error다. [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 없고
+`disableRelocation()`만 선택한 same-node 구성에는 Relocation Store가 필수가 아니다. 두 capability를 묶는
+Kotlin DSL이나 Redis 전용 registration helper는 제공하지 않는다.
+완료 가능한 모든 cross-node Actor·[Spot](../../../../01-glossary.ko.md#spot) 이동은 Relocation Store를 사용한다.
+`recreateOnRelocation()`도 accepted journal과 recovery payload를 저장하고 `preserveStateWith(...)`는 application
+state를 추가로 저장한다. Same-node Actor join은 Relocation payload를 만들지 않고,
+`disableRelocation()`을 선택한 cross-node 이동은 capture 전에 거부한다.
 
 다음 Java builder member는 Kotlin에서 property 변환 없이 같은 JVM signature로 직접 호출한다.
 
@@ -114,7 +116,7 @@ inline fun <reified TActor, reified TFactory>
           TFactory : ZLinkActorFactory
 ```
 
-`options`는 nullable이지만 `relocation`에는 default가 없다. Actor factory option에는 추가 field가 없다. Node placement
+Factory configure callback에는 default가 없다. Actor factory builder에는 relocation 동작 선택 외의 설정이 없다. Node placement
 [weight](../../../../01-glossary.ko.md#weight)는 0..10000이고 기본값은 100이다. 범위 밖 값은 startup 설정과
 runtime 변경에서 configuration error다. Channel weight와 별개이며 runtime update와 descriptor
 [snapshot](../../../../01-glossary.ko.md#snapshot)에 같은 값을 사용한다.
@@ -139,9 +141,14 @@ startup configuration error로 거부한다.
 둘 이상 호출하면 socket bind 전에 startup configuration error다. Kotlin 전용 policy value와 suspending
 adapter는 추가하지 않는다.
 
-`RecreateOnRelocation` 또는 `PreserveStateWith` factory가 하나라도 있거나 Instance Spot factory가 하나라도 등록된 Object Server는
+Framework는 receiver callback을 등록 호출 안에서 동기적으로 한 번만 실행한다. Callback이 반환된 뒤 보관한
+builder를 다시 호출하면 configuration error다. Callback이 예외를 던지면 해당 factory를 등록하지 않고 같은
+예외를 호출자에게 전달한다. `stableTypeLimit(...)`을 생략하면 node limit을 공유하며 명시한 값은
+1..`Int.MAX_VALUE`여야 한다. 0과 음수는 callback 실행 중 configuration error다.
+
+`recreateOnRelocation()` 또는 `preserveStateWith(...)`를 선택한 factory가 하나라도 있거나 Instance Spot factory가 하나라도 등록된 Object Server는
 Java root의 `addRelocationStore(...)`로 Relocation Store를 정확히 하나 등록한다. Instance Spot factory가 없고
-모든 factory가 `Disabled`인 same-node 구성만 이를 생략할 수 있다.
+모든 factory가 `disableRelocation()`을 선택한 same-node 구성만 이를 생략할 수 있다.
 
 ## Exact generated JVM signature
 

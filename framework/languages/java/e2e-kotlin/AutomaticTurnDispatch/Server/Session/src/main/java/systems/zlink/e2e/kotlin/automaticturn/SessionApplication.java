@@ -43,8 +43,14 @@ public final class SessionApplication {
             if (!playBRoute.isBlank()) {
                 mesh.peerConnections().connect(playBRoute);
             }
-            mesh.addEntrySpot(ProbeEntrySpot.class);
-            mesh.addActorFactory("probe", ProbeActorFactory.class);
+            mesh.objects()
+                .server()
+                .addEntrySpot(ProbeEntrySpot.class)
+                .addActorFactory(
+                    "probe",
+                    ProbeActor.class,
+                    ProbeActorFactory.class,
+                    factory -> factory.recreateOnRelocation());
             options.addStreamNode("gateway")
                 .bind(Env.get("streamEndpoint"))
                 .registerSession(ProbeSession.class)

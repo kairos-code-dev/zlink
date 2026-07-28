@@ -37,8 +37,13 @@ class CustomerGatewayApplication {
             val node = options.addRouteMesh(SampleNames.CustomerSpotMesh)
             node.listen(SampleTopology.CustomerSpotRouterEndpoint)
                 .useAllocatedRoutingId(16, "delivery-customer")
-            node.addEntrySpot(CustomerEntrySpot::class.java)
-            node.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory::class.java)
+            node.objects().server()
+                .addEntrySpot(CustomerEntrySpot::class.java)
+                .addActorFactory(
+                    SampleNames.CustomerActorType,
+                    CustomerActor::class.java,
+                    CustomerActorFactory::class.java,
+                ) { factory -> factory.recreateOnRelocation() }
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(SampleTopology.CustomerStreamEndpoint)
                 .enableActorDispatch(SampleNames.CustomerSpotMesh)

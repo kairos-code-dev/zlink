@@ -29,7 +29,7 @@ import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorJoinCall;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorCreateResult;
-import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
+import systems.zlink.framework.actors.ZLinkActorRelocationAdapter;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
@@ -380,7 +380,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     public ZLinkActorRuntime(
         ZLinkInternalSpotNode spotNode,
         Map<String, Class<? extends ZLinkActorFactory>> factories,
-        Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> transferAdapters,
+        Map<String, Class<? extends ZLinkActorRelocationAdapter<?>>> transferAdapters,
         Duration defaultRequestTimeout,
         ZLinkMessageSerializer serializer,
         ZLinkHandlerActivator handlerFactory,
@@ -399,7 +399,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     public ZLinkActorRuntime(
         ZLinkInternalSpotNode spotNode,
         Map<String, Class<? extends ZLinkActorFactory>> factories,
-        Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> transferAdapters,
+        Map<String, Class<? extends ZLinkActorRelocationAdapter<?>>> transferAdapters,
         Duration defaultRequestTimeout,
         Duration messageFollowDuration,
         ZLinkMessageSerializer serializer,
@@ -441,7 +441,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     public ZLinkActorRuntime(
         ZLinkInternalSpotNode spotNode,
         Map<String, Class<? extends ZLinkActorFactory>> factories,
-        Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> transferAdapters,
+        Map<String, Class<? extends ZLinkActorRelocationAdapter<?>>> transferAdapters,
         Duration defaultRequestTimeout,
         Duration messageFollowDuration,
         ZLinkMessageSerializer serializer,
@@ -994,7 +994,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                     actorType,
                     actorId,
                     context,
-                    transferState))
+                    transferState,
+                    factoryType))
             .thenApply(actor -> {
                 if (actor == null) {
                     throw new ZLinkConfigurationException(

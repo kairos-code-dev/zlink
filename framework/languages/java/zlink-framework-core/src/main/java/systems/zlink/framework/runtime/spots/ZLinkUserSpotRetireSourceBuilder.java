@@ -29,6 +29,12 @@ import systems.zlink.framework.runtime.locations.ZLinkAuthorityKeyCodec;
 import systems.zlink.framework.runtime.locations
     .ZLinkServiceAuthorityPayloadCodec;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.RelocatableActorFactory;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.RelocatableSpotFactory;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.RelocationPolicy;
 import systems.zlink.framework.spots.ZLinkSpot;
 
 /**
@@ -55,9 +61,9 @@ final class ZLinkUserSpotRetireSourceBuilder {
     private final ZLinkSpotRuntime relocationReplies;
     private final ZLinkActorSessionCoordinator actors;
     private final ZLinkRelocationAdapterRegistry adapters;
-    private final Map<String, MeshNodeRegistration.RelocatableSpotFactory<?>>
+    private final Map<String, RelocatableSpotFactory<?>>
         spotFactories;
-    private final Map<String, MeshNodeRegistration.RelocatableActorFactory<?>>
+    private final Map<String, RelocatableActorFactory<?>>
         actorFactories;
     private final ZLinkServiceAuthorityPayloadCodec spotAuthorities =
         new ZLinkServiceAuthorityPayloadCodec();
@@ -74,9 +80,9 @@ final class ZLinkUserSpotRetireSourceBuilder {
         ZLinkSpotLifecycle spots,
         ZLinkActorSessionCoordinator actors,
         ZLinkRelocationAdapterRegistry adapters,
-        Map<String, MeshNodeRegistration.RelocatableSpotFactory<?>>
+        Map<String, RelocatableSpotFactory<?>>
             spotFactories,
-        Map<String, MeshNodeRegistration.RelocatableActorFactory<?>>
+        Map<String, RelocatableActorFactory<?>>
             actorFactories) {
         this(
             meshName,
@@ -103,9 +109,9 @@ final class ZLinkUserSpotRetireSourceBuilder {
         ZLinkSpotLifecycle spots,
         ZLinkActorSessionCoordinator actors,
         ZLinkRelocationAdapterRegistry adapters,
-        Map<String, MeshNodeRegistration.RelocatableSpotFactory<?>>
+        Map<String, RelocatableSpotFactory<?>>
             spotFactories,
-        Map<String, MeshNodeRegistration.RelocatableActorFactory<?>>
+        Map<String, RelocatableActorFactory<?>>
             actorFactories,
         ZLinkSpotRuntime relocationReplies) {
         if (meshName == null || meshName.isBlank()) {
@@ -385,13 +391,13 @@ final class ZLinkUserSpotRetireSourceBuilder {
 
     private static CompletionStage<byte[]> captureState(
         String stableType,
-        MeshNodeRegistration.RelocationPolicy policy,
+        RelocationPolicy policy,
         java.util.function.Supplier<CompletionStage<byte[]>> capture) {
-        if (policy instanceof MeshNodeRegistration.RelocationPolicy.Recreate) {
+        if (policy instanceof RelocationPolicy.Recreate) {
             return CompletableFuture.completedFuture(new byte[0]);
         }
         if (policy
-            instanceof MeshNodeRegistration.RelocationPolicy.PreserveState) {
+            instanceof RelocationPolicy.PreserveState) {
             return Objects.requireNonNull(
                     capture.get(),
                     "Capture returned null")
@@ -461,7 +467,7 @@ final class ZLinkUserSpotRetireSourceBuilder {
     }
 
     private Owned withPolicy(Owned owned) {
-        MeshNodeRegistration.RelocationPolicy policy;
+        RelocationPolicy policy;
         if (owned.snapshot().allocation().objectKind()
             == ZLinkPlacementObjectKind.USER_SPOT) {
             var factory = spotFactories.get(owned.stableType());
@@ -472,7 +478,7 @@ final class ZLinkUserSpotRetireSourceBuilder {
         }
         if (policy == null
             || policy
-                instanceof MeshNodeRegistration.RelocationPolicy.Disabled) {
+                instanceof RelocationPolicy.Disabled) {
             throw new IllegalStateException(
                 "relocation policy is unavailable: " + owned.stableType());
         }
@@ -693,21 +699,21 @@ final class ZLinkUserSpotRetireSourceBuilder {
     }
 
     private static ZLinkObjectMaintenancePolicyKind policyKind(
-        MeshNodeRegistration.RelocationPolicy policy) {
+        RelocationPolicy policy) {
         if (policy
-            instanceof MeshNodeRegistration.RelocationPolicy.PreserveState) {
+            instanceof RelocationPolicy.PreserveState) {
             return ZLinkObjectMaintenancePolicyKind.SNAPSHOT;
         }
-        if (policy instanceof MeshNodeRegistration.RelocationPolicy.Recreate) {
+        if (policy instanceof RelocationPolicy.Recreate) {
             return ZLinkObjectMaintenancePolicyKind.RECREATE;
         }
         return ZLinkObjectMaintenancePolicyKind.DISABLED;
     }
 
     private static boolean isSnapshot(
-        MeshNodeRegistration.RelocationPolicy policy) {
+        RelocationPolicy policy) {
         return policy
-            instanceof MeshNodeRegistration.RelocationPolicy.PreserveState;
+            instanceof RelocationPolicy.PreserveState;
     }
 
     private static ZLinkAggregateRelocationCoordinator.Request
@@ -1083,7 +1089,7 @@ final class ZLinkUserSpotRetireSourceBuilder {
         String id,
         String stableType,
         ZLinkAuthoritySnapshot snapshot,
-        MeshNodeRegistration.RelocationPolicy policy) {
+        RelocationPolicy policy) {
     }
 
     private record Captured(

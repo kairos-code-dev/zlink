@@ -4,5 +4,6 @@ package systems.zlink.framework.runtime.internal.configuration;
 public interface ZLinkLegacyTopologyOptions {
     RouteMeshChannelBuilder addLegacyRouteMeshChannel(String channelName);
 
-    ZLinkSpotMeshBuilder addLegacySpotMesh(String meshName);
+    systems.zlink.framework.runtime.spots.SpotBuilders.Mesh addLegacySpotMesh(
+        String meshName);
 }

@@ -15,6 +15,8 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkUserSpotOperationEx
 import systems.zlink.framework.runtime.locations.ZLinkAuthorityKeyCodec;
 import systems.zlink.framework.runtime.locations.ZLinkServiceAuthorityPayloadCodec;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
+import systems.zlink.framework.runtime.internal.configuration
+    .ZLinkObjectFactoryRegistration.RelocatableSpotFactory;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6AWireCodec;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -32,7 +34,7 @@ final class ZLinkUserSpotOperationHandler
     private final ZLinkLocationStore authorityStore;
     private final ZLinkSpotLifecycle lifecycle;
     private final ZLinkMessageSerializer serializer;
-    private final Map<String, MeshNodeRegistration.RelocatableSpotFactory<?>> factories;
+    private final Map<String, RelocatableSpotFactory<?>> factories;
     private final ZLinkServiceAuthorityPayloadCodec authorities =
         new ZLinkServiceAuthorityPayloadCodec();
     private final ZLinkServiceM6AWireCodec payloads =
@@ -44,7 +46,7 @@ final class ZLinkUserSpotOperationHandler
         ZLinkLocationStore authorityStore,
         ZLinkSpotLifecycle lifecycle,
         ZLinkMessageSerializer serializer,
-        Map<String, MeshNodeRegistration.RelocatableSpotFactory<?>> factories) {
+        Map<String, RelocatableSpotFactory<?>> factories) {
         this.meshName = meshName;
         this.node = node;
         this.authorityStore = authorityStore;
@@ -447,7 +449,7 @@ final class ZLinkUserSpotOperationHandler
     private record Admission(
         ZLinkObjectReservation reservation,
         ZLinkPendingObjectCreation pending,
-        MeshNodeRegistration.RelocatableSpotFactory<?> factory) {
+        RelocatableSpotFactory<?> factory) {
     }
 
     private record CloseAttempt(boolean closed, Throwable failure) {

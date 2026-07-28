@@ -77,7 +77,12 @@ public final class Program {
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.OrderSpotDiscovery);
             node.listen(workflow.spotRouterEndpoint())
                 .useAllocatedRoutingId(16, "shoppingmall-workflow");
-            node.addSpotFactory(OrderWorkflowSpot.class);
+            node.objects()
+                .server()
+                .addSpotFactory(
+                    "shoppingmall.order-workflow",
+                    OrderWorkflowSpot.class,
+                    factory -> factory.disableRelocation());
         };
     }
 

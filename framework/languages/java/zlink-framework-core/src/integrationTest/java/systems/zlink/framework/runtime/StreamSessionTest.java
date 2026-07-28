@@ -49,7 +49,7 @@ final class StreamSessionTest {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                node.addSpotFactory(GameSpot.class); }; };
+                node.objects().server().addSpotFactory("GameSpot", GameSpot.class, factory -> factory.disableRelocation()); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway-" + System.nanoTime());
             stream.registerSession(GameSession.class); };
 
@@ -122,7 +122,7 @@ final class StreamSessionTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(StreamSessionTest.class);
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
-                node.addEntrySpot(GameEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(GameEntrySpot.class); node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
             stream.registerSession(ActorRelaySession.class); };
 
@@ -148,9 +148,9 @@ final class StreamSessionTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(StreamSessionTest.class);
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
-                node.addEntrySpot(GameEntrySpot.class);
-                node.addSpotFactory(UserSpot.class);
-                node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(GameEntrySpot.class);
+                node.objects().server().addSpotFactory("UserSpot", UserSpot.class, factory -> factory.disableRelocation());
+                node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
             stream.registerSession(ActorRelaySession.class); };
 
@@ -193,9 +193,9 @@ final class StreamSessionTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(StreamSessionTest.class);
         { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
-                node.addEntrySpot(GameEntrySpot.class);
-                node.addSpotFactory(UserSpot.class);
-                node.addActorFactory("player", PlayerActorFactory.class); }; };
+                node.objects().server().addEntrySpot(GameEntrySpot.class);
+                node.objects().server().addSpotFactory("UserSpot", UserSpot.class, factory -> factory.disableRelocation());
+                node.objects().server().addActorFactory("player", PlayerActor.class, PlayerActorFactory.class, factory -> factory.recreateOnRelocation()); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
             stream.registerSession(ActorRelaySession.class); };
 

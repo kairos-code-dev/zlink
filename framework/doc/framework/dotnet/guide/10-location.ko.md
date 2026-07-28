@@ -72,8 +72,7 @@ services.AddZLinkFramework(options =>
     play.Objects().Server()
         .AddSpotFactory<RoomSpot>(
             "room",
-            new ZLinkUserSpotFactoryOptions(),
-            ZLinkRelocationPolicy<RoomSpot>.Recreate);
+            factory => factory.RecreateOnRelocation());
 
     play.Channel("play.ops").Server()
         .AddRequestHandler<NodeStatusHandler, GetNodeStatus, NodeStatus>();

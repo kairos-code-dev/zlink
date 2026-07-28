@@ -61,15 +61,13 @@ services.AddZLinkFramework(options =>
     play.Objects().Server()
         .AddSpotFactory<RoomSpot>(
             "room",
-            new ZLinkUserSpotFactoryOptions
-            {
-                ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide
-            },
-            ZLinkRelocationPolicy<RoomSpot>.Snapshot<RoomRelocationAdapter>())
+            factory => factory
+                .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+                .PreserveStateWith<RoomRelocationAdapter>())
         .AddActorFactory<PlayerActor, PlayerActorFactory>(
             "player",
-            new ZLinkActorFactoryOptions(),
-            ZLinkRelocationPolicy<PlayerActor>.Snapshot<PlayerRelocationAdapter>());
+            factory => factory
+                .PreserveStateWith<PlayerRelocationAdapter>());
 
     play.Channel("play.api").Server()
         .SetWeight(100)

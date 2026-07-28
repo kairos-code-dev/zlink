@@ -248,7 +248,8 @@ node.Listen("tcp://0.0.0.0:9001");
 node.Channel("game.room").Server();     // mesh는 최소 1개 logical membership을 갖는다
 node.Objects().Server()
     .AddSpotFactory<BingoRoomSpot>(
-        "room", null, ZLinkRelocationPolicy<BingoRoomSpot>.Recreate);
+        "room",
+        factory => factory.RecreateOnRelocation());
 ```
 
 ```csharp

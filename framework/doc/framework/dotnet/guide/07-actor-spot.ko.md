@@ -23,18 +23,17 @@ mesh.Objects().Server()
     .AddEntrySpot<PlayEntrySpot>()
     .AddActorFactory<PlayerActor, PlayerActorFactory>(
         "player",
-        null,
-        ZLinkRelocationPolicy<PlayerActor>
-            .Snapshot<PlayerActorRelocationAdapter>());
+        factory => factory
+            .PreserveStateWith<PlayerActorRelocationAdapter>());
 ```
 
 Relocation policy는 다음 중 하나다.
 
 | policy | 다른 node에서 만드는 방법 |
 |---|---|
-| `Disabled` | cross-node 이동을 시작하기 전에 거절한다. |
-| `Recreate` | 같은 logical identity로 새 instance를 만들고 application state는 복원하지 않는다. |
-| `Snapshot<TAdapter>()` | adapter가 저장한 `byte[]`를 새 instance에 복원한다. |
+| `DisableRelocation()` | cross-node 이동을 시작하기 전에 거절한다. |
+| `RecreateOnRelocation()` | 같은 logical identity로 새 instance를 만들고 application state는 복원하지 않는다. |
+| `PreserveStateWith<TAdapter>()` | adapter가 저장한 `byte[]`를 새 instance에 복원한다. |
 
 ## 2. Actor 만들기
 

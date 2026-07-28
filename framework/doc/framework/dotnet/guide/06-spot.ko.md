@@ -37,15 +37,12 @@ mesh.Objects().Server()
     .AddEntrySpot<PlayEntrySpot>() // Actor가 처음 배치될 Entry Spot을 등록한다.
     .AddSpotFactory<GameRoom>(
         "game-room",
-        new ZLinkUserSpotFactoryOptions
-        {
-            ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide
-        },
-        ZLinkRelocationPolicy<GameRoom>.Disabled)
+        factory => factory
+            .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+            .DisableRelocation())
     .AddInstanceSpotFactory<Matchmaker>(
         "matchmaker",
-        null,
-        ZLinkRelocationPolicy<Matchmaker>.Recreate);
+        factory => factory.RecreateOnRelocation());
 ```
 
 User Spot 실행 모드는 다음과 같이 선택한다.
@@ -56,7 +53,7 @@ User Spot 실행 모드는 다음과 같이 선택한다.
 | `PerActor` | Actor마다 직렬 실행 순서를 유지한다. Spot 자체는 stateless shell로 사용한다. |
 
 `PerActor` Spot의 공유 상태와 Spot-level schedule은 Redis나 database 같은 외부 저장소에 둔다.
-Factory relocation policy는 `Recreate`만 사용할 수 있다.
+Factory relocation 방식은 `RecreateOnRelocation()`만 사용할 수 있다.
 
 ## 3. User Spot 만들기
 
@@ -203,11 +200,14 @@ await Context.AddTimer<HeartbeatHandler>(
 application만 안전한 경계를 아는 Spot은 `ApplicationSignaled`를 등록한다.
 
 ```csharp
-new ZLinkUserSpotFactoryOptions
-{
-    ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide,
-    RelocationReadiness = ZLinkSpotRelocationReadinessMode.ApplicationSignaled
-}
+mesh.Objects().Server()
+    .AddSpotFactory<GameRoom>(
+        "game-room",
+        factory => factory
+            .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+            .RelocationReadiness(
+                ZLinkSpotRelocationReadinessMode.ApplicationSignaled)
+            .PreserveStateWith<GameRoomRelocationAdapter>());
 ```
 
 안전한 turn의 마지막 Framework operation으로 `Defer()`를 호출한다. 이동이 없거나 commit 전에

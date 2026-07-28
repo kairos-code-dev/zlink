@@ -7160,3 +7160,20 @@ Location Store에 publish된 authority와 recovery candidate를 대조해 확인
 - .NET UnitTests: 1,264/1,264
 - .NET ContractTests: 70/70
 - .NET solution build: warning 0, error 0
+
+#### Final review 보강
+
+Startup identity 검증에 source fence를 직접 전달한다. Remote Join의 `HandoffId`는 `N` 형식
+GUID로 해석한 뒤 envelope aggregate ID와 같아야 한다. Request의 source Node RID도 canonical
+participant에 저장된 source fence의 Node RID와 같아야 한다. Aggregate ID나 source node가
+바뀌면 application callback 전에 `DataLost`와 `DoNotRetry`로 종료한다.
+
+Completion codec의 최대 encoded 크기는 실제 public 값 범위로 다시 계산했다. Actor ID 255
+bytes, Mesh 이름과 content type 각각 65,535 bytes, Node RID 255 bytes, reply 1 MiB와 모든
+fixed-width field를 포함한다. 최대값을 동시에 사용한 encode·decode boundary test를 추가했다.
+
+- `ActorRelocationProtocolTests` + `DeferredActorJoinDurabilityTests`: 14/14
+- source aggregate ID와 source Node RID corruption test: 통과
+- maximum completion reply·metadata boundary test: 통과
+- .NET solution build: warning 0, error 0
+- scoped `git diff --check`: 통과

@@ -630,17 +630,25 @@ internal static class ZLinkDeferredJoinCompletionCodec
 {
     private const uint Magic = 0x5a4c4a43; // ZLJC
     private const byte Version = 2;
+    private const int MaximumActorIdBytes = 255;
     private const int MaximumReplyBytes = 1024 * 1024;
     private const int MaximumEncodedBytes =
         MaximumReplyBytes
-        + 3 * (sizeof(ushort) + ushort.MaxValue)
+        + sizeof(ushort) + MaximumActorIdBytes
+        + 2 * (sizeof(ushort) + ushort.MaxValue)
         + sizeof(byte) + byte.MaxValue
         + 4 * sizeof(ulong)
-        + sizeof(uint) + 4 * sizeof(byte);
+        + sizeof(uint) + sizeof(int) + 3 * sizeof(byte);
 
     internal static byte[] Encode(ZLinkDeferredJoinCompletionRecord value)
     {
-        if (value.Reply.Length > MaximumReplyBytes)
+        if (!string.Equals(
+                value.ActorId,
+                value.Actor.ActorId,
+                StringComparison.Ordinal)
+            || Encoding.UTF8.GetByteCount(value.ActorId)
+               > MaximumActorIdBytes
+            || value.Reply.Length > MaximumReplyBytes)
             throw new InvalidDataException();
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);

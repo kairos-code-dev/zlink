@@ -8,6 +8,47 @@ namespace Zlink.Framework.UnitTests.Runtime;
 public sealed class DeferredActorJoinDurabilityTests
 {
     [Fact]
+    public void Completion_codec_accepts_maximum_reply_and_metadata()
+    {
+        var maximumString = new string('a', ushort.MaxValue);
+        var maximumActorId = new string('a', 255);
+        var maximumRoutingId = RoutingId.From(
+            Enumerable.Repeat((byte)0x5a, byte.MaxValue).ToArray());
+        var maximumReply = new byte[1024 * 1024];
+        var record = new ZLinkDeferredJoinCompletionRecord(
+            maximumActorId,
+            7,
+            new ZLinkActorJoinOperationId(11, 13),
+            new ActorRef(
+                maximumActorId,
+                7,
+                maximumString,
+                maximumRoutingId),
+            maximumString,
+            maximumReply,
+            ZLinkDeferredJoinCompletionCursor.Delivered);
+
+        var encoded = ZLinkDeferredJoinCompletionCodec.Encode(record);
+        var decoded = ZLinkDeferredJoinCompletionCodec.Decode(encoded);
+
+        Assert.Equal(
+            1024 * 1024
+            + sizeof(ushort) + 255
+            + 2 * (sizeof(ushort) + ushort.MaxValue)
+            + sizeof(byte) + byte.MaxValue
+            + 4 * sizeof(ulong)
+            + sizeof(uint) + sizeof(int) + 3 * sizeof(byte),
+            encoded.Length);
+        Assert.Equal(record.ActorId, decoded.ActorId);
+        Assert.Equal(record.ObjectGeneration, decoded.ObjectGeneration);
+        Assert.Equal(record.OperationId, decoded.OperationId);
+        Assert.Equal(record.Actor, decoded.Actor);
+        Assert.Equal(record.ReplyContentType, decoded.ReplyContentType);
+        Assert.Equal(record.Reply.ToArray(), decoded.Reply.ToArray());
+        Assert.Equal(record.Cursor, decoded.Cursor);
+    }
+
+    [Fact]
     public async Task Completion_publication_preserves_the_canonical_relocation_participant()
     {
         var authority = CreateAuthority();

@@ -25,6 +25,11 @@ public sealed class ActorRelocationProtocolTests
             }
         };
         var key = ZLinkActorAuthorityPayloadCodec.AuthorityKey("actor-1");
+        var sourceFence = new ZLinkActorRelocationSourceFence(
+            "source-owner",
+            3,
+            RoutingId.From("source-node"),
+            7);
         var canonical = new ZLinkCanonicalParticipantRecovery(
             key,
             ZLinkPlacementObjectKind.Actor,
@@ -62,6 +67,7 @@ public sealed class ActorRelocationProtocolTests
             candidate,
             participant,
             canonical,
+            sourceFence,
             recovery);
 
         var wrongDigest = new byte[32];
@@ -76,21 +82,25 @@ public sealed class ActorRelocationProtocolTests
             },
             participant,
             canonical,
+            sourceFence,
             recovery);
         AssertDataLost(
             candidate,
             participant with { AuthorityOwnerGeneration = 4 },
             canonical,
+            sourceFence,
             recovery);
         AssertDataLost(
             candidate,
             participant,
             canonical with { StableType = "mage" },
+            sourceFence,
             recovery);
         AssertDataLost(
             candidate,
             participant,
             canonical,
+            sourceFence,
             recovery with
             {
                 Request = recovery.Request with
@@ -98,11 +108,37 @@ public sealed class ActorRelocationProtocolTests
                     RelocationReference = "substituted-root"
                 }
             });
+        AssertDataLost(
+            candidate,
+            participant,
+            canonical,
+            sourceFence,
+            recovery with
+            {
+                Request = recovery.Request with
+                {
+                    HandoffId = "11111111222243338444555555555555"
+                }
+            });
+        AssertDataLost(
+            candidate,
+            participant,
+            canonical,
+            sourceFence,
+            recovery with
+            {
+                Request = recovery.Request with
+                {
+                    SourceNodeRid =
+                        RoutingId.From("other-source").ToBytes().ToArray()
+                }
+            });
 
         static void AssertDataLost(
             ZLinkRelocationRecoveryCandidate candidate,
             ZLinkRelocationParticipantEnvelope participant,
             ZLinkCanonicalParticipantRecovery canonical,
+            ZLinkActorRelocationSourceFence sourceFence,
             ZLinkActorRelocationRecoveryRecord recovery)
         {
             var error = Assert.Throws<ZLinkFrameworkException>(() =>
@@ -110,6 +146,7 @@ public sealed class ActorRelocationProtocolTests
                 candidate,
                 participant,
                 canonical,
+                sourceFence,
                 recovery));
 
             Assert.Equal(ZLinkFrameworkErrorKind.DataLost, error.Kind);

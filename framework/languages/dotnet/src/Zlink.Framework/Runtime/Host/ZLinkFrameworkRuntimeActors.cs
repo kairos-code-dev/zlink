@@ -1269,6 +1269,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 candidate,
                 participant,
                 canonical,
+                sourceFence,
                 recovery,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -1304,6 +1305,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkRelocationRecoveryCandidate candidate,
         ZLinkRelocationParticipantEnvelope participant,
         ZLinkCanonicalParticipantRecovery canonical,
+        ZLinkActorRelocationSourceFence sourceFence,
         ZLinkActorRelocationRecoveryRecord recovery,
         CancellationToken cancellationToken)
     {
@@ -1314,6 +1316,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             candidate,
             participant,
             canonical,
+            sourceFence,
             recovery);
         var matchingAuthorities = candidate.Authorities
             .Where(entry => entry.Key == actorKey)
@@ -1434,11 +1437,30 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkRelocationRecoveryCandidate candidate,
         ZLinkRelocationParticipantEnvelope participant,
         ZLinkCanonicalParticipantRecovery canonical,
+        ZLinkActorRelocationSourceFence sourceFence,
         ZLinkActorRelocationRecoveryRecord recovery)
     {
         var wire = recovery.Request;
         var actorKey =
             ZLinkActorAuthorityPayloadCodec.AuthorityKey(wire.ActorId);
+        var handoffMatches = Guid.TryParseExact(
+                                 wire.HandoffId,
+                                 "N",
+                                 out var handoffId)
+                             && handoffId
+                             == candidate.Envelope.AggregateId;
+        RoutingId sourceNodeRid;
+        try
+        {
+            sourceNodeRid = RoutingId.From(wire.SourceNodeRid);
+        }
+        catch (Exception error) when (error is ArgumentException)
+        {
+            throw RemoteJoinRecoveryMismatch(
+                wire.ActorId,
+                "source node identity",
+                error);
+        }
         if (participant.AuthorityKey != actorKey
             || participant.ObjectKind != ZLinkPlacementObjectKind.Actor
             || participant.ObjectGeneration != wire.ActorGeneration
@@ -1464,6 +1486,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                != candidate.Envelope.AggregateGeneration
             || wire.RelocationInventoryDigest.Length != 32
             || wire.RelocationInventoryDigest.Any(static value => value != 0)
+            || !handoffMatches
+            || sourceNodeRid != sourceFence.NodeRid
             || candidate.Envelope.AggregateId
                != candidate.Reference.AggregateId
             || candidate.Envelope.AggregateGeneration
@@ -1477,11 +1501,13 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     private static ZLinkFrameworkException RemoteJoinRecoveryMismatch(
         string actorId,
-        string field) =>
+        string field,
+        Exception? error = null) =>
         new(
             ZLinkFrameworkErrorKind.DataLost,
             $"Actor '{actorId}' canonical Join recovery mismatches its {field}.",
-            retryAdvice: ZLinkRetryAdvice.DoNotRetry);
+            retryAdvice: ZLinkRetryAdvice.DoNotRetry,
+            innerException: error);
 
     internal void ScheduleDeferredJoinCompletionRecovery(
         ZLinkActorRuntimeState actorState)

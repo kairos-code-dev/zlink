@@ -32,6 +32,8 @@ int main (int argc, char **argv)
           .trace_label (options.trace_label);
         auto channel = framework.add_client_server_channel (rm::api_channel);
         auto client = channel.client ();
+        framework.add_client_server_channel (rm::workflow_channel)
+          .client ();
         if (!options.redis_endpoint.empty ()) {
             rm::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
         }
@@ -48,6 +50,8 @@ int main (int argc, char **argv)
               .map_get<rm::peer_locations_handler_t> ("/locations/peers")
               .map_post<rm_consumer::batch_request_handler_t> ("/profile/batch-request")
               .map_post<rm_consumer::profile_request_handler_t> ("/profile/request")
+              .map_post<rm_consumer::workflow_request_handler_t> (
+                "/workflow/request")
               .map_post<rm_consumer::slow_request_handler_t> ("/profile/slow-request")
               .map_post<rm_consumer::missing_request_handler_t> ("/profile/missing-request")
               .map_post<rm_consumer::missing_command_handler_t> ("/profile/missing-command")

@@ -42,6 +42,21 @@ inline payload_res_t request_payload (zlink::framework::channel_client_t &channe
                                              : "payload request failed");
 }
 
+inline workflow_res_t request_workflow (
+  zlink::framework::channel_client_t &channels,
+  const workflow_req_t &request)
+{
+    auto call = channels.request (workflow_channel, request)
+                  .timeout (std::chrono::milliseconds (3000))
+                  .submit<workflow_res_t> ();
+    const auto &reply = call.result ();
+    if (reply)
+        return reply.value ();
+    throw std::runtime_error (
+      reply.error () ? reply.error ()->what ()
+                     : "workflow request failed");
+}
+
 class batch_request_handler_t
 {
   public:
@@ -84,6 +99,30 @@ class profile_request_handler_t
     profile_res_t handle (const profile_req_t &request)
     {
         return request_profile (_channels, request, std::chrono::milliseconds (3000));
+    }
+
+  private:
+    zlink::framework::channel_client_t &_channels;
+};
+
+class workflow_request_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<
+        zlink::framework::channel_client_t>;
+    using request_type = workflow_req_t;
+    using reply_type = workflow_res_t;
+
+    explicit workflow_request_handler_t (
+      zlink::framework::channel_client_t &channels) :
+        _channels (channels)
+    {
+    }
+
+    workflow_res_t handle (const workflow_req_t &request)
+    {
+        return request_workflow (_channels, request);
     }
 
   private:

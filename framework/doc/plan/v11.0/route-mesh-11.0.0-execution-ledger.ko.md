@@ -6731,6 +6731,29 @@ current source에는 두 public surface가 없다. Fixed RouteMesh RID 또는 Lo
 query를 evidence로 사용하지 않는다. 따라서 public messaging subflow만 통과로 기록하고 전체
 `RM-A4`는 public-contract implementation gap으로 유지한다.
 
+## 2026-07-29 C++ Config 1 RM-A6 public messaging 증거
+
+C++ `RM-A6` fixture를 같은 Location Store와 persistent Consumer 하나를 사용하는 구성으로
+수정했다. Consumer는 `api`와 `workflow` ClientServer client role을 함께 등록한다. Provider 자체의
+HTTP endpoint로 각 local Server를 호출하던 이전 fixture는 channel 격리를 검증하지 못하므로
+사용하지 않는다.
+
+- Actual 증거는
+  `framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-045601-1343518`이다.
+- Consumer의 `api` request는 api Provider reply와 evidence에만 기록됐다.
+- Consumer의 `workflow` request는 workflow Provider reply와 evidence에만 기록됐다. 양쪽 evidence를
+  대조해 반대 ChannelName payload가 섞이지 않았음을 확인했다.
+- `api-b` process를 종료한 뒤 남은 `api-a` request와 workflow request가 모두 성공했다.
+- Workflow Provider process를 종료한 뒤에도 같은 Consumer의 `api-a` request가 성공했다.
+- Client·Consumer target build, runner syntax, `git diff --check`와 actual runner exit code 0을
+  확인했다. 의미 request 재시도와 private Store 조회는 없다.
+
+Canonical `RM-A6`의 MeshName별 status sequence와 ready target count 검증은 남아 있다. Exact C++
+문서의 `client_server_runtime_t`가 current source에 구현되어 있지 않다. 별도 RouteMesh status나
+Location Store provider query는 ClientServer status의 대체 evidence가 아니므로 사용하지 않는다.
+Public messaging 격리 subflow만 통과로 기록하고 전체 row는 public status implementation gap으로
+유지한다.
+
 ## 2026-07-29 Node.js Config 2 SM-F3 actual-process 증거
 
 `SM-F3` fixture는 fixed Node RID를 사용하지 않는다. Spot 생성 결과가 반환한 owner RID를
@@ -6826,3 +6849,51 @@ ST-A1·A2·A3·B1·B3·B4 묶음 실행은 기존 ST-A1 public authority commit 
 `steady_normalized`, `ready`, `admission_open`처럼 public application·provider 경계에서 직접
 구분할 수 없는 private phase의 전체 순서는 이 checkpoint로 완료를 주장하지 않는다. Private hook,
 reflection, raw frame, retry와 timeout 확대는 추가하지 않았다.
+
+## 2026-07-29 .NET Config 12 CH-E2E-02 actual-process 증거
+
+ChannelEgressRouting의 기존 selector를 current `ZLinkHttpClient`와 typed config runner로
+실행했다. Session의 RouteMesh handler가 `audit.record` one-way를 먼저 제출하고
+`workflow.command` ClientServer request를 이어서 실행한다. 원래 reply는 audit와
+선택된 workflow server 결과를 순서대로 보존했다.
+
+Actual-process 증거는
+`framework/languages/dotnet/e2e/ChannelEgressRouting/logs/20260729-045524-1297423`이다.
+Server와 Client build는 warning 0, error 0이며 runner exit code는 0이다.
+
+## 2026-07-29 .NET Config 12 CH-E2E-10 actual-process 증거
+
+Result-free ClientServer send를 public call로 제출했다. Weight가 양수인 두 Server가
+선택 구간에서 handler를 각각 실행했고, 두 process의 handler 합계는 제출 수와
+정확히 일치했다. Subscriber별 처리 결과를 terminal 값으로 반환하지 않는다.
+
+Actual-process 증거는
+`framework/languages/dotnet/e2e/ChannelEgressRouting/logs/20260729-045617-1359918`이다.
+
+## 2026-07-29 .NET Config 12 CH-E2E-11 actual-process 증거
+
+Session process가 target RID와 endpoint를 받지 않고 `game.api` ChannelName만 사용해
+remote Api request와 send를 처리했다. 선택한 remote handler의 reply와 evidence를
+확인했으며 Node direct 경로로 우회하지 않았다.
+
+Actual-process 증거는
+`framework/languages/dotnet/e2e/ChannelEgressRouting/logs/20260729-045637-1365103`이다.
+
+## 2026-07-29 .NET Config 12 CH-REG-01 actual-process 증거
+
+Session과 Play가 같은 RouteMesh의 서로 다른 ChannelName으로 양방향 request를 실행했다.
+각 handler는 요청이 들어온 ChannelName과 reply context를 보존했으며, ClientServer나
+Node direct 경로로 바뀌지 않았다.
+
+Actual-process 증거는
+`framework/languages/dotnet/e2e/ChannelEgressRouting/logs/20260729-045702-1376921`이다.
+
+## 2026-07-29 .NET Config 12 CH-E2E-06 actual-process 증거
+
+두 startup validation을 별도 child process에서 실행했다. RouteMesh와 ClientServer가
+같은 ChannelName을 등록한 경우와 동일한 ClientServer Client 역할을 두 번 등록한 경우
+모두 socket bind 전에 configuration error로 종료됐다.
+
+Actual-process 증거는
+`framework/languages/dotnet/e2e/ChannelEgressRouting/logs/20260729-045555-1335584`이다.
+Server와 Client build는 warning 0, error 0이며 runner exit code는 0이다.

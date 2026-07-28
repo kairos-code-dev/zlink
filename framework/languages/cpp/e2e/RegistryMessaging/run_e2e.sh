@@ -808,7 +808,21 @@ if [[ "$SCENARIO" == "RM-A6" || "$SCENARIO" == "rm-a6" ]]; then
   API_B_PID="$LAST_PID"
   start_workflow_provider workflow-a "$WORKFLOW_A"
   WORKFLOW_A_PID="$LAST_PID"
-  run_client rm-a6 rm-a6
+  start_consumer store-consumer "$HTTP_STORE_CONSUMER" "" "$REDIS_ENDPOINT"
+  STORE_CONSUMER_PID="$LAST_PID"
+  READY="$LOG_DIR/rm-a6-ready"
+  CONTINUE="$LOG_DIR/rm-a6-continue"
+  run_client rm-a6 rm-a6 \
+    readyFile="$READY" \
+    continueFile="$CONTINUE" &
+  A6_CLIENT_PID="$!"
+  wait_marker "$READY"
+  stop_pid "$API_B_PID"
+  touch "$CONTINUE"
+  wait_marker "$READY.workflow"
+  stop_pid "$WORKFLOW_A_PID"
+  touch "$CONTINUE.workflow"
+  wait "$A6_CLIENT_PID"
   cat "$LOG_DIR/client-rm-a6.stdout.log"
   exit 0
 fi

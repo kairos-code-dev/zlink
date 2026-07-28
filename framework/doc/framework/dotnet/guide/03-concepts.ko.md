@@ -10,35 +10,9 @@
 
 ZLink framework는 **다섯 가지 핵심 개념**으로 선다:
 **channel · spot · actor · stream · location**. 나머지 챕터는 전부 이
-다섯의 변주다. 낯선 단어가 나오면 먼저 §0 용어 표에서 한 줄로 잡고, §1~§5에서 다섯
-개념을 차례로 본다. §6은 이들을 받치는 실행·구성 모델이다.
-
-## 0. 용어 빠르게 잡기
-
-가이드에 자주 나오는 용어를 **한 줄 풀이**로 먼저 잡는다. 다른 챕터에서 낯선 단어가
-나오면 이 표로 돌아오면 된다(정식 정의는 위 spec 링크가 다룬다).
-
-| 용어 | 한 줄 풀이 |
-|------|-----------|
-| **channel(채널)** | 서버 간 호출을 묶는 **논리 이름**. `host:port` 주소 대신 `"orders"` 같은 이름으로 부른다 |
-| **membership** | MeshNode가 특정 `ChannelName`의 요청 처리 대상임을 나타내는 등록 정보 |
-| **handler(핸들러)** | 들어온 메시지를 처리하는 메서드·클래스. `ASP.NET Core`의 컨트롤러 액션과 같은 위치 |
-| **client(클라이언트)** | 다른 노드나 channel로 호출을 **보내는** 주입 객체(예: `IZLinkRouteClient`) |
-| **request / send / publish** | 각각 **응답 받는 호출** / **응답 없는 단방향 통지** / **여러 구독자에게 발행** |
-| **pub/sub · fan-out** | 한 번 발행한 이벤트가 **여러 구독자에게 동시에 퍼지는** 것 |
-| **packet name(패킷 이름)** | 같은 channel 안에서 **어느 메시지 종류인지** 구분하는 키 |
-| **codec(코덱)** | payload(메시지 본문)를 바이트로 **직렬화/역직렬화**하는 방식(json·protobuf·messagepack) |
-| **SPOT(스팟)** | room/zone처럼 **동적으로 생성되고 제거되는 상태 단위**. 한 SPOT의 콜백은 **한 줄로 직렬** 실행돼 lock이 필요 없다 |
-| **actor(액터)** | **ID로 식별되는 상태 보유 객체**. 같은 ID로 온 메시지는 늘 같은 인스턴스가 처리 |
-| **Entry Spot** | actor가 생성 직후 머무는 **기본 실행 위치** |
-| **STREAM(스트림)** | 외부 client(모바일·게임)와의 **연결 지향 양방향 채널**. 연결 수명·재연결을 framework가 관리 |
-| **session(세션)** | STREAM 연결 하나에 대응하는 **서버 측 객체** |
-| **location store(위치 저장소)** | channel·SPOT 같은 논리 이름을 실제 endpoint로 풀기 위한 외부 저장소 |
-| **RoutingId** | 노드·스팟의 **논리 주소**(특정 인스턴스를 가리키는 식별자) |
-| **correlation(상관)** | 요청과 그 응답을 **짝지어 주는** 식별 정보. framework가 자동 처리 |
-| **deadline / timeout** | 응답을 **얼마나 기다릴지**의 상한 시간 |
-| **DI / lifecycle** | `ASP.NET Core` 의존성 주입 + hosted service **시작/종료** 수명 관리 |
-| **mesh / sidecar**(비교용) | 서비스와 함께 배치되어 라우팅·분배를 대신하는 **별도 프록시**(Envoy/Istio). ZLink는 이게 없어도 된다 |
+다섯의 변주다. §1~§3에서 channel·spot·actor를 차례로 보고, §4에서 actor·spot이 다른
+node로 옮겨가는 relocation을, §5~§6에서 stream·location을 본다. §7은 이들을 받치는
+실행·구성 모델이다.
 
 ## 1. channel — 서버 간 연결
 
@@ -50,8 +24,8 @@ MeshNode 집합을 구분하고, `ChannelName`은 그 mesh 안에서 같은 기�
 **channel 종류(kind)** — 서버 간 연결 방식이 다르다:
 
 | 종류 | 등록 | 연결 패턴 |
-|------|------|-----------|
-| route mesh | `AddRouteMesh` + `ChannelName` | node direct 또는 `ChannelName` 대상 request/send |
+| --- | --- | --- |
+| route mesh | `AddRouteMesh` + `Channel(name).Server()`/`.Client()` | node direct 또는 `ChannelName` 대상 request/send |
 | fanout | `AddFanoutChannel` | publisher → 다수 subscriber, topic (PUB / SUB) |
 
 - **route mesh** — `MeshName`으로 mesh를 고른 뒤 RID로 노드 하나를 직접 지정하거나,
@@ -76,11 +50,11 @@ graph LR
 ```
 
 MeshNode는 `Listen(endpoint)`로 자기 endpoint를 열고 `PeerConnections.Connect(endpoint)`로
-수동 peer를 지정할 수 있다. `ChannelName(...)`에는 해당 기능을 처리할 handler를 등록한다.
-호출만 하는 노드도 연결과 호출에 사용할 local MeshNode가 필요하지만, 그 membership의
-weight를 `0`으로 설정해 처리 대상에서는 제외한다. 자동 discovery를 사용할 때의 등록과
-연결은 [10-location](10-location.ko.md)이 다룬다. request/send/pub-sub 사용법과 handler
-노출은 [05-channel-messaging](05-channel-messaging.ko.md)이 다룬다.
+수동 peer를 지정할 수 있다. `Channel(name)`은 `.Server()`로 그 channel의 handler를
+등록하거나 `.Client()`로 호출만 하는 역할을 선언한다 — 호출만 하는 노드는 `.Client()`를
+쓰면 되고, 처리 대상에서 빼려고 weight를 조정할 필요가 없다. 자동 discovery를 사용할 때의
+등록과 연결은 [10-location](10-location.ko.md)이 다룬다. request/send/pub-sub 사용법과
+handler 노출은 [05-channel-messaging](05-channel-messaging.ko.md)이 다룬다.
 
 > **주의:** `MeshName`과 `ChannelName`은 서로 다른 이름이다. 하나의 mesh에 여러
 > `ChannelName`을 등록할 수 있고, 서로 다른 mesh에서 같은 `ChannelName`을 사용할 수도 있다.
@@ -89,10 +63,10 @@ weight를 `0`으로 설정해 처리 대상에서는 제외한다. 자동 discov
 
 spot은 room/zone/stage처럼 **동적으로 생성되고 제거되는 상태 단위**다. 한 spot에
 들어오는 packet · timer · actor 콜백은 **한 줄로 직렬 실행**되므로, spot이 소유한
-상태에 lock 없이 접근한다. "어디서 도는가"가 channel handler와 다르다(§6).
+상태에 lock 없이 접근한다. "어디서 도는가"가 channel handler와 다르다(§7).
 
 | | channel handler | SPOT handler |
-|---|---|---|
+| --- | --- | --- |
 | 위치 | MeshNode의 `ChannelName` membership | `MeshNode` 안의 entry/user Spot |
 | 실행 | 서로 다른 요청은 동시에 실행 가능 | 같은 SPOT 안에서는 직렬 실행 |
 | 상태 | 공유 상태를 직접 멤버에 두지 않음 | SPOT이 상태를 직접 소유 |
@@ -110,6 +84,23 @@ graph LR
 ```
 
 상세(등록·lifecycle·timer·outbound)는 [06-spot](06-spot.ko.md).
+
+### 2.1 spot 종류 — Entry · User · Instance
+
+spot은 **누가 언제 만드는지**에 따라 세 종류로 나뉜다.
+
+| 종류 | .NET public type | 만드는 시점 |
+| --- | --- | --- |
+| Entry Spot | `IZLinkEntrySpot` | Object Server가 시작할 때 framework가 자동으로 만든다 |
+| User Spot | `IZLinkSpot` | application이 `IZLinkSpotManager.Create`/`GetOrCreate`로 명시적으로 만든다 |
+| Instance Spot | `IZLinkInstanceSpot` | 별도 create 호출 없이, 그 id로 온 **최초 message**가 만든다(cold activation) |
+
+Entry Spot은 actor가 생성 직후 머무는 기본 실행 위치다. User Spot은 방·판·주문처럼
+application이 "지금 만들자"고 정하는 상태 단위이고([02-getting-started](02-getting-started.ko.md)에서
+`Create`로 만든 `TicTacToeGame`이 이 종류다), Instance Spot은 그 판단 자체를 생략한다 —
+길드 id·주문 id처럼 **id만 있으면** 첫 요청이 온 순간 spot이 준비된다. 등록은 각각
+`AddEntrySpot<T>()`, `AddSpotFactory<T>(type, configure)`,
+`AddInstanceSpotFactory<T>(type, configure)`다.
 
 ## 3. actor — ID로 식별되는 상태 객체
 
@@ -130,7 +121,53 @@ graph LR
 
 상세는 [07-actor-spot](07-actor-spot.ko.md).
 
-## 4. stream — 외부 client 연결
+## 4. relocation — 다른 node로 옮겨가기
+
+actor나 spot이 지금 owner node를 떠나 다른 node에서 계속 실행되는 것을 relocation이라
+한다. 서로 다른 두 계기로 시작된다.
+
+**actor가 다른 node의 spot에 join할 때.** actor는 `Context.JoinSpot(spotId, ...)`으로
+User Spot에 join을 요청한다. 그 spot이 다른 node에 있으면, join이 받아들여지는 순간
+actor가 상태와 대기 중인 작업을 그대로 들고 그 node로 옮겨간다 — application이 호출해서
+시작하는 이동이다.
+
+**무중단 점검·배포로 host를 옮길 때.** 운영자가 `RelocateAsync(...)`로 한 host의 모든
+actor·spot을 다른 host로 옮긴다. application이 개별 join을 호출하지 않아도 framework가
+한꺼번에 처리하고, 이동이 끝나면 원래 host를 내려도 서비스는 끊기지 않는다.
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+graph LR
+    subgraph J["actor join → cross-node relocation"]
+        direction LR
+        A1["actor"] -->|"JoinSpot(spotId)"| S1["다른 node의<br/>User Spot"]
+    end
+    subgraph H["host 점검 → Host Relocate"]
+        direction LR
+        N1["node A<br/>(점검 대상)"] -->|"RelocateAsync(...)"| N2["node B<br/>(actor·spot 전체 이전)"]
+    end
+```
+
+두 경로 모두 **같은 relocation policy**를 따른다. spot·actor factory를 등록할 때 하나를
+고정하고, 실행 중에는 바꾸지 않는다.
+
+| policy | target에서 하는 일 |
+| --- | --- |
+| `DisableRelocation()` | 다른 node로 옮기지 않는다. 지금 node가 계속 처리한다 |
+| `RecreateOnRelocation()` | target에서 새 인스턴스를 다시 만든다. 대기 중이던 message·timer는 유지하되 application 상태는 복원하지 않는다 |
+| `PreserveStateWith<TAdapter>()` | adapter가 정한 방식으로 application 상태를 bytes로 담아 target에 그대로 복원한다 |
+
+```csharp
+mesh.Objects().Server()
+    .AddActorFactory<PlayerActor, PlayerActorFactory>(
+        "player",
+        factory => factory.PreserveStateWith<PlayerActorRelocationAdapter>());
+```
+
+actor join 호출과 완료 결과 수신은 [07-actor-spot §5](07-actor-spot.ko.md), 무중단
+점검·배포로서의 Host Relocate는 [12-operations §2](12-operations.ko.md)가 다룬다.
+
+## 5. stream — 외부 client 연결
 
 stream은 모바일·게임 같은 **외부 client와의 연결 지향 양방향 채널**이다. 서버
 간 channel(§1)과 달리 연결 수명·재연결·heartbeat를 framework가 관리하고, 연결
@@ -145,7 +182,7 @@ graph LR
 
 상세는 [09-stream](09-stream.ko.md).
 
-## 5. location — 주소 해석
+## 6. location — 주소 해석
 
 앱 코드는 가능하면 channel 이름 같은 논리 이름만 알고, 실제 peer 주소(`host:port`)는
 배포가 공유하는 **location store** 가 푼다. 각 서버는 시작할 때 자기 위치(descriptor row)를
@@ -154,30 +191,28 @@ store에 자동 등록하고, client는 channel 이름만으로 store에서 상�
 [공통 스펙](../../common/spec/21-location-runtime.ko.md)이 다룬다.
 
 store 없이 endpoint를 역할 등록에 직접 적는 수동 연결도 그대로 지원한다(개발·테스트·
-소규모 고정 배포, [05-channel-messaging §6](05-channel-messaging.ko.md)). 같은 역할에서
+소규모 고정 배포, [05-channel-messaging §6](05-channel-messaging.ko.md)). 같은 MeshNode에서
 두 방식을 섞을 수는 없다.
-이름 기반 자동 연결은 location runtime 설계가 정식 공개 계약으로 확정된 뒤 별도 guide에서
-다룬다.
 
 > **샘플에서 보기 — [TicTacToe](../../common/sample/tictactoe/README.ko.md).** 다섯 개념이
 > 한 샘플에 전부 나오는 가장 작은 예다. Play 서버의 등록 코드 한 곳에서 다섯이 만난다.
 >
 > | 개념 | TicTacToe에서 |
-> |---|---|
+> | --- | --- |
 > | channel | Play 서버가 독립 `tictactoe.api` ClientServer Channel로 인증 정보를 조회한다 |
 > | spot | 대국 한 판이 `TicTacToeGame` spot 하나 — 두 플레이어의 수가 이 안에서 직렬 처리된다 |
 > | actor | 플레이어가 actor이고, 재접속해도 같은 actor로 이어져 두던 판을 계속한다 |
 > | stream | client가 API 응답의 Play STREAM endpoint에 직접 연결해 수를 두고 push를 받는다 |
-> | location | Redis location store가 Api↔Play 연결을 자동으로 잇는다 — 주소가 코드에 없다 |
+> | location | Redis location store가 새 `TicTacToeGame` spot을 만들 Play node를 자동으로 고른다 — API 코드에 특정 Play node 주소가 없다 |
 >
 > 다섯 개념이 각각 어떤 문제를 푸는지는 위에서 봤고, **함께 놓이면 어떤 모양인지**는
 > 이 샘플이 보여 준다.
 
-## 6. 보조 — 실행·구성 모델
+## 7. 보조 — 실행·구성 모델
 
 위 다섯 개념을 받치는 공통 동작이다. 여기서 한 번 짚고, 상세는 각 챕터가 소유한다.
 
-### 6.1 핸들러 모델 — 채널/HTTP 핸들러 vs SPOT 핸들러
+### 7.1 핸들러 모델 — 채널/HTTP 핸들러 vs SPOT 핸들러
 
 핸들러는 실행 컨텍스트에 따라 두 종류로 나뉘고, 구조와 수명이 완전히 다르다.
 
@@ -210,7 +245,7 @@ public void Configure()   // 등록은 그 spot의 Configure() 안에서 한다
 ```
 
 | | 채널/HTTP 핸들러 | entry spot | room spot |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 기반 | 독립 class (interface/attribute) | `IZLinkSpot` 구현 | `IZLinkSpot` 구현 |
 | 수명 | transient (요청마다) | `MeshNode`와 동일 (영속) | 상태 단위와 동일 (영속) |
 | 실행 | 비동기 (채널별 수신 루프·HTTP 파이프라인) | **전체 직렬** — 단일 큐 | **전체 직렬** — 단일 큐 |
@@ -285,8 +320,8 @@ Entry Spot의 actor packet은 대상 actor mailbox 기준으로 처리된다. �
 options.AddHandlersFromAssemblyOf<Program>(); // 지정한 assembly에서 handler type을 발견한다.
 options.AddRouteMesh("services")
     .Listen("tcp://0.0.0.0:7101")
-    .SetRoutingId(RoutingId.From("orders-1"))
-    .ChannelName("orders")
+    .SetRoutingIdPrefix("orders")
+    .Channel("orders").Server()
     .AddRequestHandler<GetOrderHandler>();    // 이 handler를 services/orders에만 노출한다.
 ```
 
@@ -294,7 +329,7 @@ options.AddRouteMesh("services")
 즉시** 예외로 막힌다: `MeshName` 중복, 같은 channel 안 `kind + packet name` 중복,
 local endpoint 또는 peer 연결 정보 누락, 허용되지 않는 handler 반환형.
 
-### 6.2 실행 모델 — `async`/`await`, `ValueTask`
+### 7.2 실행 모델 — `async`/`await`, `ValueTask`
 
 프레임워크 전반의 비동기 값은 `ValueTask` / `ValueTask<T>`로 표현된다. handler와
 outbound 호출은 비동기 경계를 가진다. send/push는 one-way `Submit(...)` 호출로 표현하고,
@@ -311,8 +346,7 @@ public async ValueTask<CreateGameReply> HandleAsync (
     // 런타임(핸들러) 스레드 — await로 비운다. blocking(.Result/.GetAwaiter().GetResult())은 금지.
     var room = await _client
         .RequestToChannel(
-            "tictactoe.play",                         // 요청 대상을 찾을 MeshName
-            "tictactoe.play",                         // mesh 안에서 선택할 ChannelName
+            "tictactoe.play",                         // 선택할 ChannelName
             new CreateRoomRequest(request.GameName))
         .Async<CreateRoomReply>(ct);   // request → remote reply가 도착할 때까지 await로 대기, 그 reply를 받는다
     return new CreateGameReply (room.RoomId, room.GameName);
@@ -321,7 +355,7 @@ public async ValueTask<CreateGameReply> HandleAsync (
 
 채널 핸들러는 채널별 async 수신 루프에서, HTTP 핸들러는 `ASP.NET Core` 요청
 파이프라인에서 실행된다. 핸들러가 `await`에 도달하면 async 상태 머신만 멈추고(suspend)
-실행 스레드는 풀로 돌아가 다른 일을 처리한다. SPOT 핸들러는 §6.1처럼 단일 큐로 직렬
+실행 스레드는 풀로 돌아가 다른 일을 처리한다. SPOT 핸들러는 §7.1처럼 단일 큐로 직렬
 실행돼, 같은 SPOT 큐는 그 handler 완료 전까지 다음 callback을 시작하지 않는다.
 
 아래 타임라인은 같은 흐름을 시간순으로 본 것이다. A가 `await`로 suspend 되면 같은
@@ -355,7 +389,7 @@ sequenceDiagram
 통째로 잠들기 때문에 핸들러 안에서 금지한다. 실패는 `await` 경로에서
 예외로 던져진다.
 
-### 6.3 host 수명주기
+### 7.3 host 수명주기
 
 framework runtime은 `ASP.NET Core`의 **hosted service** 로 host 시작/종료에 묶인다.
 channel·SPOT·STREAM runtime은 startup에서 등록한 역할을 보고 생성되어 shutdown에서
@@ -377,13 +411,13 @@ stateDiagram-v2
     stopping --> [*]
 ```
 
-- **구성 단계** — `app.Run()` 전에 모든 선언을 끝낸다. 잘못된 구성은 §6.1처럼 host
+- **구성 단계** — `app.Run()` 전에 모든 선언을 끝낸다. 잘못된 구성은 §7.1처럼 host
   startup에서 예외로 거부된다.
 - **종료** — host shutdown 신호가 오면 hosted service `stop()` → channel/SPOT/STREAM
   runtime 정리 순으로 내려간다.
 - 백그라운드 작업은 표준 `IHostedService`로 같은 수명주기에 편입시킨다.
 
-### 6.4 구성: DI 컨테이너 · 구성 표면 지도
+### 7.4 구성: DI 컨테이너 · 구성 표면 지도
 
 - **DI 컨테이너** — handler·client·filter는 모두 `ASP.NET Core`의 **동일한 DI
   컨테이너**에서 생성자 주입으로 만들어진다. 별도 컨테이너를 두지 않고
@@ -391,12 +425,12 @@ stateDiagram-v2
 - **구성 표면 지도** — 어디서 무엇을 선언하는지:
 
   | 표면 | 역할 | 다루는 장 |
-  |------|------|-----------|
-  | `builder.Services.AddZLinkFramework(...)` | channel/SPOT/STREAM 선언 | 4~8장 |
-  | `options.AddRouteMesh(...)` / `AddFanoutChannel(...)` | RouteMesh·fanout 선언 | [4장](05-channel-messaging.ko.md) |
-  | runtime event handler | monitoring event 관찰 | [9장](11-monitoring.ko.md) |
+  | --- | --- | --- |
+  | `builder.Services.AddZLinkFramework(...)` | channel/SPOT/STREAM 선언 | 5~9장 |
+  | `options.AddRouteMesh(...)` / `AddFanoutChannel(...)` | RouteMesh·fanout 선언 | [5장](05-channel-messaging.ko.md) |
+  | runtime event handler | monitoring event 관찰 | [11장](11-monitoring.ko.md) |
 
-## 7. 더 깊이
+## 8. 더 깊이
 
 - request/send/pub-sub 전체 사용법: [05-channel-messaging](05-channel-messaging.ko.md)
 - 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)

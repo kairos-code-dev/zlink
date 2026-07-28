@@ -49,6 +49,8 @@ namespace service = runtime::host;
 
 namespace
 {
+constexpr std::size_t max_spot_relocation_state_bytes =
+  64u * 1024u * 1024u;
 
 constexpr std::uint32_t actor_recv_info_no_bind_flag = 1u;
 
@@ -3156,7 +3158,8 @@ void spot_node_runtime_t::bind_relocation_authority (
 std::vector<std::uint8_t>
 spot_node_runtime_t::capture_spot_relocation_state (
   const runtime::stateful::object_ref_t &spot,
-  const std::string &stable_type) const
+  const std::string &stable_type,
+  std::stop_token cancellation) const
 {
     std::shared_ptr<spot_context_state_t> context;
     detail::factory_relocation_configuration_t relocation;
@@ -3189,7 +3192,7 @@ spot_node_runtime_t::capture_spot_relocation_state (
       "spot-relocation-capture",
       [&] () -> task_t<void> {
           payload = co_await relocation.capture (
-            context->spot_instance.get (), {});
+            context->spot_instance.get (), cancellation);
       });
     if (!captured)
         throw framework_exception_t (
@@ -3198,6 +3201,11 @@ spot_node_runtime_t::capture_spot_relocation_state (
             ? captured.error ()->what ()
             : "Spot relocation capture failed");
     std::vector<std::uint8_t> output;
+    if (payload.size () > max_spot_relocation_state_bytes) {
+        throw framework_exception_t (
+          framework_error_kind_t::request_rejected,
+          "Spot relocation state exceeds the 64 MiB limit");
+    }
     output.reserve (payload.size ());
     for (const auto value : payload)
         output.push_back (std::to_integer<std::uint8_t> (value));
@@ -3206,7 +3214,8 @@ spot_node_runtime_t::capture_spot_relocation_state (
 
 bool spot_node_runtime_t::restore_spot_relocation_state (
   const runtime::stateful::frozen_object_state_t &frozen,
-  const runtime::stateful::object_ref_t &target)
+  const runtime::stateful::object_ref_t &target,
+  std::stop_token cancellation)
 try
 {
     detail::factory_relocation_configuration_t relocation;
@@ -3218,31 +3227,48 @@ try
             return false;
         relocation = configured->second;
     }
-    auto materialized = get_or_create_spot (
-      frozen.stable_type, spot_id_t (target.key), zlink::message_t{},
-      target.object_generation, target.mesh_name);
-    if (materialized.state != spot_create_state_t::created
-        && materialized.state != spot_create_state_t::existing)
+    if (frozen.application_state.size ()
+        > max_spot_relocation_state_bytes)
         return false;
+    std::function<task_t<void> (void *)> staged_restore;
     if (relocation.kind
-          != detail::factory_relocation_kind_t::preserve_state)
-        return frozen.application_state.empty ();
-    if (!relocation.restore
-        || !materialized.context._state
-        || !materialized.context._state->spot_instance)
+        == detail::factory_relocation_kind_t::preserve_state) {
+        if (!relocation.restore)
+            return false;
+        std::vector<std::byte> payload;
+        payload.reserve (frozen.application_state.size ());
+        for (const auto value : frozen.application_state)
+            payload.push_back (static_cast<std::byte> (value));
+        staged_restore =
+          [relocation = std::move (relocation),
+           payload = std::move (payload),
+           cancellation] (void *instance) mutable {
+              return relocation.restore (
+                instance, std::move (payload), cancellation);
+          };
+    } else if (
+      relocation.kind
+      == detail::factory_relocation_kind_t::recreate) {
+        if (!frozen.application_state.empty ())
+            return false;
+        staged_restore = [] (void *) -> task_t<void> {
+            co_return;
+        };
+    } else {
         return false;
-    std::vector<std::byte> payload;
-    payload.reserve (frozen.application_state.size ());
-    for (const auto value : frozen.application_state)
-        payload.push_back (static_cast<std::byte> (value));
-    auto restored = materialized.context._state->run_serial_task (
-      "spot-relocation-restore",
-      [&] {
-          return relocation.restore (
-            materialized.context._state->spot_instance.get (),
-            std::move (payload), {});
-      });
-    return static_cast<bool> (restored);
+    }
+    std::unique_lock<std::recursive_mutex> node_lock (_state->mutex);
+    if (_state->spot_contexts_by_id.contains (target.key))
+        return false;
+    auto materialized = create_spot_context_unlocked (
+      frozen.stable_type,
+      spot_id_t (target.key),
+      zlink::message_t{},
+      node_lock,
+      target.object_generation,
+      target.mesh_name,
+      std::move (staged_restore));
+    return materialized.state == spot_create_state_t::created;
 }
 catch (...)
 {
@@ -4642,7 +4668,8 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
   zlink::message_t request,
   std::unique_lock<std::recursive_mutex> &node_lock,
   std::uint64_t object_generation,
-  std::string mesh_name)
+  std::string mesh_name,
+  std::function<task_t<void> (void *)> staged_restore)
 {
     /* graceful-drain-handoff §4-2: a draining node blocks new spot creation.
      * Existing spots (and in-progress transfer commits) keep running. */
@@ -4710,7 +4737,6 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
         }
     }
 
-    attach_native_spot_locked (context_state);
     auto remove_activation = [&] {
         auto native = context_state->native_spot.lock ();
         context_state->native_spot.reset ();
@@ -4729,17 +4755,37 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
     };
 
     if (context_state->spot_instance) {
-        auto &serializers = *context_state->channel_runtime->serializers;
         spot_create_response_t response;
         try {
-            node_lock.unlock ();
-            response =
-              !instance_spot && lifecycle.on_create
-                ? lifecycle.on_create (context_state->spot_instance.get (), request, serializers)
-                    .result ()
-                    .value ()
-                : spot_create_response_t::accept ();
-            node_lock.lock ();
+            if (staged_restore) {
+                node_lock.unlock ();
+                auto restored =
+                  staged_restore (
+                    context_state->spot_instance.get ()).result ();
+                if (!restored) {
+                    throw framework_exception_t (
+                      restored.error_kind (),
+                      restored.error () != nullptr
+                        ? restored.error ()->what ()
+                        : "Spot relocation restore failed");
+                }
+                node_lock.lock ();
+                response = spot_create_response_t::accept ();
+            } else {
+                auto &serializers =
+                  *context_state->channel_runtime->serializers;
+                attach_native_spot_locked (context_state);
+                node_lock.unlock ();
+                response =
+                  !instance_spot && lifecycle.on_create
+                    ? lifecycle.on_create (
+                        context_state->spot_instance.get (),
+                        request, serializers)
+                        .result ()
+                        .value ()
+                    : spot_create_response_t::accept ();
+                node_lock.lock ();
+            }
         }
         catch (...) {
             if (!node_lock.owns_lock ()) {
@@ -4768,7 +4814,11 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
                 throw;
             }
         }
+        if (staged_restore)
+            attach_native_spot_locked (context_state);
     }
+    else
+        attach_native_spot_locked (context_state);
 
     _state->spot_ids_by_name[spot_name] = spot_id;
     _state->spot_names_by_id[id_value] = spot_name;

@@ -609,10 +609,12 @@ class spot_node_runtime_t
         authority);
     std::vector<std::uint8_t> capture_spot_relocation_state (
       const runtime::stateful::object_ref_t &spot,
-      const std::string &stable_type) const;
+      const std::string &stable_type,
+      std::stop_token cancellation = {}) const;
     bool restore_spot_relocation_state (
       const runtime::stateful::frozen_object_state_t &frozen,
-      const runtime::stateful::object_ref_t &target);
+      const runtime::stateful::object_ref_t &target,
+      std::stop_token cancellation = {});
     std::optional<runtime::stateful::durable_join_completion_root_t>
     pending_join_completion_root (const std::string &transfer_id) const;
     result_t<void> restore_pending_join_completion (
@@ -1139,7 +1141,9 @@ class spot_node_runtime_t
                                   zlink::message_t request,
                                   std::unique_lock<std::recursive_mutex> &node_lock,
                                   std::uint64_t object_generation = 1,
-                                  std::string mesh_name = {});
+                                  std::string mesh_name = {},
+                                  std::function<task_t<void> (void *)>
+                                    staged_restore = {});
     result_t<spot_context_t> actor_join_context_unlocked (spot_id_t spot_id,
                                                           const zlink::message_t &request);
     result_t<std::reference_wrapper<spot_node_builder_state_t::actor_factory_registration_t>>

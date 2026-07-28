@@ -11,6 +11,7 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -193,10 +194,11 @@ class stateful_object_runtime_t
   public:
     using relocation_state_capture_t = std::function<
       std::vector<std::uint8_t> (
-        const object_ref_t &, const std::string &)>;
+        const object_ref_t &, const std::string &, std::stop_token)>;
     using relocation_state_restore_t = std::function<
       bool (
-        const frozen_object_state_t &, const object_ref_t &)>;
+        const frozen_object_state_t &, const object_ref_t &,
+        std::stop_token)>;
 
     explicit stateful_object_runtime_t (
       std::size_t application_capacity = 4096,
@@ -267,10 +269,13 @@ class stateful_object_runtime_t
     try_begin_maintenance_inventory ();
     void end_maintenance_inventory () noexcept;
     std::pair<stateful_error_t, relocation_seal_t>
-    try_seal_relocation (const object_ref_t &owner);
+    try_seal_relocation (
+      const object_ref_t &owner,
+      std::stop_token cancellation = {});
     std::pair<stateful_error_t, aggregate_relocation_seal_t>
     try_seal_relocation_aggregate (
-      const std::vector<object_ref_t> &participants);
+      const std::vector<object_ref_t> &participants,
+      std::stop_token cancellation = {});
     stateful_error_t abort_relocation (std::uint64_t token);
     std::pair<stateful_error_t, object_ref_t>
     commit_relocation (std::uint64_t token, std::string target_node_id);
@@ -280,11 +285,13 @@ class stateful_object_runtime_t
     stateful_error_t restore_relocation (
       frozen_object_state_t frozen,
       object_ref_t target,
-      relocation_restore_identity_t identity);
+      relocation_restore_identity_t identity,
+      std::stop_token cancellation = {});
     stateful_error_t restore_relocation_aggregate (
       std::vector<frozen_object_state_t> frozen,
       std::vector<object_ref_t> targets,
-      relocation_restore_identity_t identity);
+      relocation_restore_identity_t identity,
+      std::stop_token cancellation = {});
 
   private:
     struct object_key_t

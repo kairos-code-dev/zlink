@@ -15,6 +15,8 @@ namespace
 
 constexpr std::size_t max_creation_request_bytes = 1024u * 1024u;
 constexpr std::size_t max_restored_timers = 4096;
+constexpr std::size_t max_application_state_bytes =
+  64u * 1024u * 1024u;
 
 std::uint64_t stable_hash (const std::string &value)
 {
@@ -912,10 +914,11 @@ void stateful_object_runtime_t::end_maintenance_inventory () noexcept
 
 std::pair<stateful_error_t, relocation_seal_t>
 stateful_object_runtime_t::try_seal_relocation (
-  const object_ref_t &owner)
+  const object_ref_t &owner,
+  std::stop_token cancellation)
 {
     const auto [error, aggregate] =
-      try_seal_relocation_aggregate ({owner});
+      try_seal_relocation_aggregate ({owner}, cancellation);
     if (error != stateful_error_t::none
         || aggregate.participants.size () != 1) {
         return {error, {}};
@@ -927,7 +930,8 @@ stateful_object_runtime_t::try_seal_relocation (
 
 std::pair<stateful_error_t, aggregate_relocation_seal_t>
 stateful_object_runtime_t::try_seal_relocation_aggregate (
-  const std::vector<object_ref_t> &participants)
+  const std::vector<object_ref_t> &participants,
+  std::stop_token cancellation)
 {
     if (participants.empty ())
         return {stateful_error_t::invalid, {}};
@@ -990,7 +994,12 @@ stateful_object_runtime_t::try_seal_relocation_aggregate (
             && _relocation_state_capture) {
             frozen.application_state =
               _relocation_state_capture (
-                object->reference, object->stable_type);
+                object->reference, object->stable_type, cancellation);
+            if (frozen.application_state.size ()
+                > max_application_state_bytes) {
+                throw std::length_error (
+                  "Spot relocation state exceeds 64 MiB");
+            }
         }
         frozen.pending_application.reserve (
           object->queue.application.size ());
@@ -1117,7 +1126,8 @@ stateful_object_runtime_t::commit_relocation_aggregate (
 stateful_error_t stateful_object_runtime_t::restore_relocation (
   frozen_object_state_t frozen,
   object_ref_t target,
-  relocation_restore_identity_t identity)
+  relocation_restore_identity_t identity,
+  std::stop_token cancellation)
 try
 {
     if (!valid_text (frozen.stable_type)
@@ -1130,6 +1140,8 @@ try
         || !valid_text (target.mesh_name)
         || !valid_text (target.node_id)
         || identity.reference.empty ()
+        || frozen.application_state.size ()
+             > max_application_state_bytes
         || frozen.pending_application.size () > _application_capacity
         || frozen.timers.size () > max_restored_timers) {
         return stateful_error_t::invalid;
@@ -1160,7 +1172,8 @@ try
         && (target.kind == object_kind_t::user_spot
             || target.kind == object_kind_t::instance_spot)
         && _relocation_state_restore
-        && !_relocation_state_restore (frozen, target)) {
+        && !_relocation_state_restore (
+          frozen, target, cancellation)) {
         return stateful_error_t::conflict;
     }
 
@@ -1226,7 +1239,8 @@ catch (...)
 stateful_error_t stateful_object_runtime_t::restore_relocation_aggregate (
   std::vector<frozen_object_state_t> frozen,
   std::vector<object_ref_t> targets,
-  relocation_restore_identity_t identity)
+  relocation_restore_identity_t identity,
+  std::stop_token cancellation)
 try
 {
     if (frozen.size () < 2 || frozen.size () != targets.size ()
@@ -1259,6 +1273,8 @@ try
                  <= source.owner.authority_owner_generation
             || !valid_text (target.mesh_name)
             || !valid_text (target.node_id)
+            || source.application_state.size ()
+                 > max_application_state_bytes
             || source.pending_application.size ()
                  > _application_capacity
             || source.timers.size () > max_restored_timers
@@ -1309,7 +1325,7 @@ try
             if ((targets[index].kind == object_kind_t::user_spot
                  || targets[index].kind == object_kind_t::instance_spot)
                 && !_relocation_state_restore (
-                  frozen[index], targets[index])) {
+                  frozen[index], targets[index], cancellation)) {
                 return stateful_error_t::conflict;
             }
         }

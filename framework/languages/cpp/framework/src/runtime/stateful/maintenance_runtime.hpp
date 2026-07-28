@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -394,14 +395,17 @@ class maintenance_runtime_t
       std::size_t encoded_upper_bound,
       inventory_digest_t inventory_digest,
       const std::optional<eligible_relocation_unit_t::canonical_wire_context_t>
-        &canonical_wire = std::nullopt);
+        &canonical_wire = std::nullopt,
+      std::stop_token cancellation = {});
     relocation_result_t recover (
       object_kind_t kind,
       const std::string &key,
-      stateful_object_runtime_t &target);
+      stateful_object_runtime_t &target,
+      std::stop_token cancellation = {});
     aggregate_relocation_result_t recover_aggregate (
       const std::vector<object_ref_t> &sources,
-      stateful_object_runtime_t &target);
+      stateful_object_runtime_t &target,
+      std::stop_token cancellation = {});
     aggregate_relocation_result_t relocate_aggregate (
       const std::vector<object_ref_t> &sources,
       std::string target_node_id,
@@ -411,7 +415,8 @@ class maintenance_runtime_t
       std::size_t encoded_upper_bound,
       inventory_digest_t inventory_digest,
       const std::optional<eligible_relocation_unit_t::canonical_wire_context_t>
-        &canonical_wire = std::nullopt);
+        &canonical_wire = std::nullopt,
+      std::stop_token cancellation = {});
 
     void attach_relocation_wire (
       raw_relocation_replay_coordinator_t &wire) noexcept;

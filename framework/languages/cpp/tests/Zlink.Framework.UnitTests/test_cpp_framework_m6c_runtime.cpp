@@ -5,6 +5,7 @@
 #include "runtime/stateful/raw_stateful_dispatch.hpp"
 #include "runtime/mesh/raw_mesh_node_owner.hpp"
 #include "runtime/locations/in_memory_location_store.hpp"
+#include "runtime/spots/spot_runtime.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -42,6 +43,73 @@ std::string authority_key (object_kind_t kind, const std::string &key)
 }
 
 inventory_digest_t digest_with (std::uint8_t value);
+
+class fail_first_restore_spot_t final
+    : public zlink::framework::spot_t
+{
+  public:
+    explicit fail_first_restore_spot_t (
+      zlink::framework::spot_context_t context) :
+        _context (std::move (context))
+    {
+    }
+
+    zlink::framework::spot_context_t &context () noexcept
+    {
+        return _context;
+    }
+
+    void configure () {}
+
+    zlink::framework::spot_create_response_t
+    on_create (const zlink::framework::message_t &)
+    {
+        ++create_count;
+        return zlink::framework::spot_create_response_t::accept ();
+    }
+
+    void on_initialize ()
+    {
+        ++initialize_count;
+    }
+
+    static inline int factory_count = 0;
+    static inline int restore_count = 0;
+    static inline int create_count = 0;
+    static inline int initialize_count = 0;
+    static inline std::vector<std::byte> restored_payload;
+
+  private:
+    zlink::framework::spot_context_t _context;
+};
+
+class fail_first_restore_adapter_t final
+    : public zlink::framework::spot_relocation_adapter_t<
+        fail_first_restore_spot_t>
+{
+  public:
+    zlink::framework::task_t<std::vector<std::byte>>
+    capture (
+      fail_first_restore_spot_t &,
+      std::stop_token) override
+    {
+        co_return std::vector<std::byte>{};
+    }
+
+    zlink::framework::task_t<void>
+    restore (
+      fail_first_restore_spot_t &,
+      std::vector<std::byte> payload,
+      std::stop_token) override
+    {
+        if (++fail_first_restore_spot_t::restore_count == 1) {
+            throw std::runtime_error ("expected first restore failure");
+        }
+        fail_first_restore_spot_t::restored_payload =
+          std::move (payload);
+        co_return;
+    }
+};
 
 class public_memory_authority_store_t final :
     public zlink::framework::runtime::in_memory_location_store_t
@@ -771,6 +839,26 @@ void test_envelope_round_trip (test_context_t &test)
     test.require (maintenance_runtime_t::crc32c (encoded) != 0,
                   "CRC32C must be computed for the immutable root");
 
+    // ZLR1 did not contain an application-state length or payload. The reader
+    // keeps accepting those roots while every new root is written as ZLR2.
+    auto legacy_v1 = encoded;
+    legacy_v1[3] = static_cast<std::uint8_t> ('1');
+    constexpr std::size_t application_state_length_offset = 59;
+    constexpr std::size_t application_state_payload_offset = 63;
+    legacy_v1.erase (
+      legacy_v1.begin ()
+        + static_cast<std::ptrdiff_t> (application_state_length_offset),
+      legacy_v1.begin ()
+        + static_cast<std::ptrdiff_t> (
+          application_state_payload_offset
+          + frozen.application_state.size ()));
+    const auto decoded_v1 = maintenance_runtime_t::decode (legacy_v1);
+    auto expected_v1 = frozen;
+    expected_v1.application_state.clear ();
+    test.require (
+      decoded_v1 && decoded_v1->first == expected_v1,
+      "ZLR1 roots must remain readable with empty application state");
+
     auto excessive_count = encoded;
     constexpr std::size_t pending_count_offset = 66;
     excessive_count[pending_count_offset] = 0;
@@ -799,16 +887,127 @@ void test_envelope_round_trip (test_context_t &test)
     test.require (
       maintenance_runtime_t::encode (unordered, digest).empty (),
       "encoder must reject duplicate or unordered queue sequences");
+
+    constexpr std::size_t application_state_limit =
+      64u * 1024u * 1024u;
+    auto bounded = frozen;
+    bounded.application_state.assign (application_state_limit, 0x5a);
+    auto bounded_encoded = maintenance_runtime_t::encode (bounded, digest);
+    const auto bounded_decoded =
+      maintenance_runtime_t::decode (bounded_encoded);
+    test.require (
+      bounded_decoded
+        && bounded_decoded->first.application_state.size ()
+             == application_state_limit,
+      "the exact 64 MiB application-state limit must round-trip");
+
+    auto oversized_root = std::move (bounded_encoded);
+    oversized_root.insert (
+      oversized_root.begin ()
+        + static_cast<std::ptrdiff_t> (
+          application_state_payload_offset + application_state_limit),
+      0x5a);
+    oversized_root[application_state_length_offset] = 0x04;
+    oversized_root[application_state_length_offset + 1] = 0x00;
+    oversized_root[application_state_length_offset + 2] = 0x00;
+    oversized_root[application_state_length_offset + 3] = 0x01;
+    test.require (
+      !maintenance_runtime_t::decode (oversized_root),
+      "decoder must reject application state above 64 MiB");
+
+    bounded.application_state.push_back (0x5a);
+    test.require (
+      maintenance_runtime_t::encode (bounded, digest).empty (),
+      "encoder must reject application state above 64 MiB");
+}
+
+void test_spot_restore_stages_before_publication (
+  test_context_t &test)
+{
+    fail_first_restore_spot_t::factory_count = 0;
+    fail_first_restore_spot_t::restore_count = 0;
+    fail_first_restore_spot_t::create_count = 0;
+    fail_first_restore_spot_t::initialize_count = 0;
+    fail_first_restore_spot_t::restored_payload.clear ();
+
+    zlink::framework::spot_node_builder_t builder;
+    builder.add_spot_factory<fail_first_restore_spot_t> (
+      "restored-spot",
+      [] (zlink::framework::spot_context_t context) {
+          ++fail_first_restore_spot_t::factory_count;
+          return std::make_shared<fail_first_restore_spot_t> (
+            std::move (context));
+      },
+      [] (auto &factory) {
+          factory.template preserve_state_with<
+            fail_first_restore_adapter_t> ();
+      });
+    auto runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (builder);
+    const frozen_object_state_t frozen{
+      .owner =
+        {.kind = object_kind_t::user_spot,
+         .key = "staged-spot",
+         .object_generation = 7,
+         .authority_owner_generation = 9,
+         .mesh_name = "mesh",
+         .node_id = "source"},
+      .stable_type = "restored-spot",
+      .application_state = {0xca, 0xfe},
+      .pending_application = {},
+      .timers = {}};
+    const object_ref_t target{
+      .kind = object_kind_t::user_spot,
+      .key = "staged-spot",
+      .object_generation = 7,
+      .authority_owner_generation = 10,
+      .mesh_name = "mesh",
+      .node_id = "target"};
+
+    auto oversized = frozen;
+    oversized.application_state.assign (
+      64u * 1024u * 1024u + 1u, 0x5a);
+    test.require (
+      !runtime.restore_spot_relocation_state (oversized, target)
+        && fail_first_restore_spot_t::factory_count == 0
+        && fail_first_restore_spot_t::restore_count == 0,
+      "oversized state must be rejected before Spot materialization");
+
+    test.require (
+      !runtime.restore_spot_relocation_state (frozen, target)
+        && !runtime.find_spot (
+          zlink::framework::spot_id_t ("staged-spot"))
+        && fail_first_restore_spot_t::factory_count == 1
+        && fail_first_restore_spot_t::create_count == 0
+        && fail_first_restore_spot_t::initialize_count == 0,
+      "failed restore must discard the private Spot before publication");
+
+    test.require (
+      runtime.restore_spot_relocation_state (frozen, target)
+        && runtime.find_spot (
+          zlink::framework::spot_id_t ("staged-spot"))
+        && fail_first_restore_spot_t::factory_count == 2
+        && fail_first_restore_spot_t::restore_count == 2
+        && fail_first_restore_spot_t::create_count == 0
+        && fail_first_restore_spot_t::initialize_count == 1
+        && fail_first_restore_spot_t::restored_payload
+             == std::vector<std::byte>{
+               std::byte{0xca}, std::byte{0xfe}},
+      "restore retry must use a fresh instance and publish only after success");
 }
 
 void test_aggregate_envelope_and_crash_recovery (test_context_t &test)
 {
     stateful_object_runtime_t source;
     int captured_spot_state = 0;
+    bool capture_received_operation_token = false;
     source.configure_relocation_state (
       [&] (const object_ref_t &owner,
-           const std::string &stable_type) {
+           const std::string &stable_type,
+           std::stop_token cancellation) {
           ++captured_spot_state;
+          capture_received_operation_token =
+            cancellation.stop_possible ();
           test.require (
             owner.kind == object_kind_t::user_spot
               && stable_type == "spot",
@@ -816,7 +1015,8 @@ void test_aggregate_envelope_and_crash_recovery (test_context_t &test)
           return std::vector<std::uint8_t>{0xca, 0xfe};
       },
       [] (const frozen_object_state_t &,
-          const object_ref_t &) { return true; });
+          const object_ref_t &,
+          std::stop_token) { return true; });
     const auto spot =
       create_spot (source, object_kind_t::user_spot, "spot-aggregate");
     const auto actor = create_actor (source, "actor-aggregate");
@@ -846,15 +1046,18 @@ void test_aggregate_envelope_and_crash_recovery (test_context_t &test)
       maintenance_provider_set_t{
         authority, aggregates, roots, targets});
     const auto digest = digest_with (0x6a);
+    std::stop_source operation_cancellation;
     const std::vector<object_ref_t> participants{spot, joined_actor};
     const auto moved = coordinator.relocate_aggregate (
       participants, "node-b", {"owner-b", 7},
       {{"capacity-spot"}, {"capacity-actor"}},
-      1024 * 1024, digest);
+      1024 * 1024, digest, std::nullopt,
+      operation_cancellation.get_token ());
     test.require (
       moved.terminal == relocation_terminal_t::completed
         && moved.authority.size () == 2
-        && captured_spot_state == 1,
+        && captured_spot_state == 1
+        && capture_received_operation_token,
       "aggregate authority commit must publish every participant");
 
     const auto root =
@@ -880,25 +1083,33 @@ void test_aggregate_envelope_and_crash_recovery (test_context_t &test)
 
     stateful_object_runtime_t recovered;
     int restored_spot_state = 0;
+    bool restore_received_operation_token = false;
     recovered.configure_relocation_state (
       [] (const object_ref_t &,
-          const std::string &) {
+          const std::string &,
+          std::stop_token) {
           return std::vector<std::uint8_t>{};
       },
       [&] (const frozen_object_state_t &frozen,
-           const object_ref_t &target) {
+           const object_ref_t &target,
+           std::stop_token cancellation) {
           ++restored_spot_state;
+          restore_received_operation_token =
+            cancellation.stop_possible ();
           return target.kind == object_kind_t::user_spot
                  && frozen.application_state
                       == std::vector<std::uint8_t>{0xca, 0xfe};
       });
     const auto recovery =
-      coordinator.recover_aggregate (participants, recovered);
+      coordinator.recover_aggregate (
+        participants, recovered,
+        operation_cancellation.get_token ());
     test.require (
       recovery.terminal == relocation_terminal_t::recovery_required
         && recovery.reason == relocation_reason_t::restore_failed
         && recovery.authority.size () == 2
-        && restored_spot_state == 1,
+        && restored_spot_state == 1
+        && restore_received_operation_token,
       "materialized aggregate must remain recovery-required until lifecycle and ACK completion");
 
     const auto target_spot =
@@ -1902,6 +2113,7 @@ int main ()
     test_generation_barrier_quiesces_yield_spot_and_timer (test);
     test_close_barrier_waits_and_abort_restores_ingress (test);
     test_envelope_round_trip (test);
+    test_spot_restore_stages_before_publication (test);
     test_aggregate_envelope_and_crash_recovery (test);
     test_publication_and_handoff (test);
     test_conflict_aborts_without_losing_ingress (test);

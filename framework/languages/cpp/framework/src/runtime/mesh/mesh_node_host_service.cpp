@@ -1423,19 +1423,21 @@ void mesh_node_host_service_t::start (service_provider_t &services)
         node->native_node ().objects ().configure_relocation_state (
           [registration] (
             const stateful::object_ref_t &spot,
-            const std::string &stable_type) {
+            const std::string &stable_type,
+            std::stop_token cancellation) {
               return detail::spot_node_runtime_t (
                 registration->spot_state)
                 .capture_spot_relocation_state (
-                  spot, stable_type);
+                  spot, stable_type, cancellation);
           },
           [registration] (
             const stateful::frozen_object_state_t &frozen,
-            const stateful::object_ref_t &target) {
+            const stateful::object_ref_t &target,
+            std::stop_token cancellation) {
               return detail::spot_node_runtime_t (
                 registration->spot_state)
                 .restore_spot_relocation_state (
-                  frozen, target);
+                  frozen, target, cancellation);
           });
     }
     _published_mesh_nodes.clear ();

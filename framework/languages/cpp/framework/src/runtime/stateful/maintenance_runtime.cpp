@@ -14,7 +14,8 @@ namespace zlink::framework::runtime::stateful
 namespace
 {
 
-constexpr std::array<std::uint8_t, 4> envelope_magic{'Z', 'L', 'R', '2'};
+constexpr std::array<std::uint8_t, 4> envelope_magic_v1{'Z', 'L', 'R', '1'};
+constexpr std::array<std::uint8_t, 4> envelope_magic_v2{'Z', 'L', 'R', '2'};
 constexpr std::array<std::uint8_t, 4> aggregate_envelope_magic{
   'Z', 'L', 'R', 'A'};
 constexpr std::array<std::uint8_t, 4> join_completion_magic{
@@ -23,6 +24,7 @@ constexpr std::array<std::uint8_t, 4> session_journal_magic{
   'Z', 'L', 'S', 'J'};
 constexpr std::chrono::hours relocation_retention{24};
 constexpr std::size_t max_envelope_bytes = 256u * 1024u * 1024u;
+constexpr std::size_t max_application_state_bytes = 64u * 1024u * 1024u;
 constexpr std::uint32_t max_pending_records = 4096;
 constexpr std::uint32_t max_logical_timers = 4096;
 
@@ -623,7 +625,8 @@ relocation_result_t maintenance_runtime_t::relocate (
   std::size_t encoded_upper_bound,
   inventory_digest_t inventory_digest,
   const std::optional<eligible_relocation_unit_t::canonical_wire_context_t>
-    &canonical_wire)
+    &canonical_wire,
+  std::stop_token cancellation)
 {
     auto permit = try_acquire (encoded_upper_bound);
     if (!permit) {
@@ -633,7 +636,8 @@ relocation_result_t maintenance_runtime_t::relocate (
            std::nullopt});
     }
 
-    auto [seal_error, seal] = _objects.try_seal_relocation (source);
+    auto [seal_error, seal] =
+      _objects.try_seal_relocation (source, cancellation);
     if (seal_error != stateful_error_t::none) {
         return finish (
           {relocation_terminal_t::blocked,
@@ -809,7 +813,8 @@ relocation_result_t maintenance_runtime_t::relocate (
 relocation_result_t maintenance_runtime_t::recover (
   object_kind_t kind,
   const std::string &key,
-  stateful_object_runtime_t &target)
+  stateful_object_runtime_t &target,
+  std::stop_token cancellation)
 {
     std::optional<authority_relocation_reference_t> authority;
     try {
@@ -873,7 +878,8 @@ relocation_result_t maintenance_runtime_t::recover (
           std::move (decoded->first), authority->target,
           {authority->relocation_reference,
            authority->checksum_crc32c,
-           authority->inventory_digest});
+           authority->inventory_digest},
+          cancellation);
     }
     catch (...) {
         return finish (
@@ -897,7 +903,8 @@ relocation_result_t maintenance_runtime_t::recover (
 
 aggregate_relocation_result_t maintenance_runtime_t::recover_aggregate (
   const std::vector<object_ref_t> &sources,
-  stateful_object_runtime_t &target)
+  stateful_object_runtime_t &target,
+  std::stop_token cancellation)
 {
     if (sources.size () < 2 || sources.size () > 1024) {
         return {
@@ -1050,7 +1057,8 @@ aggregate_relocation_result_t maintenance_runtime_t::recover_aggregate (
           std::move (frozen), std::move (targets),
           {root.relocation_reference,
            root.checksum_crc32c,
-           root.inventory_digest});
+           root.inventory_digest},
+          cancellation);
     }
     catch (...) {
         return {
@@ -1080,7 +1088,8 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
   std::size_t encoded_upper_bound,
   inventory_digest_t inventory_digest,
   const std::optional<eligible_relocation_unit_t::canonical_wire_context_t>
-    &canonical_wire)
+    &canonical_wire,
+  std::stop_token cancellation)
 {
     if (!_aggregate_authority || sources.size () < 2) {
         return {
@@ -1096,7 +1105,8 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
           {}};
     }
     auto [seal_error, seal] =
-      _objects.try_seal_relocation_aggregate (sources);
+      _objects.try_seal_relocation_aggregate (
+        sources, cancellation);
     if (seal_error != stateful_error_t::none) {
         return {
           relocation_terminal_t::blocked,
@@ -1326,13 +1336,13 @@ std::vector<std::uint8_t> maintenance_runtime_t::encode (
         || frozen.owner.mesh_name.empty ()
         || frozen.owner.node_id.empty ()
         || frozen.stable_type.empty ()
-        || frozen.application_state.size () > max_envelope_bytes
+        || frozen.application_state.size () > max_application_state_bytes
         || frozen.pending_application.size () > max_pending_records
         || frozen.timers.size () > max_logical_timers) {
         return {};
     }
     std::vector<std::uint8_t> output (
-      envelope_magic.begin (), envelope_magic.end ());
+      envelope_magic_v2.begin (), envelope_magic_v2.end ());
     output.push_back (static_cast<std::uint8_t> (frozen.owner.kind));
     if (!append_text (output, frozen.owner.key)
         || !append_text (output, frozen.stable_type)
@@ -1384,15 +1394,25 @@ maintenance_runtime_t::decode (
   const std::vector<std::uint8_t> &payload) noexcept
 try
 {
+    const auto legacy_v1 =
+      payload.size () >= envelope_magic_v1.size ()
+      && std::equal (
+        envelope_magic_v1.begin (), envelope_magic_v1.end (),
+        payload.begin ());
+    const auto current_v2 =
+      payload.size () >= envelope_magic_v2.size ()
+      && std::equal (
+        envelope_magic_v2.begin (), envelope_magic_v2.end (),
+        payload.begin ());
     if (payload.size () > max_envelope_bytes
-        || payload.size () < envelope_magic.size ()
+        || payload.size () < envelope_magic_v2.size ()
                            + 1 + inventory_digest_t{}.size ()
-        || !std::equal (
-          envelope_magic.begin (), envelope_magic.end (), payload.begin ())) {
+        || (!legacy_v1 && !current_v2)) {
         return std::nullopt;
     }
     std::vector<std::uint8_t> encoded (
-      payload.begin () + static_cast<std::ptrdiff_t> (envelope_magic.size ()),
+      payload.begin ()
+        + static_cast<std::ptrdiff_t> (envelope_magic_v2.size ()),
       payload.end ());
     reader_t reader (encoded);
     const auto kind = reader.u8 ();
@@ -1402,14 +1422,20 @@ try
     const auto node_id = reader.text ();
     const auto object_generation = reader.u64 ();
     const auto owner_generation = reader.u64 ();
-    auto application_state = reader.bytes ();
+    std::optional<std::vector<std::uint8_t>> application_state =
+      legacy_v1
+        ? std::optional<std::vector<std::uint8_t>>{
+            std::vector<std::uint8_t>{}}
+        : reader.bytes ();
     const auto pending_count = reader.u32 ();
     if (!kind || *kind > static_cast<std::uint8_t> (object_kind_t::instance_spot)
         || !key || key->empty () || !stable_type || stable_type->empty ()
         || !mesh_name || mesh_name->empty () || !node_id || node_id->empty ()
         || !object_generation || *object_generation == 0
         || !owner_generation || *owner_generation == 0
-        || !application_state || !pending_count
+        || !application_state
+        || application_state->size () > max_application_state_bytes
+        || !pending_count
         || *pending_count > max_pending_records
         || reader.remaining ()
              < static_cast<std::size_t> (*pending_count) * 12u

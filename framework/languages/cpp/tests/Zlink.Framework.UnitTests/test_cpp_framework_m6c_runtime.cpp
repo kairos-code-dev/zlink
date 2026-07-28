@@ -111,6 +111,67 @@ class fail_first_restore_adapter_t final
     }
 };
 
+class concurrent_restore_spot_t final
+    : public zlink::framework::spot_t
+{
+  public:
+    explicit concurrent_restore_spot_t (
+      zlink::framework::spot_context_t context) :
+        _context (std::move (context))
+    {
+        ++factory_count;
+    }
+
+    zlink::framework::spot_context_t &context () noexcept
+    {
+        return _context;
+    }
+
+    void configure () {}
+
+    static inline std::atomic_int factory_count{0};
+    static inline std::atomic_int restore_count{0};
+    static inline std::mutex restore_mutex;
+    static inline std::condition_variable restore_condition;
+    static inline bool restore_entered = false;
+    static inline bool release_restore = false;
+
+  private:
+    zlink::framework::spot_context_t _context;
+};
+
+class concurrent_restore_adapter_t final
+    : public zlink::framework::spot_relocation_adapter_t<
+        concurrent_restore_spot_t>
+{
+  public:
+    zlink::framework::task_t<std::vector<std::byte>>
+    capture (
+      concurrent_restore_spot_t &,
+      std::stop_token) override
+    {
+        co_return std::vector<std::byte>{};
+    }
+
+    zlink::framework::task_t<void>
+    restore (
+      concurrent_restore_spot_t &,
+      std::vector<std::byte>,
+      std::stop_token) override
+    {
+        concurrent_restore_spot_t::restore_count.fetch_add (1);
+        std::unique_lock lock (
+          concurrent_restore_spot_t::restore_mutex);
+        concurrent_restore_spot_t::restore_entered = true;
+        concurrent_restore_spot_t::restore_condition.notify_all ();
+        concurrent_restore_spot_t::restore_condition.wait (
+          lock, [] {
+              return concurrent_restore_spot_t::release_restore;
+          });
+        co_return;
+    }
+};
+
 class public_memory_authority_store_t final :
     public zlink::framework::runtime::in_memory_location_store_t
 {
@@ -994,6 +1055,236 @@ void test_spot_restore_stages_before_publication (
              == std::vector<std::byte>{
                std::byte{0xca}, std::byte{0xfe}},
       "restore retry must use a fresh instance and publish only after success");
+}
+
+void test_concurrent_spot_restore_owns_one_reservation (
+  test_context_t &test)
+{
+    concurrent_restore_spot_t::factory_count.store (0);
+    concurrent_restore_spot_t::restore_count.store (0);
+    {
+        std::lock_guard lock (
+          concurrent_restore_spot_t::restore_mutex);
+        concurrent_restore_spot_t::restore_entered = false;
+        concurrent_restore_spot_t::release_restore = false;
+    }
+    zlink::framework::spot_node_builder_t builder;
+    builder.add_spot_factory<concurrent_restore_spot_t> (
+      "concurrent-spot",
+      [] (zlink::framework::spot_context_t context) {
+          return std::make_shared<concurrent_restore_spot_t> (
+            std::move (context));
+      },
+      [] (auto &factory) {
+          factory.template preserve_state_with<
+            concurrent_restore_adapter_t> ();
+      });
+    auto runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (builder);
+    const frozen_object_state_t frozen{
+      .owner =
+        {.kind = object_kind_t::user_spot,
+         .key = "concurrent-id",
+         .object_generation = 1,
+         .authority_owner_generation = 1,
+         .mesh_name = "mesh",
+         .node_id = "source"},
+      .stable_type = "concurrent-spot",
+      .application_state = {1},
+      .pending_application = {},
+      .timers = {}};
+    const object_ref_t target{
+      .kind = object_kind_t::user_spot,
+      .key = "concurrent-id",
+      .object_generation = 1,
+      .authority_owner_generation = 2,
+      .mesh_name = "mesh",
+      .node_id = "target"};
+
+    bool first = false;
+    std::thread owner ([&] {
+        first =
+          runtime.restore_spot_relocation_state (frozen, target);
+    });
+    {
+        std::unique_lock lock (
+          concurrent_restore_spot_t::restore_mutex);
+        concurrent_restore_spot_t::restore_condition.wait (
+          lock, [] {
+              return concurrent_restore_spot_t::restore_entered;
+          });
+    }
+    const auto contender =
+      runtime.restore_spot_relocation_state (frozen, target);
+    {
+        std::lock_guard lock (
+          concurrent_restore_spot_t::restore_mutex);
+        concurrent_restore_spot_t::release_restore = true;
+    }
+    concurrent_restore_spot_t::restore_condition.notify_all ();
+    owner.join ();
+
+    test.require (
+      first && !contender
+        && concurrent_restore_spot_t::factory_count.load () == 1
+        && concurrent_restore_spot_t::restore_count.load () == 1
+        && runtime.find_spot (
+          zlink::framework::spot_id_t ("concurrent-id")),
+      "one SpotId reservation must own materialization and publication");
+}
+
+void test_restore_validates_generation_before_spot_publication (
+  test_context_t &test)
+{
+    stateful_object_runtime_t single;
+    const auto old_spot = create_spot (
+      single, object_kind_t::user_spot, "stale-single");
+    test.require (
+      single.close_spot (old_spot)
+        == std::pair{
+          stateful_error_t::none, true},
+      "single stale-generation setup must close the old Spot");
+    int single_restore_count = 0;
+    single.configure_relocation_state (
+      [] (const object_ref_t &, const std::string &,
+          std::stop_token) {
+          return std::vector<std::uint8_t>{};
+      },
+      [&] (const frozen_object_state_t &,
+           const object_ref_t &,
+           std::stop_token) {
+          ++single_restore_count;
+          return true;
+      });
+    auto single_frozen = frozen_object_state_t{
+      .owner =
+        {.kind = object_kind_t::user_spot,
+         .key = "stale-single",
+         .object_generation = 1,
+         .authority_owner_generation = 1,
+         .mesh_name = "mesh",
+         .node_id = "source"},
+      .stable_type = "spot",
+      .application_state = {1},
+      .pending_application = {},
+      .timers = {}};
+    auto single_target = single_frozen.owner;
+    single_target.authority_owner_generation = 2;
+    single_target.node_id = "target";
+    const relocation_restore_identity_t single_identity{
+      "single-root", 1, digest_with (1)};
+    test.require (
+      single.restore_relocation (
+        single_frozen, single_target, single_identity)
+          == stateful_error_t::generation_stale
+        && single_restore_count == 0
+        && single.inventory ().empty (),
+      "stale single restore must not publish application Spot state");
+
+    single_frozen.owner.object_generation = 2;
+    single_target.object_generation = 2;
+    const auto fresh_single = single.restore_relocation (
+      single_frozen, single_target, single_identity);
+    const auto single_inventory = single.inventory ();
+    test.require (
+      fresh_single == stateful_error_t::none
+        && single_restore_count == 1
+        && single_inventory.size () == 1
+        && single_inventory.front ().owner == single_target,
+      "fresh single retry must succeed after stale validation");
+
+    stateful_object_runtime_t aggregate;
+    const auto holder = create_spot (
+      aggregate, object_kind_t::user_spot, "entry:holder");
+    const auto old_actor =
+      create_actor (aggregate, "stale-actor");
+    const auto [join_error, join] =
+      aggregate.begin_membership_move (old_actor, holder);
+    const auto [commit_error, joined_actor] =
+      aggregate.commit_membership_move (join);
+    test.require (
+      join_error == stateful_error_t::none
+        && commit_error == stateful_error_t::none
+        && aggregate.destroy_actor (joined_actor)
+             == stateful_error_t::none
+        && aggregate.close_spot (holder)
+             == std::pair{
+               stateful_error_t::none, true},
+      "aggregate stale-generation setup must retain Actor history");
+    int aggregate_restore_count = 0;
+    aggregate.configure_relocation_state (
+      [] (const object_ref_t &, const std::string &,
+          std::stop_token) {
+          return std::vector<std::uint8_t>{};
+      },
+      [&] (const frozen_object_state_t &,
+           const object_ref_t &,
+           std::stop_token) {
+          ++aggregate_restore_count;
+          return true;
+      });
+    std::vector<frozen_object_state_t> participants{
+      {.owner =
+         {.kind = object_kind_t::user_spot,
+          .key = "aggregate-spot",
+          .object_generation = 1,
+          .authority_owner_generation = 1,
+          .mesh_name = "mesh",
+          .node_id = "source"},
+       .stable_type = "spot",
+       .application_state = {2},
+       .pending_application = {},
+       .timers = {}},
+      {.owner =
+         {.kind = object_kind_t::actor,
+          .key = "stale-actor",
+          .object_generation = 1,
+          .authority_owner_generation = 1,
+          .mesh_name = "mesh",
+          .node_id = "source"},
+       .stable_type = "actor",
+       .application_state = {},
+       .pending_application = {},
+       .timers = {}}};
+    std::vector<object_ref_t> aggregate_targets{
+      participants[0].owner, participants[1].owner};
+    for (auto &target : aggregate_targets) {
+        target.authority_owner_generation = 2;
+        target.node_id = "target";
+    }
+    const relocation_restore_identity_t aggregate_identity{
+      "aggregate-root", 2, digest_with (2)};
+    test.require (
+      aggregate.restore_relocation_aggregate (
+        participants, aggregate_targets, aggregate_identity)
+          == stateful_error_t::generation_stale
+        && aggregate_restore_count == 0
+        && aggregate.inventory ().empty (),
+      "one stale Actor must reject the aggregate before Spot publication");
+
+    participants[1].owner.object_generation = 2;
+    aggregate_targets[1].object_generation = 2;
+    const auto fresh_aggregate =
+      aggregate.restore_relocation_aggregate (
+        participants, aggregate_targets, aggregate_identity);
+    const auto aggregate_inventory = aggregate.inventory ();
+    test.require (
+      fresh_aggregate == stateful_error_t::none
+        && aggregate_restore_count == 1
+        && aggregate_inventory.size () == 2
+        && std::any_of (
+          aggregate_inventory.begin (),
+          aggregate_inventory.end (),
+          [&] (const object_inventory_t &entry) {
+              return entry.owner == aggregate_targets[0];
+          })
+        && std::any_of (
+          aggregate_inventory.begin (),
+          aggregate_inventory.end (),
+          [&] (const object_inventory_t &entry) {
+              return entry.owner == aggregate_targets[1];
+          }),
+      "fresh aggregate retry must succeed without leaked state");
 }
 
 void test_aggregate_envelope_and_crash_recovery (test_context_t &test)
@@ -2114,6 +2405,8 @@ int main ()
     test_close_barrier_waits_and_abort_restores_ingress (test);
     test_envelope_round_trip (test);
     test_spot_restore_stages_before_publication (test);
+    test_concurrent_spot_restore_owns_one_reservation (test);
+    test_restore_validates_generation_before_spot_publication (test);
     test_aggregate_envelope_and_crash_recovery (test);
     test_publication_and_handoff (test);
     test_conflict_aborts_without_losing_ingress (test);

@@ -56,6 +56,9 @@ class spot_node_builder_state_t
     std::map<std::string, spot_id_t> spot_ids_by_name;
     std::map<std::string, std::string> spot_names_by_id;
     std::map<std::string, spot_context_t> spot_contexts_by_id;
+    std::map<std::string, std::uint64_t>
+      relocation_restore_reservations_by_id;
+    std::uint64_t next_relocation_restore_reservation = 1;
     struct pending_spot_creation_t
     {
         std::string spot_name;

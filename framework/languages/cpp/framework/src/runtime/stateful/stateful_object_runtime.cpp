@@ -1162,73 +1162,98 @@ try
         previous_timer = timer.timer_id;
     }
     const auto key = key_for (target);
-    bool requires_application_restore = false;
+    std::optional<std::uint64_t> previous_generation;
+    std::uint64_t reservation = 0;
     {
         std::lock_guard lock (_mutex);
-        requires_application_restore =
-          _objects.find (key) == _objects.end ();
-    }
-    if (requires_application_restore
-        && (target.kind == object_kind_t::user_spot
-            || target.kind == object_kind_t::instance_spot)
-        && _relocation_state_restore
-        && !_relocation_state_restore (
-          frozen, target, cancellation)) {
-        return stateful_error_t::conflict;
-    }
-
-    std::lock_guard lock (_mutex);
-    const auto existing = _objects.find (key);
-    if (existing != _objects.end ()) {
-        const auto &record = existing->second;
-        if (!same_exact_ref (record.reference, target)
-            || record.state != object_state_t::recovering
-            || record.restore_identity
-                 != std::optional<relocation_restore_identity_t>{identity}
-            || record.stable_type != frozen.stable_type
-            || !record.membership.empty ()
-            || record.queue.application.size ()
-                 != frozen.pending_application.size ()
-            || record.timers.size () != frozen.timers.size ()) {
-            return stateful_error_t::conflict;
-        }
-        auto pending = record.queue.application.begin ();
-        for (const auto &expected : frozen.pending_application) {
-            if (*pending++ != expected)
-                return stateful_error_t::conflict;
-        }
-        auto timer = record.timers.begin ();
-        for (const auto &expected : frozen.timers) {
-            if (timer == record.timers.end ()
-                || timer->second != expected) {
+        const auto existing = _objects.find (key);
+        if (existing != _objects.end ()) {
+            const auto &record = existing->second;
+            if (_relocation_restore_reservations.contains (key)
+                || !same_exact_ref (record.reference, target)
+                || record.state != object_state_t::recovering
+                || record.restore_identity
+                     != std::optional<relocation_restore_identity_t>{
+                       identity}
+                || record.stable_type != frozen.stable_type
+                || !record.membership.empty ()
+                || record.queue.application.size ()
+                     != frozen.pending_application.size ()
+                || record.timers.size () != frozen.timers.size ()) {
                 return stateful_error_t::conflict;
             }
-            ++timer;
+            auto pending = record.queue.application.begin ();
+            for (const auto &expected : frozen.pending_application) {
+                if (*pending++ != expected)
+                    return stateful_error_t::conflict;
+            }
+            auto timer = record.timers.begin ();
+            for (const auto &expected : frozen.timers) {
+                if (timer == record.timers.end ()
+                    || timer->second != expected) {
+                    return stateful_error_t::conflict;
+                }
+                ++timer;
+            }
+            return stateful_error_t::already_exists;
         }
-        return stateful_error_t::already_exists;
-    }
-    const auto last = _last_generation.find (key);
-    if (last != _last_generation.end ()
-        && last->second >= target.object_generation) {
-        return stateful_error_t::generation_stale;
+        const auto last = _last_generation.find (key);
+        if (last != _last_generation.end ()) {
+            if (last->second >= target.object_generation)
+                return stateful_error_t::generation_stale;
+            previous_generation = last->second;
+        }
+        if (_relocation_restore_reservations.contains (key)
+            || _next_relocation_restore_reservation == 0)
+            return stateful_error_t::conflict;
+
+        object_record_t record;
+        record.reference = target;
+        record.stable_type = frozen.stable_type;
+        record.state = object_state_t::recovering;
+        record.restore_identity = identity;
+        for (const auto &pending : frozen.pending_application)
+            record.queue.application.push_back (pending);
+        for (const auto &timer : frozen.timers)
+            record.timers.emplace (timer.timer_id, timer);
+        auto next_objects = _objects;
+        auto next_generations = _last_generation;
+        next_generations[key] = target.object_generation;
+        next_objects.emplace (key, std::move (record));
+        reservation = _next_relocation_restore_reservation++;
+        _relocation_restore_reservations.emplace (
+          key, reservation);
+        _objects.swap (next_objects);
+        _last_generation.swap (next_generations);
     }
 
-    object_record_t record;
-    record.reference = std::move (target);
-    record.stable_type = std::move (frozen.stable_type);
-    record.state = object_state_t::recovering;
-    record.restore_identity = std::move (identity);
-    for (auto &pending : frozen.pending_application)
-        record.queue.application.push_back (std::move (pending));
-    for (auto &timer : frozen.timers)
-        record.timers.emplace (timer.timer_id, std::move (timer));
-
-    auto next_objects = _objects;
-    auto next_generations = _last_generation;
-    next_generations[key] = record.reference.object_generation;
-    next_objects.emplace (key, std::move (record));
-    _objects.swap (next_objects);
-    _last_generation.swap (next_generations);
+    bool restored = true;
+    if ((target.kind == object_kind_t::user_spot
+         || target.kind == object_kind_t::instance_spot)
+        && _relocation_state_restore) {
+        try {
+            restored = _relocation_state_restore (
+              frozen, target, cancellation);
+        }
+        catch (...) {
+            restored = false;
+        }
+    }
+    std::lock_guard lock (_mutex);
+    const auto owned =
+      _relocation_restore_reservations.find (key);
+    if (owned == _relocation_restore_reservations.end ()
+        || owned->second != reservation)
+        return stateful_error_t::conflict;
+    _relocation_restore_reservations.erase (owned);
+    if (!restored) {
+        _objects.erase (key);
+        if (previous_generation)
+            _last_generation[key] = *previous_generation;
+        else
+            _last_generation.erase (key);
+        return stateful_error_t::conflict;
+    }
     return stateful_error_t::none;
 }
 catch (...)
@@ -1310,108 +1335,167 @@ try
     }
     if (!user_spot_key || actor_count + 1 != targets.size ())
         return stateful_error_t::invalid;
-    bool has_existing_target = false;
+    std::vector<object_key_t> keys;
+    std::vector<std::optional<std::uint64_t>>
+      previous_generations;
+    keys.reserve (targets.size ());
+    previous_generations.reserve (targets.size ());
+    std::uint64_t reservation = 0;
     {
         std::lock_guard lock (_mutex);
-        has_existing_target =
-          std::any_of (
-            targets.begin (), targets.end (),
-            [&] (const object_ref_t &target) {
-                return _objects.contains (key_for (target));
-            });
-    }
-    if (!has_existing_target && _relocation_state_restore) {
-        for (std::size_t index = 0; index != frozen.size (); ++index) {
-            if ((targets[index].kind == object_kind_t::user_spot
-                 || targets[index].kind == object_kind_t::instance_spot)
-                && !_relocation_state_restore (
-                  frozen[index], targets[index], cancellation)) {
+        std::size_t exact_existing = 0;
+        for (std::size_t index = 0;
+             index != targets.size (); ++index) {
+            const auto &target = targets[index];
+            const auto &source = frozen[index];
+            const auto key = key_for (target);
+            keys.push_back (key);
+            if (_relocation_restore_reservations.contains (key))
                 return stateful_error_t::conflict;
+            const auto existing = _objects.find (key);
+            if (existing != _objects.end ()) {
+                const auto &record = existing->second;
+                const auto expected_membership =
+                  target.kind == object_kind_t::actor
+                    ? *user_spot_key
+                    : std::string{};
+                if (!same_exact_ref (
+                      record.reference, target)
+                    || record.state
+                         != object_state_t::recovering
+                    || record.restore_identity
+                         != std::optional<
+                           relocation_restore_identity_t>{
+                           identity}
+                    || record.stable_type != source.stable_type
+                    || record.membership
+                         != expected_membership
+                    || record.queue.application.size ()
+                         != source.pending_application.size ()
+                    || record.timers.size ()
+                         != source.timers.size ()) {
+                    return stateful_error_t::conflict;
+                }
+                auto pending =
+                  record.queue.application.begin ();
+                for (const auto &expected :
+                     source.pending_application) {
+                    if (*pending++ != expected)
+                        return stateful_error_t::conflict;
+                }
+                auto timer = record.timers.begin ();
+                for (const auto &expected : source.timers) {
+                    if (timer == record.timers.end ()
+                        || timer->second != expected)
+                        return stateful_error_t::conflict;
+                    ++timer;
+                }
+                ++exact_existing;
+                previous_generations.push_back (
+                  std::nullopt);
+            } else {
+                const auto last = _last_generation.find (key);
+                if (last != _last_generation.end ()
+                    && last->second
+                         >= target.object_generation) {
+                    return stateful_error_t::generation_stale;
+                }
+                previous_generations.push_back (
+                  last == _last_generation.end ()
+                    ? std::optional<std::uint64_t>{}
+                    : std::optional<std::uint64_t>{
+                        last->second});
             }
+        }
+        if (exact_existing != 0)
+            return exact_existing == targets.size ()
+                     ? stateful_error_t::already_exists
+                     : stateful_error_t::conflict;
+        if (_next_relocation_restore_reservation == 0)
+            return stateful_error_t::conflict;
+        reservation =
+          _next_relocation_restore_reservation++;
+
+        auto next_objects = _objects;
+        auto next_generations = _last_generation;
+        auto next_reservations =
+          _relocation_restore_reservations;
+        for (std::size_t index = 0;
+             index != targets.size (); ++index) {
+            object_record_t record;
+            record.reference = targets[index];
+            record.stable_type = frozen[index].stable_type;
+            record.state = object_state_t::recovering;
+            record.restore_identity = identity;
+            if (record.reference.kind
+                  == object_kind_t::actor
+                && user_spot_key)
+                record.membership = *user_spot_key;
+            for (const auto &pending :
+                 frozen[index].pending_application) {
+                record.queue.application.push_back (pending);
+            }
+            for (const auto &timer : frozen[index].timers)
+                record.timers.emplace (timer.timer_id, timer);
+            next_generations[keys[index]] =
+              record.reference.object_generation;
+            next_objects.emplace (
+              keys[index], std::move (record));
+            next_reservations.emplace (
+              keys[index], reservation);
+        }
+        _objects.swap (next_objects);
+        _last_generation.swap (next_generations);
+        _relocation_restore_reservations.swap (
+          next_reservations);
+    }
+
+    bool restored = true;
+    if (_relocation_state_restore) {
+        for (std::size_t index = 0;
+             index != frozen.size (); ++index) {
+            if (targets[index].kind
+                  != object_kind_t::user_spot
+                && targets[index].kind
+                     != object_kind_t::instance_spot)
+                continue;
+            try {
+                restored = _relocation_state_restore (
+                  frozen[index], targets[index], cancellation);
+            }
+            catch (...) {
+                restored = false;
+            }
+            if (!restored)
+                break;
         }
     }
 
     std::lock_guard lock (_mutex);
-    std::size_t exact_existing = 0;
-    for (std::size_t index = 0; index != targets.size (); ++index) {
-        const auto &target = targets[index];
-        const auto &source = frozen[index];
-        const auto key = key_for (target);
-        const auto existing = _objects.find (key);
-        if (existing != _objects.end ()) {
-            const auto &record = existing->second;
-            const auto expected_membership =
-              target.kind == object_kind_t::actor ? *user_spot_key
-                                                  : std::string{};
-            if (!same_exact_ref (record.reference, target)
-                || record.state != object_state_t::recovering
-                || record.restore_identity
-                     != std::optional<relocation_restore_identity_t>{
-                       identity}
-                || record.stable_type != source.stable_type
-                || record.membership != expected_membership
-                || record.queue.application.size ()
-                     != source.pending_application.size ()
-                || record.timers.size () != source.timers.size ()) {
-                return stateful_error_t::conflict;
-            }
-            auto pending = record.queue.application.begin ();
-            for (const auto &expected : source.pending_application) {
-                if (*pending++ != expected)
-                    return stateful_error_t::conflict;
-            }
-            auto timer = record.timers.begin ();
-            for (const auto &expected : source.timers) {
-                if (timer == record.timers.end ()
-                    || timer->second != expected) {
-                    return stateful_error_t::conflict;
-                }
-                ++timer;
-            }
-            ++exact_existing;
-        } else {
-            const auto last = _last_generation.find (key);
-            if (last != _last_generation.end ()
-                && last->second >= target.object_generation) {
-                return stateful_error_t::generation_stale;
-            }
-        }
+    const auto owns_all = std::all_of (
+      keys.begin (), keys.end (),
+      [&] (const object_key_t &key) {
+          const auto found =
+            _relocation_restore_reservations.find (key);
+          return found
+                   != _relocation_restore_reservations.end ()
+                 && found->second == reservation;
+      });
+    if (!owns_all)
+        return stateful_error_t::conflict;
+    for (std::size_t index = 0; index != keys.size (); ++index) {
+        _relocation_restore_reservations.erase (keys[index]);
+        if (restored)
+            continue;
+        _objects.erase (keys[index]);
+        if (previous_generations[index])
+            _last_generation[keys[index]] =
+              *previous_generations[index];
+        else
+            _last_generation.erase (keys[index]);
     }
-    if (exact_existing != 0)
-        return exact_existing == targets.size ()
-                 ? stateful_error_t::already_exists
-                 : stateful_error_t::conflict;
-    std::vector<std::pair<object_key_t, object_record_t>> records;
-    records.reserve (targets.size ());
-    for (std::size_t index = 0; index != targets.size (); ++index) {
-        object_record_t record;
-        record.reference = std::move (targets[index]);
-        record.stable_type = std::move (frozen[index].stable_type);
-        record.state = object_state_t::recovering;
-        record.restore_identity = identity;
-        if (record.reference.kind == object_kind_t::actor && user_spot_key)
-            record.membership = *user_spot_key;
-        for (auto &pending : frozen[index].pending_application)
-            record.queue.application.push_back (std::move (pending));
-        for (auto &timer : frozen[index].timers) {
-            if (timer.timer_id == 0
-                || !record.timers.emplace (
-                     timer.timer_id, std::move (timer)).second) {
-                return stateful_error_t::invalid;
-            }
-        }
-        records.emplace_back (
-          key_for (record.reference), std::move (record));
-    }
-
-    auto next_objects = _objects;
-    auto next_generations = _last_generation;
-    for (auto &[key, record] : records) {
-        next_generations[key] = record.reference.object_generation;
-        next_objects.emplace (key, std::move (record));
-    }
-    _objects.swap (next_objects);
-    _last_generation.swap (next_generations);
+    if (!restored)
+        return stateful_error_t::conflict;
     return stateful_error_t::none;
 }
 catch (...)

@@ -364,6 +364,8 @@ class stateful_object_runtime_t
     std::map<std::uint64_t, membership_move_t> _membership_moves;
     std::map<std::uint64_t, spot_close_token_t> _spot_closes;
     std::map<std::uint64_t, relocation_seal_state_t> _relocation_seals;
+    std::map<object_key_t, std::uint64_t>
+      _relocation_restore_reservations;
     relocation_state_capture_t _relocation_state_capture;
     relocation_state_restore_t _relocation_state_restore;
     bool _maintenance_inventory_active = false;
@@ -371,6 +373,7 @@ class stateful_object_runtime_t
     std::uint64_t _next_membership_token = 1;
     std::uint64_t _next_spot_close_token = 1;
     std::uint64_t _next_relocation_token = 1;
+    std::uint64_t _next_relocation_restore_reservation = 1;
 };
 
 } // namespace zlink::framework::runtime::stateful

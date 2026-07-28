@@ -3216,62 +3216,109 @@ bool spot_node_runtime_t::restore_spot_relocation_state (
   const runtime::stateful::frozen_object_state_t &frozen,
   const runtime::stateful::object_ref_t &target,
   std::stop_token cancellation)
-try
 {
-    detail::factory_relocation_configuration_t relocation;
-    {
-        std::lock_guard<std::recursive_mutex> lock (_state->mutex);
-        const auto configured =
-          _state->spot_factory_relocations.find (frozen.stable_type);
-        if (configured == _state->spot_factory_relocations.end ())
+    std::uint64_t reservation = 0;
+    try {
+        detail::factory_relocation_configuration_t relocation;
+        {
+            std::lock_guard<std::recursive_mutex> lock (_state->mutex);
+            const auto configured =
+              _state->spot_factory_relocations.find (
+                frozen.stable_type);
+            if (configured
+                == _state->spot_factory_relocations.end ())
+                return false;
+            if (_state->spot_contexts_by_id.contains (target.key)
+                || _state->relocation_restore_reservations_by_id
+                     .contains (target.key)
+                || _state->next_relocation_restore_reservation == 0)
+                return false;
+            reservation =
+              _state->next_relocation_restore_reservation++;
+            _state->relocation_restore_reservations_by_id.emplace (
+              target.key, reservation);
+            relocation = configured->second;
+        }
+        if (frozen.application_state.size ()
+            > max_spot_relocation_state_bytes)
+            throw std::length_error (
+              "Spot relocation state exceeds 64 MiB");
+        std::function<task_t<void> (void *)> staged_restore;
+        if (relocation.kind
+            == detail::factory_relocation_kind_t::preserve_state) {
+            if (!relocation.restore)
+                throw std::logic_error (
+                  "Spot relocation restore callback is missing");
+            std::vector<std::byte> payload;
+            payload.reserve (frozen.application_state.size ());
+            for (const auto value : frozen.application_state)
+                payload.push_back (static_cast<std::byte> (value));
+            staged_restore =
+              [relocation = std::move (relocation),
+               payload = std::move (payload),
+               cancellation] (void *instance) mutable {
+                  return relocation.restore (
+                    instance, std::move (payload), cancellation);
+              };
+        } else if (
+          relocation.kind
+          == detail::factory_relocation_kind_t::recreate) {
+            if (!frozen.application_state.empty ())
+                throw std::logic_error (
+                  "Recreated Spot has application state");
+            staged_restore = [] (void *) -> task_t<void> {
+                co_return;
+            };
+        } else {
+            throw std::logic_error (
+              "Spot relocation policy does not permit restore");
+        }
+        std::unique_lock<std::recursive_mutex> node_lock (
+          _state->mutex);
+        const auto owned =
+          _state->relocation_restore_reservations_by_id.find (
+            target.key);
+        if (owned
+              == _state->relocation_restore_reservations_by_id.end ()
+            || owned->second != reservation)
             return false;
-        relocation = configured->second;
+        auto materialized = create_spot_context_unlocked (
+          frozen.stable_type,
+          spot_id_t (target.key),
+          zlink::message_t{},
+          node_lock,
+          target.object_generation,
+          target.mesh_name,
+          std::move (staged_restore));
+        const auto created =
+          materialized.state == spot_create_state_t::created;
+        const auto current =
+          _state->relocation_restore_reservations_by_id.find (
+            target.key);
+        if (current
+              != _state->relocation_restore_reservations_by_id.end ()
+            && current->second == reservation) {
+            _state->relocation_restore_reservations_by_id.erase (
+              current);
+        }
+        return created;
     }
-    if (frozen.application_state.size ()
-        > max_spot_relocation_state_bytes)
-        return false;
-    std::function<task_t<void> (void *)> staged_restore;
-    if (relocation.kind
-        == detail::factory_relocation_kind_t::preserve_state) {
-        if (!relocation.restore)
-            return false;
-        std::vector<std::byte> payload;
-        payload.reserve (frozen.application_state.size ());
-        for (const auto value : frozen.application_state)
-            payload.push_back (static_cast<std::byte> (value));
-        staged_restore =
-          [relocation = std::move (relocation),
-           payload = std::move (payload),
-           cancellation] (void *instance) mutable {
-              return relocation.restore (
-                instance, std::move (payload), cancellation);
-          };
-    } else if (
-      relocation.kind
-      == detail::factory_relocation_kind_t::recreate) {
-        if (!frozen.application_state.empty ())
-            return false;
-        staged_restore = [] (void *) -> task_t<void> {
-            co_return;
-        };
-    } else {
-        return false;
+    catch (...) {
+        if (reservation != 0) {
+            std::lock_guard<std::recursive_mutex> lock (
+              _state->mutex);
+            const auto current =
+              _state->relocation_restore_reservations_by_id.find (
+                target.key);
+            if (current
+                  != _state
+                       ->relocation_restore_reservations_by_id.end ()
+                && current->second == reservation) {
+                _state->relocation_restore_reservations_by_id.erase (
+                  current);
+            }
+        }
     }
-    std::unique_lock<std::recursive_mutex> node_lock (_state->mutex);
-    if (_state->spot_contexts_by_id.contains (target.key))
-        return false;
-    auto materialized = create_spot_context_unlocked (
-      frozen.stable_type,
-      spot_id_t (target.key),
-      zlink::message_t{},
-      node_lock,
-      target.object_generation,
-      target.mesh_name,
-      std::move (staged_restore));
-    return materialized.state == spot_create_state_t::created;
-}
-catch (...)
-{
     return false;
 }
 

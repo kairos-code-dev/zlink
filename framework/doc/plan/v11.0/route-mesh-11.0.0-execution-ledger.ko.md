@@ -7088,9 +7088,9 @@ public Snapshot policy factory를 제거했다.
 - C++ contract header, vertical runtime, M6b runtime: 통과
 - C++ sample parity: 54/54
 - 기존 Node.js NestJS manual ClientServer DI: 57/58
-- 기존 C++ Store resolver RouteMesh role gap: 32/37
+- C++ Store resolver: 36/36
 
-마지막 두 실패는 factory builder 변경과 무관한 기존 gap이다. 후속 high review에서 확인한 C++
+Node.js의 남은 실패는 factory builder 변경과 무관한 기존 gap이다. 후속 high review에서 확인한 C++
 Spot state 보존과 factory public surface 문제는 commits `df92300d29`, `469b3cddd6`,
 `32153c2b6e`, `42eaa1f9d2`에서 수정했다.
 
@@ -7796,3 +7796,72 @@ Relocation Store test는 weight가 `0`인 target의 새 capacity reservation을
 `TargetUnavailable`로 거부한다. Weight 변경 전에 얻은 capacity fence는 계속 유효하다.
 같은 fence로 authority owner 전환을 commit하면 target capacity가 `pending=0, active=1`이
 된다. 따라서 `SM-G5`의 deterministic race와 relocation 조건까지 완료했다.
+
+## 2026-07-29 .NET canonical relocation reservation 재감사
+
+`V11-M6-DN-REFERENCE`의 reservation handshake와 이전 private control wire 제거 조건을
+현재 `main`에서 다시 대조했다. 이 범위에는 새 구현 gap이 없다.
+
+Source는 command 40으로 sealed inventory와 필요한 message·byte 수를 보낸다. Target은
+participant 없이 non-zero capacity만 command 30 offer로 반환한다. Source가 exact
+participant vector와 allowance를 command 30 accept로 돌려보내면, target은 runtime permit과
+Location Store capacity를 획득하고 command 41로 같은 participant vector와 non-zero
+reservation generation을 확인한다. 같은 request의 retry는 하나의 operation에 합류하며,
+field 또는 participant가 달라진 retry는 protocol conflict로 거부한다.
+
+User Spot은 accept 시점에 participant 전체의 typed capacity를 `PrepareAggregate` 한 번으로
+예약한다. Standalone Actor와 Instance Spot만 단일 capacity fence를 사용한다. 따라서 User
+Spot에 aggregate reservation과 standalone reservation을 함께 적용하는 이중 예약은 없다.
+
+Target staging과 completion은 command 31·32·34·35의 raw infrastructure ingress를 사용한다.
+Production source에서 이전 `.stage.v1`·`.publish.v1`·`.abort.v1`·`.held-relay.v1` packet
+symbol은 0개다. Held ingress는 canonical frozen journal과 final immutable root에 포함되어
+같은 command 31~35 lifecycle로 전달·검증된다.
+
+현재 source로 다시 실행한 결과는 다음과 같다.
+
+- canonical reservation owner: 38/38
+- service wire relocation codec과 shared golden: 7/7
+- relocation runtime: 163/163
+- standalone Actor relocation runtime: 37/37
+- compile warning·error: 0
+
+이 증거는 reservation state machine, command 30 역할별 participant schema·golden,
+private wire 제거와 held ingress 통합 조건을 충족한다. `V11-M6-DN-REFERENCE` 전체 상태는
+이 범위가 아니라 ledger에 남은 선행 row와 최종 통합 gate가 결정한다.
+
+## 2026-07-29 C++ object-only MeshNode와 Channel role 검증
+
+C++ Store resolver의 4개 User Spot test는 object routing만 사용하면서 역할을 정하지 않은
+ChannelName을 등록했다. 공통 topology 계약에서는 ChannelName을 등록하면 `Client` 또는
+`Server` role을 정확히 하나 선택해야 한다. 반대로 Actor·Spot만 제공하는 Object Server는
+RouteMesh Channel을 등록하지 않아도 시작할 수 있다.
+
+네 object-only fixture에서 불필요한 ChannelName을 제거했다. Runtime도 Object Server에
+ChannelName을 강제하던 이전 validation을 제거했다. RouteMesh와 ClientServer의 ChannelName
+충돌 fixture는 유효한 RouteMesh `Client` role을 먼저 등록한 뒤 충돌을 검증하도록 바꿨다.
+역할을 정하지 않은 ChannelName을 거부하는 validation은 유지한다.
+
+- `test_cpp_framework_store_location_resolvers`: 36/36
+- object-only User Spot create·context·identity conflict·failure cleanup: 4/4
+- RouteMesh/ClientServer ChannelName collision: 통과
+- 새 public API, compatibility alias, Core·bindings 변경: 0
+
+## 2026-07-29 Node deferred Join completion root 정리
+
+Target callback 성공 뒤 `Delivered` cursor를 기록해도 Actor authority가 만료 가능한
+Relocation Store blob을 계속 가리키던 수명 오류를 수정했다. 이제 Framework는
+`Delivered`를 저장한 뒤 authority에서 root reference를 preserve CAS로 해제하고, CAS가
+성공한 뒤 blob을 삭제한다. 해제 CAS가 충돌하면 callback을 다시 호출하지 않고 정리
+CAS만 재시도한다.
+
+- Node build: 통과
+- deferred Join accepted journal: 7/7
+- callback 뒤 Delivered CAS conflict와 reference 해제 CAS conflict: 통과
+- root 해제 뒤 다음 Join 준비와 provider-backed journal 재생성: 통과
+- commits: `7f5de0df7a`, `bf4c27c492`, `5c627c8b42`
+
+이 수정은 completion root의 정상 종료 수명을 닫는다. 실제 target process restart
+recovery 완료 증거는 아니다. Actor application state, 일반 backlog와 target Spot을
+새 process에서 복원하는 manifest·startup coordinator는 `V11-M6-DEFERRED-JOIN-NODE`와
+`V11-M6C-NODE`에서 계속 구현한다.

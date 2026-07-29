@@ -7716,7 +7716,54 @@ connector package는 ESM export만 제공해, 이전 import는 scenario 시작 �
 `ERR_PACKAGE_PATH_NOT_EXPORTED`로 실패했다. Assertion은 connector 기능이 아니므로
 이 package dependency를 제거해 E2E 책임도 분리했다.
 
-## 2026-07-29 .NET SM-G5 placement weight 부분 완료
+## 2026-07-29 Node ResilienceLifecycle RL-D2 완료
+
+Provider startup dispatch 설정에 public `ZLinkRuntimeErrorSink` 구현을 등록했다.
+Message-flow observer가 예외를 던지면 sink는 다음 event를 기록한다.
+
+- `eventId=zlink.runtime_error`
+- `kind=observer_failed`
+- `source=message_flow_observer`
+- 필드: `eventId`, `timestamp`, `kind`, `source`, `reason`
+
+RL-D2는 event 기준 개수를 먼저 기록한 뒤 remote no-handler request를 한 번
+실행한다. Observer 예외 후 정상 request가 성공하는지 확인하고, 두 provider를 합쳐
+runtime error event가 정확히 한 건 증가했는지 다시 확인한다. Exception object,
+stack trace와 payload 필드가 event에 없다는 점도 field inventory로 고정했다.
+
+- Node message-flow focused contract: 18/18
+- RL-D2 actual PASS:
+  `framework/languages/node/e2e/ResilienceLifecycle/log/20260729-162800-3166911`
+- 관련 TypeScript build와 `git diff --check`: 통과
+
+## 2026-07-29 Node ResilienceLifecycle RL-B4 완료
+
+RL-B4를 11.0 public `ZLinkRouteMeshRuntimeOptions.channel(channelName).weight`
+경로로 전환했다. Provider의 local getter만 확인하지 않고 consumer가 Location Store에서
+조회한 MeshNode descriptor로 publication 수렴을 확인한다.
+
+검증 순서는 다음과 같다.
+
+1. api-b weight 100 descriptor의 revision, endpoint와 lifecycle generation을 기록한다.
+2. api-b가 accepted work를 실행 중인 상태에서 weight를 0으로 바꾼다.
+3. descriptor weight 0과 revision 증가를 확인한 뒤 신규 request 20건이 모두 api-a에서
+   처리되는지 확인한다.
+4. api-b의 기존 accepted work가 같은 provider에서 정상 완료되는지 확인한다.
+5. api-b weight를 100으로 복원하고 descriptor revision이 다시 증가하는지 확인한다.
+6. endpoint와 lifecycle generation이 유지된 상태에서 api-b가 실제 신규 request
+   대상으로 다시 선택되는지 확인한다.
+
+현재 weighted cursor는 weight 구간 단위로 선택하므로 복원 확인은 최대 240건 안에서
+api-b가 처음 선택될 때 종료한다. 특정 초기 cursor 위치나 40건 같은 짧은 표본에
+의존하지 않는다.
+
+- RL-B4 actual PASS:
+  `framework/languages/node/e2e/ResilienceLifecycle/log/20260729-163732-3388194`
+- M6A focused runtime: 12/12
+- Provider·Consumer·Client TypeScript build: 통과
+- `git diff --check`: 통과
+
+## 2026-07-29 .NET SM-G5 placement weight 완료
 
 `SM-G5` actual-process fixture를 추가했다. Runtime weight는 signed `0..10000` 범위를
 사용한다. 범위를 벗어난 `-1`, `10001`은 현재 값을 바꾸기 전에
@@ -7732,12 +7779,20 @@ placement에서 제외됐다. 고가중치 node가 해당 type capacity를 사�
 node가 선택됐다.
 
 - `WeightContractTests`: 9/9
+- `ActorManagerProductionTests`: 5/5
+- relocation weight·capacity focused: 3/3
 - Play·Gateway·Client build: 통과
 - actual-process:
   `framework/languages/dotnet/e2e/SpotService/logs/20260729-162042-2859820`
 - `operation SpotService.sm-g5 passed`
 
-이 결과만으로 `SM-G5` 전체를 완료 처리하지 않는다. Snapshot을 고정한 직후 선택된 node의
-capacity를 다른 reservation으로 소진하는 race, 두 번째 node의 reservation과 factory
-exactly-once, weight `0` relocation target 제외와 이미 얻은 reservation 유지에는
-deterministic 증거가 더 필요하다.
+Descriptor snapshot 뒤 첫 target의 capacity를 경쟁 reservation으로 소진하는 deterministic
+production test도 추가했다. 첫 reserve는 capacity exhausted로 끝나고 manager는 같은 deadline
+안에서 low-weight node를 다시 선택한다. 최종 target의 factory와 Entry Spot callback은 각각
+1회만 실행된다. 경쟁 reservation을 abort하면 첫 target capacity는 `pending=0, active=0`으로
+돌아간다.
+
+Relocation Store test는 weight가 `0`인 target의 새 capacity reservation을
+`TargetUnavailable`로 거부한다. Weight 변경 전에 얻은 capacity fence는 계속 유효하다.
+같은 fence로 authority owner 전환을 commit하면 target capacity가 `pending=0, active=1`이
+된다. 따라서 `SM-G5`의 deterministic race와 relocation 조건까지 완료했다.

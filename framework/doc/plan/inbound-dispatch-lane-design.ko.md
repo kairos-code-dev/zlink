@@ -1,4 +1,4 @@
-# 수신 backpressure 설계 검토
+# 수신 backpressure 목표 설계와 적용 계획
 
 > 상태: 최종 승인 전 목표 설계안. 현재 구현에는 적용하지 않음
 >
@@ -8,11 +8,22 @@
 >
 > 이 문서는 최종 승인 전 설계 초안이며 정식 공개 계약이나 구현 계획이 아니다.
 
-## 1. 현재 적용 상태
+## 1. 이 문서가 정하는 결과
 
-이 문서는 후속 구현이 따라야 할 수신 dispatch와 backpressure의 목표 구조를 정한다. 적용
-버전과 일정은 작성자가 별도로 결정한다. 최종 승인 전에는 이 문서의 계산식, 목표 값과 구조를
-현재 계약이나 구현 근거로 사용하지 않는다.
+이 문서는 target이 처리할 수 있는 양보다 많은 message가 도착할 때 process memory를 byte
+상한 안에 유지하고, source의 송신을 기다리게 만드는 목표 구조를 정한다. Queue, handler와
+transport가 보관하는 in-flight message의 허용 상한을 high water mark(HWM)라고 한다.
+Target이 HWM 때문에 수신을 멈추면 Core의 network pipe가 차고, 그 결과 source의 송신이
+대기한다.
+
+Application message와 request는 memory 여유가 없을 때 수신을 중단한다. 이미 보낸 request의
+reply와 처리를 계속하기 위해 필요한 runtime control은 별도 Completion connection으로
+수신한다. 이 구조로 application backlog가 completion 진행을 막는 순환 의존성을 제거한다.
+
+적용 버전과 일정은 작성자가 별도로 결정한다. 최종 승인 전에는 이 문서의 계산식, 목표 값과
+구조를 현재 계약이나 구현 근거로 사용하지 않는다.
+
+### 1.1 목표 결과
 
 - 최종 승인 전에는 Framework, Core와 bindings에 새 public API를 추가하지 않는다.
 - 최종 승인 전에는 wire protocol과 Core HWM 동작을 변경하지 않는다.
@@ -22,13 +33,38 @@
 기존 구현의 명백한 버그는 별도로 수정할 수 있다. 그러나 이 문서에 기록한 문제를 근거로
 최종 승인 없이 runtime 구조를 변경하지 않는다.
 
-## 2. 검토하는 문제
+### 1.2 각 계층의 책임
+
+| 계층 | 이 설계에서 맡는 책임 |
+|---|---|
+| Application | Process memory limit, 명시적 `ApplicationHwmBytes`와 유한한 최대 message 크기를 설정한다. |
+| Framework | Host 전체 application byte를 계산하고 Application `Recv`를 중단·재개한다. Request handler와 reply가 사용하는 memory도 유한하게 제한한다. |
+| Core | Directional pipe의 실제 보관 byte를 HWM으로 제한하고 Application·Completion connection pair를 관리한다. |
+| Bindings | Core의 64-bit byte option, monitoring 값과 오류를 각 언어에서 같은 의미로 제공한다. |
+| Remote runtime | 같은 pair identity와 generation을 검증하고, stale reply와 control을 적용하지 않는다. |
+
+### 1.3 정상 처리 순서
+
+1. Framework는 완성된 application message 한 건을 받을 수 있는 최대 byte를 먼저 예약한다.
+2. Core에서 완성된 message를 받은 뒤 실제 byte만 application 사용량으로 바꾸고 남은 예약을
+   반환한다.
+3. Application 사용량과 수신 예약의 합이 HWM에 도달하면 Application connection의 `Recv`만
+   중단한다.
+4. Core pipe가 byte HWM까지 차면 source의 send가 대기한다.
+5. Completion connection의 poller는 계속 실행하여 이미 보낸 request의 reply와 필수 control을
+   처리한다.
+6. Request handler는 실행 전에 reply 한 건의 최대 memory를 예약한다. Reply를 Core가
+   받아들이면 Framework의 reply byte를 Core transport reserve로 넘긴다.
+7. 사용량이 재개 기준 아래로 내려가고 새 수신 예약을 확보할 수 있으면 Application `Recv`를
+   다시 시작한다.
+
+## 2. 왜 현재 구조를 바꿔야 하는가
 
 Target의 처리 속도보다 source의 송신 속도가 빠르면 수신 대기 message가 계속 증가할 수 있다.
 원하는 동작은 message를 버리는 것이 아니라, target의 처리 지연이 source의 송신 대기로 이어지는
 [backpressure](../framework/common/spec/01-glossary.ko.md#backpressured)다.
 
-후속 설계를 다시 검토한다면 다음 조건을 함께 평가해야 한다.
+목표 구조는 다음 조건을 모두 만족해야 한다.
 
 - 수신한 application message를 부하 때문에 버리지 않는다.
 - Target의 수신 여유가 부족하면 source의 송신 압력을 낮춘다.
@@ -42,7 +78,7 @@ Target의 처리 속도보다 source의 송신 속도가 빠르면 수신 대기
 - 양방향 nested request와 두 connection의 순서 역전이 영구 교착이나 stale control 적용으로
   이어지지 않아야 한다.
 
-## 3. 정식 계약 전에 확정할 항목
+## 3. 최종 승인 뒤 정식 계약에서 정할 값
 
 이 문서는 목표 구조와 계산 방법을 정하지만 아직 적용 승인을 받지 않았다. 작성자가 최종
 승인한 뒤에도 다음 값과 protocol 세부 사항을 정식 spec에서 확정해야 한다.
@@ -58,7 +94,7 @@ Target의 처리 속도보다 source의 송신 속도가 빠르면 수신 대기
 - Core Auto HWM planning unit option의 정확한 migration 계약
 - C monitoring ABI version과 다섯 Framework 언어의 exact public interface
 
-## 4. 목표 Framework Application HWM 계산안
+## 4. Framework는 application memory를 어떻게 제한하는가
 
 > 이 절은 최종 승인 전 목표 설계안이다. 수치, 계산식과 `receivePermitBytes` 방식은
 > 승인 전 검토 대상이며 구현과 정식 계약에 사용하지 않는다.
@@ -79,7 +115,7 @@ Framework host application budget
 반환한다. 객체마다 HWM을 따로 만들지 않으므로 connection이나 node 수가 증가해도
 Framework가 허용하는 application memory 총량은 자동으로 증가하지 않는다.
 
-### 4.1 HWM에 포함하는 상태
+### 4.1 어떤 상태를 Application HWM에 포함하는가
 
 `applicationUsedBytes`에는 Framework가 소유한 다음 message를 포함한다.
 
@@ -134,7 +170,7 @@ Core pipe와 OS socket buffer가 보관하는 memory는 `applicationUsedBytes`�
 따라서 Framework Application HWM은 process 전체 memory의 정확한 상한이 아니다. Core
 transport와 completion 처리에 필요한 memory는 HWM 계산 전에 별도 reserve로 남겨야 한다.
 
-### 4.2 수신 중단과 재개
+### 4.2 언제 수신을 중단하고 재개하는가
 
 Framework는 complete message를 받기 전에 그 message가 사용할 수 있는 최대 byte를 전역
 budget에서 먼저 확보한다. 이 예약을 `receivePermitBytes`라 한다.
@@ -152,7 +188,8 @@ canStartRecv =
     <= applicationHwmBytes
 ```
 
-`effectiveMaxAccountedMessageBytes`는 Core에 설정한 유한한 `MaxMessageSize`에 Framework
+`effectiveMaxAccountedMessageBytes`는 Core가 message 한 건에 허용하는 최대 크기인
+[`MaxMessageSize`](../framework/common/spec/01-glossary.ko.md#maxmessagesize)에 Framework
 envelope와 최소 charge를 더한 값이다. 따라서 memory 기준 backpressure를 사용하려면 다음
 startup 조건을 만족해야 한다.
 
@@ -229,7 +266,7 @@ threshold는 profile LWM보다 낮아진다. Monitoring은 profile LWM과 실제
 구분해서 제공한다. Reply와 completion 처리는 application budget과 별도로 확보한 reserve를
 사용해야 한다.
 
-### 4.3 명시적 설정
+### 4.3 Application은 어떤 값을 설정하는가
 
 이 설계에서는 `ApplicationHwmBytes`를 모든 Framework 언어가 제공하는 64-bit public
 설정으로 정의한다. Application이 지정한 값은 Auto HWM보다 우선한다.
@@ -255,7 +292,7 @@ option에 그대로 전달하지 않으며, Auto 계산이 끝난 유한한 byte
 정식 구현 전에 Framework 공통 spec과 다섯 언어 exact interface에 같은 단위, 범위,
 startup error와 Auto 우선순위를 먼저 기록한다.
 
-### 4.4 Memory 기준 상한
+### 4.4 Process memory limit에서 상한을 어떻게 계산하는가
 
 Memory 관점에서 허용할 수 있는 HWM은 다음과 같이 계산한다.
 
@@ -308,7 +345,7 @@ Memory amplification:       1.5
 
 Memory 기준 상한은 약 `1.96 GiB`다.
 
-### 4.5 Queue 지연 기준 상한
+### 4.5 허용할 queue 지연에서 상한을 어떻게 계산하는가
 
 Memory가 충분해도 너무 큰 HWM은 오래된 message를 queue에 계속 남긴다. 운영에서 허용하는
 최대 queue 지연도 HWM 상한으로 사용한다.
@@ -334,7 +371,7 @@ applicationHwmBytes =
 resume threshold는 모두 `200 MiB`다. Permit이 `256 MiB`라면 profile LWM은 같지만 실제
 resume threshold는 `144 MiB`다.
 
-### 4.6 예상 burst 확인
+### 4.6 예상 burst를 수용할 수 있는지 어떻게 확인하는가
 
 설정한 HWM이 운영에서 예상하는 burst를 얼마나 흡수하는지 다음 식으로 확인한다.
 
@@ -352,7 +389,7 @@ buffer는 `300 MiB`다. HWM이 `400 MiB`이면 이 burst를 Framework queue에�
 Burst가 HWM을 넘으면 Application `Recv`를 중단하여 source에 backpressure를 전달한다.
 이는 실패가 아니라 HWM의 정상 동작이다.
 
-### 4.7 Auto Application HWM
+### 4.7 Auto Application HWM은 언제 계산하는가
 
 명시적 HWM이 없을 때만 안정적인 process memory limit과 검증된 profile로 Auto HWM을
 계산한다.
@@ -389,7 +426,7 @@ Production Auto HWM의 fallback이나 공개 기본값으로 사용하지 않는
 명시적인 topology 변경 시에만 수행하며 message 처리 중 OS free memory나 process RSS를
 조회하지 않는다.
 
-### 4.8 설정 절차
+### 4.8 Production 설정값을 어떤 순서로 정하는가
 
 Production HWM은 다음 순서로 결정한다.
 
@@ -427,7 +464,13 @@ applicationHwmBytes =
             * maximumQueueDelaySeconds)
 ```
 
-### 4.9 Completion connection과 내부 payload queue 제거 계획
+### 4.9 왜 connection을 둘로 나누고 내부 payload queue를 제거하는가
+
+Application `Recv` 중단이 source의 send 대기로 이어지려면 아직 처리하지 않은 application
+message가 Core network pipe에 남아 있어야 한다. Reply까지 같은 pipe에 남기면 Application
+HWM으로 수신을 중단했을 때 이미 보낸 request도 완료할 수 없다. 따라서 application
+message와 request는 Application connection에 남기고, reply와 진행에 필요한 control은 별도
+Completion connection으로 전달한다.
 
 현재 Core request/reply helper는 network socket에 message handler를 설치한다. 이 handler는
 reply를 completion queue로 보내고 application message와 수신한 request는 내부 PAIR
@@ -519,7 +562,7 @@ Completion connection은 application payload를 전달하지 않으므로 Applic
 request 수와 동시에 완료될 수 있는 reply byte를 측정한 뒤 정한다. Connection 수와 file
 descriptor는 두 배가 되므로, 이 비용은 HWM 축소로 제거되지 않는다.
 
-### 4.10 Completion reserve와 request·reply 상한
+### 4.10 Request와 reply memory를 어떻게 제한하는가
 
 Completion connection의 Core pipe와 OS socket buffer는 `coreTransportReserve`에 포함한다.
 Framework의 `completionReserve`는 요청자가 reply를 기다리고 완료하는 비용과 응답자가
@@ -585,7 +628,7 @@ Application HWM과 Completion connection HWM은 서로 대신 사용할 수 없�
 줄여도 pending request metadata가 줄어들지 않으며, Completion HWM을 크게 해도 Framework가
 동시에 완료할 수 있는 request 수가 늘어나는 것은 아니다.
 
-### 4.11 Core transport 총 reserve
+### 4.11 Core transport memory를 어떻게 계산하는가
 
 Core의 `SNDHWM`과 `RCVHWM`은 directional pipe마다 적용된다. 따라서 byte 단위로 바꿔도 HWM
 한 개만으로 process 전체 memory 상한을 보장하지 않는다. Framework는 Application connection과
@@ -616,7 +659,7 @@ process memory limit을 넘으면 startup을 실패시키거나 connection 수�
 사용해야 한다. 값을 조용히 낮추면 monitoring 값과 운영자가 지정한 계약이 달라지므로
 허용하지 않는다.
 
-### 4.12 Hot path overhead 제한
+### 4.12 정상 dispatch 경로의 비용을 어떻게 제한하는가
 
 Memory HWM을 적용하려면 complete message마다 byte를 더하고 소유권을 반환할 때 빼는 연산은
 필요하다. 그 외의 memory 측정과 동기화는 normal dispatch hot path에 추가하지 않는다.
@@ -665,7 +708,7 @@ multipart transaction이 part를 처리할 때 함께 누적하고, HWM 검사�
 한다. 이 기준을 만족하지 못하면 중앙 permit 발급을 적용하지 않고 위의 bounded budget shard
 방식을 검증한다.
 
-### 4.13 Framework monitoring
+### 4.13 운영에서 어떤 값을 확인할 수 있어야 하는가
 
 운영자는 설정값뿐 아니라 실제 byte 사용량과 backpressure 원인을 확인할 수 있어야 한다.
 Framework runtime status에는 적어도 다음 값을 같은 snapshot 시점으로 제공한다.
@@ -689,7 +732,7 @@ Status를 만들 때 queue나 pending request map 전체를 순회하지 않는�
 admission이 이미 유지하는 counter의 snapshot만 읽는다. Message마다 monitor event를 만들지
 않고 기존 주기적 status 또는 명시적 조회에서만 값을 내보낸다.
 
-### 4.14 Application byte 귀속 진단
+### 4.14 어느 실행 대상이 byte를 보유하는지 어떻게 찾는가
 
 전역 HWM으로 모든 Application connection을 중단하면 어떤 실행 대상이 byte를 보유하는지
 확인할 수 있어야 한다. Node, Channel, Spot과 Actor가 이미 소유한 mailbox 또는 execution
@@ -722,7 +765,7 @@ pause가 정해진 시간 이상 지속될 때만 active owner registry를 rate-
 executing, hold와 total byte를 포함한다. Owner resource는 관련 lease가 모두 반환되기 전에
 제거하지 않는다.
 
-### 4.15 상호 과부하와 nested request
+### 4.15 양쪽 host가 동시에 과부하이면 어떻게 회복하는가
 
 A와 B의 request handler가 서로에게 nested request를 보내고 두 host가 동시에 Application
 HWM에 도달하면, 두 nested request가 Application connection의 network pipe에서 기다릴 수
@@ -740,7 +783,7 @@ application code가 terminal로 끝나지 않으면 Framework가 byte를 강제�
 Nested request를 사용하는 workload는 유한한 request timeout을 사용해야 하며 pause duration,
 nested timeout 수와 timeout 뒤 budget 회복 시간을 관측한다.
 
-## 5. Core C HWM contract 변경 범위
+## 5. Core C HWM 계약은 어떻게 바뀌는가
 
 > 이 절도 작성자가 최종 승인하기 전까지 현재 Core C 계약이나 구현을 변경하지 않는다.
 
@@ -748,7 +791,7 @@ Core HWM을 message count에서 byte로 바꾸는 것은 `pipe_t` 내부 구현�
 현재 C API가 HWM option의 값과 단위를 공개하므로 public contract, ABI에 전달하는 값의
 크기, Auto HWM, monitoring과 모든 bindings를 함께 변경해야 한다.
 
-### 5.1 현재 C 계약
+### 5.1 현재 계약은 무엇인가
 
 현재 Core는 다음 계약을 사용한다.
 
@@ -774,7 +817,7 @@ zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 다른 용량을 사용한다. 함수와 enum 이름이 같아도 동작 호환성이 깨지는 public contract
 변경이다.
 
-### 5.2 목표 option 변경 방식
+### 5.2 호환성 없이 어떤 계약으로 바꾸는가
 
 이 목표안은 기존 `ZLINK_OPT_SNDHWM`과 `ZLINK_OPT_RCVHWM`의 단위를 message count에서 byte로
 직접 바꾼다. 기존 동작과 source·binary 호환성을 제공하지 않는 breaking change이며,
@@ -790,7 +833,7 @@ zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 작성자가 최종 승인하면 이 breaking contract를 정식 Core draft에 먼저 기록하고 같은
 release에서 Core header, 모든 bindings와 Framework를 함께 변경한다.
 
-### 5.3 기존 option을 byte로 바꾸는 경우
+### 5.3 기존 option의 새 타입과 기본값은 무엇인가
 
 기존 option ID와 이름은 유지할 수 있지만 값의 타입과 단위를 명확히 바꿔야 한다.
 
@@ -813,7 +856,7 @@ Auto HWM이 기본으로 활성화된 socket에서는 수동 기본값보다 Aut
 기본값이다. 이 값은 connection별 HWM이므로 수천 connection의 process memory 상한으로
 그대로 사용할 수 없다. Framework는 전체 Core reserve를 계산해 startup 시 검증해야 한다.
 
-### 5.4 Auto HWM option
+### 5.4 Auto HWM은 byte 값을 어떻게 계산하는가
 
 현재 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`와
 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 byte budget을 message slot으로 환산할 때 쓰는
@@ -838,7 +881,7 @@ autoHwmBytes =
 override로 유지할지는 다시 선택하지 않는다. 값 타입은 `uint64_t`로 바꾸고 이전 4-byte
 호출과의 호환성은 제공하지 않는다.
 
-### 5.5 Monitoring ABI
+### 5.5 Monitoring ABI는 무엇이 바뀌는가
 
 현재 `zlink_monitor_status_t`에는 count 단위를 전제로 한 다음 field가 있다.
 
@@ -868,7 +911,7 @@ Applied HWM과 deferred HWM을 byte로 바꾸면서 기존 `int32_t` field 이�
 새 field에는 `_bytes`가 드러나는 이름을 사용한다. ABI struct layout과 bindings의 snapshot
 type이 바뀌므로 C header, monitoring spec과 모든 bindings를 같은 release에서 갱신해야 한다.
 
-### 5.6 Core 내부 구현
+### 5.6 Core pipe는 byte를 어떻게 계산하고 반환하는가
 
 Public option을 바꾸는 것만으로는 동작하지 않는다. Core의 directional pipe는 message
 counter와 별도로 byte counter와 credit을 관리해야 한다.
@@ -956,7 +999,7 @@ HWM option은 local pipe admission 설정이므로 byte accounting 자체는 net
 바꿀 필요가 없다. 별도 Completion connection이나 새 control protocol을 추가한다면 그것은
 이 변경과 다른 wire protocol 작업이다.
 
-### 5.7 영향을 받는 저장소 표면
+## 6. 저장소의 어느 부분이 바뀌는가
 
 | 범위 | 필요한 변경 |
 |---|---|
@@ -965,11 +1008,11 @@ HWM option은 local pipe admission 설정이므로 byte accounting 자체는 net
 | `pipe_t` | Byte written·read·peer credit, admission, LWM, multipart와 rollback을 구현한다. |
 | Socket lifecycle | Endpoint pair, inproc 합산, reconnect와 runtime HWM 갱신에 byte 값을 전달한다. |
 | Peer connection 관리 | 두 connection을 같은 peer pair로 검증하고 generation·epoch·sequence fence로 connection 사이 순서를 보장한다. |
-| Request/reply runtime | 내부 payload queue를 제거하고 reply를 Completion connection에서 직접 완료하며 request byte를 completion reserve로 transfer한다. |
+| Request/reply runtime | 내부 payload queue를 제거하고 reply를 Completion connection에서 직접 완료한다. Handler 실행 전 completion send permit을 확보하고 request·reply byte의 소유권 전환을 한 번만 계산한다. |
 | Auto HWM | Profile·bucket 결과를 message slot이 아니라 최종 byte HWM으로 적용한다. |
 | Monitoring | Applied·deferred HWM, in-flight byte, pause, permit, owner attribution과 completion reserve를 제공한다. |
-| Bindings | C 값 타입과 단위를 각 언어의 64-bit byte 타입으로 노출한다. |
-| Framework | Host budget owner, owner-local attribution, receive permit과 nested overload 관측을 구현한다. |
+| Bindings | .NET, Java, Node.js와 C++에서 C 값 타입과 단위를 각 언어의 64-bit byte 타입으로 노출한다. |
+| Framework | Host budget owner, owner-local attribution, receive permit, completion send permit과 nested overload 관측을 구현한다. |
 | Benchmark와 test | 기존 HWM 환경 변수와 fixture를 count에서 byte로 바꾸고 migration 값을 기록한다. |
 | Spec과 guide | Core draft, 정식 socket option, monitoring, bindings와 migration 문서를 함께 갱신한다. |
 
@@ -977,7 +1020,7 @@ C++ binding처럼 현재 HWM을 `message_count_t`로 표현하는 binding은 값
 `byte_count_t` 또는 byte 전용 타입으로 바꿔야 한다. 단순히 내부 정수만 크게 만들어서는
 호출자가 단위를 알 수 없다.
 
-### 5.8 검증 기준
+## 7. 최종 결과는 무엇을 검증해야 하는가
 
 1. 4-byte 기존 HWM option value가 조용히 byte로 해석되지 않고 명시적으로 실패한다.
 2. 64-bit 수동 HWM의 set/get과 `0=무제한` 계약을 검증한다.
@@ -1034,23 +1077,163 @@ C++ binding처럼 현재 HWM을 `message_count_t`로 표현하는 binding은 값
 26. Framework `ApplicationHwmBytes=0`은 Auto 계산을 수행하고, 계산한 유한값을 Core에
     전달하며 Core HWM의 `0=무제한`과 혼동하지 않는지 contract test로 검증한다.
 
-## 6. 적용 조건
+## 8. 어떤 순서로 적용하는가
 
-이 문서의 내용은 작성자가 최종 승인을 명시한 뒤에만 정식 spec과 구현 계획에 반영한다.
-특정 버전, 일정, 측정 결과나 리뷰 완료 여부만으로 자동 적용하지 않는다. 최종 승인 전에는
-Core, Framework, bindings, wire protocol, public header와 정식 spec을 변경하지 않는다.
+최종 승인 뒤 작업은 Core, bindings, Framework의 세 단계로 나눈다. 각 단계는 바로 앞 단계의
+완료 조건과 증거를 확인한 뒤 시작한다. 뒤 단계의 코드를 먼저 추가하여 앞 단계의 미완성
+계약을 우회하지 않는다.
 
-최종 승인한 뒤에는 다음 순서를 지킨다.
+### 8.1 1단계: Core 라이브러리 수정
 
-1. Core draft에 count HWM을 제거하고 기존 option을 `uint64_t` byte HWM으로 바꾸는 breaking
-   contract를 기록한다. 이전 동작을 유지하는 option, alias와 adapter는 만들지 않는다.
-2. Completion connection의 handshake, peer pair 검증, reconnect, pending request 종료
-   error와 wire fixture를 확정한다.
-3. Framework 공통 spec과 다섯 언어 exact interface에 `ApplicationHwmBytes`, 유한한
-   `MaxMessageSize`, startup error와 Auto 우선순위를 기록한다.
-4. 목표 connection 수에서 minimum charge, Core·Framework memory amplification,
-   `coreTransportReserve`와 `completionReserve`를 측정한다.
-5. Core byte accounting, 두 connection과 내부 PAIR receive queue 제거를 구현한다.
-6. Framework host 전역 budget owner와 Application `Recv` 중단·재개를 구현한다.
-7. 이 문서의 기능·memory·성능 검증 기준을 모두 통과한 뒤 정식 spec과 guide를 현재
-   구현에 맞춰 갱신한다.
+이 단계의 결과는 C header, Core runtime과 test가 message count가 아닌 byte 하나의 단위로
+HWM을 처리하고, peer마다 Application·Completion connection pair를 제공하는 것이다.
+
+1. 구현 전에 [`core/doc/spec/draft/`](../../../core/doc/spec/draft/)에 별도 Core draft를
+   만들고 breaking contract를 기록한다. 기존 `ZLINK_OPT_SNDHWM`과
+   `ZLINK_OPT_RCVHWM`은 유지하되 값 타입을 `uint64_t`, 단위를 byte로 바꾼다. `0`은
+   무제한으로 유지하고 4-byte 기존 값은 명시적인 configuration error로 거부한다.
+2. 수동 기본값, Auto HWM planning unit, profile·connection bucket 계산과
+   `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` 계열 option의 64-bit 계약을 확정한다.
+3. Monitoring struct를 version하고 계획값, 적용값, 축소 보류값과 현재 in-flight 값을
+   `_bytes`가 드러나는 64-bit field로 바꾼다. Message count 진단값과 byte 제한값을 서로
+   다른 field로 제공한다.
+4. `pipe_t`는 payload, routing frame, metadata와 minimum charge를 write 과정에서 한 번
+   계산한다. Byte admission, credit 반환, HWM 절반의 Core LWM, runtime HWM 변경, inproc
+   합산, reconnect, termination, multipart commit과 rollback에 같은 계산을 적용한다.
+5. 빈 pipe에는 HWM보다 큰 message 한 건을 허용하되 해당 방향의 유한한
+   `MaxMessageSize`를 넘지 못하게 한다. HWM 검사를 위해 payload를 다시 순회하거나
+   message별 allocation·mutex·system call을 추가하지 않는다.
+6. Peer마다 Application connection과 Completion connection을 하나씩 설정한다. Handshake는
+   peer identity, pair identity와 generation을 검증한다. 한 connection이 끊기거나 protocol
+   error가 발생하면 pair 전체를 종료하고 이전 generation의 reply와 control을 폐기한다.
+7. Request와 application message는 Application connection으로, reply와 진행에 필요한
+   control은 Completion connection으로 전달한다. Application payload를 옮기던 내부 PAIR
+   `recv_queue`, reply payload를 보관하던 completion deque와 signal socket을 제거한다.
+8. Core는 incomplete multipart를 reader에 공개하지 않는다. Completion poller가 reply를
+   받으면 별도 deque에 다시 보관하지 않고 pending request를 직접 완료할 수 있는 record를
+   제공한다.
+9. C unit·integration test, transport별 fixture, wire fixture와 benchmark로 §7의 Core 관련
+   항목을 검증한다.
+10. 구현과 test가 완료되면 Core의 정식 socket option, monitoring, 오류와 내부 구조 문서를
+    실제 C header와 동작에 맞춘다. Draft의 목표 계약을 정식 문서로 옮긴 뒤 draft를 현재
+    계약처럼 남겨 두지 않는다.
+
+1단계는 다음 조건을 모두 만족해야 완료된다.
+
+- C header와 Core draft가 동일한 64-bit byte 계약을 정의한다.
+- TCP, IPC와 inproc의 byte HWM, Auto HWM, monitoring, multipart와 runtime HWM test가
+  통과한다.
+- Application·Completion connection의 pair 생성, 종료, reconnect와 stale generation
+  차단을 wire fixture로 확인한다.
+- Request/reply 기능을 사용해도 제거 대상 PAIR queue와 completion deque가 생성되지 않는다.
+- HWM을 끈 기준 build와 비교한 Core 성능 결과와 memory amplification 측정값을 기록한다.
+- Core 정식 spec, C header와 test가 같은 타입, 단위, 기본값과 오류를 설명한다.
+
+### 8.2 2단계: bindings 라이브러리 수정
+
+이 단계의 결과는 .NET, Java, Node.js와 C++ binding이 1단계 Core 계약을 같은 단위와 범위로
+제공하는 것이다. Java binding은 Java와 Kotlin Framework가 함께 사용한다.
+
+각 binding은 구현 전에 해당 언어의 exact interface에 다음 계약을 기록한다.
+
+- HWM과 Auto HWM planning unit은 64-bit byte 값이다.
+- `0=무제한`, 수동 기본값과 4-byte 기존 값 거부 결과는 Core와 같다.
+- Applied·deferred HWM과 in-flight monitoring 값은 64-bit byte다.
+- Message slot이나 pending message count는 count 진단값으로 남고 byte field와 이름을
+  공유하지 않는다.
+- 기존 `message_count_t`처럼 count 의미를 포함한 public type 이름은 byte 전용 이름으로
+  바꾼다. 이전 이름을 alias나 adapter로 유지하지 않는다.
+
+언어별 작업 범위와 완료 조건은 다음과 같다.
+
+| Binding | 수정 범위 | 완료 조건 |
+|---|---|---|
+| .NET | Socket option 값, context Auto HWM 설정, monitoring snapshot과 request/reply wrapper를 새 Core ABI에 맞춘다. | 64-bit 경계값, `0`, 기본값, 기존 32-bit 호출 실패와 monitoring contract test가 통과한다. |
+| Java | Java/Kotlin이 공유하는 option 타입, native bridge, monitoring record와 request/reply wrapper를 바꾼다. | Java와 Kotlin consumer가 같은 byte 값을 읽고 경계값 contract test가 통과한다. |
+| Node.js | JavaScript의 안전한 정수 범위를 넘는 byte 값도 손실 없이 전달할 수 있는 공개 표현과 native bridge를 확정한다. | 최대 지원값의 왕복, 잘못된 타입 거부와 monitoring contract test가 통과한다. |
+| C++ | Count 의미의 wrapper 타입을 byte 전용 타입으로 바꾸고 option, monitoring과 request/reply wrapper를 갱신한다. | Compile-time interface test와 64-bit 값 왕복 test가 통과한다. |
+
+모든 binding package는 같은 Core contract version을 사용해야 한다. 네 binding 가운데 하나라도
+이전 count 의미를 유지하면 2단계를 완료한 것으로 보지 않는다. 각 package는
+[local package 배포 절차](../../../scripts/local-package/README.ko.md)를 따라 만들고, consumer
+test를 마친 뒤 version과 artifact 위치를 진행표에 기록한다.
+
+### 8.3 3단계: Framework 적용
+
+이 단계의 결과는 Framework host가 Core와 bindings의 byte HWM을 사용하여 process 전체의
+application backlog를 제한하고, application 수신이 중단되어도 request completion을 계속
+처리하는 것이다.
+
+1. 구현 전에 [Framework 공개 계약 관리 절차](../framework/common/spec/00-public-contract-governance.ko.md)에
+   따라 공통 spec과 .NET, Java, Kotlin, Node.js, C++ exact interface에
+   `ApplicationHwmBytes`, 유한한 `MaxMessageSize`, startup error, Auto HWM 우선순위와
+   monitoring 계약을 기록한다.
+2. 각 Framework는 2단계에서 만든 binding package version을 중앙 dependency 위치에서
+   참조한다. Binding source를 직접 참조하거나 private API로 우회하지 않는다.
+3. Application·Completion connection을 함께 poll하되 Application HWM에 도달하면
+   Application `Recv`만 중단한다. Core에서 받은 application message를 다른 payload queue로
+   복사하거나 이동하지 않는다.
+4. Host 전체 `applicationUsedBytes`와 receive permit을 계산한다. 여러 MeshNode의 기존
+   ingress poller 병렬성을 유지하고, 중앙 permit 발급이 성능 기준에 미달하면 합계가 HWM을
+   넘지 않는 고정 수 budget shard를 적용한다.
+5. Request handler를 실행하기 전에 completion send permit을 확보한다. Permit 상한에
+   도달하면 request를 Application queue와 budget에 남긴다. Handler terminal에서는 request
+   lease를 실제 reply byte로 한 번에 바꾸고, Core가 reply를 받으면 Core transport reserve로
+   소유권을 넘긴다.
+6. 명시적 HWM과 Auto HWM을 §4의 계산 순서로 결정한다. 유한한 process memory limit을
+   확인할 수 없거나 reserve가 limit을 넘으면 값을 임의로 낮추지 않고 startup을 실패시킨다.
+7. Framework monitoring은 application 사용량, receive permit, pause, owner별 byte,
+   requester·responder completion reserve, completion send permit과 pending request를
+   queue 순회 없이 제공한다.
+8. 양방향 nested request, pair reconnect, timeout, cancellation, shutdown, relocation과
+   두 connection 사이의 순서 역전을 검증한다.
+9. 다섯 Framework 언어에서 같은 public 동작과 E2E를 제공하고, memory·throughput·CPU/message·
+   p99 latency와 다중 MeshNode scaling 결과를 기록한다.
+
+3단계는 §7의 모든 통합 검증을 통과하고, 정식 spec·guide·monitoring 문서가 구현과 일치해야
+완료된다.
+
+## 9. 진행표
+
+상태는 `승인 대기`, `진행 중`, `완료`, `차단` 가운데 하나를 사용한다. 현재는 작성자의 최종
+승인 전이므로 모든 항목을 `승인 대기`로 둔다. 작업을 시작한 뒤에는 완료 증거에 test 명령,
+결과 log, contract 문서, commit 또는 artifact 위치를 기록한다. 본문 설명을 진행표에 다시
+복사하지 않고 해당 절과 검증 번호를 가리킨다.
+
+| ID | 단계 | 작업 | 완료 증거 | 상태 |
+|---|---|---|---|---|
+| C-01 | Core | Core draft와 C header의 64-bit byte HWM 계약 확정 | §8.1과 검증 1~3 결과 | 승인 대기 |
+| C-02 | Core | `pipe_t` byte accounting, admission과 credit 반환 | §8.1과 검증 4~7 결과 | 승인 대기 |
+| C-03 | Core | Auto HWM, 기본값과 runtime HWM 변경 | 검증 2, 3, 6 결과 | 승인 대기 |
+| C-04 | Core | Monitoring ABI version과 byte field 적용 | Core C ABI·monitoring test 결과 | 승인 대기 |
+| C-05 | Core | Application·Completion connection pair와 handshake | 검증 10, 12 결과 | 승인 대기 |
+| C-06 | Core | 내부 PAIR receive queue와 completion deque 제거 | 검증 11 결과 | 승인 대기 |
+| C-07 | Core | Core memory·성능·wire regression 검증 | 검증 4~7, 9~13 결과와 benchmark log | 승인 대기 |
+| C-08 | Core | Core 정식 spec·monitoring·오류 문서 갱신 | C header·test와 문서 대조 결과 | 승인 대기 |
+| B-01 | Bindings | .NET binding과 package 갱신 | .NET contract·consumer test와 artifact | 승인 대기 |
+| B-02 | Bindings | Java binding과 package 갱신 | Java·Kotlin contract·consumer test와 artifact | 승인 대기 |
+| B-03 | Bindings | Node.js binding과 package 갱신 | Node.js 경계값·consumer test와 artifact | 승인 대기 |
+| B-04 | Bindings | C++ binding과 package 갱신 | C++ compile-time·consumer test와 artifact | 승인 대기 |
+| B-05 | Bindings | 네 binding의 타입·단위·monitoring parity 확인 | 검증 8과 package version 목록 | 승인 대기 |
+| F-01 | Framework | 공통 spec과 다섯 언어 exact interface 확정 | Contract review와 문서 검증 결과 | 승인 대기 |
+| F-02 | Framework | Stage 2 binding package version 적용 | 언어별 중앙 dependency 변경과 restore log | 승인 대기 |
+| F-03 | Framework | 두 connection poll과 직접 Application `Recv` 적용 | 검증 11, 12, 15 결과 | 승인 대기 |
+| F-04 | Framework | Application HWM, receive permit과 Auto 계산 적용 | 검증 14, 17, 23, 25, 26 결과 | 승인 대기 |
+| F-05 | Framework | Completion reserve, send permit과 pending 상한 적용 | 검증 16, 17, 21, 22 결과 | 승인 대기 |
+| F-06 | Framework | Owner별 byte 귀속과 monitoring 적용 | 검증 8, 20 결과 | 승인 대기 |
+| F-07 | Framework | 다섯 언어 public contract와 E2E parity 확인 | 언어별 contract test와 공통 E2E 결과 | 승인 대기 |
+| F-08 | Framework | Memory·성능·다중 MeshNode 통합 검증 | 검증 17~19과 benchmark log | 승인 대기 |
+| F-09 | Framework | 정식 spec, guide와 운영 문서 갱신 | 문서 검증 결과와 최종 review | 승인 대기 |
+
+## 10. 언제 적용할 수 있는가
+
+이 문서의 내용은 작성자가 최종 승인을 명시한 뒤에만 1단계를 시작한다. 특정 버전, 일정,
+측정 결과나 리뷰 완료만으로 자동 적용하지 않는다. 최종 승인 전에는 Core, bindings,
+Framework, wire protocol, public header와 정식 spec을 변경하지 않는다.
+
+1단계가 완료되기 전에 binding을 새 의미로 바꾸지 않는다. 2단계의 네 binding과 package
+검증이 모두 끝나기 전에 Framework 구현을 시작하지 않는다. 이전 count 동작을 보존하는
+option, alias, adapter나 runtime 자동 변환은 어느 단계에도 추가하지 않는다.
+
+3단계와 §7의 통합 검증이 끝나면 진행표의 모든 완료 증거를 확인한다. 누락된 항목이 있으면
+적용 완료로 판단하지 않는다.

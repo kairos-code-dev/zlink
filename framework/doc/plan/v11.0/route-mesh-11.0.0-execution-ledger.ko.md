@@ -7642,6 +7642,28 @@ Static registry 자체는 현재 구현 세부이며 runtime·incarnation fence�
 Location authority에 연결한 durable completion cursor·reference release, Core-native
 경로와 실제 process crash·replay 증거다.
 
+후속 구현에서 Accepted completion을 Actor authority가 가리키는 canonical relocation
+root에 포함했다. Target은 callback 전 `Prepared → Committed`, callback 성공 뒤
+`Committed → Delivered`를 Location Store CAS로 기록한다. 각 CAS는 immutable successor
+root를 먼저 저장하고 authority reference를 바꾼 뒤 이전 manifest를 삭제한다.
+
+Source가 local Actor cleanup과 Message Follow 설정을 마치면 source-cleanup 완료를
+authority에 기록한다. 이어 authority를 steady application payload로 되돌리고, CAS가
+성공한 뒤 Delivered root manifest를 삭제한다. Canonical root가 없거나 checksum,
+operation 또는 generation이 다르면 legacy payload로 우회하지 않고
+`RELOCATION_DATA_LOST`로 끝낸다.
+
+검증 결과는 다음과 같다.
+
+- canonical cursor·reference focused: 1/1
+- deferred Join recovery·wire focused: 4/4
+- Java core unit: 612/612
+- Java core contract test: 22/22
+- compile warning·error: 0
+
+따라서 Location authority cursor와 reference release 조건은 완료했다. 남은 완료 조건은
+Core-native 경로와 실제 process crash·replay 증거다.
+
 ## 2026-07-29 C++ Spot Context 생성 경계 보강
 
 `V11-M6-OBJECT-CONTEXT-CPP`의 move-only Context 계약을 다시 검사했다.
@@ -7663,3 +7685,59 @@ move-assignment 금지, move construction은 그대로 유지한다.
 이 변경으로 Context의 default construction·copy·assignment 제거 조건을 닫았다.
 `spot_t<TActor>`·`entry_spot_t<TActor>` exact base 전환과 이에 따른 C++ sample·E2E
 정렬은 계속 남아 있다.
+
+## 2026-07-29 Node ResilienceLifecycle RL-D3·RL-D4 계약 정렬
+
+Node provider의 message-flow observer와 RL-D3·RL-D4 assertion을 공통 dispatch-error
+계약에 맞췄다. 실패 event는 `outcome=failed`, `reason=no_handler`,
+`action=reply_error`와 `packet_name`을 보존한다. Provider·Consumer에서 제거된
+context, location query와 runtime option API도 현재 exact interface로 교체했다.
+
+첫 actual run에서 consumer descriptor의 endpoint가 `tcp://127.0.0.1:0`으로 게시됐다.
+RID가 작은 provider는 이 endpoint로 Automatic connection을 시작하므로 channel이
+Ready가 되지 않았다. Raw binding이 bind 뒤 `LAST_ENDPOINT`를 읽고 실제 할당 포트를
+local descriptor에 반영하도록 production runtime을 수정했다. Fixture를 manual
+topology로 바꾸지 않았다.
+
+- Node production/browser build: 통과
+- Provider·Consumer·Client TypeScript build: 통과
+- RL-D3 actual PASS:
+  `framework/languages/node/e2e/ResilienceLifecycle/log/20260729-162011-2856469`
+- RL-D4 actual PASS:
+  `framework/languages/node/e2e/ResilienceLifecycle/log/20260729-162134-2885402`
+
+RL-D4 normal client는 공통 spec대로 error message 기반 exception만 확인한다. Error
+code round-trip은 기존 raw wire gate가 소유하며, dispatch reason과 action은 server
+observer evidence가 소유한다.
+
+E2E assertion helper는 stream connector의 내부 assertion을 가져오지 않고 로컬
+`ensure`를 사용한다. ResilienceLifecycle Client는 CommonJS로 실행되지만 stream
+connector package는 ESM export만 제공해, 이전 import는 scenario 시작 전에
+`ERR_PACKAGE_PATH_NOT_EXPORTED`로 실패했다. Assertion은 connector 기능이 아니므로
+이 package dependency를 제거해 E2E 책임도 분리했다.
+
+## 2026-07-29 .NET SM-G5 placement weight 부분 완료
+
+`SM-G5` actual-process fixture를 추가했다. Runtime weight는 signed `0..10000` 범위를
+사용한다. 범위를 벗어난 `-1`, `10001`은 현재 값을 바꾸기 전에
+`ZLinkConfigurationException`으로 거부한다.
+
+같은 비율의 weight는 최대공약수로 줄인 selection ring을 사용한다. 따라서 `100:300`은
+raw 합계를 64-bit 정수로 계산하면서도 `1:3`의 짧은 주기로 선택한다. Actor와 User Spot을
+각각 80개 생성한 actual-process 실행에서 두 종류 모두 `20:60`으로 배치됐다. 기존 Actor의
+owner와 generation은 runtime weight 변경 뒤에도 유지됐다.
+
+별도 stable type의 capacity를 node당 1개로 제한했다. Weight `0` node는 첫 신규
+placement에서 제외됐다. 고가중치 node가 해당 type capacity를 사용한 뒤에는 저가중치
+node가 선택됐다.
+
+- `WeightContractTests`: 9/9
+- Play·Gateway·Client build: 통과
+- actual-process:
+  `framework/languages/dotnet/e2e/SpotService/logs/20260729-162042-2859820`
+- `operation SpotService.sm-g5 passed`
+
+이 결과만으로 `SM-G5` 전체를 완료 처리하지 않는다. Snapshot을 고정한 직후 선택된 node의
+capacity를 다른 reservation으로 소진하는 race, 두 번째 node의 reservation과 factory
+exactly-once, weight `0` relocation target 제외와 이미 얻은 reservation 유지에는
+deterministic 증거가 더 필요하다.

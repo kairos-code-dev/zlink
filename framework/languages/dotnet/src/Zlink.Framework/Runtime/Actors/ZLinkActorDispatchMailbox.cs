@@ -5,6 +5,7 @@ internal sealed class ZLinkActorDispatchMailbox
     private readonly object _sync = new();
     private readonly Queue<Waiter> _barrierWaiters = new();
     private readonly Queue<Waiter> _waiters = new();
+    private bool _admissionClosed;
     private bool _busy;
     private int _pendingMessages;
     private int _pendingRequests;
@@ -26,6 +27,11 @@ internal sealed class ZLinkActorDispatchMailbox
 
         lock (_sync)
         {
+            if (_admissionClosed)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.NotFound,
+                    "Actor dispatch admission is closed for a terminal lifecycle transition.");
+
             if (!_busy)
             {
                 _busy = true;
@@ -52,6 +58,14 @@ internal sealed class ZLinkActorDispatchMailbox
         ValueTask<Turn> turn;
         lock (_sync)
         {
+            if (_admissionClosed)
+            {
+                cancellation.Dispose();
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.Unavailable,
+                    "Actor lifecycle admission is closed for a terminal transition.");
+            }
+
             if (!_busy)
             {
                 _busy = true;
@@ -66,6 +80,50 @@ internal sealed class ZLinkActorDispatchMailbox
         }
 
         return new BarrierReservation(turn.AsTask(), cancellation);
+    }
+
+    public BarrierReservation CloseAdmissionAndReserveLifecycleBarrier()
+    {
+        var cancellation = new CancellationTokenSource();
+        ValueTask<Turn> turn;
+        lock (_sync)
+        {
+            if (_admissionClosed)
+            {
+                cancellation.Dispose();
+                throw new InvalidOperationException(
+                    "Actor terminal lifecycle barrier was already reserved.");
+            }
+
+            _admissionClosed = true;
+            if (!_busy)
+            {
+                _busy = true;
+                turn = ValueTask.FromResult(new Turn(this));
+            }
+            else
+            {
+                // Terminal cleanup must run after every turn accepted before
+                // admission closed. Unlike a deferred Join barrier, it never
+                // overtakes ordinary waiters that are already queued.
+                var waiter = new Waiter(cancellation.Token, false, false);
+                _waiters.Enqueue(waiter);
+                turn = AwaitTurnAsync(waiter);
+            }
+        }
+
+        return new BarrierReservation(turn.AsTask(), cancellation);
+    }
+
+    public void ReopenAdmission()
+    {
+        lock (_sync)
+        {
+            if (_busy || _barrierWaiters.Count != 0 || _waiters.Count != 0)
+                throw new InvalidOperationException(
+                    "Actor dispatch admission cannot reopen while a previous lifecycle turn remains.");
+            _admissionClosed = false;
+        }
     }
 
     private static async ValueTask<Turn> AwaitTurnAsync(Waiter waiter)

@@ -38,6 +38,7 @@ import {
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
 import { ZLinkWorkerRuntime } from '../workers';
+import { disposeLifecycleHandlers } from '../handlers/handler-instance-scope';
 import {
   decodeFrameworkPayloadMessage,
   encodeFrameworkPayloadMessage,
@@ -136,6 +137,7 @@ export class ZLinkSpotActivationLifecycle {
   private readonly cleanupStates = new WeakMap<ZLinkSpotActivation, {
     closingAttempted: boolean;
     timersDisposed: boolean;
+    handlersDisposed: boolean;
     nativeDisposed: boolean;
     locationReleased: boolean;
     inFlight?: Promise<void>;
@@ -256,6 +258,9 @@ export class ZLinkSpotActivationLifecycle {
       return activation;
     } catch (error) {
       await timers.dispose().catch(() => undefined);
+      if (instance !== undefined) {
+        await disposeLifecycleHandlers(instance).catch(() => undefined);
+      }
       await nativeSpot?.dispose().catch(() => undefined);
       throw error;
     }
@@ -351,6 +356,7 @@ export class ZLinkSpotActivationLifecycle {
       return activation;
     } catch (error) {
       await timers.dispose();
+      await disposeLifecycleHandlers(instance);
       throw new AggregateError(
         [error],
         `Instance Spot '${instanceType}' materialization failed for '${String(spotId)}'.`
@@ -373,6 +379,11 @@ export class ZLinkSpotActivationLifecycle {
     } catch (error) {
       errors.push(error);
     }
+    try {
+      await disposeLifecycleHandlers(activation.spot);
+    } catch (error) {
+      errors.push(error);
+    }
     if (errors.length === 1) throw errors[0];
     if (errors.length > 1) {
       throw new AggregateError(
@@ -385,6 +396,7 @@ export class ZLinkSpotActivationLifecycle {
   resourcesReleased(activation: ZLinkSpotActivation): boolean {
     const state = this.cleanupStates.get(activation);
     return state?.timersDisposed === true &&
+      state.handlersDisposed === true &&
       state.nativeDisposed === true &&
       state.locationReleased === true;
   }
@@ -545,6 +557,7 @@ export class ZLinkSpotActivationLifecycle {
         } else {
           const partialCleanup = await Promise.allSettled([
             timers.dispose(),
+            ...(spot === undefined ? [] : [disposeLifecycleHandlers(spot)]),
             nativeSpot.dispose(),
             this.options.locationClaim.release(locationClaim.meshName, spotId)
           ]);
@@ -763,6 +776,7 @@ export class ZLinkSpotActivationLifecycle {
     const state = this.cleanupStates.get(activation) ?? {
       closingAttempted: false,
       timersDisposed: false,
+      handlersDisposed: false,
       nativeDisposed: false,
       locationReleased: false
     };
@@ -781,6 +795,7 @@ export class ZLinkSpotActivationLifecycle {
     state: {
       closingAttempted: boolean;
       timersDisposed: boolean;
+      handlersDisposed: boolean;
       nativeDisposed: boolean;
       locationReleased: boolean;
     }
@@ -803,6 +818,12 @@ export class ZLinkSpotActivationLifecycle {
     }
     if (!state.timersDisposed) {
       await cleanup(() => activation.timers.dispose(), () => { state.timersDisposed = true; });
+    }
+    if (!state.handlersDisposed) {
+      await cleanup(
+        () => disposeLifecycleHandlers(activation.spot),
+        () => { state.handlersDisposed = true; }
+      );
     }
     if (!state.nativeDisposed) {
       await cleanup(() => activation.actorDispatch?.dispose(), () => undefined);

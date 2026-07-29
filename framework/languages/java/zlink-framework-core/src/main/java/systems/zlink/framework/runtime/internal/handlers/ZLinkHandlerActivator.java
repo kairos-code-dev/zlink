@@ -9,6 +9,39 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 public interface ZLinkHandlerActivator {
     Object create(Class<?> handlerType);
 
+    default Activation openActivation() {
+        ZLinkHandlerActivator activator = this;
+        return new Activation() {
+            @Override
+            public Object create(Class<?> handlerType) {
+                return activator.create(handlerType);
+            }
+
+            @Override
+            public void destroy(Object instance) {
+                activator.destroy(instance);
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+    }
+
+    default void destroy(Object instance) {
+        if (instance instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (RuntimeException error) {
+                throw error;
+            } catch (Exception error) {
+                throw new ZLinkConfigurationException(
+                    "failed to destroy handler: " + instance.getClass().getName(),
+                    error);
+            }
+        }
+    }
+
     static ZLinkHandlerActivator reflection() {
         return handlerType -> {
             try {
@@ -27,6 +60,26 @@ public interface ZLinkHandlerActivator {
 
     static MutableServices services(ZLinkHandlerActivator fallback) {
         return new MutableServices(fallback);
+    }
+
+    interface Activation extends AutoCloseable {
+        Object create(Class<?> handlerType);
+
+        default Object create(
+            Class<?> handlerType,
+            DependencyResolver dependencyResolver) {
+            return create(handlerType);
+        }
+
+        void destroy(Object instance);
+
+        @Override
+        void close();
+    }
+
+    @FunctionalInterface
+    interface DependencyResolver {
+        Object resolve(Class<?> dependencyType);
     }
 
     final class MutableServices implements ZLinkHandlerActivator {
@@ -61,6 +114,60 @@ public interface ZLinkHandlerActivator {
                     "failed to create handler: " + handlerType.getName(),
                     ex);
             }
+        }
+
+        @Override
+        public Activation openActivation() {
+            Activation fallbackActivation = fallback.openActivation();
+            return new Activation() {
+                private final java.util.Set<Object> borrowed =
+                    java.util.Collections.newSetFromMap(
+                        new java.util.IdentityHashMap<>());
+
+                @Override
+                public Object create(Class<?> handlerType) {
+                    Object runtimeService = findRuntimeService(handlerType);
+                    if (runtimeService != null) {
+                        borrowed.add(runtimeService);
+                        return runtimeService;
+                    }
+                    return fallbackActivation.create(
+                        handlerType,
+                        MutableServices.this::findRuntimeService);
+                }
+
+                @Override
+                public Object create(
+                    Class<?> handlerType,
+                    DependencyResolver dependencyResolver) {
+                    Object runtimeService = findRuntimeService(handlerType);
+                    if (runtimeService != null) {
+                        borrowed.add(runtimeService);
+                        return runtimeService;
+                    }
+                    return fallbackActivation.create(
+                        handlerType,
+                        dependencyType -> {
+                            Object service = findRuntimeService(dependencyType);
+                            return service != null
+                                ? service
+                                : dependencyResolver.resolve(dependencyType);
+                        });
+                }
+
+                @Override
+                public void destroy(Object instance) {
+                    if (!borrowed.remove(instance)) {
+                        fallbackActivation.destroy(instance);
+                    }
+                }
+
+                @Override
+                public void close() {
+                    borrowed.clear();
+                    fallbackActivation.close();
+                }
+            };
         }
 
         private Object[] resolveArguments(Class<?>[] parameterTypes) {

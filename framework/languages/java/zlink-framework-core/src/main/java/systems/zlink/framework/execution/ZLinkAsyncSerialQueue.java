@@ -85,6 +85,36 @@ public final class ZLinkAsyncSerialQueue {
         return entry.result;
     }
 
+    /**
+     * Internal lifecycle barrier that runs after every application turn
+     * accepted before this call. Unlike application admission, this barrier
+     * remains available after relocation has committed so the old owner can
+     * release local resources.
+     */
+    public synchronized CompletionStage<Void> enqueueLifecycleBarrier(
+        Supplier<CompletionStage<Void>> operation) {
+        java.util.Objects.requireNonNull(operation, "operation");
+        if (relocation != null) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException("queue relocation is in progress"));
+        }
+        if (nextSequence == Long.MAX_VALUE) {
+            throw new IllegalStateException("queue sequence exhausted");
+        }
+        outstanding++;
+        Entry entry = new Entry(
+            nextSequence++,
+            null,
+            operation,
+            () -> { },
+            new CompletableFuture<>(),
+            ZLinkFlowContext.current(),
+            null);
+        pending.addLast(entry);
+        startNext();
+        return entry.result;
+    }
+
     public synchronized CompletionStage<Void> enqueueRelocatable(
         byte[] record,
         Supplier<CompletionStage<Void>> operation) {

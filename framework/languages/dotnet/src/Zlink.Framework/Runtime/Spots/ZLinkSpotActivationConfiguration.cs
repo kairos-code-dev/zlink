@@ -69,7 +69,8 @@ internal sealed partial class ZLinkSpotActivation
             SpotNodeName,
             _runtime.Registration.Codecs,
             _runtime.Registration.StreamCompressionCodec,
-            this);
+            this,
+            ResolveActorHandlerInstances);
     }
 
     public void AttachInstanceSpot(IZLinkInstanceSpot spot)
@@ -88,7 +89,8 @@ internal sealed partial class ZLinkSpotActivation
             SpotNodeName,
             _runtime.Registration.Codecs,
             _runtime.Registration.StreamCompressionCodec,
-            this);
+            this,
+            ResolveActorHandlerInstances);
     }
 
     public async ValueTask BindDescriptorsAsync(CancellationToken cancellationToken)
@@ -177,5 +179,12 @@ internal sealed partial class ZLinkSpotActivation
     {
         return _actorHandlers
                ?? throw new InvalidOperationException("SPOT actor registry is not initialized.");
+    }
+
+    private ZLinkScopedHandlerInstanceOwner ResolveActorHandlerInstances(
+        IZLinkActor actor)
+    {
+        var state = _runtime.GetOrCreateActorState(actor.Context.ActorId);
+        return state.HandlerInstances;
     }
 }

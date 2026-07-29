@@ -21,6 +21,7 @@ import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
 import type { ZLinkMessageSerializer } from '../../contracts';
 import { actorJoinIdentity } from './actor-lifecycle-snapshot';
 import { runActorHandlerWithDeferredJoins } from './actor-join-deferred-scope';
+import { runWithLifecycleHandler } from '../handlers/handler-instance-scope';
 
 export enum ZLinkActorPacketKind {
   Send = 'send',
@@ -99,7 +100,6 @@ export class ZLinkSpotActorHandlerRegistryRuntime implements ZLinkActorHandlerRe
 export interface ZLinkSpotActorDispatcherOptions {
   readonly registry: ZLinkSpotActorHandlerRegistryRuntime;
   readonly spot: ZLinkSpot;
-  readonly handlerFactory?: (handlerType: Type) => unknown;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly serial?: { execute<T>(operation: () => Promise<T> | T): Promise<T> };
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
@@ -121,11 +121,17 @@ export class ZLinkSpotActorDispatcher {
   ): Promise<void> {
     return this.execute(async () => {
       const descriptor = this.requirePacket(ZLinkActorPacketKind.Send, actor, packetName);
-      const handler = this.createHandler<
-        ZLinkSpotActorSendHandler<ZLinkSpot, ZLinkActor, TMessage>
-      >(descriptor);
-      await runActorHandlerWithDeferredJoins(() =>
-        handler.handle(this.options.spot, actor, this.createContext(packetName, context), message));
+      await this.invokeHandler<
+        ZLinkSpotActorSendHandler<ZLinkSpot, ZLinkActor, TMessage>,
+        void
+      >(actor, descriptor, (handler) =>
+        runActorHandlerWithDeferredJoins(() =>
+          handler.handle(
+            this.options.spot,
+            actor,
+            this.createContext(packetName, context),
+            message
+          )));
     });
   }
 
@@ -147,21 +153,22 @@ export class ZLinkSpotActorDispatcher {
   ): Promise<TResult> {
     return this.execute(async () => {
       const descriptor = this.requirePacket(ZLinkActorPacketKind.Request, actor, packetName);
-      const handler = this.createHandler<
-        ZLinkSpotActorRequestHandler<ZLinkSpot, ZLinkActor, TRequest, TReply>
-      >(descriptor);
-      return await runActorHandlerWithDeferredJoins(async () => {
-        const reply = await handler.handle(
-          this.options.spot,
-          actor,
-          this.createContext(packetName, context),
-          request
-        );
-        return await afterReply(reply, {
-          metadata: new Map<string, string>(),
-          compressPayload: false
-        });
-      });
+      return await this.invokeHandler<
+        ZLinkSpotActorRequestHandler<ZLinkSpot, ZLinkActor, TRequest, TReply>,
+        TResult
+      >(actor, descriptor, (handler) =>
+        runActorHandlerWithDeferredJoins(async () => {
+          const reply = await handler.handle(
+            this.options.spot,
+            actor,
+            this.createContext(packetName, context),
+            request
+          );
+          return await afterReply(reply, {
+            metadata: new Map<string, string>(),
+            compressPayload: false
+          });
+        }));
     });
   }
 
@@ -238,11 +245,17 @@ export class ZLinkSpotActorDispatcher {
     );
   }
 
-  private createHandler<THandler>(descriptor: Pick<ZLinkActorPacketDescriptor, 'handlerType'>): THandler {
-    const handler = this.options.handlerFactory?.(descriptor.handlerType)
-      ?? this.options.providerResolver?.get?.(descriptor.handlerType)
-      ?? new descriptor.handlerType();
-    return handler as THandler;
+  private async invokeHandler<THandler, TResult>(
+    actor: ZLinkActor,
+    descriptor: Pick<ZLinkActorPacketDescriptor, 'handlerType'>,
+    callback: (handler: THandler) => Promise<TResult>
+  ): Promise<TResult> {
+    return await runWithLifecycleHandler(
+      actor,
+      descriptor.handlerType,
+      this.options.providerResolver,
+      (resolved) => callback(resolved as THandler)
+    );
   }
 
   private execute<T>(operation: () => Promise<T> | T): Promise<T> {

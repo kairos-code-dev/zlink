@@ -29,7 +29,7 @@ import {
   ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET
 } from '../actors';
-import { createProviderInstance } from './spot-provider';
+import { resolveLifecycleHandler } from '../handlers/handler-instance-scope';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { REMOTE_ACTOR_JOIN_PACKET } from './spot-remote-codec';
@@ -160,7 +160,8 @@ export class ZLinkSpotRoutePacketDispatch {
         this.options.serial.execute(async () => {
           const spot = this.options.getTarget();
           for (const registration of registrations) {
-            const handler = await createProviderInstance(
+            const handler = await resolveLifecycleHandler(
+              spot,
               registration.handlerType as Type<ZLinkSpotPacketHandler<ZLinkSpot, unknown> | ZLinkSpotRequestHandler<ZLinkSpot, unknown, unknown>>,
               this.options.providerResolver
             );
@@ -229,7 +230,8 @@ export class ZLinkSpotRoutePacketDispatch {
       await this.options.serial.execute(async () => {
         const spot = this.options.getTarget();
         for (const registration of registrations) {
-          const handler = await createProviderInstance(
+          const handler = await resolveLifecycleHandler(
+            spot,
             registration.handlerType as Type<ZLinkSpotPacketHandler<ZLinkSpot, unknown> | ZLinkSpotRequestHandler<ZLinkSpot, unknown, unknown>>,
             this.options.providerResolver
           );

@@ -79,7 +79,7 @@ export interface ZLinkActorTransferRuntimeActorManager {
     signal?: AbortSignal
   ): Promise<{ readonly actor: ZLinkActor; readonly actorRef: ActorRef }>;
   rollbackTransferredActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
-  completeCoreRelocationSource(actorId: string): void;
+  completeCoreRelocationSource(actorId: string): Promise<void>;
 }
 
 export interface ZLinkActorTransferRuntimeOptions {
@@ -811,7 +811,7 @@ export class ZLinkActorTransferRuntime {
           // The source Actor shell must therefore be removed from the process
           // registry so a later relocation can materialize the same Actor ID on
           // this node without colliding with its previous incarnation.
-          this.options.actorManager()?.completeCoreRelocationSource(actor.context.actorId);
+          await this.options.actorManager()?.completeCoreRelocationSource(actor.context.actorId);
         }
         this.options.onSourceDepartureCompleted?.(actor.context.actorId);
         return;

@@ -75,8 +75,11 @@ Framework를 등록하면 다음 service가 public DI surface로 제공된다.
 
 등록되지 않은 MeshName이나 runtime capability를 조회하면 `ZLinkConfigurationException`이 발생한다.
 Channel send/request의 등록되지 않은 ChannelName은 `NotFound`로 완료한다.
-Spot과 Actor handler instance는 [owner](../../../../01-glossary.ko.md#owner)의 DI scope에서 resolve한다. Handler가 service를 사용할 때는 context를
-service locator로 사용하지 않고 constructor injection을 사용한다.
+Spot handler는 Spot activation scope에서, Actor handler는 Actor activation scope에서
+생성한다. Handler type을 DI에서 직접 resolve하지 않으며 constructor dependency만 해당
+scope에서 resolve한다. Handler가 service를 사용할 때는 context를 service locator로
+사용하지 않고 constructor injection을 사용한다. 자세한 수명은
+[Spot interface](05-spots.ko.md)를 따른다.
 
 ## 5. Location Store 등록
 

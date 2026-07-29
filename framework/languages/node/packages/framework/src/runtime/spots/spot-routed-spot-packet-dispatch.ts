@@ -15,7 +15,7 @@ import {
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import type { ZLinkDispatchErrorReporter } from '../channels';
 import { ZLinkConfigurationException } from '../configuration';
-import { createProviderInstance } from './spot-provider';
+import { resolveLifecycleHandler } from '../handlers/handler-instance-scope';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 
@@ -87,7 +87,8 @@ export class ZLinkRoutedSpotPacketDispatch {
     try {
       await activation.serial.execute(async () => {
         for (const registration of registrations) {
-          const handler = await createProviderInstance(
+          const handler = await resolveLifecycleHandler(
+            activation.spot,
             registration.handlerType as Type<
               ZLinkSpotPacketHandler<ZLinkSpot, unknown> |
               ZLinkSpotRequestHandler<ZLinkSpot, unknown, unknown>

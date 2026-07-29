@@ -4,6 +4,7 @@
 #include "runtime/execution/serial_execution_queue.hpp"
 #include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/spots/spot_runtime.hpp"
+#include "runtime/timers/timer_runtime.hpp"
 
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/actors/actor.hpp>
@@ -94,6 +95,238 @@ class test_spot_context_t : public zlink::framework::spot_context_t
     {
     }
 };
+
+struct timer_activation_dependency_t
+{
+    timer_activation_dependency_t () { ++created; }
+    ~timer_activation_dependency_t () { ++destroyed; }
+
+    static inline std::atomic_int created{0};
+    static inline std::atomic_int destroyed{0};
+};
+
+struct timer_activation_spot_t
+{
+};
+
+struct timer_activation_handler_t
+{
+    using dependency_types =
+      zlink::framework::dependency_list_t<timer_activation_dependency_t>;
+
+    explicit timer_activation_handler_t (
+      timer_activation_dependency_t &dependency) :
+        dependency (&dependency)
+    {
+        ++created;
+    }
+
+    ~timer_activation_handler_t () { ++destroyed; }
+
+    zlink::framework::task_t<void>
+    handle (timer_activation_spot_t &,
+            const zlink::framework::timer_tick_t &)
+    {
+        auto *expected = static_cast<timer_activation_dependency_t *> (nullptr);
+        if (!observed_dependency.compare_exchange_strong (
+              expected, dependency)
+            && expected != dependency) {
+            dependency_mismatch = true;
+        }
+        ++calls;
+        co_return;
+    }
+
+    timer_activation_dependency_t *dependency;
+    static inline std::atomic_int created{0};
+    static inline std::atomic_int destroyed{0};
+    static inline std::atomic_int calls{0};
+    static inline std::atomic<timer_activation_dependency_t *>
+      observed_dependency{nullptr};
+    static inline std::atomic_bool dependency_mismatch{false};
+};
+
+bool verify_timer_handler_activation_lifetime ()
+{
+    timer_activation_dependency_t::created = 0;
+    timer_activation_dependency_t::destroyed = 0;
+    timer_activation_handler_t::created = 0;
+    timer_activation_handler_t::destroyed = 0;
+    timer_activation_handler_t::calls = 0;
+    timer_activation_handler_t::observed_dependency = nullptr;
+    timer_activation_handler_t::dependency_mismatch = false;
+
+    zlink::framework::service_collection_t services;
+    services.add_scoped<timer_activation_dependency_t> ();
+    auto root = services.build_provider ();
+    zlink::framework::serializer_registry_t serializers;
+
+    auto run_activation = [&] {
+        const auto handlers_before =
+          timer_activation_handler_t::created.load ();
+        const auto dependencies_before =
+          timer_activation_dependency_t::created.load ();
+        const auto calls_before =
+          timer_activation_handler_t::calls.load ();
+        timer_activation_handler_t::observed_dependency = nullptr;
+        timer_activation_handler_t::dependency_mismatch = false;
+        auto state =
+          std::make_shared<zlink::framework::detail::spot_context_state_t> ();
+        state->activation_scope =
+          std::make_shared<zlink::framework::detail::service_scope_t> (
+            zlink::framework::detail::service_scope_t::create (
+              root,
+              zlink::framework::detail::service_scope_kind_t::spot_activation));
+        state->channel_runtime =
+          std::make_shared<zlink::framework::detail::channel_runtime_state_t> ();
+        state->channel_runtime->serializers = &serializers;
+        state->spot_instance =
+          std::make_shared<timer_activation_spot_t> ();
+
+        test_spot_context_t context (state);
+        auto first =
+          context.add_timer<timer_activation_handler_t> (
+            "first", std::chrono::hours (24));
+        auto second =
+          context.add_timer<timer_activation_handler_t> (
+            "second", std::chrono::hours (24));
+
+        auto timer_runtime =
+          zlink::framework::detail::timer_runtime_t::from (context);
+        const auto first_result =
+          timer_runtime.dispatch_fire_count_async (first, 1).result ();
+        const auto second_result =
+          timer_runtime.dispatch_fire_count_async (second, 1).result ();
+        if (!first_result || !second_result) {
+            std::cerr << "timer activation dispatch failed: "
+                      << static_cast<int> (first_result.error_kind ()) << ", "
+                      << static_cast<int> (second_result.error_kind ()) << '\n';
+            return false;
+        }
+        const auto reused =
+          timer_activation_handler_t::created.load ()
+              == handlers_before + 1
+          && timer_activation_dependency_t::created.load ()
+               == dependencies_before + 1
+          && timer_activation_handler_t::calls.load ()
+               >= calls_before + 2
+          && timer_activation_handler_t::observed_dependency.load ()
+               != nullptr
+          && !timer_activation_handler_t::dependency_mismatch.load ();
+        if (!reused) {
+            std::cerr << "timer activation reuse mismatch: handlers="
+                      << timer_activation_handler_t::created.load ()
+                      << " deps="
+                      << timer_activation_dependency_t::created.load ()
+                      << " calls="
+                      << timer_activation_handler_t::calls.load ()
+                      << '\n';
+            return false;
+        }
+
+        state->detach_application_instance (false);
+        const auto released =
+          timer_activation_handler_t::destroyed.load ()
+            == timer_activation_handler_t::created.load ()
+          && timer_activation_dependency_t::destroyed.load ()
+               == timer_activation_dependency_t::created.load ();
+        if (!released) {
+            std::cerr << "timer activation release mismatch: handlers="
+                      << timer_activation_handler_t::created.load () << "/"
+                      << timer_activation_handler_t::destroyed.load ()
+                      << " deps="
+                      << timer_activation_dependency_t::created.load () << "/"
+                      << timer_activation_dependency_t::destroyed.load ()
+                      << '\n';
+        }
+        return released;
+    };
+
+    if (!run_activation ()
+        || timer_activation_handler_t::created.load () != 1) {
+        return false;
+    }
+    if (!run_activation ()
+        || timer_activation_handler_t::created.load () != 2) {
+        return false;
+    }
+    return timer_activation_handler_t::destroyed.load () == 2
+           && timer_activation_dependency_t::destroyed.load () == 2;
+}
+
+bool verify_close_waits_for_timer_callback_barrier ()
+{
+    const auto handlers_created_before =
+      timer_activation_handler_t::created.load ();
+    const auto handlers_destroyed_before =
+      timer_activation_handler_t::destroyed.load ();
+    const auto dependencies_created_before =
+      timer_activation_dependency_t::created.load ();
+    const auto dependencies_destroyed_before =
+      timer_activation_dependency_t::destroyed.load ();
+
+    zlink::framework::service_collection_t services;
+    services.add_scoped<timer_activation_dependency_t> ();
+    auto root = services.build_provider ();
+    auto state =
+      std::make_shared<zlink::framework::detail::spot_context_state_t> ();
+    state->node =
+      std::make_shared<zlink::framework::detail::spot_node_builder_state_t> (
+        "timer-close-race");
+    state->spot_id = "timer-close-race-spot";
+    state->spot_instance =
+      std::make_shared<timer_activation_spot_t> ();
+    state->activation_scope =
+      std::make_shared<zlink::framework::detail::service_scope_t> (
+        zlink::framework::detail::service_scope_t::create (
+          root,
+          zlink::framework::detail::service_scope_kind_t::spot_activation));
+    auto handler = std::make_shared<timer_activation_handler_t> (
+      state->activation_scope->provider ()
+        .get_required<timer_activation_dependency_t> ());
+    state->timer_handler_instances.emplace (
+      std::type_index (typeid (timer_activation_handler_t)),
+      handler);
+    handler.reset ();
+
+    test_spot_context_t context (state);
+    if (!state->enter_callback ()) {
+        return false;
+    }
+
+    const auto first_close = context.close ().result ();
+    const auto repeated_close = context.close ().result ();
+    if (!first_close || !first_close.value ()
+        || !repeated_close || !repeated_close.value ()
+        || state->closed
+        || timer_activation_handler_t::destroyed.load ()
+             != handlers_destroyed_before
+        || timer_activation_dependency_t::destroyed.load ()
+             != dependencies_destroyed_before) {
+        return false;
+    }
+
+    state->leave_callback ();
+    if (!state->closed || state->activation_scope
+        || !state->timer_handler_instances.empty ()
+        || timer_activation_handler_t::created.load ()
+             != handlers_created_before + 1
+        || timer_activation_handler_t::destroyed.load ()
+             != handlers_destroyed_before + 1
+        || timer_activation_dependency_t::created.load ()
+             != dependencies_created_before + 1
+        || timer_activation_dependency_t::destroyed.load ()
+             != dependencies_destroyed_before + 1) {
+        return false;
+    }
+
+    const auto after_close = context.close ().result ();
+    return after_close && !after_close.value ()
+           && timer_activation_handler_t::destroyed.load ()
+                == handlers_destroyed_before + 1
+           && timer_activation_dependency_t::destroyed.load ()
+                == dependencies_destroyed_before + 1;
+}
 
 zlink::framework::spot_context_t
 context_with_scheduler (const std::shared_ptr<controlled_worker_scheduler_t> &scheduler)
@@ -200,6 +433,13 @@ bool verify_request_turn_mode (bool release_turn, const std::vector<int> &expect
 
 int main ()
 {
+    if (!verify_timer_handler_activation_lifetime ()) {
+        return 40;
+    }
+    if (!verify_close_waits_for_timer_callback_barrier ()) {
+        return 41;
+    }
+
     if (!verify_request_turn_mode (false, {1, 3, 2})) {
         return 25;
     }

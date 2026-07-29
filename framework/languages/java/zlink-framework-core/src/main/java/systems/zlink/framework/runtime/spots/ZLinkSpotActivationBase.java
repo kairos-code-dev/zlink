@@ -205,7 +205,11 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.propagate(
                     host.runWithOutbound(context.dispatchOutbound(), () ->
                         handlerInvoker.invokeRequest(
-                            handler, spotSurface, payloadCopy, metadata))
+                            handler,
+                            spotSurface,
+                            payloadCopy,
+                            metadata,
+                            context.handlerInstances()::instance))
                         .thenAccept(reply -> received.reply(List.of(reply))))
                     .whenComplete((ignored, error) -> {
                         if (error != null && !host.isClosing()) {
@@ -246,7 +250,11 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
             () ->
             host.runWithOutbound(context.dispatchOutbound(), () ->
                 handlerInvoker.invokePacket(
-                    handler, spotSurface, payloadCopy, metadata))
+                    handler,
+                    spotSurface,
+                    payloadCopy,
+                    metadata,
+                    context.handlerInstances()::instance))
                 .whenComplete((ignored, error) -> {
                     payloadCopy.close();
                     if (error == null) {
@@ -377,7 +385,8 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                             received.topic(),
                             received.routingId().map(Object::toString),
                             payloadCopy,
-                            metadata))
+                            metadata,
+                            context.handlerInstances()::instance))
                         .whenComplete((ignored, error) -> payloadCopy.close()));
             }
             if (dispatched) {

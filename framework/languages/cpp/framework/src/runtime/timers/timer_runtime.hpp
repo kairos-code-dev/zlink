@@ -20,12 +20,13 @@ class timer_state_t
 {
   public:
     using handler_invoker_t = std::function<task_t<zlink::message_t> (
-      void *, serializer_registry_t &, const timer_tick_t &)>;
+      void *, void *, serializer_registry_t &, const timer_tick_t &)>;
 
     std::string name;
     std::chrono::milliseconds period{0};
     timer_options_t options;
     std::type_index handler_type{typeid (void)};
+    std::weak_ptr<void> handler_instance;
     handler_invoker_t handler_invoker;
     std::unique_ptr<zlink::timer_t> native_timer;
     std::shared_ptr<runtime::serial_execution_queue_t> lane;

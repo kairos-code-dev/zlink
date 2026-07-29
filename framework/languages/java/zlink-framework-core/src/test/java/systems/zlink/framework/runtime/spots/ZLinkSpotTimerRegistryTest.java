@@ -15,6 +15,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
@@ -24,8 +25,56 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerTick;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwner;
 
 final class ZLinkSpotTimerRegistryTest {
+    @Test
+    void reusesTimerHandlerForTheSpotActivation() throws Exception {
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        CountDownLatch handled = new CountDownLatch(2);
+        AtomicInteger creates = new AtomicInteger();
+        AtomicInteger destroys = new AtomicInteger();
+        ZLinkHandlerActivator activator = new ZLinkHandlerActivator() {
+            @Override
+            public Object create(Class<?> handlerType) {
+                creates.incrementAndGet();
+                return new CountingTimerHandler(handled);
+            }
+
+            @Override
+            public void destroy(Object instance) {
+                destroys.incrementAndGet();
+            }
+        };
+        ZLinkHandlerInstanceOwner handlers =
+            new ZLinkHandlerInstanceOwner(activator);
+        ZLinkSpotTimerRegistry registry = new ZLinkSpotTimerRegistry(
+            "spot",
+            executor,
+            handlers,
+            List.of(),
+            null,
+            "test",
+            (timerName, operation) -> operation.get());
+        registry.setSpot(new TestSpot());
+
+        try {
+            registry.add(
+                "timer",
+                Duration.ofMillis(1),
+                CountingTimerHandler.class,
+                null);
+            assertTrue(handled.await(2, TimeUnit.SECONDS));
+            assertEquals(1, creates.get());
+        } finally {
+            registry.close();
+            handlers.close();
+            executor.shutdownNow();
+        }
+        assertEquals(1, destroys.get());
+    }
+
     @Test
     void dispatchesTimerHandlerThroughSpotExecutionPolicy() throws Exception {
         ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
@@ -277,6 +326,18 @@ final class ZLinkSpotTimerRegistryTest {
             if (enteredDispatch.get()) {
                 handled.countDown();
             }
+        }
+    }
+
+    public static final class CountingTimerHandler {
+        private final CountDownLatch handled;
+
+        CountingTimerHandler(CountDownLatch handled) {
+            this.handled = handled;
+        }
+
+        public void handle(ZLinkSpot<?> spot, ZLinkTimerTick tick) {
+            handled.countDown();
         }
     }
 

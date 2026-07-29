@@ -48,6 +48,34 @@ class spot_node_builder_state_t;
 struct mesh_node_builder_state_t;
 void drain_spot_node_executors (spot_node_builder_state_t &node);
 void cancel_spot_node_dispatch_queues (spot_node_builder_state_t &node);
+
+template <typename THandler, typename TDependencies>
+struct timer_handler_factory_t;
+
+template <typename THandler, typename... TDependencies>
+struct timer_handler_factory_t<THandler, dependency_list_t<TDependencies...>>
+{
+    static std::shared_ptr<void> create (service_provider_t *services)
+    {
+        if constexpr (sizeof...(TDependencies) == 0) {
+            static_assert (std::is_default_constructible_v<THandler>,
+                           "SPOT timer handler without dependency_types "
+                           "must be default constructible");
+            return std::make_shared<THandler> ();
+        } else {
+            static_assert (std::is_constructible_v<THandler, TDependencies &...>,
+                           "SPOT timer handler constructor must accept "
+                           "dependency_types by reference");
+            if (services == nullptr) {
+                throw framework_exception_t (
+                  framework_error_kind_t::invalid_configuration,
+                  "SPOT timer handler dependencies require an activation service scope");
+            }
+            return std::make_shared<THandler> (
+              services->template get_required<TDependencies> ()...);
+        }
+    }
+};
 } // namespace detail
 
 class actor_context_t;
@@ -1069,15 +1097,21 @@ class spot_context_t
                        "SPOT timer handler second argument must be timer_tick_t");
         return add_timer_erased (
           std::move (name), period, std::move (options), std::type_index (typeid (THandler)),
-          [] (void *spot, serializer_registry_t &serializers, const timer_tick_t &tick) {
+          [] (service_provider_t *services) {
+              return detail::timer_handler_factory_t<
+                THandler,
+                typename detail::handler_dependencies_t<THandler>::type>::create (services);
+          },
+          [] (void *spot, void *handler_instance,
+              serializer_registry_t &serializers, const timer_tick_t &tick) {
               auto *typed_spot = static_cast<spot_type *> (spot);
-              auto handler = std::make_shared<THandler> ();
+              auto *handler = static_cast<THandler *> (handler_instance);
               auto captured_tick = std::make_shared<timer_tick_t> (tick);
               return detail::invoke_spot_member_keepalive (
                 [typed_spot, handler, captured_tick] {
                     return handler->handle (*typed_spot, *captured_tick);
                 },
-                serializers, handler, captured_tick);
+                serializers, captured_tick);
           });
     }
 
@@ -1175,8 +1209,10 @@ class spot_context_t
                       std::chrono::milliseconds period,
                       timer_options_t options,
                       std::type_index handler_type,
+                      std::function<std::shared_ptr<void> (service_provider_t *)> handler_factory,
                       std::function<task_t<zlink::message_t> (
-                        void *, serializer_registry_t &, const timer_tick_t &)> handler_invoker);
+                        void *, void *, serializer_registry_t &,
+                        const timer_tick_t &)> handler_invoker);
     task_t<bool> close_erased ();
 
     friend void detail::drain_spot_node_executors (detail::spot_node_builder_state_t &node);

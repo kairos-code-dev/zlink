@@ -13,6 +13,7 @@ import systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwner;
 import systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -34,6 +35,7 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
     private final ZLinkBackendSpot backendSpot;
     private final DefaultSpotOutbound outbound;
     private final ZLinkAsyncSerialQueue dispatchQueue = new ZLinkAsyncSerialQueue();
+    private final ZLinkHandlerInstanceOwner handlerInstances;
     private final List<DefaultSpotContext> timerContexts = new ArrayList<>();
     private final ZLinkSpotHandlerCatalog handlerCatalog = new ZLinkSpotHandlerCatalog(
         "EntrySpot handler registration is only allowed while configure is running");
@@ -51,6 +53,7 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
         this.nodeRid = nodeRid;
         this.backendSpot = backendSpot;
         this.outbound = host.createContextOutbound(backendSpot, nodeRid);
+        this.handlerInstances = host.createHandlerInstances();
     }
 
     @Override public String spotId() { return backendSpot.spotId(); }
@@ -86,7 +89,8 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
             backendSpot,
             dispatchQueue,
             ZLinkUserSpotExecutionMode.PER_ACTOR,
-            false);
+            false,
+            handlerInstances);
         timerContext.setSpot(new ZLinkEntrySpotTimerSurface(this));
         timerContexts.add(timerContext);
         return timerContext.addTimer(name, period, handlerType, options);
@@ -94,6 +98,15 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
 
     void closeTimers() {
         timerContexts.forEach(DefaultSpotContext::closeTimers);
+    }
+
+    @Override
+    public ZLinkHandlerInstanceOwner handlerInstances() {
+        return handlerInstances;
+    }
+
+    void closeHandlerInstances() {
+        handlerInstances.close();
     }
 
     void sealTimerAdmission() {
@@ -181,6 +194,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     private final ZLinkBackendSpot backendSpot;
     private final DefaultSpotOutbound outbound;
     private final ZLinkSpotTimerRegistry timers;
+    private final ZLinkHandlerInstanceOwner handlerInstances;
     private final ZLinkAsyncSerialQueue dispatchQueue;
     private final java.util.concurrent.ConcurrentHashMap<
         String, ZLinkAsyncSerialQueue> timerQueues =
@@ -236,6 +250,28 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         ZLinkAsyncSerialQueue dispatchQueue,
         ZLinkUserSpotExecutionMode executionMode,
         boolean instanceSpot) {
+        this(
+            host,
+            workerPool,
+            handlerLoader,
+            nodeRid,
+            backendSpot,
+            dispatchQueue,
+            executionMode,
+            instanceSpot,
+            null);
+    }
+
+    DefaultSpotContext(
+        ZLinkSpotContextHost host,
+        ZLinkWorkerPool workerPool,
+        ZLinkSpotHandlerLoader handlerLoader,
+        RoutingId nodeRid,
+        ZLinkBackendSpot backendSpot,
+        ZLinkAsyncSerialQueue dispatchQueue,
+        ZLinkUserSpotExecutionMode executionMode,
+        boolean instanceSpot,
+        ZLinkHandlerInstanceOwner sharedHandlerInstances) {
         this.host = host;
         this.workerPool = workerPool;
         this.handlerLoader = handlerLoader;
@@ -244,9 +280,13 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         this.dispatchQueue = dispatchQueue;
         this.executionMode = Objects.requireNonNull(executionMode, "executionMode");
         this.instanceSpot = instanceSpot;
+        this.handlerInstances = sharedHandlerInstances == null
+            ? host.createHandlerInstances()
+            : sharedHandlerInstances;
         this.outbound = host.createContextOutbound(backendSpot, nodeRid);
         this.timers = host.createTimerRegistry(
             backendSpot.spotId(),
+            handlerInstances,
             (timerName, operation) -> enqueueTimerDispatch(
                 timerName,
                 () -> host.runWithOutbound(outbound, operation)));
@@ -288,6 +328,15 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
 
     void closeTimers() {
         timers.close();
+    }
+
+    @Override
+    public ZLinkHandlerInstanceOwner handlerInstances() {
+        return handlerInstances;
+    }
+
+    void closeHandlerInstances() {
+        handlerInstances.close();
     }
 
     void sealTimerAdmission() {

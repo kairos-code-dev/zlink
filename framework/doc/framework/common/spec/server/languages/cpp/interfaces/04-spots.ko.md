@@ -462,6 +462,16 @@ C++의 일반 Spot packet과 Actor payload handler는 `spot_context_t::handlers(
 containing Spot의 member이며 호출 대상 Spot instance를 `this`로 사용하고, mutable Actor,
 읽기 전용 `message_context_t`와 payload를 인자로 받는다. 다른 Spot의 상태를 바꾸는 message는 global
 `spot_id_t` direct call로 제출한다. Actor lifecycle은 registry 등록 표면이 아니다.
+별도 Actor handler object를 만들지 않으므로 Actor별 mutable state는 Actor가 소유한다.
+Entry Spot과 `PerActor` User Spot의 Spot member function은 서로 다른 Actor에서 동시에
+호출될 수 있으며 Spot field에 Actor별 state를 저장하면 안 된다. Actor별 실행 resource는
+Actor activation에 귀속하고 Same-node Join에서는 유지하며 cross-node Join과 relocation
+뒤 target activation에서 다시 만든다. 별도 class인 timer handler는 Spot activation마다
+한 번 만들고 재사용한다. Timer handler가 `dependency_types`를 선언하면 dependency도
+같은 Spot activation scope에서 resolve한다. Spot close와 source relocation에서는 handler와
+scope를 정리한다. Target activation에서는 새 handler와 scope를 만든다. Application이 timer
+handler를 singleton·scoped·transient service로 따로 등록하거나 lifetime을 선택하지 않는다.
+Public handler lifetime option은 제공하지 않는다.
 User Spot과 Entry
 Spot은 actor ID와 join request를 받는 `on_actor_join(...)`에서 accept 또는 reject를 반환한다. Commit 이후
 callback은 해당 factory가 만든 concrete Actor reference를 직접 받는다. 따라서 별도 membership DTO를

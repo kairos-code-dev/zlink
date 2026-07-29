@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Handlers;
+
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorRuntimeState(
@@ -6,8 +8,11 @@ internal sealed class ZLinkActorRuntimeState(
     Action<string>? handoffDiagnostic = null,
     ZLinkBoundedIngressAdmission? sourceIngressAdmission = null,
     TimeSpan? sessionBindingTombstoneRetention = null,
-    int maxSessionBindingTombstones = 1_024)
+    int maxSessionBindingTombstones = 1_024,
+    IServiceProvider? services = null)
 {
+    private static readonly IServiceProvider EmptyServices =
+        new EmptyServiceProvider();
     private static readonly TimeSpan DefaultSessionBindingTombstoneRetention =
         TimeSpan.FromMinutes(2);
     private static readonly AsyncLocal<DispatchOwnership?> AmbientDispatch = new();
@@ -32,6 +37,9 @@ internal sealed class ZLinkActorRuntimeState(
     private SessionBindingReplacement? _sessionReplacement;
     private ZLinkPendingActorSessionRoute? _pendingSessionRoute;
     private TaskCompletionSource<Exception?>? _teardownAttempt;
+    private readonly IServiceProvider _services = services ?? EmptyServices;
+    private ZLinkActorHandlerActivation? _handlerActivation;
+    private bool _handlerActivationClosed;
 
     public string ActorId { get; } = actorId;
 
@@ -58,6 +66,81 @@ internal sealed class ZLinkActorRuntimeState(
     public ZLinkActorContext? Context { get; private set; }
 
     public IZLinkActor? Actor { get; private set; }
+
+    internal ZLinkScopedHandlerInstanceOwner HandlerInstances
+    {
+        get
+        {
+            lock (_sessionGate)
+            {
+                if (_handlerActivationClosed)
+                    throw new InvalidOperationException(
+                        $"Actor '{ActorId}' handler activation is no longer available.");
+                return (_handlerActivation ??= new ZLinkActorHandlerActivation(_services))
+                    .Instances;
+            }
+        }
+    }
+
+    internal ValueTask DisposeHandlerActivationAsync()
+    {
+        ZLinkActorHandlerActivation? activation;
+        lock (_sessionGate)
+        {
+            activation = _handlerActivation;
+            _handlerActivation = null;
+        }
+
+        return activation?.DisposeAsync() ?? ValueTask.CompletedTask;
+    }
+
+    internal ZLinkActorHandlerTerminalCompletion<T>
+        BeginHandlerActivationCompletion<T>(
+        Func<T> terminalTransition)
+    {
+        ArgumentNullException.ThrowIfNull(terminalTransition);
+        CloseHandlerActivation();
+        var requiresDispatchRelease =
+            AmbientDispatch.Value is { IsActive: true } ownership
+            && ReferenceEquals(ownership.State, this);
+        var barrier =
+            _dispatchMailbox.CloseAdmissionAndReserveLifecycleBarrier();
+        return new ZLinkActorHandlerTerminalCompletion<T>(
+            CompleteHandlerActivationCoreAsync(barrier, terminalTransition),
+            requiresDispatchRelease);
+    }
+
+    private async Task<T> CompleteHandlerActivationCoreAsync<T>(
+        ZLinkActorDispatchMailbox.BarrierReservation barrier,
+        Func<T> terminalTransition)
+    {
+        using var turn = await barrier.ClaimAsync().ConfigureAwait(false);
+        var result = await ExecuteLockedAsync(
+                terminalTransition,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        await DisposeHandlerActivationAsync().ConfigureAwait(false);
+        return result;
+    }
+
+    internal async ValueTask InvalidateRuntimeGenerationAfterDispatchesAsync()
+    {
+        CloseHandlerActivation();
+        var barrier =
+            _dispatchMailbox.CloseAdmissionAndReserveLifecycleBarrier();
+        using var turn = await barrier.ClaimAsync().ConfigureAwait(false);
+        await ExecuteLockedAsync(
+                InvalidateRuntimeGeneration,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        await DisposeHandlerActivationAsync().ConfigureAwait(false);
+    }
+
+    private void CloseHandlerActivation()
+    {
+        lock (_sessionGate)
+            _handlerActivationClosed = true;
+    }
 
     public bool IsConfigured { get; private set; }
 
@@ -885,6 +968,7 @@ internal sealed class ZLinkActorRuntimeState(
         ZLinkActorTerminalTransition transition,
         ZLinkBackendActorRef? retiredLocalActor)
     {
+        CloseHandlerActivation();
         ZLinkActorBoundSession? releasedBoundSession = null;
         TaskCompletionSource<Exception?>? replacementCompletion = null;
         if (transition is ZLinkActorTerminalTransition.Destroyed
@@ -954,6 +1038,11 @@ internal sealed class ZLinkActorRuntimeState(
         Migrated
     }
 
+    private sealed class EmptyServiceProvider : IServiceProvider
+    {
+        public object? GetService(Type serviceType) => null;
+    }
+
     public void PrepareForTransferredActivation()
     {
         if (Actor is not null || IsConfigured)
@@ -962,6 +1051,9 @@ internal sealed class ZLinkActorRuntimeState(
 
         NativeActorRef = null;
         ContextInvalidated = false;
+        lock (_sessionGate)
+            _handlerActivationClosed = false;
+        _dispatchMailbox.ReopenAdmission();
     }
 
     public void ClearRetiredLocalActorRef(ZLinkBackendActorRef actor)
@@ -971,6 +1063,7 @@ internal sealed class ZLinkActorRuntimeState(
 
     public void BeginTeardown()
     {
+        CloseHandlerActivation();
         _teardownPending = true;
         ContextInvalidated = true;
     }
@@ -1458,6 +1551,10 @@ internal readonly record struct ZLinkActorTeardownOperation(
     Task<Exception?> Completion,
     bool OwnsExecution,
     bool NativeAlreadyDestroyed);
+
+internal readonly record struct ZLinkActorHandlerTerminalCompletion<T>(
+    Task<T> Completion,
+    bool RequiresDispatchRelease);
 
 // Actor-side delivery projection reconstructed from binding and relocation
 // payloads. It does not publish or replace the Session owner's binding route.

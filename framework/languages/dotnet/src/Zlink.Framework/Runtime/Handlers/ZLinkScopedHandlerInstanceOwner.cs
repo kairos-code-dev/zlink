@@ -25,9 +25,6 @@ internal sealed class ZLinkScopedHandlerInstanceOwner(IServiceProvider services)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            var registered = Services.GetService(handlerType);
-            if (registered is not null) return registered;
-
             if (_fallbackInstances.TryGetValue(handlerType, out var existing)) return existing;
 
             var created = ActivatorUtilities.CreateInstance(Services, handlerType);

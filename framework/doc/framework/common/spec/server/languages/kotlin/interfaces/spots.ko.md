@@ -350,6 +350,13 @@ public interface systems.zlink.framework.kotlin.ZLinkKotlinSpotManager {
 }
 ```
 
+Kotlin suspending handler는 Java runtime과 같은 activation ownership을 사용한다. Spot
+handler는 Spot activation, Actor handler는 Actor activation마다 한 번 만들며 서로 다른
+Actor가 handler instance나 scoped dependency를 공유하지 않는다. Same-node Join은
+Actor handler를 유지하고 cross-node Join과 relocation은 target activation에서 다시
+만든다. Coroutine continuation은 handler instance 수명을 늘리거나 relocation payload에
+포함하지 않는다.
+
 Kotlin은 address DTO, process-local handle, resolver와 unbounded directory를 제공하지 않는다. Kotlin-facing
 route client와 manager는 fluent option과 single-use state를 보존하는 전용 wrapper를 반환하며 Java call,
 `CompletionStage`와 `Class<T>`를 application에 노출하지 않는다.

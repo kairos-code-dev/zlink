@@ -4,6 +4,7 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -24,10 +25,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Scope;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorClient;
@@ -64,6 +68,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvi
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwner;
 import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -423,6 +428,82 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
+    void frameworkOwnedHandlerIgnoresRootSingletonAndIsDestroyedWithItsOwner() {
+        AnnotatedInjectedRequestHandler.CLOSED.set(0);
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.register(
+                ScannedHandlerConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            Object root = context.getBean(AnnotatedInjectedRequestHandler.class);
+            try (var owner = new ZLinkHandlerInstanceOwner(
+                context.getBean(ZLinkHandlerActivator.class))) {
+                Object owned = owner.instance(AnnotatedInjectedRequestHandler.class);
+                assertNotSame(root, owned);
+            }
+            assertEquals(1, AnnotatedInjectedRequestHandler.CLOSED.get());
+        }
+    }
+
+    @Test
+    void handlerAndFilterSharePrototypeDependencyInsideOneActivation() {
+        ActivationScopedDependency.reset();
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext(
+                     HandlerActivationScopeConfig.class)) {
+            var factory = new ZLinkSpringHandlerFactory(
+                context.getAutowireCapableBeanFactory());
+            ActivationRuntimeService runtimeService =
+                new ActivationRuntimeService();
+            ZLinkHandlerActivator wrapped =
+                ZLinkHandlerActivator.services(factory)
+                    .add(ActivationRuntimeService.class, runtimeService);
+            ActivationScopedDependency firstDependency;
+            try (var owner = new ZLinkHandlerInstanceOwner(wrapped)) {
+                ActivationScopedHandler handler =
+                    (ActivationScopedHandler) owner.instance(
+                        ActivationScopedHandler.class);
+                ActivationScopedFilter filter =
+                    (ActivationScopedFilter) owner.instance(
+                        ActivationScopedFilter.class);
+                SecondActivationScopedHandler second =
+                    (SecondActivationScopedHandler) owner.instance(
+                        SecondActivationScopedHandler.class);
+                assertSame(handler.dependency(), filter.dependency());
+                assertSame(handler.dependency(), second.dependency());
+                assertSame(runtimeService, handler.runtimeService());
+                assertSame(runtimeService, filter.runtimeService());
+                firstDependency = handler.dependency();
+            }
+            try (var owner = new ZLinkHandlerInstanceOwner(wrapped)) {
+                ActivationScopedHandler handler =
+                    (ActivationScopedHandler) owner.instance(
+                        ActivationScopedHandler.class);
+                assertNotSame(firstDependency, handler.dependency());
+            }
+            assertEquals(2, ActivationScopedDependency.CLOSED.get());
+            assertEquals(0, runtimeService.closed());
+        }
+    }
+
+    @Test
+    void springDestroyCloseIsNotInvokedTwiceForOwnedHandler() {
+        SpringManagedCloseHandler.CLOSED.set(0);
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.refresh();
+            var factory = new ZLinkSpringHandlerFactory(
+                context.getAutowireCapableBeanFactory());
+            try (var owner = new ZLinkHandlerInstanceOwner(factory)) {
+                owner.instance(SpringManagedCloseHandler.class);
+            }
+            assertEquals(1, SpringManagedCloseHandler.CLOSED.get());
+        }
+    }
+
+    @Test
     void scannedHandlersAndCollectionDependenciesAreSpringBeans() {
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
@@ -464,6 +545,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     @Test
     void handlerFiltersAreCreatedThroughSpringDependencyInjection() {
+        ActivationScopedDependency.reset();
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.register(
@@ -478,6 +560,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 .join();
 
             assertEquals(new ProfileReply("filter:profile:42"), reply);
+            assertSame(
+                ActivationScopedDependency.HANDLER.get(),
+                ActivationScopedDependency.FILTER.get());
+            assertEquals(1, ActivationScopedDependency.CLOSED.get());
         }
     }
 
@@ -902,6 +988,15 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Configuration
+    static class HandlerActivationScopeConfig {
+        @Bean
+        @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+        ActivationScopedDependency activationScopedDependency() {
+            return new ActivationScopedDependency();
+        }
+    }
+
+    @Configuration
     @EnableZLinkFramework
     static class ScannedHandlerConfig {
         @Bean
@@ -978,8 +1073,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        SpringInjectedReplyFilter springInjectedReplyFilter(FilterDependency dependency) {
-            return new SpringInjectedReplyFilter(dependency);
+        @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+        ActivationScopedDependency activationScopedDependency() {
+            return new ActivationScopedDependency();
         }
 
         @Bean
@@ -1292,15 +1388,20 @@ final class ZLinkFrameworkAutoConfigurationTest {
     public static final class InjectedProfileRequestHandler
         implements ZLinkRequestHandler<FilteredProfileRequest, ProfileReply> {
         private final HandlerDependency dependency;
+        private final ActivationScopedDependency activationDependency;
 
-        public InjectedProfileRequestHandler(HandlerDependency dependency) {
+        public InjectedProfileRequestHandler(
+            HandlerDependency dependency,
+            ActivationScopedDependency activationDependency) {
             this.dependency = dependency;
+            this.activationDependency = activationDependency;
         }
 
         @Override
         public CompletionStage<ProfileReply> handle(
             FilteredProfileRequest request,
             ZLinkMessageContext context) {
+            ActivationScopedDependency.HANDLER.set(activationDependency);
             return CompletableFuture.completedFuture(
                 new ProfileReply(dependency.format(request.profileId())));
         }
@@ -1308,15 +1409,20 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     public static final class SpringInjectedReplyFilter implements ZLinkHandlerFilter {
         private final FilterDependency dependency;
+        private final ActivationScopedDependency activationDependency;
 
-        public SpringInjectedReplyFilter(FilterDependency dependency) {
+        public SpringInjectedReplyFilter(
+            FilterDependency dependency,
+            ActivationScopedDependency activationDependency) {
             this.dependency = dependency;
+            this.activationDependency = activationDependency;
         }
 
         @Override
         public <T> CompletionStage<T> invoke(
             ZLinkMessageContext context,
             ZLinkHandlerFilterNext<T> next) {
+            ActivationScopedDependency.FILTER.set(activationDependency);
             return next.invoke().thenApply(reply -> {
                 @SuppressWarnings("unchecked")
                 T decorated = (T) new ProfileReply(dependency.decorate((ProfileReply) reply));
@@ -1326,7 +1432,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @ZLinkHandlerGroup("spring-scanned")
-    public static final class AnnotatedInjectedRequestHandler {
+    public static final class AnnotatedInjectedRequestHandler
+        implements AutoCloseable {
+        static final AtomicInteger CLOSED = new AtomicInteger();
         private final HandlerDependency dependency;
         private int requestCount;
 
@@ -1343,6 +1451,129 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         int requestCount() {
             return requestCount;
+        }
+
+        @Override
+        public void close() {
+            CLOSED.incrementAndGet();
+        }
+    }
+
+    public static final class ActivationScopedDependency
+        implements AutoCloseable, DisposableBean {
+        static final AtomicInteger CLOSED = new AtomicInteger();
+        static final AtomicReference<ActivationScopedDependency> HANDLER =
+            new AtomicReference<>();
+        static final AtomicReference<ActivationScopedDependency> FILTER =
+            new AtomicReference<>();
+
+        static void reset() {
+            CLOSED.set(0);
+            HANDLER.set(null);
+            FILTER.set(null);
+        }
+
+        @Override
+        public void destroy() {
+            close();
+        }
+
+        @Override
+        public void close() {
+            CLOSED.incrementAndGet();
+        }
+    }
+
+    public static final class ActivationScopedHandler {
+        private final ActivationScopedDependency dependency;
+        private final ActivationRuntimeService runtimeService;
+
+        public ActivationScopedHandler(
+            ActivationScopedDependency dependency,
+            ActivationRuntimeService runtimeService) {
+            this.dependency = dependency;
+            this.runtimeService = runtimeService;
+        }
+
+        ActivationScopedDependency dependency() {
+            return dependency;
+        }
+
+        ActivationRuntimeService runtimeService() {
+            return runtimeService;
+        }
+    }
+
+    public static final class ActivationScopedFilter
+        implements ZLinkHandlerFilter {
+        private final ActivationScopedDependency dependency;
+        private final ActivationRuntimeService runtimeService;
+
+        public ActivationScopedFilter(
+            ActivationScopedDependency dependency,
+            ActivationRuntimeService runtimeService) {
+            this.dependency = dependency;
+            this.runtimeService = runtimeService;
+        }
+
+        ActivationScopedDependency dependency() {
+            return dependency;
+        }
+
+        ActivationRuntimeService runtimeService() {
+            return runtimeService;
+        }
+
+        @Override
+        public <T> CompletionStage<T> invoke(
+            ZLinkMessageContext context,
+            ZLinkHandlerFilterNext<T> next) {
+            return next.invoke();
+        }
+    }
+
+    public static final class SecondActivationScopedHandler {
+        private final ActivationScopedDependency dependency;
+        private final ActivationRuntimeService runtimeService;
+
+        public SecondActivationScopedHandler(
+            ActivationScopedDependency dependency,
+            ActivationRuntimeService runtimeService) {
+            this.dependency = dependency;
+            this.runtimeService = runtimeService;
+        }
+
+        ActivationScopedDependency dependency() {
+            return dependency;
+        }
+    }
+
+    public static final class ActivationRuntimeService
+        implements AutoCloseable {
+        private final AtomicInteger closed = new AtomicInteger();
+
+        int closed() {
+            return closed.get();
+        }
+
+        @Override
+        public void close() {
+            closed.incrementAndGet();
+        }
+    }
+
+    public static final class SpringManagedCloseHandler
+        implements AutoCloseable, DisposableBean {
+        static final AtomicInteger CLOSED = new AtomicInteger();
+
+        @Override
+        public void destroy() {
+            close();
+        }
+
+        @Override
+        public void close() {
+            CLOSED.incrementAndGet();
         }
     }
 

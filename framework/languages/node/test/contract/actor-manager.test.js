@@ -21,6 +21,9 @@ const {
 const {
   runActorHandlerWithDeferredJoins
 } = require('../../packages/framework/dist/runtime/actors/actor-join-deferred-scope');
+const {
+  resolveLifecycleHandler
+} = require('../../packages/framework/dist/runtime/handlers/handler-instance-scope');
 const msgpack = require('../../packages/framework-codec-msgpack/dist/server/framework.cjs');
 const protobuf = require('../../packages/framework-codec-protobuf/dist/server/framework.cjs');
 
@@ -176,6 +179,60 @@ test('ZLinkActorManager create find and getOrCreate follow dotnet actor semantic
   assert.equal(await manager.findActor('alice'), actor);
   assert.equal(await manager.getOrCreateActor('alice', 'player'), actor);
   assert.deepEqual(events, ['create:alice', 'configure:alice']);
+});
+
+test('actor relocation terminal awaits handler cleanup and preserves state on cleanup failure', async () => {
+  class PlayerActor {
+    constructor(context) {
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    async create(context) {
+      return new PlayerActor(context);
+    }
+  }
+
+  let releaseCleanup;
+  class BlockingHandler {
+    dispose() {
+      return new Promise((resolve) => {
+        releaseCleanup = resolve;
+      });
+    }
+  }
+  const manager = createActorManager({
+    actorFactories: new Map([['player', PlayerFactory]])
+  });
+  const actor = await manager.getOrCreateActor('alice', 'player');
+  await resolveLifecycleHandler(actor, BlockingHandler, {
+    create: (type) => new type()
+  });
+
+  const completion = manager.completeRelocationSource('alice');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.notEqual(manager.getState('alice'), undefined);
+  releaseCleanup();
+  await completion;
+  assert.equal(manager.getState('alice'), undefined);
+
+  class FailingHandler {
+    dispose() {
+      throw new Error('handler cleanup failed');
+    }
+  }
+  const failedActor = await manager.getOrCreateActor('bob', 'player');
+  await resolveLifecycleHandler(failedActor, FailingHandler, {
+    create: (type) => new type()
+  });
+
+  await assert.rejects(
+    () => manager.completeCoreRelocationSource('bob'),
+    /handler cleanup failed/
+  );
+  assert.notEqual(manager.getState('bob'), undefined);
+  await manager.completeCoreRelocationSource('bob');
+  assert.equal(manager.getState('bob'), undefined);
 });
 
 test('actor transfer registry uses custom state adapters and defaults missing adapters to empty state', async () => {
@@ -3475,6 +3532,55 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
       error instanceof framework.ZLinkFrameworkException
       && error.kind === framework.ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound
   );
+});
+
+test('ZLinkSpotActorDispatcher retains handler instances per actor activation', async () => {
+  let creates = 0;
+  let singletonGets = 0;
+  class PlayerActor {
+    constructor(actorId) {
+      this.context = lifecycleContext(actorId);
+    }
+  }
+  class MoveHandler {
+    constructor() {
+      this.id = ++creates;
+    }
+
+    async handle(_spot, _actor, _context, message) {
+      return `${this.id}:${message}`;
+    }
+  }
+  const registry = new framework.ZLinkSpotActorHandlerRegistryRuntime()
+    .addPacket({
+      kind: framework.ZLinkActorPacketKind.Request,
+      packetName: 'move',
+      actorType: PlayerActor,
+      handlerType: MoveHandler
+    });
+  const singleton = new MoveHandler();
+  creates = 0;
+  const dispatcher = new framework.ZLinkSpotActorDispatcher({
+    registry,
+    spot: {},
+    providerResolver: {
+      get() {
+        singletonGets += 1;
+        return singleton;
+      },
+      create(type) {
+        return new type();
+      }
+    }
+  });
+  const alice = new PlayerActor('alice');
+  const bob = new PlayerActor('bob');
+
+  assert.equal(await dispatcher.dispatchRequest(alice, 'move', 'one'), '1:one');
+  assert.equal(await dispatcher.dispatchRequest(alice, 'move', 'two'), '1:two');
+  assert.equal(await dispatcher.dispatchRequest(bob, 'move', 'one'), '2:one');
+  assert.equal(creates, 2);
+  assert.equal(singletonGets, 0);
 });
 
 test('spot actor dispatch rejects malformed JSON as PayloadDecodeFailed before invoking the handler', async () => {

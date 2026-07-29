@@ -79,12 +79,16 @@ public sealed class MessageContextContractTests
     public async Task Dispatcher_FilterAndHandlerShareExactMessageContext()
     {
         var probe = new FilterProbe();
+        var registeredDependency = new DispatchDependency();
+        var registeredFilter = new CapturingFilter(probe, registeredDependency);
+        var registeredHandler = new FilteredRequestHandler(probe, registeredDependency);
         var registration = new ZLinkFrameworkRegistration();
         registration.Filters.Add(typeof(CapturingFilter));
         await using var services = new ServiceCollection()
             .AddSingleton(probe)
-            .AddSingleton<CapturingFilter>()
-            .AddSingleton<FilteredRequestHandler>()
+            .AddScoped<DispatchDependency>()
+            .AddSingleton(registeredFilter)
+            .AddSingleton(registeredHandler)
             .BuildServiceProvider();
         var dispatcher = new ZLinkHandlerDispatcher(
             services.GetRequiredService<IServiceScopeFactory>(),
@@ -122,6 +126,12 @@ public sealed class MessageContextContractTests
         Assert.Same(context, handlerContext);
         Assert.Equal("alpha", handlerContext.Metadata.Find("tenant"));
         Assert.Equal("correlation-a", handlerContext.CorrelationId);
+        Assert.NotSame(registeredFilter, probe.Filter);
+        Assert.NotSame(registeredHandler, probe.Handler);
+        Assert.Same(probe.FilterDependency, probe.HandlerDependency);
+        Assert.Equal(1, probe.Filter!.DisposeCount);
+        Assert.Equal(1, probe.Handler!.DisposeCount);
+        Assert.Equal(1, probe.FilterDependency!.DisposeCount);
     }
 
     private static Type[] Parameters(Type handlerType)
@@ -154,10 +164,29 @@ public sealed class MessageContextContractTests
         public IZLinkMessageContext? FilterContext { get; set; }
 
         public IZLinkMessageContext? HandlerContext { get; set; }
+
+        public CapturingFilter? Filter { get; set; }
+
+        public FilteredRequestHandler? Handler { get; set; }
+
+        public DispatchDependency? FilterDependency { get; set; }
+
+        public DispatchDependency? HandlerDependency { get; set; }
     }
 
-    private sealed class CapturingFilter(FilterProbe probe) : IZLinkHandlerFilter
+    private sealed class DispatchDependency : IDisposable
     {
+        public int DisposeCount { get; private set; }
+
+        public void Dispose() => DisposeCount++;
+    }
+
+    private sealed class CapturingFilter(
+        FilterProbe probe,
+        DispatchDependency dependency) : IZLinkHandlerFilter, IDisposable
+    {
+        public int DisposeCount { get; private set; }
+
         public async ValueTask InvokeAsync(
             IZLinkMessageContext context,
             ZLinkHandlerFilterNext next,
@@ -165,13 +194,21 @@ public sealed class MessageContextContractTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             probe.FilterContext = context;
+            probe.Filter = this;
+            probe.FilterDependency = dependency;
             await next();
         }
+
+        public void Dispose() => DisposeCount++;
     }
 
-    private sealed class FilteredRequestHandler(FilterProbe probe)
-        : IZLinkRequestHandler<FilterRequest, FilterReply>
+    private sealed class FilteredRequestHandler(
+        FilterProbe probe,
+        DispatchDependency dependency)
+        : IZLinkRequestHandler<FilterRequest, FilterReply>, IDisposable
     {
+        public int DisposeCount { get; private set; }
+
         public ValueTask<FilterReply> HandleAsync(
             FilterRequest request,
             IZLinkMessageContext context,
@@ -179,8 +216,12 @@ public sealed class MessageContextContractTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             probe.HandlerContext = context;
+            probe.Handler = this;
+            probe.HandlerDependency = dependency;
             return ValueTask.FromResult(
                 new FilterReply(request.Value.ToUpperInvariant()));
         }
+
+        public void Dispose() => DisposeCount++;
     }
 }

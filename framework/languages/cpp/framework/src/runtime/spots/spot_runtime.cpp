@@ -879,13 +879,17 @@ request_spot_mesh_message (const std::shared_ptr<detail::spot_context_state_t> &
 namespace detail
 {
 
-void spot_context_state_t::enter_callback ()
+bool spot_context_state_t::enter_callback ()
 {
     std::lock_guard<std::mutex> lock (callback_mutex);
+    if (callback_admission_closed) {
+        return false;
+    }
     if (callback_depth == 0) {
         callback_thread = std::this_thread::get_id ();
     }
     ++callback_depth;
+    return true;
 }
 
 void spot_context_state_t::leave_callback ()
@@ -963,7 +967,15 @@ result_t<void> spot_context_state_t::run_serial_task (
     auto result = completion.task ();
     const auto posted = try_post_serial_async (
       std::move (name), [this, work = std::move (work), completion] (auto complete) mutable {
-          enter_callback ();
+          if (!enter_callback ()) {
+              complete ([completion] () mutable {
+                  completion.complete (
+                    detail::boundary_failure<void> (
+                      detail::boundary_error_t::closed,
+                      "spot activation is closed"));
+              });
+              return;
+          }
           auto turn = detail::capture_current_serial_turn ();
           try {
               auto task = work ();
@@ -1028,8 +1040,12 @@ bool spot_context_state_t::run_serial_sync (std::string name, std::function<void
     }
 
     std::exception_ptr error;
+    bool callback_admitted = false;
     const bool posted = try_post_serial (std::move (name), [&] {
-        enter_callback ();
+        callback_admitted = enter_callback ();
+        if (!callback_admitted) {
+            return;
+        }
         try {
             work ();
         }
@@ -1045,7 +1061,7 @@ bool spot_context_state_t::run_serial_sync (std::string name, std::function<void
     if (error) {
         std::rethrow_exception (error);
     }
-    return true;
+    return callback_admitted;
 }
 
 bool spot_context_state_t::owns_current_serial_turn () const
@@ -1209,13 +1225,6 @@ task_t<bool> spot_context_t::close_erased ()
         std::lock_guard<std::recursive_mutex> node_lock (_state->node->mutex);
         if (_state->closed || _state->actor_count != 0) {
             co_return result_t<bool>::success (false);
-        }
-        {
-            std::lock_guard<std::mutex> callback_lock (_state->callback_mutex);
-            if (_state->callback_depth != 0) {
-                _state->close_requested = true;
-                co_return result_t<bool>::success (true);
-            }
         }
         co_return result_t<bool>::success (_state->close_now ());
     }
@@ -1926,7 +1935,12 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
             auto task = completion.task ();
             auto state = _state;
             if (!serial_dispatch) {
-                state->enter_callback ();
+                if (!state->enter_callback ()) {
+                    return task_t<zlink::message_t> (
+                      detail::boundary_failure<zlink::message_t> (
+                        detail::boundary_error_t::closed,
+                        "spot activation is closed"));
+                }
                 try {
                     runtime::actor_execution_scope_t actor_execution (
                       std::move (actor_execution_key),
@@ -1979,7 +1993,15 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
                   runtime::actor_execution_scope_t actor_execution (
                     std::move (actor_execution_key),
                     std::move (actor_execution_spot_id));
-                  state->enter_callback ();
+                  if (!state->enter_callback ()) {
+                      complete ([completion] () mutable {
+                          completion.complete (
+                            detail::boundary_failure<zlink::message_t> (
+                              detail::boundary_error_t::closed,
+                              "spot activation is closed"));
+                      });
+                      return;
+                  }
                   auto turn = detail::capture_current_serial_turn ();
                   try {
                       auto handler_task = state->handler_invokers[handler_index](
@@ -4779,6 +4801,15 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
         context_state->execution_mode = mode->second;
     }
     context_state->lifecycle = lifecycle;
+    if (_state->root_services) {
+        context_state->activation_scope =
+          std::make_shared<service_scope_t> (
+            service_scope_t::create (
+              *_state->root_services,
+              context_state->entry_spot
+                ? service_scope_kind_t::entry_spot
+                : service_scope_kind_t::spot_activation));
+    }
     configure_spot_execution (context_state);
     spot_context_t context (context_state);
     std::optional<message_t> create_reply;
@@ -5306,6 +5337,13 @@ void spot_node_runtime_t::release_native_handles () noexcept
 void spot_node_runtime_t::request_stop () noexcept
 {
     _state->stopping.store (true, std::memory_order_release);
+}
+
+void spot_node_runtime_t::bind_service_provider (
+  service_provider_t &services)
+{
+    std::lock_guard<std::recursive_mutex> lock (_state->mutex);
+    _state->root_services = services;
 }
 
 bool spot_node_runtime_t::stopping () const noexcept

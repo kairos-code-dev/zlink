@@ -666,6 +666,7 @@ final class SpotActivation
         closePendingActorMessage();
         closeActiveRouteReceives();
         context.closeTimers();
+        context.closeHandlerInstances();
         backendSpot.close();
     }
 

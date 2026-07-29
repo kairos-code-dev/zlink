@@ -79,8 +79,9 @@ ChannelName은 MeshName 안의 배포 membership이다. 사용법은
 ## 2. spot — 상태 단위
 
 Spot은 room/zone/stage처럼 동적으로 생성하는 상태 owner다. 같은 Spot의 packet,
-lifecycle과 timer callback은 Spot application queue에서 직렬 실행된다. Actor payload는
-Spot registry가 아니라 각 Actor의 handler registry에 등록하며 Actor queue에서 실행된다.
+lifecycle과 timer callback은 Spot application queue에서 직렬 실행된다. Actor payload handler도
+containing Spot의 member function이다. Spot의 `configure()`에서 Actor message용 member를
+등록하며 실제 실행은 대상 Actor queue에서 직렬화한다.
 
 한 SPOT 에 들어오는 모든 일은 **단일 큐**를 통과해 한 줄로 처리된다 — 그래서 상태에
 lock 이 없다.
@@ -157,8 +158,9 @@ graph LR
   수명은 **transient**(요청마다 새로), 실행은 **동시**(worker 풀). 그래서 가변
   도메인 상태를 핸들러 멤버에 두지 않는다.
 - **Spot 핸들러** — `spot_t` 또는 `entry_spot_t`를 상속하고 `configure()`에서
-  `add_handler<&T::method>()`나 `add_subscribe<&T::method>()`로 등록한다. Actor payload는
-  Actor의 `actor_context_t::handlers()`에 등록한다.
+  `add_handler<&T::method>()`나 `add_subscribe<&T::method>()`로 등록한다. Actor payload도
+  같은 registry에서 `add_actor_send<&T::method>()` 또는
+  `add_actor_request<&T::method>()`로 containing Spot member를 등록한다.
 
 | | 노드 핸들러 (채널·HTTP) | entry spot | room spot |
 |---|---|---|---|
@@ -167,7 +169,7 @@ graph LR
 | 실행 | 동시 (worker pool) | lifecycle은 Entry Spot queue, Actor payload는 각 Actor queue | Spot application queue에서 직렬 |
 | 공유 상태 | 핸들러에 두지 않음 | Entry lifecycle 상태와 Actor별 상태의 owner를 구분 | 같은 Spot turn에서 안전 |
 | 역할 | 요청 처리·위임 | 배정·매칭·할당 | 도메인 상태 소유·처리 |
-| 계약 | `request_type`/`reply_type`/`topic_name` | lifecycle member + Actor handler registry | `configure()` + Spot handler registry + lifecycle member |
+| 계약 | `request_type`/`reply_type`/`topic_name` | lifecycle member + Spot registry의 Actor member 등록 | `configure()` + Spot handler registry + lifecycle member |
 | outbound | DI의 `request_client_t` / `route_client_t` | owner MeshNode context | owner MeshNode context |
 
 **실행 모델 비교** — 같은 3개 요청이 두 핸들러에서 어떻게 도는가:

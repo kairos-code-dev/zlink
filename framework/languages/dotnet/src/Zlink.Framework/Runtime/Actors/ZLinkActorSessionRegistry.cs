@@ -1,6 +1,7 @@
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorSessionRegistry(
+    IServiceProvider? services = null,
     Action<string>? handoffDiagnostic = null,
     TimeSpan? sessionBindingTombstoneRetention = null)
 {
@@ -17,7 +18,8 @@ internal sealed class ZLinkActorSessionRegistry(
                 actorId,
                 handoffDiagnostic: handoffDiagnostic,
                 sessionBindingTombstoneRetention:
-                    sessionBindingTombstoneRetention);
+                    sessionBindingTombstoneRetention,
+                services: services);
             _states.Add(actorId, created);
             return created;
         }
@@ -53,7 +55,7 @@ internal sealed class ZLinkActorSessionRegistry(
         }
     }
 
-    public void ResetGeneration()
+    public async ValueTask ResetGenerationAsync()
     {
         ZLinkActorRuntimeState[] states;
         lock (_gate)
@@ -62,7 +64,9 @@ internal sealed class ZLinkActorSessionRegistry(
             _states.Clear();
         }
 
-        foreach (var state in states) state.InvalidateRuntimeGeneration();
+        foreach (var state in states)
+            await state.InvalidateRuntimeGenerationAfterDispatchesAsync()
+                .ConfigureAwait(false);
     }
 
     public ZLinkActorRuntimeState[] Snapshot()

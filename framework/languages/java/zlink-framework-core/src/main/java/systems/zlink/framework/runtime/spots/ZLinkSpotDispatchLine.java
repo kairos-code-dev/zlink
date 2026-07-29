@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.spots;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwner;
 
 interface SpotDispatchLine {
     CompletionStage<Void> enqueueDispatch(Supplier<CompletionStage<Void>> operation);
@@ -16,4 +17,6 @@ interface SpotDispatchLine {
     DefaultSpotOutbound dispatchOutbound();
 
     ZLinkSpotHandlerCatalog handlerCatalog();
+
+    ZLinkHandlerInstanceOwner handlerInstances();
 }

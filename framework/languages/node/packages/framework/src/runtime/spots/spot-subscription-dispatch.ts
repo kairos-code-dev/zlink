@@ -27,7 +27,7 @@ import {
   type ZLinkChannelEnvelopeCodecRegistry
 } from '../channels/channel-envelope';
 import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
-import { createProviderInstance } from './spot-provider';
+import { resolveLifecycleHandler } from '../handlers/handler-instance-scope';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import { ZLINK_RECV_DONT_WAIT } from './spot-native-flags';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
@@ -176,7 +176,8 @@ export class ZLinkSpotSubscriptionDispatch {
     );
     await this.options.serial.execute(() => runWithFlow(inboundFlow, async () => {
       for (const registration of registrations) {
-        const handler = await createProviderInstance(
+        const handler = await resolveLifecycleHandler(
+          spot,
           registration.handlerType as Type<ZLinkSpotSubscriptionHandler<ZLinkSpot, unknown>>,
           this.options.providerResolver
         );

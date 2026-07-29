@@ -211,6 +211,16 @@ export interface ZLinkSpotActorRequestHandler<TSpot, TActor extends ZLinkActor, 
 }
 ```
 
+Node runtime은 Spot packet·request·subscription·timer handler class를 Spot activation마다
+한 번 만들고 재사용한다. Actor send·request handler class는 Actor activation마다 한
+번 만들고 재사용한다. 서로 다른 Actor는 handler instance와 activation-scoped provider를
+공유하지 않는다. Nest provider의 singleton·request·transient 설정으로 이 수명을
+바꾸거나 handler lifetime option을 추가하지 않는다.
+
+Same-node Join은 Actor handler를 유지한다. Cross-node Join과 relocation은 source
+handler를 정리하고 target activation에서 다시 만든다. Handler field에 복구해야 하는
+state를 두지 않으며 Spot 또는 Actor가 소유한다.
+
 ## 3. Manager와 single-use create call
 
 ```ts

@@ -7324,6 +7324,104 @@ public surface에서 제거했다. `ActorRefSnapshot`을 이전 RoutingId 중심
 이 증거로 `V11-M6A-JVM`을 완료로 전환했다. Sample·E2E source는 이 candidate의
 소유 범위에 포함하지 않았다.
 
+## 2026-07-29 Handler instance 수명 계약 보강
+
+`framework/doc/plan/spec-issue-handler-instance-lifetime.ko.md`에서 확인한 미정의
+동작을 공통 spec에 먼저 고정했다.
+
+| Handler 종류 | 확정한 수명 |
+|---|---|
+| Channel handler와 filter | dispatch scope |
+| Spot packet·request·subscription·timer handler | Spot activation scope |
+| Actor send·request handler | Actor activation scope |
+
+Handler type의 DI 등록 lifetime으로 이 규칙을 바꾸지 않으며 public lifetime option을
+추가하지 않는다. Same-node Join은 Actor activation을 유지하고, cross-node Join과
+relocation은 source scope를 정리한 뒤 target activation에서 다시 만든다. 복구해야
+하는 application state는 handler가 아니라 Spot 또는 Actor가 소유한다.
+
+공통 `06-framework-api`, Spot·Actor model, .NET exact interface와 guide에 목표 계약을
+반영했다. .NET 구현과 focused regression을 기준으로 만든 뒤 Java/Kotlin, Node와
+C++에서 같은 instance ownership과 disposal 경계를 이식한다. 다섯 언어의 구현과
+contract test가 통과하기 전에는 이 보강을 완료 증거로 사용하지 않는다.
+
+.NET 기준 구현은 완료했다. Channel handler와 filter는 dispatch마다 같은 child
+scope에서 만들고, Application DI 등록 lifetime을 사용하지 않는다. Spot handler는
+Spot activation이 소유하고 Actor handler는 Actor activation이 별도 scope와 함께
+소유한다. Entry Spot Actor dispatch도 Actor activation owner를 사용한다. Runtime
+generation reset, destroy, ownership loss와 relocation source finalize에서 Framework가
+만든 handler를 먼저 정리하고 scope를 정확히 한 번 정리한다.
+
+- Framework build: warning 0, error 0
+- `MessageContextContractTests`: 4/4
+- `ActorHandlerActivationTests`: 2/2
+- `SpotHandlerInvokerTests`: 7/7
+- `EntrySpotActorDispatchTests`: 110/110
+- DI registration regression: 57/57
+- 전체 `.NET UnitTests`: 1,290/1,290
+- `.NET ContractTests`: 70/70
+- 첫 종료 경합 보강 후 전체 `.NET UnitTests`: 1,291/1,291
+- 최종 barrier 보강 후 handler lifetime 5/5, deferred Join 2/2,
+  Actor destroy 6/6, Actor handoff 63/63
+
+Java/Kotlin 공용 runtime도 구현했다. Channel dispatch는 handler와 filter가 같은
+activation owner를 사용한다. Spot·timer는 Spot activation, Actor handler는 Actor
+activation owner를 사용한다. Spring root singleton handler 등록은 사용하지 않는다.
+Prototype dependency는 같은 activation에서 handler·filter가 공유하고 다음
+activation에서는 새로 만든다. Framework가 만든 handler와 prototype dependency는
+정확히 한 번 정리한다.
+
+- Java core·Spring starter·Kotlin unit test: 통과
+- Java core·Kotlin contract test: 통과
+- Spring activation dependency 공유·double-dispose focused test: 통과
+- ownership loss·destroy·relocation source 중 실행 중인 Actor turn을 기다리는
+  deterministic race test: 통과
+- `git diff --check -- framework/languages/java`: 통과
+
+C++는 별도 Actor handler class를 추가하지 않고 Spot member-function 표현을 유지했다.
+Timer handler와 dependency scope는 Spot activation당 한 번 만들고, close와 relocation
+source detach에서 handler, Spot instance, scope 순서로 정리한다. Target activation은
+새 scope와 handler를 만든다.
+
+- `test_cpp_framework_execution`: 통과
+- `test_cpp_framework_DI_scope`: 통과
+- `test_cpp_framework_instance_spot_activation`: 3/3
+- `test_cpp_framework_contract_headers`: 통과
+- 실행 중 timer callback과 close 경합, callback 종료 후 exact-once cleanup test: 통과
+- C++ scoped `git diff --check`: 통과
+
+Node/Nest runtime도 구현했다. Channel handler와 filter는 dispatch context를 공유하고
+Spot·timer와 Actor handler는 각 object activation owner를 사용한다. Nest singleton
+provider는 handler instance로 재사용하지 않으며 constructor dependency만 같은
+activation context에서 공유한다. Relocation abort·source completion은 handler cleanup을
+기다린 뒤 state를 제거하고, cleanup 실패는 기존 retry·reconciliation 경계에 전달한다.
+
+- Node typecheck와 build: 통과
+- 변경 TypeScript ESLint: 통과
+- Handler scope·Actor·Spot·Nest focused regression: 9/9
+  (activation 생성과 cleanup 경합의 late instance 정리, 실행 중 handler 종료 대기,
+  handler 내부 종료 호출 포함)
+- Handler scope와 Actor manager 결합 회귀: 80/80
+- Actor·Spot 관련 회귀: 135개 중 132개 통과
+- 나머지 3개는 이 변경 전부터 공유 worktree의 handoff·membership API 변경을 아직
+  반영하지 않은 fixture다. Handler lifetime 경로의 실패는 0개다.
+- Node scoped `git diff --check`: 통과
+
+문서 계약도 다시 생성하고 검증했다.
+
+- `TRACE --write`와 `TRACE --check`: documents 51, owners 1,243,
+  members 4,449, unclassified·ambiguous·unknown owner 0
+- `verify-framework-doc-contracts.sh`: 통과
+- 다섯 언어 scoped `git diff --check`: 통과
+
+첫 독립 Codex high review에서 네 언어의 실제 runtime wiring과 in-flight teardown
+경합을 확인했다. .NET·Java는 Actor mailbox admission을 닫고 기존 turn 뒤에서
+정리하도록 수정했다. Node는 pending instance 생성과 실행 중 handler가 끝날 때까지
+정리를 기다린다. C++는 timer callback admission과 close 판정을 같은 lock 경계에서
+처리한다. 각 경합을 deterministic regression으로 고정했다. 두 번째 Codex high
+review에서 기존 P1 네 건과 P2 한 건이 모두 해소됐고 추가 P1·P2가 없음을 확인했다.
+이 보강 작업은 완료했다.
+
 ## 2026-07-29 Node M6A runtime 완료
 
 Node topology·dispatch·Location·liveness candidate를 2026-07-26의 M6A 전 기준

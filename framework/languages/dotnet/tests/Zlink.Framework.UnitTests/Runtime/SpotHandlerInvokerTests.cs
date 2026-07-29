@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Handlers;
@@ -36,7 +38,7 @@ public sealed class SpotHandlerInvokerTests
     }
 
     [Fact]
-    public async Task ExplicitlyRegistered_Handler_Remains_Owned_By_ServiceScope()
+    public async Task ExplicitlyRegistered_Handler_Type_Is_Still_Created_By_Activation_Owner()
     {
         var lifetime = new HandlerLifetime();
         await using var provider = new ServiceCollection()
@@ -46,12 +48,12 @@ public sealed class SpotHandlerInvokerTests
         var scope = provider.CreateAsyncScope();
         var handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
 
-        Assert.Same(
-            handlerInstances.Resolve<DisposablePacketHandler>(),
-            handlerInstances.Resolve<DisposablePacketHandler>());
+        var first = handlerInstances.Resolve<DisposablePacketHandler>();
+        var second = handlerInstances.Resolve<DisposablePacketHandler>();
 
+        Assert.Same(first, second);
         await handlerInstances.DisposeAsync();
-        Assert.Equal(0, lifetime.DisposeCount);
+        Assert.Equal(1, lifetime.DisposeCount);
         await scope.DisposeAsync();
         Assert.Equal(1, lifetime.DisposeCount);
     }
@@ -96,6 +98,80 @@ public sealed class SpotHandlerInvokerTests
             CancellationToken.None);
 
         Assert.Equal("player-1", spot.JoinedActorId);
+    }
+
+    [Fact]
+    public async Task InvokeActorPacketAsync_Reuses_PerActor_Handler_Not_PerSpot_Handler()
+    {
+        var lifetime = new ActorHandlerLifetime();
+        await using var provider = new ServiceCollection()
+            .AddSingleton(lifetime)
+            .AddScoped<ActorScopedDependency>()
+            .BuildServiceProvider();
+        await using var spotHandlerInstances =
+            new ZLinkScopedHandlerInstanceOwner(provider);
+        var firstState = new ZLinkActorRuntimeState("player-1", services: provider);
+        var secondState = new ZLinkActorRuntimeState("player-2", services: provider);
+        var states = new Dictionary<string, ZLinkActorRuntimeState>
+        {
+            ["player-1"] = firstState,
+            ["player-2"] = secondState
+        };
+        var spot = new MemberLifecycleSpot();
+        var descriptor = ZLinkSpotActorInterfaceDescriptorFactory
+            .CreateInferredDescriptors(
+                ZLinkSpotActorHandlerSurface.UserSpot,
+                typeof(MemberLifecycleSpot),
+                typeof(ActorPacketHandler),
+                packetName: null)
+            .Single()
+            .Packet!;
+        var invoker = new ZLinkSpotHandlerInvoker(
+            spotHandlerInstances,
+            spot,
+            "test-mesh",
+            new ZLinkCodecRegistryBuilder(),
+            ZLinkStreamProtocolDefaults.CreateLz4CompressionCodec(),
+            actorHandlerInstances: actor => states[actor.Context.ActorId].HandlerInstances);
+        var first = new MemberLifecycleActor("player-1");
+        var second = new MemberLifecycleActor("player-2");
+
+        await InvokeAsync(first, "first");
+        await InvokeAsync(first, "second");
+        await InvokeAsync(second, "third");
+
+        Assert.Equal(3, lifetime.Invocations.Count);
+        Assert.Same(lifetime.Invocations[0].Handler, lifetime.Invocations[1].Handler);
+        Assert.Same(lifetime.Invocations[0].Dependency, lifetime.Invocations[1].Dependency);
+        Assert.NotSame(lifetime.Invocations[0].Handler, lifetime.Invocations[2].Handler);
+        Assert.NotSame(lifetime.Invocations[0].Dependency, lifetime.Invocations[2].Dependency);
+
+        await firstState.DisposeHandlerActivationAsync();
+        Assert.Equal(1, lifetime.Invocations[0].Handler.DisposeCount);
+        Assert.Equal(0, lifetime.Invocations[2].Handler.DisposeCount);
+        await secondState.DisposeHandlerActivationAsync();
+        Assert.Equal(1, lifetime.Invocations[2].Handler.DisposeCount);
+
+        async ValueTask InvokeAsync(MemberLifecycleActor actor, string value)
+        {
+            var header = new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Send,
+                ZlinkStreamCodec.Json,
+                ZlinkStreamHeaderFlags.None,
+                null,
+                nameof(ActorHandlerMessage),
+                ZlinkStreamMetadata.Empty);
+            using var body = Message.From(
+                ZLinkEnvelopeCodec.EncodeJsonBytes(
+                    new ActorHandlerMessage(value),
+                    typeof(ActorHandlerMessage)));
+            await invoker.InvokeActorPacketAsync(
+                descriptor,
+                actor,
+                header,
+                body,
+                CancellationToken.None);
+        }
     }
 
     [Fact]
@@ -201,11 +277,55 @@ public sealed class SpotHandlerInvokerTests
 
     private sealed record HandlerMessage;
 
+    private sealed record ActorHandlerMessage(string Value);
+
     private sealed class HandlerLifetime
     {
         public List<object> Invocations { get; } = [];
 
         public int DisposeCount { get; set; }
+    }
+
+    private sealed class ActorHandlerLifetime
+    {
+        public List<(ActorPacketHandler Handler, ActorScopedDependency Dependency)>
+            Invocations { get; } = [];
+    }
+
+    private sealed class ActorScopedDependency;
+
+    private sealed class ActorPacketHandler(
+        ActorScopedDependency dependency,
+        ActorHandlerLifetime lifetime)
+        : IZLinkSpotActorSendHandler<
+            MemberLifecycleSpot,
+            MemberLifecycleActor,
+            ActorHandlerMessage>,
+          IAsyncDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public ValueTask HandleAsync(
+            MemberLifecycleSpot spot,
+            MemberLifecycleActor actor,
+            IZLinkMessageContext context,
+            ActorHandlerMessage message,
+            CancellationToken cancellationToken)
+        {
+            _ = spot;
+            _ = actor;
+            _ = context;
+            _ = message;
+            cancellationToken.ThrowIfCancellationRequested();
+            lifetime.Invocations.Add((this, dependency));
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class DisposablePacketHandler(HandlerLifetime lifetime)

@@ -14,6 +14,7 @@ import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 final class ZLinkActorDispatchSerials {
     private final Map<String, ZLinkAsyncSerialQueue> queues = new HashMap<>();
     private final Set<String> activeActorIds = new HashSet<>();
+    private final Map<String, CompletionStage<Void>> teardowns = new HashMap<>();
 
     boolean isCurrent(String actorId) {
         return actorId.equals(systems.zlink.framework.runtime.internal.handlers
@@ -24,7 +25,11 @@ final class ZLinkActorDispatchSerials {
         return activeActorIds.contains(actorId);
     }
 
-    QueuedTurn prepare(String actorId) {
+    synchronized QueuedTurn prepare(String actorId) {
+        if (teardowns.containsKey(actorId)) {
+            throw new IllegalStateException(
+                "actor dispatch admission is closed: " + actorId);
+        }
         return new QueuedTurn(
             actorId,
             queues.computeIfAbsent(actorId, ignored -> new ZLinkAsyncSerialQueue(false)));
@@ -35,9 +40,10 @@ final class ZLinkActorDispatchSerials {
             actorId, ignored -> new ZLinkAsyncSerialQueue(false));
     }
 
-    void remove(String actorId) {
+    synchronized void remove(String actorId) {
         queues.remove(actorId);
         activeActorIds.remove(actorId);
+        teardowns.remove(actorId);
     }
 
     CompletionStage<Void> enqueue(
@@ -54,11 +60,16 @@ final class ZLinkActorDispatchSerials {
             turn, acceptedJournalRecord, operation, () -> { });
     }
 
-    CompletionStage<Void> enqueue(
+    synchronized CompletionStage<Void> enqueue(
         QueuedTurn turn,
         byte[] acceptedJournalRecord,
         Supplier<CompletionStage<Void>> operation,
         Runnable relocationRelease) {
+        if (teardowns.containsKey(turn.actorId)) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "actor dispatch admission is closed: " + turn.actorId));
+        }
         Supplier<CompletionStage<Void>> turnOperation = () -> {
             synchronized (this) {
                 activeActorIds.add(turn.actorId);
@@ -76,6 +87,44 @@ final class ZLinkActorDispatchSerials {
                 acceptedJournalRecord,
                 turnOperation,
                 relocationRelease);
+    }
+
+    CompletionStage<Void> beginTeardown(
+        String actorId,
+        Supplier<CompletionStage<Void>> cleanup) {
+        CompletionStage<Void> teardown;
+        synchronized (this) {
+            teardown = teardowns.get(actorId);
+            if (teardown == null) {
+                ZLinkAsyncSerialQueue queue = queues.computeIfAbsent(
+                    actorId,
+                    ignored -> new ZLinkAsyncSerialQueue(false));
+                CompletableFuture<Void> terminal = new CompletableFuture<>();
+                teardowns.put(actorId, terminal);
+                queue.enqueueLifecycleBarrier(cleanup)
+                    .whenComplete((ignored, error) -> {
+                        synchronized (this) {
+                            teardowns.remove(actorId, terminal);
+                            if (error == null) {
+                                queues.remove(actorId, queue);
+                                activeActorIds.remove(actorId);
+                            }
+                        }
+                        if (error == null) {
+                            terminal.complete(null);
+                        } else {
+                            terminal.completeExceptionally(error);
+                        }
+                    });
+                teardown = terminal;
+            }
+        }
+        // Waiting for a barrier queued behind the current turn would make the
+        // current Actor handler wait for itself. Cleanup still runs next, but
+        // the initiating turn may complete normally.
+        return isCurrent(actorId)
+            ? CompletableFuture.completedFuture(null)
+            : teardown;
     }
 
     CompletionStage<Void> enqueueBarrier(

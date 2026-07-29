@@ -11,7 +11,6 @@ import type {
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
-import { ZLinkConfigurationException } from '../configuration';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import {
   ZLinkMessageFlowTracer,
@@ -25,6 +24,7 @@ import {
 import type { ZLinkRuntimeTaskErrorSink } from '../execution';
 import { ZLinkDispatchErrorReporter } from './dispatch-error-reporter';
 import { invokeZLinkHandlerFilters } from '../handlers';
+import { runInHandlerInstanceScope } from '../handlers/handler-instance-scope';
 import { handlerFilterScope } from './handler-filter-scope';
 import type {
   ZLinkChannelRequestHandler,
@@ -95,37 +95,45 @@ export class ZLinkChannelDispatchServices {
 
   channelRequestHandler(handlerType: Type): ZLinkChannelRequestHandler {
     return {
-      handle: async (payload, context) => {
-        const handler = await this.resolveHandler<ZLinkChannelRequestHandler>(handlerType);
+      handle: (payload, context) => this.withHandlerScope(context, async (scope) => {
+        const handler = await scope.resolve(
+          handlerType as Type<ZLinkChannelRequestHandler>
+        );
         return handler.handle(payload, context);
-      }
+      })
     };
   }
 
   channelSendHandler(handlerType: Type): ZLinkChannelSendHandler {
     return {
-      handle: async (payload, context) => {
-        const handler = await this.resolveHandler<ZLinkChannelSendHandler>(handlerType);
+      handle: (payload, context) => this.withHandlerScope(context, async (scope) => {
+        const handler = await scope.resolve(
+          handlerType as Type<ZLinkChannelSendHandler>
+        );
         await handler.handle(payload, context);
-      }
+      })
     };
   }
 
   routeRequestHandler(handlerType: Type): ZLinkRouteRuntimeRequestHandler {
     return {
-      handle: async (payload, context) => {
-        const handler = await this.resolveHandler<ZLinkRouteRuntimeRequestHandler>(handlerType);
+      handle: (payload, context) => this.withHandlerScope(context, async (scope) => {
+        const handler = await scope.resolve(
+          handlerType as Type<ZLinkRouteRuntimeRequestHandler>
+        );
         return handler.handle(payload, context);
-      }
+      })
     };
   }
 
   routeSendHandler(handlerType: Type): ZLinkRouteRuntimeSendHandler {
     return {
-      handle: async (payload, context) => {
-        const handler = await this.resolveHandler<ZLinkRouteRuntimeSendHandler>(handlerType);
+      handle: (payload, context) => this.withHandlerScope(context, async (scope) => {
+        const handler = await scope.resolve(
+          handlerType as Type<ZLinkRouteRuntimeSendHandler>
+        );
         await handler.handle(payload, context);
-      }
+      })
     };
   }
 
@@ -137,36 +145,29 @@ export class ZLinkChannelDispatchServices {
     const scoped = handlerFilterScope(this.providerResolver);
     if (scoped !== undefined) {
       return scoped(context, async (resolver) => invokeZLinkHandlerFilters(
-        await Promise.all(this.registration.filterTypes.map((filterType) => resolver.resolve(filterType))),
+        await Promise.all(
+          this.registration.filterTypes.map((filterType) => resolver.resolve(filterType))
+        ),
         context,
         next,
         signal
       ));
     }
-
-    const filters = await Promise.all(this.registration.filterTypes.map(async (filterType) => {
-      const filter = await this.providerResolver?.create?.(filterType)
-        ?? this.providerResolver?.get?.(filterType);
-      if (filter === undefined) {
-        throw new ZLinkConfigurationException(
-          `Handler filter '${filterType.name}' is not registered in the provider resolver.`
-        );
-      }
-      return filter;
-    }));
-    return invokeZLinkHandlerFilters(filters, context, next, signal);
+    return this.withHandlerScope(context, async (scope) =>
+      invokeZLinkHandlerFilters(
+        await Promise.all(this.registration.filterTypes.map((filterType) => scope.resolve(filterType))),
+        context,
+        next,
+        signal
+      )
+    );
   }
 
-  private async resolveHandler<T>(handlerType: Type): Promise<T> {
-    const existing = this.providerResolver?.get?.(handlerType);
-    if (existing !== undefined) {
-      return existing as T;
-    }
-    const created = await this.providerResolver?.create?.(handlerType);
-    if (created !== undefined) {
-      return created as T;
-    }
-    return new handlerType() as T;
+  private withHandlerScope<T>(
+    context: ZLinkMessageContext,
+    callback: Parameters<typeof runInHandlerInstanceScope<T>>[2]
+  ): Promise<T> {
+    return runInHandlerInstanceScope(this.providerResolver, context, callback);
   }
 
   traceOutbound(

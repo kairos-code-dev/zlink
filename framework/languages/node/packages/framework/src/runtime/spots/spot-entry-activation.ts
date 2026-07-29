@@ -40,6 +40,7 @@ import type {
 import type { ZLinkDispatchErrorReporter } from '../channels';
 import { ZLinkConfigurationException } from '../configuration';
 import { ZLinkWorkerRuntime } from '../workers';
+import { disposeLifecycleHandlers } from '../handlers/handler-instance-scope';
 import { ZLinkSpotActorPacketDispatch } from './spot-actor-packet-dispatch';
 import {
   ZLinkSpotActorJoinDispatch,
@@ -281,6 +282,7 @@ export class ZLinkEntrySpotActivation {
     }
     await cleanup(() => this.actorDispatch?.dispose());
     await cleanup(() => this.timers.dispose());
+    await cleanup(() => disposeLifecycleHandlers(this.entrySpot));
     await cleanup(() => this.options.nativeSpot.dispose());
     if (this.initialized) {
       this.lifecycleMetrics.closed('entry');

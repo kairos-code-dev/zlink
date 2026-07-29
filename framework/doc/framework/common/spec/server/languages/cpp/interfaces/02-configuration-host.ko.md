@@ -264,8 +264,13 @@ public:
 - 복잡한 외부 객체 생성이나 조건부 생성이 필요한 경우에만
   `add_factory<T, Dep1, Dep2>()`를 사용한다. [Factory](../../../../01-glossary.ko.md#factory)는 선언한 dependency의 typed reference만 받으며
   runtime provider나 scope를 받지 않는다.
-- handler owner는 service collection에 등록되어 있어야 한다.
-- 등록되지 않은 handler [owner](../../../../01-glossary.ko.md#owner)를 framework가 암묵적으로 생성하지 않는다.
+- Channel·HTTP handler class는 handler group이나 HTTP route에 등록하면 Framework가
+  dispatch scope에서 생성한다. Application이 같은 handler type을 service collection에
+  다시 등록하지 않는다.
+- Spot packet·Actor payload handler는 Spot member function이므로 별도 service가 아니다.
+  Timer handler class는 Spot activation scope에서 한 번 생성하며 같은 activation의 tick이
+  재사용한다. Timer handler의 `dependency_types`에 선언한 dependency만 해당 scope에서
+  resolve한다.
 - `Boost.Ext.DI` 같은 외부 DI 라이브러리는 public dependency로 두지 않는다.
 
 `scoped` lifetime은 raw transport 기능이 아니라 Framework가 소유하는 DI lifetime이다. Framework는
@@ -345,10 +350,10 @@ MeshNode는 ROUTER listen endpoint와 0개 이상의 [ChannelName](../../../../0
 Node direct 전용 [MeshNode](../../../../01-glossary.ko.md#meshnode)는 membership 없이 시작할 수 있고, Channel handler를 제공하는 MeshNode는
 Server membership을 하나 이상 등록해야 한다. 각 Server ChannelName은 request/send handler group을
 가질 수 있다. fanout subscriber는 publish handler group을 하나 이상 등록해야 한다.
-handler에 생성자 의존성이 있으면 `using dependency_types =
+Channel·HTTP handler에 생성자 의존성이 있으면 `using dependency_types =
 zlink::framework::dependency_list_t<dep1_t, dep2_t>;`처럼 의존 타입을 명시한다. framework는
-handler를 등록할 때 `add_singleton<THandler, dep1_t, dep2_t>()`와 같은 DI 생성자 주입 등록을
-사용한다.
+각 dispatch scope에서 dependency와 handler를 생성한다. Handler를 singleton service로
+등록하지 않는다.
 `logger_t<THandler>`는 framework 기본 dependency다. handler가
 `dependency_types`에 `logger_t<THandler>`를 넣으면 사용자가 별도 service registration을
 작성하지 않아도 DI가 `.NET`의 `ILogger<T>`처럼 category logger를 주입한다. 로그 출력 대상은

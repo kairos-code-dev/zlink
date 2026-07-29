@@ -12,6 +12,10 @@ import type { ZLinkNestManualHandlerOptions } from './contracts';
 import type { ZLinkNestHandlerMetadata } from './handler-metadata';
 import type { DiscoveredNestProvider } from './provider-discovery';
 import { currentNestDispatchContext } from './dispatch-scope';
+import {
+  createNestHandlerInstance,
+  disposeNestOwnedHandler
+} from './providers';
 
 export function createDiscoveredRequestHandlers(
   providerRefs: readonly DiscoveredNestProvider[],
@@ -174,14 +178,18 @@ async function invokeDiscoveredHandler(
   payload: Buffer,
   context: ManualHandlerContext
 ): Promise<unknown> {
-  const instance = await resolveHandlerInstance(moduleRef, ref.token, context);
-  const method = instance[metadata.methodName];
-  if (typeof method !== 'function') {
-    throw new framework.ZLinkConfigurationException(
-      `Discovered handler ${ref.handlerName}.${metadata.methodName} is not callable.`
-    );
+  const instance = await resolveHandlerInstance(moduleRef, ref.handlerKey as Type, context);
+  try {
+    const method = instance[metadata.methodName];
+    if (typeof method !== 'function') {
+      throw new framework.ZLinkConfigurationException(
+        `Discovered handler ${ref.handlerName}.${metadata.methodName} is not callable.`
+      );
+    }
+    return await method.call(instance, decodePayload(metadata, payload, context), context);
+  } finally {
+    await disposeNestOwnedHandler(instance);
   }
-  return await method.call(instance, decodePayload(metadata, payload, context), context);
 }
 
 async function invokeManualHandler(
@@ -191,18 +199,22 @@ async function invokeManualHandler(
   context: ManualHandlerContext
 ): Promise<unknown> {
   const instance = await resolveHandlerInstance(moduleRef, handlerType, context);
-  const method = instance.handle;
-  if (typeof method !== 'function') {
-    throw new framework.ZLinkConfigurationException(
-      `Manual handler ${handlerType.name}.handle is not callable.`
-    );
+  try {
+    const method = instance.handle;
+    if (typeof method !== 'function') {
+      throw new framework.ZLinkConfigurationException(
+        `Manual handler ${handlerType.name}.handle is not callable.`
+      );
+    }
+    return await method.call(instance, decodePayload(undefined, payload, context), context);
+  } finally {
+    await disposeNestOwnedHandler(instance);
   }
-  return await method.call(instance, decodePayload(undefined, payload, context), context);
 }
 
 async function resolveHandlerInstance(
   moduleRef: ModuleRef,
-  token: InjectionToken,
+  handlerType: Type,
   context: ManualHandlerContext
 ): Promise<Record<string, unknown>> {
   const currentContextId = currentNestDispatchContext();
@@ -210,7 +222,12 @@ async function resolveHandlerInstance(
   if (currentContextId === undefined) {
     moduleRef.registerRequestByContextId({ zlinkContext: context }, contextId);
   }
-  return await moduleRef.resolve(token, contextId, { strict: false }) as Record<string, unknown>;
+  return await createNestHandlerInstance(
+    moduleRef,
+    contextId,
+    new Map(),
+    handlerType
+  ) as Record<string, unknown>;
 }
 
 function decodePayload(

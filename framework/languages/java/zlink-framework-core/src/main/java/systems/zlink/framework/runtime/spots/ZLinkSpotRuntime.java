@@ -414,7 +414,6 @@ public final class ZLinkSpotRuntime
         this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         this.spotHandlerInvoker = new ZLinkSpotHandlerInvoker(
             serializer,
-            handlerFactory,
             suspendHandlerInvokers);
         this.workerPool = new ZLinkWorkerPool(
             registration.workers().minThreads(),
@@ -2151,6 +2150,8 @@ public final class ZLinkSpotRuntime
             actor,
             payload,
             metadata,
+            handlerType -> systems.zlink.framework.runtime.internal.handlers
+                .ZLinkActorHandlerInstances.instance(actor, handlerType),
             "failed to invoke Spot actor send handler");
     }
 
@@ -2166,6 +2167,8 @@ public final class ZLinkSpotRuntime
             actor,
             payload,
             metadata,
+            handlerType -> systems.zlink.framework.runtime.internal.handlers
+                .ZLinkActorHandlerInstances.instance(actor, handlerType),
             "failed to invoke Spot actor request handler");
     }
 
@@ -2418,6 +2421,8 @@ public final class ZLinkSpotRuntime
             actor,
             payload,
             metadata,
+            handlerType -> systems.zlink.framework.runtime.internal.handlers
+                .ZLinkActorHandlerInstances.instance(actor, handlerType),
             "failed to invoke local session actor send handler");
     }
 
@@ -2433,6 +2438,8 @@ public final class ZLinkSpotRuntime
             actor,
             payload,
             metadata,
+            handlerType -> systems.zlink.framework.runtime.internal.handlers
+                .ZLinkActorHandlerInstances.instance(actor, handlerType),
             "failed to invoke local session actor request handler");
     }
 
@@ -2522,11 +2529,12 @@ public final class ZLinkSpotRuntime
     @Override
     ZLinkSpotTimerRegistry createTimerRegistry(
         String spotId,
+        systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwner handlers,
         ZLinkSpotTimerRegistry.Dispatch dispatch) {
         return new ZLinkSpotTimerRegistry(
             spotId,
             timerExecutor,
-            handlerFactory,
+            handlers,
             suspendHandlerInvokers,
             eventDispatcher,
             primaryNodeSourceName,
@@ -2543,6 +2551,13 @@ public final class ZLinkSpotRuntime
                     return operation.get();
                 }
             }));
+    }
+
+    @Override
+    systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwner
+        createHandlerInstances() {
+        return new systems.zlink.framework.runtime.internal.handlers
+            .ZLinkHandlerInstanceOwner(handlerFactory);
     }
 
     @Override

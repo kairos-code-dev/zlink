@@ -84,6 +84,7 @@ void spot_node_host_service_t::start (service_provider_t &services)
 {
     auto &serializers = services.get_required<serializer_registry_t> ();
     for (const auto &configured : _spot_nodes) {
+        configured.runtime.bind_service_provider (services);
         const auto &snapshot = configured.snapshot;
         if (!snapshot.router_bind_endpoint && !snapshot.pub_bind_endpoint) {
             continue;

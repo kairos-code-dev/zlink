@@ -426,7 +426,7 @@ export class ZLinkHostServiceRelocationRuntime {
             nodeRid: target.rid
           });
           activation.commitActorDeparture(session.state.actorId);
-          this.requireActorManager().completeRelocationSource(session.state.actorId);
+          await this.requireActorManager().completeRelocationSource(session.state.actorId);
         }
         await this.requireSpotManager().completeRelocationSource(activation);
       },
@@ -552,7 +552,7 @@ export class ZLinkHostServiceRelocationRuntime {
           meshName,
           nodeRid: target.rid
         });
-        this.requireActorManager().completeRelocationSource(state.actorId);
+        await this.requireActorManager().completeRelocationSource(state.actorId);
       },
       abortSeal: async () => {
         if (standalone && ownSession !== undefined) await ownSession.prepared.rollback();
@@ -2324,7 +2324,7 @@ class LocalTargetPort implements ServiceRelocationTargetObjectPort<LocalHidden> 
 
   async abort(hidden: LocalHidden): Promise<void> {
     if (hidden.actor !== undefined) {
-      this.requireActorManager().abortRelocationActor(hidden.actor.context.actorId);
+      await this.requireActorManager().abortRelocationActor(hidden.actor.context.actorId);
     } else if (hidden.activation !== undefined) {
       await this.requireSpotManager().abortRelocationSpot(hidden.activation);
     }

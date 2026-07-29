@@ -90,6 +90,12 @@ application state를 소유하지 않는다. Actor state, Actor queue와 Actor t
 단위로 이전한다. 여러 Actor가 공유해야 하는 state는 application이 Redis, database
 또는 별도 state service처럼 node 밖의 저장소에서 관리한다.
 
+Spot handler는 Spot activation scope에서, Actor handler는 Actor activation scope에서
+각각 한 번 만들어 재사용한다. Entry Spot과 `PerActor` User Spot의 서로 다른 Actor는
+handler instance나 scoped dependency를 공유하지 않는다. 정확한 생성·정리와 relocation
+규칙은 [Framework API의 handler 수명](06-framework-api.ko.md#82-handler-실행-객체와-dependency-수명)을
+따른다.
+
 `SpotWide` User Spot은 이 제한을 받지 않는다. Spot과 member Actor가 하나의
 relocation aggregate이므로 Spot field와 Spot timer를 Spot relocation adapter로
 함께 이전할 수 있다.

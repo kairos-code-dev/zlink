@@ -553,6 +553,7 @@ final class EntrySpotActivation
             closePendingActorMessage();
             closeActiveRouteReceives();
             context.closeTimers();
+            context.closeHandlerInstances();
             backendSpot.close();
         }
     }

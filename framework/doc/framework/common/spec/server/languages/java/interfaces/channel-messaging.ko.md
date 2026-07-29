@@ -8,6 +8,11 @@ client call의 정확한 payload type은 공통 계약의 역할 구분을 Java 
 Logical Multicast는 target별 제출 결과를 반환하거나 publish 전용 monitoring으로 집계하지 않는다.
 Remote Spot queue 제출과 remote·local handler 실행 또는 완료는 `CompletionStage` 완료 조건이 아니다.
 
+Channel send/request dispatch마다 child scope를 하나 만든다. Handler와 filter는 이
+scope에서 Framework가 한 번씩 만들며 같은 scoped dependency를 사용한다. Spring
+bean scope나 Application service 등록으로 이 수명을 바꿀 수 없다. Dispatch가 끝나면
+Framework가 만든 instance와 child scope를 정리한다.
+
 ```java
 public interface ZLinkMeshChannelBuilder {
     ZLinkMeshChannelClientBuilder client();

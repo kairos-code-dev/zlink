@@ -44,10 +44,21 @@ internal sealed partial class ZLinkActorSessionManager
         if (state.TryGetBoundSession(out var boundSession))
             runtime.UnbindActorSession(state.ActorId, boundSession.BindingToken);
 
-        await state.ExecuteLockedAsync(
-                () => state.RetireMigratedActorInstance(sourceActor),
-                CancellationToken.None)
-            .ConfigureAwait(false);
+        var terminal = state.BeginHandlerActivationCompletion(
+                () =>
+                {
+                    state.RetireMigratedActorInstance(sourceActor);
+                    return true;
+                });
+        if (terminal.RequiresDispatchRelease)
+        {
+            _ = ObserveDeferredMigratedSourceFinalizationAsync(
+                state,
+                terminal.Completion);
+            return;
+        }
+
+        _ = await terminal.Completion.ConfigureAwait(false);
     }
 
     public async ValueTask PrepareForTransferredActivationAsync(
@@ -149,6 +160,7 @@ internal sealed partial class ZLinkActorSessionManager
         }
 
         var nativeDestroyed = transaction.NativeAlreadyDestroyed;
+        var terminalStateCommitted = false;
         try
         {
             if (!nativeDestroyed)
@@ -182,21 +194,106 @@ internal sealed partial class ZLinkActorSessionManager
                         cancellationToken)
                     .ConfigureAwait(false);
 
-            var boundSession = await state.ExecuteLockedAsync(
-                    () => state.CompleteTeardownAttempt(transaction),
-                    CancellationToken.None)
-                .ConfigureAwait(false);
+            var terminal = state.BeginHandlerActivationCompletion(
+                    () =>
+                    {
+                        var result = state.CompleteTeardownAttempt(transaction);
+                        terminalStateCommitted = true;
+                        return result;
+                    });
+            if (terminal.RequiresDispatchRelease)
+            {
+                _ = CompleteDeferredActorTeardownAsync(
+                    state,
+                    nativeActor,
+                    transaction,
+                    nativeDestroyed,
+                    terminal.Completion);
+                return;
+            }
+
+            var boundSession = await terminal.Completion.ConfigureAwait(false);
             if (boundSession is { } session)
                 runtime.RemoveActorSessionBinding(state.ActorId, session.BindingToken);
             _actorSessions.RemoveIfCurrent(state.ActorId, state);
         }
         catch (Exception failure)
         {
+            if (terminalStateCommitted)
+            {
+                _actorSessions.RemoveIfCurrent(state.ActorId, state);
+                throw;
+            }
             await state.ExecuteLockedAsync(
                     () => state.FailTeardownAttempt(transaction, nativeDestroyed, failure),
                     CancellationToken.None)
                 .ConfigureAwait(false);
             throw;
+        }
+    }
+
+    private static async Task ObserveDeferredMigratedSourceFinalizationAsync(
+        ZLinkActorRuntimeState state,
+        Task<bool> completion)
+    {
+        try
+        {
+            _ = await completion.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"deferred source finalization failed for actor '{state.ActorId}': {exception.Message}");
+        }
+    }
+
+    private async Task CompleteDeferredActorTeardownAsync(
+        ZLinkActorRuntimeState state,
+        ZLinkBackendActorRef nativeActor,
+        ZLinkActorTeardownOperation transaction,
+        bool nativeDestroyed,
+        Task<ZLinkActorBoundSession?> completion)
+    {
+        try
+        {
+            var boundSession = await completion.ConfigureAwait(false);
+            if (boundSession is { } session)
+                runtime.RemoveActorSessionBinding(
+                    state.ActorId,
+                    session.BindingToken);
+            _actorSessions.RemoveIfCurrent(state.ActorId, state);
+        }
+        catch (Exception failure)
+        {
+            if (transaction.Completion.IsCompletedSuccessfully
+                && transaction.Completion.Result is null)
+            {
+                _actorSessions.RemoveIfCurrent(state.ActorId, state);
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"deferred actor teardown disposal failed for '{state.ActorId}': {failure.Message}");
+                return;
+            }
+
+            try
+            {
+                await state.ExecuteLockedAsync(
+                        () => state.FailTeardownAttempt(
+                            transaction,
+                            nativeDestroyed,
+                            failure),
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception reconciliationFailure)
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"deferred actor teardown state reconciliation failed for '{state.ActorId}': {reconciliationFailure.Message}");
+            }
+
+            StartActorTeardownReconciliation(
+                state,
+                nativeActor,
+                "actor-self-teardown");
         }
     }
 

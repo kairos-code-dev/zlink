@@ -7,6 +7,11 @@
 동작 의미는 [공통 스펙](../../../../README.ko.md)이 소유하며, 이 문서는 이름, generic, overload,
 상속, member, parameter와 반환형만 정의한다.
 
+Channel send/request dispatch마다 provider child context를 하나 만든다. Handler와
+filter는 같은 context에서 한 번씩 만들며 같은 scoped dependency를 사용한다. Nest
+provider scope나 Application provider 등록으로 이 수명을 바꿀 수 없다. Dispatch가
+끝나면 Framework가 만든 instance와 child context를 정리한다.
+
 ## 1. Entry Spot과 classic fanout
 
 ```ts

@@ -9,6 +9,11 @@ Typed request의 reified entry method는 wrapper를 만들 때 `KClass<TReply>.j
 `Class<TReply>`로 고정한다. Application은 terminal에서 reply type을 다시 넘기거나
 `.submit().await()`를 작성하지 않는다.
 
+Kotlin Channel send/request는 Java runtime의 dispatch child scope를 사용한다. Handler와
+filter는 dispatch마다 한 번씩 만들어 같은 scoped dependency를 사용하며, Application
+DI 등록으로 이 수명을 바꿀 수 없다. Coroutine suspension은 dispatch scope를 terminal
+completion 뒤까지 연장하지 않는다.
+
 Spot direct send/request는 Channel call로 축소하지 않는다. Kotlin 전용 Spot wrapper가
 `instanceSpot`과 `inMesh`를 terminal `await()`·`yield()` 전에 구성하므로 Missing Instance cold
 activation의 fluent state를 유지한다. Kotlin의 Spot 전용 wrapper와 exact JVM signature는

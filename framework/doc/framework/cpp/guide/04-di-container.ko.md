@@ -15,8 +15,9 @@
 | **transient** | `add_transient<T>()` | resolve할 때마다 새 인스턴스 |
 
 `service_scope_kind_t`는 Framework가 만드는 scope의 용도를 구분하는 enum이다.
-Application은 scope를 직접 만들지 않는다. Framework가 handler dispatch, STREAM session,
-Spot activation, Entry Spot과 Actor 생성 경계에서 알맞은 scope를 만들고 정리한다.
+Application은 scope를 직접 만들지 않는다. Framework가 handler dispatch, STREAM session과
+Spot activation 경계에서 알맞은 scope를 만들고 정리한다. Actor payload는 containing Spot
+member function으로 처리하며 별도 Actor handler 등록 표면이나 public handler class를 만들지 않는다.
 
 | scope 종류 | 수명 범위 |
 |-----------|----------|
@@ -86,9 +87,11 @@ options.services ().add_factory<http_client_t> (
 
 ## 3. 핸들러 자동 주입
 
-채널·HTTP 핸들러는 `dependency_types`를 선언하면 `add_transient<T>()` 또는
-`add_transient<T, Dependencies...>()`와 생성자 주입이 **자동으로** 등록된다.
-별도로 `add_transient<T>()`를 호출할 필요가 없다.
+채널·HTTP 핸들러는 `dependency_types`를 선언하면 dispatch scope에서 생성자 주입을
+받는다. 별도로 `add_transient<T>()`를 호출할 필요가 없다. Spot packet과 Actor payload
+handler는 Spot member function이므로 DI handler class로 등록하지 않는다. 별도 class인
+timer handler는 Spot activation마다 한 번 만들고, 같은 activation의 timer tick에서
+재사용한다. Timer handler의 `dependency_types`도 Spot activation scope에서 resolve한다.
 
 ```cpp
 class create_game_http_handler_t

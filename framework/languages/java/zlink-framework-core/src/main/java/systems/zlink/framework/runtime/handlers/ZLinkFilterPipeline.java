@@ -1,6 +1,6 @@
 package systems.zlink.framework.runtime.handlers;
 
-import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwner;
 
 import java.util.List;
 import java.util.concurrent.CompletionStage;
@@ -15,7 +15,7 @@ public final class ZLinkFilterPipeline {
 
     public static <T> CompletionStage<T> invoke(
         List<Class<? extends ZLinkHandlerFilter>> filterTypes,
-        ZLinkHandlerActivator handlerFactory,
+        ZLinkHandlerInstanceOwner handlers,
         ZLinkMessageContext context,
         Supplier<CompletionStage<T>> terminal) {
         ZLinkHandlerFilterNext<T> next = terminal::get;
@@ -25,7 +25,7 @@ public final class ZLinkFilterPipeline {
             next = () -> {
                 @SuppressWarnings("unchecked")
                 ZLinkHandlerFilter filter =
-                    (ZLinkHandlerFilter) handlerFactory.create(filterType);
+                    (ZLinkHandlerFilter) handlers.instance(filterType);
                 return filter.invoke(context, currentNext);
             };
         }

@@ -13,15 +13,70 @@ Framework가 현재 위치와 generation을 조회한다.
 
 ## 1. 세 가지 Spot
 
-| 종류 | 만드는 방법 | 주요 용도 |
-|---|---|---|
-| User Spot | `IZLinkSpotManager`로 생성 | room, stage, zone |
-| Instance Spot | 첫 send/request가 필요할 때 생성 | matchmaking worker처럼 요청 기반 실행 단위 |
-| Entry Spot | Object Server가 시작할 때 Framework가 생성 | Actor 생성 직후의 기본 실행 위치 |
+세 종류 모두 ID와 상태를 가지고 순서대로 callback을 실행하는 Spot이지만, 생성 시점,
+Actor membership과 종료 계약이 다르다.
+
+| | Entry Spot | User Spot | Instance Spot |
+| --- | --- | --- | --- |
+| 생성 시점 | Object Server startup에서 Framework가 생성한다 | Application이 `IZLinkSpotManager`로 명시적으로 생성한다 | 해당 ID로 첫 direct message가 도착할 때 생성한다(cold activation) |
+| Spot ID | Framework가 발급한다 | `Create`는 Framework가, `GetOrCreate`는 caller가 지정한다 | Caller가 message의 target ID로 지정한다 |
+| Stable type | 등록하지 않는다 | 필수 | 필수 |
+| Actor membership | 지원한다. Actor 생성 직후의 기본 실행 위치다 | 지원한다. Actor가 join·leave로 이동한다 | 지원하지 않는다 |
+| Application close | 제공하지 않는다 | `CloseAsync` 또는 local context에서 close한다 | 자신의 handler·timer context에서 close한다 |
+| 주요 용도 | 아직 User Spot에 속하지 않은 Actor의 기본 위치 | room, stage, zone | matchmaking worker처럼 ID 기반 요청 처리 단위 |
 
 User Spot과 Instance Spot은 역할이 다르다. User Spot은 caller가 ID를 지정하거나 Framework가 새 ID를
 발급한다. Instance Spot은 별도 create API를 사용하지 않는다. 첫 메시지에 instance type을 지정하면
 Framework가 기존 instance를 선택하거나 필요한 위치에 생성한 뒤 같은 메시지를 처리한다.
+
+### 1.1 실제 샘플에서 보기
+
+[Bingo 샘플](../../common/sample/bingo/README.ko.md)은 세 종류를 모두 사용한다. Play
+서버가 Entry Spot과 방을 담을 User Spot을, Matchmaking 서버가 매칭 대기열을 담을
+Instance Spot을 등록한다.
+
+```csharp
+// Play 서버 — Entry Spot과 방을 담을 User Spot.
+mesh.Objects().Server()
+    .AddEntrySpot<BingoEntrySpot>()                 // Entry Spot은 stable type이 없다.
+    .AddSpotFactory<BingoRoom>(
+        SampleNames.RoomSpotType,                   // stable type — 생성할 때 이 이름으로 선택한다.
+        factory => factory
+            .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+            .PreserveStateWith<BingoRoomRelocationAdapter>());
+
+// Matchmaking 서버 — 매칭 대기열을 담을 Instance Spot.
+options.AddRouteMesh(SampleNames.MatchmakingMeshName)
+    .SetRoutingIdPrefix("matchmaking")
+    .Listen(configuration.Node.MeshEndpoint)
+    .Objects().Server()
+    .AddInstanceSpotFactory<BingoMatchmaker>(
+        SampleNames.MatchmakerSpotType,
+        factory => factory.RecreateOnRelocation());
+```
+
+차이는 **호출하는 쪽**에서 드러난다. Entry Spot은 호출 대상이 아니고(server가 시작하며
+이미 준비된다), User Spot은 생성 호출이 따로 있으며, Instance Spot은 그 호출이 없다.
+Bingo의 매칭 handler 하나에 뒤의 둘이 함께 나온다.
+
+```csharp
+// Instance Spot — 생성 호출이 없다. 해당 ID로 보내면 없을 때 생성된다.
+var allocated = await spotClient                    // IZLinkSpotClient
+    .RequestToSpot($"match:{levelBucket}", new ReserveBingoRoomReq { ... })
+    .InstanceSpot(SampleNames.MatchmakerSpotType)   // 없으면 생성해도 된다는 intent(cold activation).
+    .InMesh(SampleNames.MatchmakingMeshName)
+    .Async<ReserveBingoRoomRes>(cancellationToken);
+
+// User Spot — 생성 호출이 따로 있다.
+var created = await spots                           // IZLinkSpotManager
+    .GetOrCreate(allocated.RoomId, SampleNames.RoomSpotType)
+    .InMesh(SampleNames.PlayMeshName)
+    .Request(allocated.Settings)                    // 새 Spot의 OnCreateAsync로 전달된다.
+    .Async(cancellationToken);
+```
+
+User·Instance Spot은 factory 등록에서 relocation policy도 함께 지정한다. 생략할 수
+없으며, 무엇을 선택하는지는 [Actor & Spot 호스팅](07-actor-spot.ko.md)이 다룬다.
 
 ## 2. Object Server 등록
 
@@ -45,15 +100,54 @@ mesh.Objects().Server()
         factory => factory.RecreateOnRelocation());
 ```
 
-User Spot 실행 모드는 다음과 같이 선택한다.
+### 2.1 실행 모델 — 무엇이 무엇과 동시에 실행되나
 
-| 모드 | 상태와 실행 순서 |
-|---|---|
-| `SpotWide` | Spot과 소속 Actor가 하나의 직렬 실행 단위를 이룬다. relocation 때 함께 이동한다. |
-| `PerActor` | Actor마다 직렬 실행 순서를 유지한다. Spot 자체는 stateless shell로 사용한다. |
+Spot에 들어오는 작업은 두 queue로 나뉘어 대기한다. Spot 자신에게 온 direct packet과
+timer는 **Spot queue**에, 그 Spot에 속한 Actor 앞으로 온 payload는 **Actor queue**에
+넣는다. 서로 다른 queue의 작업을 동시에 실행할 수 있는지는 Spot 종류와 execution
+mode가 정한다.
 
-`PerActor` Spot의 공유 상태와 Spot-level schedule은 Redis나 database 같은 외부 저장소에 둔다.
-Factory relocation 방식은 `RecreateOnRelocation()`만 사용할 수 있다.
+| | 직렬화 범위 | 상태 소유 |
+| --- | --- | --- |
+| Entry Spot | Spot queue와 Actor queue를 각각 직렬화한다. 서로 다른 queue는 동시에 실행할 수 있다 | Actor가 각자 소유한다. Actor 사이에 공유하는 상태는 외부 저장소에 둔다 |
+| User Spot `SpotWide`(기본) | Spot handler, member Actor handler, timer, lifecycle callback 전체를 공통 gate 하나로 직렬화한다 | Spot instance가 소유한다. Actor와 공유하는 상태에도 별도 동기화가 필요하지 않다 |
+| User Spot `PerActor` | Actor별, Spot lane별로 각각 직렬화한다. 서로 다른 lane은 동시에 실행할 수 있다 | Actor가 각자 소유한다. lane 사이에 공유하는 상태는 외부 저장소에 둔다 |
+| Instance Spot | Spot queue의 direct handler와 timer를 직렬화한다. Actor queue가 없다 | Spot instance가 소유한다 |
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+flowchart LR
+  subgraph SW["User Spot — SpotWide (기본)"]
+    direction LR
+    P1["direct packet<br/>timer"] --> SQ1["Spot queue"]
+    A1["Actor A payload"] --> AQ1["Actor A queue"]
+    B1["Actor B payload"] --> BQ1["Actor B queue"]
+    SQ1 --> G1{{"공통 gate<br/>callback 하나만 실행"}}
+    AQ1 --> G1
+    BQ1 --> G1
+  end
+  subgraph PA["Entry Spot · User Spot PerActor"]
+    direction LR
+    P2["direct packet<br/>timer"] --> SQ2["Spot queue"] --> R2["실행"]
+    A2["Actor A payload"] --> AQ2["Actor A queue"] --> R2A["실행"]
+    B2["Actor B payload"] --> BQ2["Actor B queue"] --> R2B["실행"]
+  end
+  SW ~~~ PA
+```
+
+기본값은 **`SpotWide`**이며 대부분의 경우 이 mode를 사용한다. 해당 Spot의 모든
+callback을 공통 gate 하나로 직렬화하므로, Spot instance와 member Actor가 같은 상태를
+함께 사용해도 별도 동기화가 필요하지 않다. Relocation에서도 Spot과 소속 Actor가 하나의
+단위로 함께 이동한다. 반면 오래 걸리는 callback 하나가 해당 Spot의 다음 callback
+전체를 지연시킨다.
+
+**`PerActor`**는 Actor마다 독립적으로 실행해야 처리량을 확보할 수 있을 때 선택한다.
+Spot 자체는 stateless shell로 사용한다. 서로 다른 lane이 동시에 실행되므로 여러
+Actor가 함께 변경하는 상태와 Spot-level schedule은 Redis나 database 같은 외부
+저장소에 둔다. Factory relocation 방식은 `RecreateOnRelocation()`만 사용할 수 있다.
+**Entry Spot도 같은 모델**이므로 같은 제약을 받는다.
+
+Execution mode는 factory 등록에서 고정하며 실행 중에는 변경하지 않는다.
 
 ## 3. User Spot 만들기
 
@@ -145,6 +239,76 @@ public sealed class GameRoom(IZLinkSpotContext context) : IZLinkSpot
 `OnClosingAsync`의 reason은 explicit close, host shutdown, relocation out을 구분한다.
 Framework는 `Deadline`이 끝날 때 cleanup token을 취소한다.
 
+### 4.1 Spot과 Actor는 각 activation scope를 사용한다
+
+Framework는 Spot을 활성화할 때 DI scope를 하나 만들고 Spot 본체와 Spot handler의
+dependency를 이 scope에서 resolve한다. Scope는 Spot이 닫히거나 다른 node로 이전할
+때 함께 정리된다. 따라서
+**`Scoped`로 등록한 서비스는 그 Spot이 살아 있는 동안 인스턴스 하나**다. HTTP 요청마다
+새로 만들어지는 것과 다르다.
+
+Actor handler는 별도의 Actor activation scope를 사용한다. 서로 다른 Actor는 handler나
+scoped dependency를 공유하지 않는다. Actor가 leave·destroy되거나 relocation되면 source
+scope를 정리하고 target에서 다시 만든다.
+
+그래도 `DbContext` 같은 ORM context를 Spot이나 Spot handler의 생성자로 주입하면
+문제가 생긴다. 방 하나가 몇 시간 유지되면 그 context도 몇 시간 산다.
+
+| 증상 | 내용 |
+| --- | --- |
+| 메모리 증가 | change tracker가 조회한 entity를 계속 추적한다 |
+| 오래된 값 조회 | 같은 키를 다시 조회해도 추적 중인 이전 instance를 반환한다 |
+| 오류 상태 고착 | 저장 실패로 context가 오염되면 Spot 수명 내내 복구되지 않는다 |
+
+Handler type을 `Transient`나 `Singleton`으로 등록해도 Framework가 정한 수명은 바뀌지
+않는다. Framework가 handler를 만들고 dependency만 activation scope에서 resolve한다.
+
+**첫 번째 선택은 Spot에서 저장소에 직접 접근하지 않는 것이다.** 저장·조회는 channel
+handler가 있는 서비스에 요청하고, Spot은 in-memory 상태와 실행 순서만 소유한다. Channel
+handler는 dispatch마다 scope를 가지므로 ORM을 생성자로 받아도 된다.
+
+```csharp
+public sealed class SaveScoreHandler(IZLinkSpotContext context)
+    : IZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply>
+{
+    public async ValueTask<SaveScoreReply> HandleAsync(
+        GameRoom spot, SaveScore request, CancellationToken cancellationToken)
+    {
+        // 저장은 그 일을 담당하는 channel의 handler에 맡긴다.
+        var saved = await spot.Context.Outbound
+            .RequestToChannel("score", new PersistScore(spot.Context.SpotId, request.Value))
+            .Async<PersistScoreReply>(cancellationToken);
+
+        return new SaveScoreReply(saved.Version);
+    }
+}
+```
+
+**Spot 안에서 직접 써야 한다면 `IServiceScopeFactory`로 그 호출에만 사는 scope를 연다.**
+생성자 주입 대신 factory를 받고, 사용하는 자리에서 scope를 만들고 닫는다.
+
+```csharp
+public sealed class SaveScoreHandler(IServiceScopeFactory scopeFactory)
+    : IZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply>
+{
+    public async ValueTask<SaveScoreReply> HandleAsync(
+        GameRoom spot, SaveScore request, CancellationToken cancellationToken)
+    {
+        // 이 호출 동안만 유지되는 scope다. 끝나면 context도 함께 정리된다.
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        db.Scores.Add(new ScoreRow(spot.Context.SpotId, request.Value));
+        await db.SaveChangesAsync(cancellationToken);
+
+        return new SaveScoreReply(request.Value);
+    }
+}
+```
+
+Spot 수명 동안 유지해도 되는 의존성(설정, 싱글톤 client, 순수 계산 서비스)은 생성자로
+받아도 된다. 판단 기준은 "이 의존성을 Spot이 닫힐 때까지 붙잡고 있어도 되는가"다.
+
 ## 5. Spot으로 메시지 보내기
 
 일반 User Spot 메시징은 SpotId만 필요하다. 위치와 generation은 Framework가 현재 authority에서 찾는다.
@@ -170,6 +334,10 @@ MatchResult match = await spotClient
     .InMesh("matchmaking")
     .Async<MatchResult>(cancellationToken);
 ```
+
+`InstanceSpot(...)`을 붙이지 않은 호출은 이미 실행 중인 Spot만 찾고, 없으면 생성하지
+않고 실패한다. `FindAsync`도 생성을 시작하지 않는다. 즉 cold activation은 호출하는
+쪽이 intent로 명시적으로 허용해야 일어난다.
 
 `SendToSpot`은 source-local admission까지 기다리는 one-way operation이다. Target handler 완료를
 기다리지 않는다. `RequestToSpot`은 reply 또는 typed error까지 기다린다.

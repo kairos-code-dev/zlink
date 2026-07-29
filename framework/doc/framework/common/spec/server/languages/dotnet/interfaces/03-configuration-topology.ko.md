@@ -453,6 +453,12 @@ handshake identity가 다르면 연결을 admission하지 않는다. Manual 연�
 
 ## 4. Channel handler scope
 
+Channel send/request dispatch마다 DI scope를 하나 만든다. Handler와 filter는 이
+scope에서 Framework가 한 번씩 만들며 같은 scoped dependency를 사용한다.
+Application이 handler나 filter type을 singleton·scoped·transient로 등록해도 이
+수명은 바뀌지 않는다. Dispatch가 끝나면 Framework가 만든 instance를 먼저 정리하고
+scope를 정리한다.
+
 Channel handler는 `(ChannelName, message kind, packet name)`으로 구분한다. RID direct route
 handler는 MeshNode builder에 등록하며 source RID를 제공하는 route handler context를 사용한다. 같은 key의
 중복 등록은 startup 오류이고, 서로 다른 channel이나 route family에 같은 packet name을 등록할 수 있다.

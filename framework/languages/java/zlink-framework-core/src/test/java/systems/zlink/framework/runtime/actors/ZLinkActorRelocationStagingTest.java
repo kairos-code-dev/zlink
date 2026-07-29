@@ -6,12 +6,14 @@ import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.*;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 
 final class ZLinkActorRelocationStagingTest {
@@ -66,7 +68,116 @@ final class ZLinkActorRelocationStagingTest {
             () -> runtime.publishPreparedTransferredActor(prepared));
     }
 
+    @Test
+    void relocationSourceCleanupWaitsForActiveActorTurn() {
+        AtomicInteger closes = new AtomicInteger();
+        ZLinkActorRuntime runtime = runtime(new AtomicInteger(), closes);
+        var prepared = publishedActor(runtime, "actor-relocation");
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkActorHandlerInstances.instance(
+                prepared.actor(),
+                CloseableProbeHandler.class);
+        CompletableFuture<Void> release = new CompletableFuture<>();
+        CompletionStage<Void> active = runtime.submitActorDispatch(
+            prepared.actorId(),
+            () -> release);
+
+        CompletionStage<Void> cleanup =
+            runtime.completeRelocationSource(prepared.actorId());
+
+        assertFalse(cleanup.toCompletableFuture().isDone());
+        assertEquals(0, closes.get());
+        release.complete(null);
+        CompletableFuture.allOf(
+            active.toCompletableFuture(),
+            cleanup.toCompletableFuture()).join();
+        assertEquals(1, closes.get());
+        assertTrue(runtime.localActor(prepared.actorId()).isEmpty());
+    }
+
+    @Test
+    void entrySpotDestroyWaitsForActiveActorTurn() {
+        AtomicInteger closes = new AtomicInteger();
+        AtomicInteger destroys = new AtomicInteger();
+        ZLinkActorRuntime runtime = runtime(destroys, closes);
+        var prepared = publishedActor(runtime, "actor-destroy");
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkActorHandlerInstances.instance(
+                prepared.actor(),
+                CloseableProbeHandler.class);
+        CompletableFuture<Void> release = new CompletableFuture<>();
+        CompletionStage<Void> active = runtime.submitActorDispatch(
+            prepared.actorId(),
+            () -> release);
+
+        CompletionStage<Void> cleanup = runtime.destroyFromEntrySpot(
+            RoutingId.from("node-a"),
+            prepared.actor());
+
+        assertFalse(cleanup.toCompletableFuture().isDone());
+        assertEquals(0, closes.get());
+        assertEquals(0, destroys.get());
+        release.complete(null);
+        CompletableFuture.allOf(
+            active.toCompletableFuture(),
+            cleanup.toCompletableFuture()).join();
+        assertEquals(1, closes.get());
+        assertEquals(1, destroys.get());
+    }
+
+    @Test
+    void ownershipLossCleanupWaitsForActiveActorTurn() {
+        AtomicInteger closes = new AtomicInteger();
+        AtomicInteger destroys = new AtomicInteger();
+        ZLinkActorRuntime runtime = runtime(destroys, closes);
+        var prepared = publishedActor(runtime, "actor-ownership");
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkActorHandlerInstances.instance(
+                prepared.actor(),
+                CloseableProbeHandler.class);
+        CompletableFuture<Void> release = new CompletableFuture<>();
+        CompletionStage<Void> active = runtime.submitActorDispatch(
+            prepared.actorId(),
+            () -> release);
+
+        CompletionStage<Void> cleanup =
+            runtime.deactivateActorOnOwnershipLoss(prepared.actorId());
+
+        assertFalse(cleanup.toCompletableFuture().isDone());
+        assertEquals(0, closes.get());
+        assertEquals(0, destroys.get());
+        release.complete(null);
+        CompletableFuture.allOf(
+            active.toCompletableFuture(),
+            cleanup.toCompletableFuture()).join();
+        assertEquals(1, closes.get());
+        assertEquals(1, destroys.get());
+    }
+
+    private static ZLinkActorRuntime.PreparedTransferredActor publishedActor(
+        ZLinkActorRuntime runtime,
+        String actorId) {
+        var prepared = runtime.prepareRelocatedActor(
+                actorId,
+                "probe",
+                new byte[0],
+                false,
+                null,
+                () -> false,
+                null)
+            .toCompletableFuture().join();
+        runtime.publishPreparedTransferredActor(prepared);
+        runtime.completePreparedTransferredActor(prepared);
+        return prepared;
+    }
+
     private static ZLinkActorRuntime runtime(AtomicInteger destroys) {
+        return runtime(destroys, new AtomicInteger());
+    }
+
+    private static ZLinkActorRuntime runtime(
+        AtomicInteger destroys,
+        AtomicInteger closes) {
         ZLinkInternalSpotNode node = (ZLinkInternalSpotNode) Proxy.newProxyInstance(
             ZLinkInternalSpotNode.class.getClassLoader(),
             new Class<?>[] {ZLinkInternalSpotNode.class},
@@ -90,7 +201,13 @@ final class ZLinkActorRelocationStagingTest {
             node,
             Map.of("probe", ProbeFactory.class),
             Duration.ofSeconds(5),
-            new ZLinkJsonMessageSerializer());
+            new ZLinkJsonMessageSerializer(),
+            handlerType -> {
+                if (handlerType == CloseableProbeHandler.class) {
+                    return new CloseableProbeHandler(closes);
+                }
+                return ZLinkHandlerActivator.reflection().create(handlerType);
+            });
     }
 
     private static Object defaultValue(Class<?> type) {
@@ -115,5 +232,18 @@ final class ZLinkActorRelocationStagingTest {
     }
 
     private record ProbeActor(ZLinkActorContext context) implements ZLinkActor {
+    }
+
+    public static final class CloseableProbeHandler implements AutoCloseable {
+        private final AtomicInteger closes;
+
+        private CloseableProbeHandler(AtomicInteger closes) {
+            this.closes = closes;
+        }
+
+        @Override
+        public void close() {
+            closes.incrementAndGet();
+        }
     }
 }

@@ -175,6 +175,16 @@ public interface ZLinkSpotManager {
 
 ```
 
+Java runtime은 Spot packet·request·subscription·timer handler를 Spot activation마다
+한 번 만들고 재사용한다. Actor send·request handler는 Actor activation마다 한 번
+만들고 재사용한다. 서로 다른 Actor는 handler instance와 activation-scoped dependency를
+공유하지 않는다. Handler bean의 Spring scope로 이 규칙을 바꿀 수 없으며 별도 lifetime
+option도 제공하지 않는다.
+
+Same-node Join은 Actor handler를 유지한다. Cross-node Join과 relocation은 source
+handler를 정리하고 target activation에서 다시 만든다. Handler instance는 relocation
+payload가 아니며 복구할 application state는 Spot 또는 Actor가 소유한다.
+
 Factory registration의 정확한 builder member는 [구성과 host](configuration-host.ko.md)가 소유한다.
 Actor·User Spot·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) [factory](../../../../01-glossary.ko.md#factory)는 configure callback에서 relocation 동작을 정확히 하나 선택하며 callback을 생략하는 overload는 제공하지 않는다.
 Spot manager는 User Spot 전용이다. `create(spotType)`과 `getOrCreate(spotId, spotType)`만 User Spot의

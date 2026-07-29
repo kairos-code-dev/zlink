@@ -25,6 +25,9 @@ const flowContext = require('../../packages/framework/dist/runtime/diagnostics/f
 const {
   ZLinkRoutedSpotPacketDispatch
 } = require('../../packages/framework/dist/runtime/spots/spot-routed-spot-packet-dispatch');
+const {
+  disposeLifecycleHandlers
+} = require('../../packages/framework/dist/runtime/handlers/handler-instance-scope');
 
 test('local SPOT request failure rejects the caller and reports FailCaller', async () => {
   const events = [];
@@ -2510,6 +2513,51 @@ test('spot timer registry replaces the same key and suppresses the queued old ge
     assert.equal(second.isDisposed, true);
     await registry.dispose();
   });
+});
+
+test('spot timer handlers retain one instance for the Spot activation', async () => {
+  let creates = 0;
+  let singletonGets = 0;
+  let disposes = 0;
+  class TimerHandler {
+    constructor() {
+      creates += 1;
+    }
+
+    async handle() {}
+
+    dispose() {
+      disposes += 1;
+    }
+  }
+  const singleton = new TimerHandler();
+  creates = 0;
+  const spot = {};
+  const serial = {
+    isExecuting: false,
+    execute(operation) {
+      return Promise.resolve().then(operation);
+    }
+  };
+  const registry = new framework.ZLinkSpotTimerRegistry();
+  const resolver = {
+    get() {
+      singletonGets += 1;
+      return singleton;
+    },
+    create(type) {
+      return new type();
+    }
+  };
+
+  await registry.add('first', 60_000, undefined, TimerHandler, serial, spot, resolver);
+  await registry.add('second', 60_000, undefined, TimerHandler, serial, spot, resolver);
+  await registry.dispose();
+  await disposeLifecycleHandlers(spot);
+
+  assert.equal(creates, 1);
+  assert.equal(singletonGets, 0);
+  assert.equal(disposes, 1);
 });
 
 async function withFakeTimerClock(run) {

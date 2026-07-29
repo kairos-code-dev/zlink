@@ -1,5 +1,12 @@
 import type { InjectionToken, OnModuleDestroy, OnModuleInit, Provider } from '@nestjs/common';
-import { DiscoveryService, ModuleRef } from '@nestjs/core';
+import {
+  OPTIONAL_DEPS_METADATA,
+  OPTIONAL_PROPERTY_DEPS_METADATA,
+  PARAMTYPES_METADATA,
+  PROPERTY_DEPS_METADATA,
+  SELF_DECLARED_DEPS_METADATA
+} from '@nestjs/common/constants';
+import { ContextIdFactory, DiscoveryService, ModuleRef } from '@nestjs/core';
 import type {
   Type,
   ZLinkRuntimeEvent,
@@ -40,7 +47,10 @@ import {
   isNestRuntimeEventHandler
 } from './handler-metadata';
 import { framework, type FrameworkRuntimeHost } from './framework-loader';
-import { resolveInNestDispatchScope, runInNestDispatchScope } from './dispatch-scope';
+import {
+  currentNestDispatchContext,
+  runInNestDispatchScope
+} from './dispatch-scope';
 
 type RuntimeHostWithNestLifecycle = FrameworkRuntimeHost & OnModuleInit & OnModuleDestroy;
 
@@ -402,15 +412,200 @@ function createProviderResolver(moduleRef: ModuleRef, discovery?: DiscoveryServi
       return moduleRef.create(type as unknown as import('@nestjs/common').Type<T>);
     }
   };
+  Object.defineProperty(
+    resolver,
+    Symbol.for('@zlink-systems/framework.handler-instance-scope-factory'),
+    {
+      value: {
+        create(context?: import('@zlink-systems/framework').ZLinkMessageContext) {
+          const currentContextId = currentNestDispatchContext();
+          const contextId = currentContextId ?? ContextIdFactory.create();
+          if (context !== undefined && currentContextId === undefined) {
+            moduleRef.registerRequestByContextId({ zlinkContext: context }, contextId);
+          }
+          const instances = new Map<Type, Promise<unknown>>();
+          const dependencies = new Map<unknown, Promise<unknown>>();
+          const owned: unknown[] = [];
+          let disposed = false;
+          return {
+            async resolve<T>(type: Type<T>): Promise<T> {
+              if (disposed) {
+                throw new Error('Handler instance scope is already disposed.');
+              }
+              let instance = instances.get(type);
+              if (instance === undefined) {
+                instance = createNestHandlerInstance(
+                  moduleRef,
+                  contextId,
+                  dependencies,
+                  type
+                )
+                  .then(async (created) => {
+                    if (disposed) {
+                      await disposeNestOwnedHandler(created);
+                      throw new Error(
+                        'Handler instance scope was disposed during activation.'
+                      );
+                    }
+                    owned.push(created);
+                    return created;
+                  });
+                instances.set(type, instance);
+              }
+              return await instance as T;
+            },
+            async dispose(): Promise<void> {
+              if (disposed) return;
+              disposed = true;
+              const pending = [...instances.values()];
+              await Promise.allSettled(pending);
+              for (let index = owned.length - 1; index >= 0; index -= 1) {
+                await disposeNestOwnedHandler(owned[index]);
+              }
+              owned.length = 0;
+              instances.clear();
+              dependencies.clear();
+            }
+          };
+        }
+      },
+      enumerable: false
+    }
+  );
   framework.registerIntegrationHandlerFilterScope(
     resolver,
     (context, callback) => runInNestDispatchScope(
       moduleRef,
       context,
-      () => callback({ resolve: (type) => resolveInNestDispatchScope(moduleRef, type) })
+      async () => {
+        const contextId = currentNestDispatchContext()!;
+        const dependencies = new Map<unknown, Promise<unknown>>();
+        const owned: unknown[] = [];
+        try {
+          return await callback({
+            async resolve<T>(type: Type<T>): Promise<T> {
+              const instance = await createNestHandlerInstance(
+                moduleRef,
+                contextId,
+                dependencies,
+                type
+              );
+              owned.push(instance);
+              return instance;
+            }
+          });
+        } finally {
+          for (let index = owned.length - 1; index >= 0; index -= 1) {
+            await disposeNestOwnedHandler(owned[index]);
+          }
+        }
+      }
     )
   );
   return resolver;
+}
+
+export async function disposeNestOwnedHandler(instance: unknown): Promise<void> {
+  if (instance === null || instance === undefined) return;
+  const value = instance as {
+    dispose?: () => unknown;
+    close?: () => unknown;
+    onModuleDestroy?: () => unknown;
+  };
+  if (typeof value.dispose === 'function') {
+    await value.dispose();
+  } else if (typeof value.close === 'function') {
+    await value.close();
+  } else if (typeof value.onModuleDestroy === 'function') {
+    await value.onModuleDestroy();
+  }
+}
+
+export async function createNestHandlerInstance<T>(
+  moduleRef: ModuleRef,
+  contextId: import('@nestjs/core').ContextId,
+  dependencies: Map<unknown, Promise<unknown>>,
+  type: Type<T>
+): Promise<T> {
+  const reflected = [
+    ...(Reflect.getMetadata(PARAMTYPES_METADATA, type) as readonly InjectionToken[] | undefined ?? [])
+  ];
+  const declared = Reflect.getMetadata(
+    SELF_DECLARED_DEPS_METADATA,
+    type
+  ) as readonly { readonly index: number; readonly param: InjectionToken }[] | undefined;
+  for (const dependency of declared ?? []) {
+    reflected[dependency.index] = dependency.param;
+  }
+  const optional = new Set<number>(
+    Reflect.getMetadata(OPTIONAL_DEPS_METADATA, type) as readonly number[] | undefined ?? []
+  );
+  const parameters = await Promise.all(reflected.map((token, index) =>
+    resolveNestHandlerDependency(
+      moduleRef,
+      contextId,
+      dependencies,
+      token,
+      optional.has(index)
+    )
+  ));
+  const instance = new (type as unknown as new (...args: unknown[]) => T)(...parameters);
+  const properties = Reflect.getMetadata(
+    PROPERTY_DEPS_METADATA,
+    type
+  ) as readonly { readonly key: string | symbol; readonly type: InjectionToken }[] | undefined;
+  const optionalProperties = new Set<string | symbol>(
+    Reflect.getMetadata(
+      OPTIONAL_PROPERTY_DEPS_METADATA,
+      type
+    ) as readonly (string | symbol)[] | undefined ?? []
+  );
+  for (const property of properties ?? []) {
+    const dependency = await resolveNestHandlerDependency(
+      moduleRef,
+      contextId,
+      dependencies,
+      property.type,
+      optionalProperties.has(property.key)
+    );
+    if (dependency !== undefined) {
+      (instance as Record<string | symbol, unknown>)[property.key] = dependency;
+    }
+  }
+  return instance;
+}
+
+async function resolveNestHandlerDependency(
+  moduleRef: ModuleRef,
+  contextId: import('@nestjs/core').ContextId,
+  dependencies: Map<unknown, Promise<unknown>>,
+  token: unknown,
+  optional: boolean
+): Promise<unknown> {
+  const forwardReference = typeof token === 'object'
+    && token !== null
+    && 'forwardRef' in token
+    ? token as { readonly forwardRef?: unknown }
+    : undefined;
+  const resolvedToken = typeof forwardReference?.forwardRef === 'function'
+    ? (forwardReference.forwardRef as () => unknown)()
+    : token;
+  let dependency = dependencies.get(resolvedToken);
+  if (dependency === undefined) {
+    dependency = moduleRef.resolve(
+      resolvedToken as Parameters<ModuleRef['get']>[0],
+      contextId,
+      { strict: false }
+    );
+    dependencies.set(resolvedToken, dependency);
+  }
+  try {
+    return await dependency;
+  } catch (error) {
+    dependencies.delete(resolvedToken);
+    if (optional) return undefined;
+    throw error;
+  }
 }
 
 function findDiscoveredProviderInstance<T>(discovery: DiscoveryService | undefined, type: Type<T>): T | undefined {

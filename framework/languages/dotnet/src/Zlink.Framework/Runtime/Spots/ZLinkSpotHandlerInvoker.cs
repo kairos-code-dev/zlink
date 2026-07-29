@@ -9,7 +9,8 @@ internal sealed class ZLinkSpotHandlerInvoker(
     string meshName,
     ZLinkCodecRegistryBuilder codecs,
     IZlinkStreamCompressionCodec? compressionCodec,
-    ZLinkSpotActivation? activation = null)
+    ZLinkSpotActivation? activation = null,
+    Func<IZLinkActor, ZLinkScopedHandlerInstanceOwner>? actorHandlerInstances = null)
 {
     internal ZLinkSpotHandlerInvoker(
         ZLinkScopedHandlerInstanceOwner handlerInstances,
@@ -133,8 +134,10 @@ internal sealed class ZLinkSpotHandlerInvoker(
             codecs,
             compressionCodec);
         var context = CreateSendContext(header, cancellationToken);
+        var actorInstances = ResolveActorHandlerInstances(actor);
         await InvokeWithDeferredJoinsAsync(
                 async () => await InvokeAsync(
+                        actorInstances,
                         descriptor.HandlerType,
                         descriptor.Invoker,
                         spot,
@@ -170,10 +173,12 @@ internal sealed class ZLinkSpotHandlerInvoker(
             codecs,
             compressionCodec);
         var context = CreateMessageContext(header);
+        var actorInstances = ResolveActorHandlerInstances(actor);
         return await InvokeWithDeferredJoinsAsync(
                 async () =>
                 {
                     var reply = await InvokeAsync(
+                            actorInstances,
                             descriptor.HandlerType,
                             descriptor.Invoker,
                             spot,
@@ -278,6 +283,7 @@ internal sealed class ZLinkSpotHandlerInvoker(
         if (descriptor.PassRequestArgument)
         {
             await InvokeAsync(
+                    ResolveActorHandlerInstances(actor),
                     descriptor.HandlerType,
                     descriptor.Invoker,
                     actor,
@@ -289,12 +295,23 @@ internal sealed class ZLinkSpotHandlerInvoker(
 
         if (descriptor.PassSpotArgument)
         {
-            await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, cancellationToken)
+            await InvokeAsync(
+                    ResolveActorHandlerInstances(actor),
+                    descriptor.HandlerType,
+                    descriptor.Invoker,
+                    spot,
+                    actor,
+                    cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
 
-        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, actor, cancellationToken)
+        await InvokeAsync(
+                ResolveActorHandlerInstances(actor),
+                descriptor.HandlerType,
+                descriptor.Invoker,
+                actor,
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -310,6 +327,7 @@ internal sealed class ZLinkSpotHandlerInvoker(
             actor,
             "Entry Spot actor creation handler");
         var result = await InvokeAsync(
+                ResolveActorHandlerInstances(actor),
                 descriptor.HandlerType,
                 descriptor.Invoker,
                 actor,
@@ -332,6 +350,94 @@ internal sealed class ZLinkSpotHandlerInvoker(
 
         throw new InvalidOperationException(
             $"{handlerKind} '{handlerType}' expects actor '{expectedActorType}', but received '{actor.GetType()}'.");
+    }
+
+    private ValueTask<object?> InvokeAsync(
+        ZLinkScopedHandlerInstanceOwner instances,
+        Type handlerType,
+        ZLinkHandlerMethodInvoker invoker,
+        object? arg0,
+        object? arg1)
+    {
+        var handler = ResolveHandler(instances, handlerType);
+        return ZLinkHandlerInvocationEngine.InvokeAsync(
+            handler,
+            invoker,
+            2,
+            arguments =>
+            {
+                arguments[0] = arg0;
+                arguments[1] = arg1;
+            });
+    }
+
+    private ValueTask<object?> InvokeAsync(
+        ZLinkScopedHandlerInstanceOwner instances,
+        Type handlerType,
+        ZLinkHandlerMethodInvoker invoker,
+        object? arg0,
+        object? arg1,
+        object? arg2)
+    {
+        var handler = ResolveHandler(instances, handlerType);
+        return ZLinkHandlerInvocationEngine.InvokeAsync(
+            handler,
+            invoker,
+            3,
+            arguments =>
+            {
+                arguments[0] = arg0;
+                arguments[1] = arg1;
+                arguments[2] = arg2;
+            });
+    }
+
+    private ValueTask<object?> InvokeAsync(
+        ZLinkScopedHandlerInstanceOwner instances,
+        Type handlerType,
+        ZLinkHandlerMethodInvoker invoker,
+        object? arg0,
+        object? arg1,
+        object? arg2,
+        object? arg3)
+    {
+        var handler = ResolveHandler(instances, handlerType);
+        return ZLinkHandlerInvocationEngine.InvokeAsync(
+            handler,
+            invoker,
+            4,
+            arguments =>
+            {
+                arguments[0] = arg0;
+                arguments[1] = arg1;
+                arguments[2] = arg2;
+                arguments[3] = arg3;
+            });
+    }
+
+    private ValueTask<object?> InvokeAsync(
+        ZLinkScopedHandlerInstanceOwner instances,
+        Type handlerType,
+        ZLinkHandlerMethodInvoker invoker,
+        object? arg0,
+        object? arg1,
+        object? arg2,
+        object? arg3,
+        object? arg4)
+    {
+        var handler = ResolveHandler(instances, handlerType);
+        return ZLinkHandlerInvocationEngine.InvokeAsync(
+            handler,
+            invoker,
+            5,
+            arguments =>
+            {
+                arguments[0] = arg0;
+                arguments[1] = arg1;
+                arguments[2] = arg2;
+                arguments[3] = arg3;
+                arguments[4] = arg4;
+            });
     }
 
     private ValueTask<object?> InvokeAsync(
@@ -433,8 +539,17 @@ internal sealed class ZLinkSpotHandlerInvoker(
 
     private object ResolveHandler(Type handlerType)
     {
-        return handlerType.IsInstanceOfType(spot)
-            ? spot
-            : handlerInstances.Resolve(handlerType);
+        return ResolveHandler(handlerInstances, handlerType);
     }
+
+    private object ResolveHandler(
+        ZLinkScopedHandlerInstanceOwner instances,
+        Type handlerType) =>
+        handlerType.IsInstanceOfType(spot)
+            ? spot
+            : instances.Resolve(handlerType);
+
+    private ZLinkScopedHandlerInstanceOwner ResolveActorHandlerInstances(
+        IZLinkActor actor) =>
+        actorHandlerInstances?.Invoke(actor) ?? handlerInstances;
 }

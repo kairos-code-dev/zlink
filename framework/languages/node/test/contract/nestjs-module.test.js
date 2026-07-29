@@ -496,6 +496,11 @@ test('ZLinkModule.forRoot maps zlinkRequestHandler providers from NestJS DI', as
 
 test('request-scoped handler filters share the channel dispatch scope with the handler', async () => {
   let dispatchSequence = 0;
+  let singletonFilterSequence = 0;
+  let singletonHandlerSequence = 0;
+  let activeSingletonFilterId;
+  let singletonFilterDisposals = 0;
+  let singletonHandlerDisposals = 0;
 
   class DispatchState {
     constructor() {
@@ -517,6 +522,22 @@ test('request-scoped handler filters share the channel dispatch scope with the h
   Inject(DispatchState)(RequestScopeFilter, undefined, 0);
   Injectable({ scope: Scope.REQUEST })(RequestScopeFilter);
 
+  class SingletonFilter {
+    constructor() {
+      this.id = ++singletonFilterSequence;
+    }
+
+    async invoke(_invocation, next) {
+      activeSingletonFilterId = this.id;
+      return await next();
+    }
+
+    onModuleDestroy() {
+      singletonFilterDisposals += 1;
+    }
+  }
+  Injectable()(SingletonFilter);
+
   class ScopedProfileHandler {
     constructor(state) {
       this.state = state;
@@ -534,8 +555,28 @@ test('request-scoped handler filters share the channel dispatch scope with the h
   Injectable({ scope: Scope.REQUEST })(ScopedProfileHandler);
   nestjs.zlinkRequestHandler('api', 'GetProfile')(ScopedProfileHandler);
 
+  class SingletonProfileHandler {
+    constructor() {
+      this.id = ++singletonHandlerSequence;
+    }
+
+    async handle(request) {
+      return {
+        profileId: request.profileId,
+        handlerId: this.id,
+        filterId: activeSingletonFilterId
+      };
+    }
+
+    onModuleDestroy() {
+      singletonHandlerDisposals += 1;
+    }
+  }
+  Injectable()(SingletonProfileHandler);
+  nestjs.zlinkRequestHandler('api', 'GetSingletonProfile')(SingletonProfileHandler);
+
   const frameworkOptions = nestjs.zlinkFramework()
-    .options({ filters: [RequestScopeFilter] });
+    .options({ filters: [RequestScopeFilter, SingletonFilter] });
   const apiChannel = frameworkOptions.addClientServerChannel('api');
   apiChannel.client();
   apiChannel.server().listen().addHandlerGroup('api');
@@ -543,7 +584,13 @@ test('request-scoped handler filters share the channel dispatch scope with the h
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(frameworkOptions.build())],
-    providers: [DispatchState, RequestScopeFilter, ScopedProfileHandler]
+    providers: [
+      DispatchState,
+      RequestScopeFilter,
+      SingletonFilter,
+      ScopedProfileHandler,
+      SingletonProfileHandler
+    ]
   })(HandlerModule);
 
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
@@ -563,6 +610,29 @@ test('request-scoped handler filters share the channel dispatch scope with the h
 
     assert.deepEqual(first, { profileId: 'p1', dispatchId: 1, filtered: true });
     assert.deepEqual(second, { profileId: 'p2', dispatchId: 2, filtered: true });
+
+    class GetSingletonProfile {
+      constructor(profileId) {
+        this.profileId = profileId;
+      }
+    }
+    const singletonHandlerId = app.get(SingletonProfileHandler).id;
+    const singletonFilterId = app.get(SingletonFilter).id;
+    const singletonFirst = await client
+      .requestToChannel('api', new GetSingletonProfile('p3'))
+      .timeout(1000)
+      .submit();
+    const singletonSecond = await client
+      .requestToChannel('api', new GetSingletonProfile('p4'))
+      .timeout(1000)
+      .submit();
+
+    assert.notEqual(singletonFirst.handlerId, singletonHandlerId);
+    assert.notEqual(singletonFirst.filterId, singletonFilterId);
+    assert.notEqual(singletonSecond.handlerId, singletonFirst.handlerId);
+    assert.notEqual(singletonSecond.filterId, singletonFirst.filterId);
+    assert.equal(singletonHandlerDisposals, 2);
+    assert.equal(singletonFilterDisposals, 4);
   } finally {
     await app.close();
   }

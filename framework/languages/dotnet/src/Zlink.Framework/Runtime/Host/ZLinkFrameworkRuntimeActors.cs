@@ -3885,7 +3885,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     private async ValueTask ResetActorRuntimeGenerationAsync()
     {
-        _actorSessionManager.ResetGeneration();
+        await _actorSessionManager.ResetGenerationAsync().ConfigureAwait(false);
         using var cleanupDeadline = new CancellationTokenSource(
             TimeSpan.FromSeconds(5));
         await _actorHandoffAdmissions.ResetGenerationAsync(

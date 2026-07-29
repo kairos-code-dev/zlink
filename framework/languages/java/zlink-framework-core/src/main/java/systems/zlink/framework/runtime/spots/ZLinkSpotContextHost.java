@@ -5,6 +5,7 @@ import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwner;
 import systems.zlink.framework.spots.ZLinkSpot;
 
 abstract class ZLinkSpotContextHost {
@@ -14,7 +15,10 @@ abstract class ZLinkSpotContextHost {
 
     abstract ZLinkSpotTimerRegistry createTimerRegistry(
         String spotId,
+        ZLinkHandlerInstanceOwner handlers,
         ZLinkSpotTimerRegistry.Dispatch dispatch);
+
+    abstract ZLinkHandlerInstanceOwner createHandlerInstances();
 
     abstract CompletionStage<Void> destroyActorFromEntry(
         RoutingId nodeRid,

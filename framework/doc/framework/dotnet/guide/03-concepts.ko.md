@@ -23,7 +23,7 @@ ZLink framework는 **다섯 가지 핵심 개념**을 제공한다:
   [spot](#2-spot--상태를-소유하고-순서대로-처리하는-단위),
   [actor](#3-actor--id로-식별되는-상태-객체)에서 각각
   설명한다.
-- **Channel role** — request·send·publish를 주고받는 자리다. 이 절이 다룬다.
+- **Channel role** — request·send·publish를 주고받는 자리다. 이 문서에서 설명한다.
 
 `ChannelName`은 그 mesh 안에서 같은 기능을 맡은 node들을 묶는 논리 이름이다 —
 주소(`host:port`) 대신 `"orders"` 같은 이름으로 호출 대상을 고른다. 호출자는
@@ -35,28 +35,38 @@ framework가 찾아서 전달한다. 이렇게 **대상이 어디 있는지 호�
 위치 투명성이라 한다. channel·spot·actor 모두 이 방식으로 동작한다. 그래서 서버를
 늘리거나(scale-out) 줄여도(scale-in) 호출 코드는 그대로다.
 
-`ChannelName`을 부르면 framework가 그 순간 요청을 받을 수 있는 node 중 하나를 골라
-보낸다 — 이 선택을 **select-one**이라 한다.
+`ChannelName`으로 메시지를 전송하면 framework가 그 순간 요청을 받을 수 있는 node 중
+하나를 선택해 전달한다 — 이 선택을 **select-one**이라 한다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-graph LR
-    C["caller"] --> M["MeshName: services"]
-    M -->|"ChannelName: orders<br/>(select-one)"| B["ready member 중 하나"]
+flowchart LR
+    C["caller"]:::client -->|"ChannelName: orders"| SEL{{"select-one"}}
+    subgraph ORD["channel: orders"]
+      direction TB
+      N1["node 1"]:::server
+      N2["node 2"]:::server
+      N3["node 3"]:::server
+    end
+    SEL ==>|"이번 호출이 선택한 node"| N2
+    SEL -.-> N1
+    SEL -.-> N3
+    classDef server fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef client fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
 ```
 
-등록은 이런 모양이다.
+같은 `orders` channel을 맡은 node가 셋이면 호출마다 그중 하나가 선택된다. 호출자는
+어느 node가 선택됐는지 알지 못하고, 알 필요도 없다.
+
+MeshNode 하나에 두 역할을 함께 얹은 모양은 이렇다.
 
 ```csharp
 var mesh = options.AddRouteMesh("services")     // MeshNode 하나가 mesh "services"에 참여한다.
     .Listen("tcp://0.0.0.0:7101");              // 다른 node가 접속할 자기 endpoint.
 
 mesh.Objects().Server();                        // Object role — 이 node에 spot·actor를 배치한다.
-
-mesh.Channel("orders").Server()                 // Channel role — "orders" 요청을 이 node가 처리한다.
-    .AddRequestHandler<GetOrderHandler, GetOrder, Order>();
-
-mesh.Channel("billing").Client();               // 호출만 하는 channel은 Client — handler를 두지 않는다.
+mesh.Channel("orders").Server();                // Channel role — "orders" 요청을 이 node가 처리한다.
+mesh.Channel("billing").Client();               // 호출만 하는 channel은 Client.
 ```
 
 peer 주소를 코드에 적지 않고 서버 증감을 따라가는 자동 연결은
@@ -65,135 +75,23 @@ peer 주소를 코드에 적지 않고 서버 증감을 따라가는 자동 연�
 > **주의:** `MeshName`과 `ChannelName`은 서로 다른 이름이다. 하나의 mesh에 여러
 > `ChannelName`을 등록할 수 있고, 서로 다른 mesh에서 같은 `ChannelName`을 사용할 수도 있다.
 
-**Node direct는 다른 용도다.** RID로 node 하나를 지정하는 호출도 있다.
-select-one과 달리 항상 그 RID 하나로만 전달하고, 그 node가 사라져도 대신 처리할 다른
-node를 선택하지 않는다. **위치 투명성이 없다.**
+"channel"이라는 이름을 쓰는 등록은 셋이고, 소켓을 공유하는지가 다르다.
 
-따라서 업무 요청에는 사용하지 않는다. 특정 node 하나를 지정해야 하는 운영 조회나
-진단에만 사용한다.
+| 종류 | 소켓 |
+| --- | --- |
+| route mesh channel | 이미 열려있는 MeshNode 소켓을 공유한다 |
+| ClientServer channel | MeshNode와 별개인 자기 소켓을 연다 |
+| fanout channel | 독자적인 PUB/SUB 소켓을 연다 |
 
-### 1.1 "channel"이라는 이름을 쓰는 세 가지
-
-세 등록은 모두 `ChannelName`을 사용하지만, 지원하는 메시징 방식과 소켓을
-공유하는지가 다르다.
-
-| 종류 | 등록 | 소켓 | 연결 패턴 |
-| --- | --- | --- | --- |
-| route mesh channel | `mesh.Channel(name).Server()`/`.Client()` | 이미 열려있는 MeshNode 소켓을 공유한다 | `ChannelName` select-one으로 request/send, spot 간 publish(Logical Multicast) — RID를 직접 지정하는 Node direct는 별도(위 참고) |
-| ClientServer channel | `AddClientServerChannel(name)` | MeshNode와 별개인 자기 소켓을 연다(`.Listen()`, 연결은 수동 `.Connect()` 또는 자동 discovery) | Client가 시작한 request/send만 — Server는 그 reply 말고는 먼저 보낼 수 없다 |
-| fanout channel | `AddFanoutChannel(name)` | 독자적인 PUB/SUB 소켓을 연다 | publisher → 다수 subscriber |
-
-앞의 둘은 특히 구분하기 쉽지 않다. **route mesh channel은 MeshNode 연결을 공유하는
-논리 이름**이고, **ClientServer channel은 다른 channel과 transport를 공유하지 않는
-독립 연결 단위**다.
-
-**route mesh channel** — MeshNode 소켓 하나로 mesh에 붙고, channel 이름은 그 위에서
-"이 요청을 누가 받는가"를 가르는 논리 묶음이다.
-
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-flowchart LR
-  subgraph ORD["channel: orders"]
-    direction TB
-    A1["node A1"]:::server
-    A2["node A2"]:::server
-  end
-  B["node B<br/>orders Client<br/>billing Client<br/>MeshNode 소켓 1개"]:::client
-  subgraph BIL["channel: billing"]
-    direction TB
-    C1["node C1"]:::server
-    C2["node C2"]:::server
-  end
-  B <-->|"MeshNode 소켓"| A1
-  B <-->|"MeshNode 소켓"| A2
-  B <-->|"MeshNode 소켓"| C1
-  B <-->|"MeshNode 소켓"| C2
-  classDef server fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
-  classDef client fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
-```
-
-node B는 소켓 하나로 mesh에 붙어 있고, 그 위에서 `orders`와 `billing`을 둘 다 호출한다.
-`orders`를 부르면 select-one이 그 상자 안의 A1·A2 중 하나를, `billing`을 부르면 C1·C2
-중 하나를 고른다. 상자는 소켓이 아니라 이름으로 묶인 그룹이라, channel을 열 개 더
-등록해도 B의 소켓은 그대로 하나다.
-
-**ClientServer channel** — 상자 모양은 같지만, 상자마다 자기 소켓을 따로 연다.
-
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-flowchart LR
-  subgraph AUTH["channel: auth"]
-    direction TB
-    Y1["process Y"]:::server
-    Z1["process Z"]:::server
-  end
-  X["process X<br/>auth Client<br/>report Client<br/>channel마다 소켓 별도"]:::client
-  subgraph REP["channel: report"]
-    direction TB
-    Z2["process Z"]:::server
-    W2["process W"]:::server
-  end
-  X -->|"auth 소켓"| Y1
-  X -->|"auth 소켓"| Z1
-  X -->|"report 소켓"| Z2
-  X -->|"report 소켓"| W2
-  classDef server fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
-  classDef client fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
-```
-
-Server가 둘이라 select-one은 똑같이 동작한다. 다른 건 소켓이다 — `auth`와 `report`가
-각자 연결을 열고, 같은 process Z가 양쪽 channel에 다 들어가 있어도 두 소켓을 따로
-쓴다. Channel마다 연결 대상과 수명을 따로 관리한다.
-
-방향도 고정이라 Server는 Client가 시작한 요청에만 응답할 수 있다. Server가 먼저 알림을
-보내야 한다면 ClientServer가 아니라 RouteMesh를 쓴다. TicTacToe에서 로그인 인증
-(`tictactoe.api` ClientServer channel)을 Game Spot 생성(MeshNode의 Object role)과
-분리하는 이유다([02-getting-started §7](02-getting-started.ko.md)).
-
-**pub/sub도 두 갈래다.** route mesh channel 위에서 spot끼리 이벤트를 주고받는 것을
-**Logical Multicast**라 한다. 앞의 다이어그램처럼 이미 연결된 mesh 소켓을 그대로 쓰므로
-별도 소켓이 없고, 받는 쪽은 그 channel에서 같은 topic을 구독한 spot으로 한정된다.
-
-```csharp
-// 발행 — TicTacToeGame spot 안에서.
-await Context.Outbound
-    .Publish(SampleTopics.PlayerMilestoneChannel,   // 전달 범위를 정하는 ChannelName.
-             SampleTopics.PlayerMilestone,          // 그 안에서 받을 spot을 고르는 topic.
-             milestoneEvent)
-    .Async(cancellationToken);
-
-// 구독 — PlayEntrySpot이 시작할 때.
-Context.Handlers.AddSubscribe<PlayerWinMilestoneEventHandler>(
-    SampleTopics.PlayerMilestoneChannel,            // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
-    SampleTopics.PlayerMilestone);
-```
-
-spot 밖에서 발행해야 하면 `IZLinkSpotPublisherClient`를 주입받아 같은 방식으로 보낸다.
-
-반대로 **fanout channel**(스펙에서는 **Classic fanout**)은 그 자체로 독립된 PUB/SUB
-소켓 쌍을 연다. spot이나 MeshNode와 무관하게 발행자 하나가 연결된 구독자 전원에게
-전달한다.
-
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-graph LR
-    P["publisher"] --> S1["subscriber A"]
-    P --> S2["subscriber B"]
-    P --> S3["subscriber C"]
-```
-
-둘 다 **발행이 끝났다고 전달이 보장되지는 않는다.** 발행 호출이 완료됐다는 건 보낼
-준비가 로컬에서 접수됐다는 뜻이지, 구독자가 그 이벤트를 처리했다는 확인이 아니다.
-저장·재전송·ack도 없다.
-
-차이는 **대상 범위**다. Logical Multicast는 그 mesh 안에서 같은 channel·topic을 구독한
-spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된 구독자 전체로 퍼진다.
-request/send/pub-sub 사용법과 handler 노출은
-[05-channel-messaging](05-channel-messaging.ko.md)이 다룬다.
+pub/sub도 두 갈래다. route mesh channel 위에서 Spot끼리 주고받는 **Logical Multicast**는
+mesh 소켓을 그대로 쓰고, **fanout channel**은 자기 소켓으로 연결된 구독자 전원에게
+전달한다. 셋의 구조 비교와 사용법은
+[05-channel-messaging §1](05-channel-messaging.ko.md#1-channel-종류)이 다룬다.
 
 ## 2. spot — 상태를 소유하고 순서대로 처리하는 단위
 
-게임 방, 주문 하나, 길드 하나처럼 **여러 요청이 같은 상태를 건드리는 대상**이 있다.
+게임 방 하나, 길드 하나, 경매 물건 하나처럼 **여러 요청이 같은 상태를 동시에 건드리는
+대상**이 있다.
 이걸 직접 만들면 두 가지를 챙겨야 한다. 그 상태를 지금 어느 process가 들고 있는지 찾아
 요청을 그리로 보내는 일과, 도착한 요청들이 상태를 동시에 건드리지 않게 막는 일이다.
 상태를 process 메모리에 두면 앞의 라우팅을 직접 관리해야 하고, DB나 Redis에 두면
@@ -203,110 +101,40 @@ spot은 이 둘을 framework가 맡는다. 대상을 **메모리에 살아 있�
 그 앞으로 온 요청을 **한 줄로 세워 차례로** 처리한다. 동시에 두 요청이 같은 상태를
 건드리는 상황 자체가 생기지 않으니 락이 필요 없다.
 
-id로 주소를 지정한다는 점이 channel과 다르다. `"orders"` channel을 부르면 그 일을
-할 수 있는 아무 node나 처리하지만, `room-42` spot으로 보낸 요청은 지금 그 spot을
-들고 있는 node의 그 객체 하나가 처리한다. 어느 node인지는
-[앞에서 본](#1-channel--서버-간-연결) 위치 투명성 그대로 framework가 찾는다.
+id로 주소를 지정한다는 점이 channel과 다르다. `"orders"` channel로 전송하면 그 일을
+할 수 있는 아무 node나 처리한다. 반면 `"room-42"` 같은 spot id로 요청을 보내면, 그
+spot이 존재하는 node가 메시지를 받아 그 spot에게 전달해 처리하도록 한다. 그 node가
+어디인지는 [앞에서 본](#1-channel--서버-간-연결) 위치 투명성 그대로 framework가 찾는다.
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+flowchart LR
+  R1["요청 · room-42"] --> Q["Spot queue"]
+  R2["요청 · room-42"] --> Q
+  T["timer"] --> Q
+  Q --> S["room-42 Spot<br/>상태를 직접 소유"]:::spot
+  classDef spot fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+```
 
 spot은 MeshNode의 **Object role**에 등록한다. 같은 MeshNode의 Channel role과는
 별개 표면이다.
 
 | | channel handler | spot handler |
 | --- | --- | --- |
-| 주소 | `ChannelName` — 처리할 수 있는 node 아무거나 | spot id — 그 상태를 가진 객체 하나 |
-| 수명 | 요청마다 새로 만들고 버린다 | 만들어진 뒤 닫힐 때까지 살아 있다 |
+| 주소 | `ChannelName` — 처리할 수 있는 node 중 하나 | spot id — 그 상태를 가진 객체 하나 |
+| 수명 | 요청마다 새로 만들고 버린다 | 생성된 뒤 닫힐 때까지 유지된다 |
 | 실행 | 서로 다른 요청은 동시에 실행 | 같은 queue의 작업은 한 번에 하나씩 |
 | 상태 | handler에 두지 않는다 | spot이 직접 소유한다 |
 
-상세(등록·lifecycle·timer·outbound)는 [06-spot](06-spot.ko.md).
-
-### 2.1 spot 세 종류 — Entry · User · Instance
-
-세 종류 모두 id와 상태를 가지고 순서대로 실행하는 spot이지만, **누가 언제 만드는지**와
-**actor를 담을 수 있는지**가 다르다.
-
-| | Entry Spot | User Spot | Instance Spot |
-| --- | --- | --- | --- |
-| 만드는 시점 | Object Server가 시작할 때 framework가 자동으로 | application이 "지금 만들자"고 명시적으로 | 그 id로 **첫 message**가 왔을 때 자동으로(cold activation) |
-| id | framework가 발급 | `Create`는 framework가, `GetOrCreate`는 caller가 지정 | caller가 보낸 message의 대상 id |
-| actor를 담을 수 있나 | 담는다 — actor가 처음 놓이는 자리 | 담는다 — actor가 join·leave로 드나든다 | 담지 못한다 |
-| 닫기 | application이 닫지 않는다(server 수명과 함께) | application이 닫는다 | application이 닫는다 |
-| 쓰는 곳 | 로그인 직후처럼 아직 아무 User Spot에도 들어가지 않은 actor의 대기 자리 | 게임 방·대전 판처럼 참가자가 모였다 흩어지는 단위 | 주문·길드처럼 id만 있으면 되는 단위 |
-
-**Entry Spot**은 actor의 기본 자리다. actor를 만들면 그 node의 Entry Spot에 놓이고,
-User Spot에 join하면 그리로 옮겨가고, leave하면 다시 Entry Spot으로 돌아온다.
-Object Server마다 하나씩 있고 application이 만들거나 닫지 않는다.
-
-**User Spot**은 application이 수명을 직접 쥐는 단위다. 언제 만들고 언제 닫을지가
-코드에 드러난다. actor가 join·leave로 드나들 수 있어서, 게임 방처럼 참가자가 모였다
-흩어지는 대상에 맞는다.
-
-**Instance Spot**은 만들 시점을 결정하는 일 자체를 없앤다. 주문 id·길드 id로 첫
-요청이 오면 그 자리에서 만들어진다(cold activation). actor를 담지 못하는 대신, "이걸
-언제 만들지"를 고민할 필요가 없는 게 장점이다.
-
-```csharp
-mesh.Objects().Server()
-    .AddEntrySpot<PlayEntrySpot>()                  // 시작할 때 자동 생성. stable type이 없다.
-    .AddSpotFactory<TicTacToeGame>(                 // 만들라고 할 때 생성.
-        "tictactoe-game",                           // stable type — 이 이름으로 만들 spot을 고른다.
-        factory => factory.DisableRelocation())
-    .AddInstanceSpotFactory<GuildSpot>(             // 그 id로 첫 message가 오면 생성.
-        "guild",
-        factory => factory.RecreateOnRelocation());
-```
-
-### 2.2 실행 모델 — 무엇이 무엇과 동시에 실행되나
-
-spot에 들어오는 작업은 두 갈래로 줄을 선다. spot 자신에게 온 direct packet과 timer는
-**Spot queue**로, 그 spot에 속한 actor 앞으로 온 message는 **actor별 queue**로 간다.
-그 줄들을 동시에 실행해도 되는지가 종류마다 다르다.
-
-| | 무엇이 한 줄로 서나 | 상태를 어디에 두나 |
-| --- | --- | --- |
-| Entry Spot | actor는 각자 자기 순서대로. Spot 작업은 그와 별개로 실행 | actor가 각자 소유. actor끼리 공유할 상태는 외부 저장소 |
-| User Spot `SpotWide`(기본) | Spot·actor·timer **전부** 한 번에 하나씩 | spot이 직접 소유. actor와 공유해도 락이 필요 없다 |
-| User Spot `PerActor` | actor별로, Spot lane별로 각각. 서로 다른 줄은 동시 실행 | actor가 각자 소유. 공유 상태는 외부 저장소 |
-| Instance Spot | direct packet과 timer가 한 줄로(actor 없음) | spot이 직접 소유 |
-
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-flowchart LR
-  subgraph SW["User Spot — SpotWide (기본)"]
-    direction LR
-    P1["direct packet<br/>timer"] --> SQ1["Spot queue"]
-    A1["actor A message"] --> AQ1["actor A queue"]
-    B1["actor B message"] --> BQ1["actor B queue"]
-    SQ1 --> G1{{"공통 gate<br/>한 번에 하나"}}
-    AQ1 --> G1
-    BQ1 --> G1
-  end
-  subgraph PA["Entry Spot · User Spot PerActor"]
-    direction LR
-    P2["direct packet<br/>timer"] --> SQ2["Spot queue"] --> R2["실행"]
-    A2["actor A message"] --> AQ2["actor A queue"] --> R2A["실행"]
-    B2["actor B message"] --> BQ2["actor B queue"] --> R2B["실행"]
-  end
-  SW ~~~ PA
-```
-
-**`SpotWide`가 기본**이고, 대부분 이걸 쓰면 된다. 그 spot의 모든 일이 한 줄로
-처리되니 spot과 actor가 같은 상태를 함께 봐도 락이 필요 없다 — 게임 방이라면 보드판과
-참가자 목록이 그런 상태다. 대신 느린 작업 하나가 그 spot 전체를 멈춘다.
-
-**`PerActor`**는 actor마다 독립적으로 돌아야 처리량이 나오는 경우에 고른다. 대신
-여러 줄이 동시에 실행되므로, actor들이 함께 바꾸는 상태를 spot 필드에 두면 경합이
-생긴다. 그런 공유 상태는 Redis나 database처럼 node 밖에 둔다. **Entry Spot도 같은
-모델**이라 같은 제약을 받는다.
-
-execution mode는 factory를 등록할 때 정하고 실행 중에는 바꾸지 않는다.
+spot은 만들어지는 시점에 따라 **Entry Spot · User Spot · Instance Spot** 세 종류로
+나뉘고, 어떤 작업이 동시에 실행되는지는 **execution mode**가 정한다. 세 종류의 차이,
+execution mode 선택, 등록·lifecycle·timer·outbound는 [06-spot](06-spot.ko.md)이 다룬다.
 
 ## 3. actor — ID로 식별되는 상태 객체
 
 actor는 **ID로 식별되는 상태 보유 객체**다. 같은 ID로 온 메시지는 늘 같은
-인스턴스가 처리한다. 외부 client session을 actor에 바인딩하면 **연결 서버(세션)와
-로직 서버(actor)를 분리**할 수 있다 — 연결을 받는 node와 도메인 로직을 실행하는 node를
-나누는 패턴이다.
+인스턴스가 처리한다. actor는 항상 어떤 spot에 속하며, 외부 client 연결과 묶는 방법은
+[stream](#5-stream--외부-client-연결)에서 이어진다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -325,50 +153,97 @@ graph LR
 actor나 spot이 지금 owner node를 떠나 다른 node에서 계속 실행되는 것을 relocation이라
 한다. 서로 다른 두 계기로 시작된다.
 
+actor는 spot 안에, spot은 node 안에 있다. relocation은 이 담김 관계를 유지한 채
+소속만 다른 node로 바뀌는 것이다.
+
 **actor가 다른 node의 spot에 join할 때.** actor가 어떤 User Spot에 join을 요청했는데
 그 spot이 다른 node에 있으면, join이 받아들여지는 순간 actor가 상태와 대기 중인 작업을
 그대로 들고 그 node로 옮겨간다. application이 요청해서 일어나는 이동이다.
 
-**무중단 점검·배포로 host를 옮길 때.** 운영자가 한 host의 실행 단위를 다른 host로
-옮긴다. `SpotWide` User Spot은 member Actor와 함께 옮기고, Entry Spot과 `PerActor`
-User Spot에 속한 Actor는 Actor별로 옮긴다. application이 개별 join을 요청하지 않아도
-framework가 처리하며, 완료된 뒤 원래 host를 종료할 수 있다.
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+flowchart LR
+  subgraph NA["node A"]
+    direction TB
+    subgraph EA["Entry Spot"]
+      P(("actor P")):::moving
+    end
+  end
+  subgraph NB["node B"]
+    direction TB
+    subgraph RB["User Spot &quot;room-42&quot;"]
+      Q(("actor Q")):::actor
+      R(("actor R")):::actor
+    end
+  end
+  P ==>|"JoinSpot(&quot;room-42&quot;)<br/>state·대기 작업과 함께 이동"| RB
+  classDef actor fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  classDef moving fill:#fff3e0,stroke:#e65100,stroke-width:3px,color:#bf360c
+  style NA fill:#eceff1,stroke:#546e7a,stroke-width:2px,color:#000000
+  style NB fill:#eceff1,stroke:#546e7a,stroke-width:2px,color:#000000
+  style EA fill:#ffffff,stroke:#1565c0,stroke-width:2px,color:#000000
+  style RB fill:#ffffff,stroke:#1565c0,stroke-width:2px,color:#000000
+```
+
+호출에 적는 것은 **spot id뿐**이다. `room-42`가 지금 node B에 있다는 사실은 코드에
+없고 framework가 찾는다. 이동이 끝나면 actor P는 node B의 `room-42` spot에 속한
+member가 되어 Q·R와 같은 실행 규칙을 따른다.
+
+**무중단 점검·배포로 host를 옮길 때.** 운영자가 한 host의 spot과 actor를 다른 host로
+옮긴다. application이 개별 join을 요청하지 않아도 framework가 처리하며, 완료된 뒤
+원래 host를 종료할 수 있다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-graph LR
-    subgraph J["actor join → cross-node relocation"]
-        direction LR
-        A1["actor"] -->|"JoinSpot(spotId)"| S1["다른 node의<br/>User Spot"]
+flowchart TB
+  C["client · 다른 서비스<br/>요청 대상: &quot;room-42&quot;"]:::client
+  subgraph NA["node A — 점검·업데이트 대상"]
+    direction TB
+    subgraph SA1["User Spot &quot;room-42&quot;"]
+      A1(("actor P")):::moving
+      A2(("actor Q")):::moving
     end
-    subgraph H["host 점검 → Host Relocate"]
-        direction LR
-        N1["node A<br/>(점검 대상)"] -->|"RelocateAsync(...)"| N2["eligible node<br/>(relocation unit 이전)"]
+    subgraph SA2["User Spot &quot;room-77&quot;"]
+      A3(("actor R")):::moving
     end
+  end
+  subgraph NB["node B — 서비스 계속"]
+    direction TB
+    subgraph SB1["User Spot &quot;room-42&quot;"]
+      B1(("actor P")):::actor
+      B2(("actor Q")):::actor
+    end
+    subgraph SB2["User Spot &quot;room-77&quot;"]
+      B3(("actor R")):::actor
+    end
+  end
+  NA ==>|"Host Relocate — spot과 소속 actor를 통째로 이전"| NB
+  C -.->|"이전 전"| SA1
+  C ==>|"이전 후에도 같은 spot id"| SB1
+  classDef actor fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  classDef moving fill:#fff3e0,stroke:#e65100,stroke-width:3px,color:#bf360c
+  classDef client fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+  style NA fill:#eceff1,stroke:#546e7a,stroke-width:2px,color:#000000
+  style NB fill:#eceff1,stroke:#546e7a,stroke-width:2px,color:#000000
+  style SA1 fill:#ffffff,stroke:#1565c0,stroke-width:2px,color:#000000
+  style SA2 fill:#ffffff,stroke:#1565c0,stroke-width:2px,color:#000000
+  style SB1 fill:#ffffff,stroke:#1565c0,stroke-width:2px,color:#000000
+  style SB2 fill:#ffffff,stroke:#1565c0,stroke-width:2px,color:#000000
 ```
 
-두 경로 모두 **같은 relocation policy**를 따른다. spot·actor factory를 등록할 때 하나를
-고정하고, 실행 중에는 바꾸지 않는다.
+이것이 relocation의 핵심 쓸모다. 상태를 들고 있는 서버는 보통 그 상태 때문에 함부로
+내릴 수 없어서, 점검이나 배포를 하려면 접속을 끊고 기다리게 만들어야 한다. Host
+Relocate는 spot과 actor의 state를 그대로 유지하면서 다른 node로 옮겨 node A를 비운다.
+호출하는 쪽은 여전히 `room-42`라는 같은 id로 요청하므로 이전 사실을 알 필요가 없다.
+결과적으로 **stateful 서비스를 stateless 서비스처럼 무중단으로 교체**할 수 있다.
 
-| policy | target에서 하는 일 |
-| --- | --- |
-| `DisableRelocation()` | Cross-node 이동을 시작하기 전에 거부한다. 이 대상이 남아 있으면 host relocation을 완료할 수 없다 |
-| `RecreateOnRelocation()` | target에서 새 인스턴스를 다시 만든다. 대기 중이던 message·timer는 유지하되 application 상태는 복원하지 않는다 |
-| `PreserveStateWith<TAdapter>()` | adapter가 정한 방식으로 application 상태를 bytes로 담아 target에 그대로 복원한다 |
+두 경로 모두 **같은 relocation policy**를 따른다. 이동할 때 application 상태를 어떻게
+할지(옮기지 않음 · 새로 만듦 · 그대로 복원)를 spot·actor factory 등록에서 하나
+고정하며, 실행 중에는 바꾸지 않는다.
 
-```csharp
-mesh.Objects().Server()
-    .AddActorFactory<PlayerActor, PlayerActorFactory>(
-        "player",
-        factory => factory.PreserveStateWith<PlayerActorRelocationAdapter>());
-```
-
-`PerActor` User Spot은 Spot state를 옮기지 않으므로
-`RecreateOnRelocation()`만 사용할 수 있다. Member Actor의 policy는 각 Actor factory가
-따로 정한다.
-
-actor join 호출과 완료 결과 수신은 [07-actor-spot §5](07-actor-spot.ko.md), 무중단
-점검·배포로서의 Host Relocate는 [12-operations §2](12-operations.ko.md)가 다룬다.
+policy 종류와 선택 기준은 [07-actor-spot §1](07-actor-spot.ko.md), actor join 호출과
+완료 결과 수신은 [07-actor-spot §5](07-actor-spot.ko.md), 무중단 점검·배포로서의
+Host Relocate와 이전 단위 구분은 [12-operations §2](12-operations.ko.md)가 다룬다.
 
 ## 5. stream — 외부 client 연결
 
@@ -377,26 +252,41 @@ stream은 모바일·게임 같은 **외부 client와의 연결 지향 양방향
 연결 하나가 서버 측 **session** 객체에 대응한다. 연결이 끊긴 뒤 다시 연결하는 동작은
 client connector가 담당한다.
 
+session을 [actor](#3-actor--id로-식별되는-상태-객체)에 **bind**하면, 그 연결로 들어온
+메시지를 session이 직접 처리하지 않고 bind된 actor로 relay한다. 반대 방향도 같아서
+actor가 보내는 push는 그 actor에 bind된 session을 통해 client로 나간다.
+
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-graph LR
-    C["모바일·게임<br/>client"] <-->|"연결 (heartbeat·재연결 관리)"| SV["STREAM 서버"]
-    SV --- SE["session<br/>(연결 1개 = 객체 1개)"]
+flowchart LR
+  C["모바일·게임<br/>client"]:::client <-->|"연결<br/>(heartbeat 관리)"| SE["session<br/>연결 1개 = 객체 1개"]
+  SE -->|"packet relay"| A(("actor")):::actor
+  A -.->|"push"| SE
+  classDef actor fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  classDef client fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
 ```
 
-상세는 [09-stream](09-stream.ko.md).
+그래서 **연결을 받는 node와 도메인 로직을 실행하는 node를 나눌 수 있다.** session은
+gateway node에 두고 actor는 다른 node에 두어도, relay 경로는 framework가 유지한다.
+actor가 [relocation](#4-relocation--다른-node로-옮겨가기)으로 옮겨가도 같은 session이
+새 위치로 이어진다.
+
+상세는 [09-stream](09-stream.ko.md), session과 actor를 bind하는 방법은
+[08-actor-session](08-actor-session.ko.md)이 다룬다.
 
 ## 6. location — 주소 해석
 
-앱 코드는 가능하면 channel 이름 같은 논리 이름만 알고, 실제 peer 주소(`host:port`)는
-배포가 공유하는 **location store** 가 푼다. 각 서버는 시작할 때 자기 위치(descriptor row)를
-store에 자동 등록하고, client는 channel 이름만으로 store에서 상대를 찾아 연결한다.
-서버 구성이 바뀌면 연결도 갱신된다 — 사용법은 [10-location](10-location.ko.md), 계약은
-[공통 스펙](../../common/spec/21-location-runtime.ko.md)이 다룬다.
+Application 코드는 channel 이름 같은 논리 이름만 사용하고, 실제 peer 주소(`host:port`)는
+배포 전체가 공유하는 **location store**가 해석한다. 각 서버는 시작할 때 자기 위치를
+descriptor로 store에 등록하고, 호출하는 쪽은 논리 이름으로 store에서 대상을 찾아
+연결한다. 서버 구성이 바뀌면 연결도 갱신된다.
 
-store 없이 endpoint를 역할 등록에 직접 적는 수동 연결도 그대로 지원한다(개발·테스트·
-소규모 고정 배포, [05-channel-messaging §6](05-channel-messaging.ko.md)). 같은 MeshNode에서
-두 방식을 섞을 수는 없다.
+사용법은 [10-location](10-location.ko.md), 계약은
+[공통 스펙](../../common/spec/21-location-runtime.ko.md)이 정의한다.
+
+store 없이 endpoint를 등록에 직접 지정하는 수동 연결도 지원한다 — 개발·테스트와
+소규모 고정 배포에 사용한다([05-channel-messaging §6](05-channel-messaging.ko.md)).
+같은 MeshNode에서 두 방식을 함께 사용할 수는 없다.
 
 > **샘플에서 보기 — [TicTacToe](../../common/sample/tictactoe/README.ko.md).** 다섯 개념이
 > 한 샘플에 전부 나오는 가장 작은 예다. Play 서버의 등록 코드 한 곳에서 다섯이 만난다.
@@ -416,17 +306,28 @@ store 없이 endpoint를 역할 등록에 직접 적는 수동 연결도 그대�
 
 위 다섯 개념을 받치는 공통 동작이다. 여기서 한 번 짚고, 상세는 각 챕터가 소유한다.
 
-### 7.1 핸들러 모델 — 채널/HTTP 핸들러 vs SPOT 핸들러
+### 7.1 handler 모델 — channel handler vs spot handler
 
-핸들러는 실행 컨텍스트에 따라 두 종류로 나뉘고, 구조와 수명이 완전히 다르다.
+Framework가 dispatch하는 handler는 실행 문맥에 따라 세 종류로 나뉘고, 구조와 수명이
+다르다.
 
-- **채널/HTTP 핸들러** — 독립 class다. 의존성은 **생성자 주입**으로 받는다.
-  서로 다른 요청이 동시에 실행될 수 있으므로 가변 도메인 상태를 핸들러 멤버에
-  두지 않는다. Application이 DI에 handler를 직접 등록했다면 그 등록의 lifetime을
-  따른다.
-- **SPOT 핸들러** — spot 클래스의 메서드가 아니라, 그 spot에 **바인딩된 별도 class**다.
-  그 spot이 시작할 때 자기 핸들러를 등록한다. Direct handler와 timer는 Spot queue에서
-  직렬 실행한다. Actor handler와 함께 직렬 실행할지는 execution mode가 정한다.
+- **channel handler** — 독립 class다. 의존성은 **생성자 주입**으로 받는다. 서로 다른
+  요청이 동시에 실행될 수 있으므로 가변 도메인 상태를 handler 멤버에 두지 않는다.
+  Handler와 scoped dependency는 dispatch가 끝날 때까지 유지된다.
+- **spot handler** — spot 클래스의 메서드가 아니라 그 Spot에 바인딩된 별도 class다.
+  Spot activation에서 한 번 만들고 닫히거나 relocation될 때 정리한다. Direct handler와
+  timer는 Spot queue에서 직렬 실행한다.
+- **actor handler** — 해당 Actor activation에서 한 번 만들고 leave·destroy·relocation
+  때 정리한다. 서로 다른 Actor는 handler instance와 scoped dependency를 공유하지 않는다.
+
+Handler type의 DI 등록 lifetime으로 이 수명을 바꿀 수 없으며 별도 lifetime option도
+없다. 생성자 dependency만 각 dispatch·Spot·Actor scope에서 resolve한다. 복구해야 하는
+상태는 handler field가 아니라 Spot 또는 Actor에 둔다.
+
+> Framework는 HTTP 요청을 처리하지 않는다. `ASP.NET Core`의 endpoint·middleware가
+> HTTP를 맡고, channel handler는 그와 별개인 서버 간 메시지 dispatch 경로다. class를
+> 만들어 DI로 의존성을 받고 등록해 두면 runtime이 호출한다는 **작성 방식**이 controller
+> action과 닮았을 뿐이다.
 
 ```csharp
 // Spot handler는 대상 spot 타입을 첫 제네릭 인자로 받는 별도 class다.
@@ -450,17 +351,18 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot
 ```
 
 어느 작업이 어느 작업과 동시에 실행되는지는 spot 종류와 execution mode가 정한다 —
-[실행 모델](#22-실행-모델--무엇이-무엇과-동시에-실행되나) 참고.
+[06-spot §2.1](06-spot.ko.md#21-실행-모델--무엇이-무엇과-동시에-실행되나) 참고.
 
 직렬 실행은 스레드 하나를 계속 점유한다는 뜻이 아니다. Handler가 `await`에 도달하면
-실행 스레드는 다른 일을 처리할 수 있지만, 해당 줄의 turn은 handler가 완료될 때까지
+실행 스레드는 다른 일을 처리할 수 있지만, 해당 turn은 handler가 완료될 때까지
 유지된다. `SpotWide`에서는 그동안 같은 spot의 다음 callback을 시작하지 않는다. 오래
 걸리는 I/O를 기다리는 동안 다음 turn을 실행해야 한다면 [06-spot](06-spot.ko.md)의
 `Yield` 계약을 사용한다.
 
 가변 도메인 상태(게임 룸 등)는 **spot**, 불변 구성(topology)은 싱글톤 서비스, 공유
 인프라(캐시·카운터)는 싱글톤 + 자체 동기화에 둔다. Spot handler 작성과 직렬 실행
-보장은 [06-spot](06-spot.ko.md), 채널 핸들러 노출은 [05-channel-messaging](05-channel-messaging.ko.md).
+보장은 [06-spot](06-spot.ko.md), channel handler 노출은
+[05-channel-messaging](05-channel-messaging.ko.md)이 다룬다.
 
 **handler 노출은 명시적이다.** Assembly scan은 handler type을 발견하고, typed registration은
 그 handler를 어느 `MeshName`과 `ChannelName`에 노출할지 고정한다.
@@ -498,10 +400,10 @@ public async ValueTask<CreateGameReply> HandleAsync(
 }
 ```
 
-채널 핸들러는 채널별 async 수신 루프에서, HTTP 핸들러는 `ASP.NET Core` 요청
-파이프라인에서 실행된다. 핸들러가 `await`에 도달하면 async 상태 머신만 멈추고(suspend)
-실행 스레드는 풀로 돌아가 다른 일을 처리한다. Spot handler의 logical turn은 그대로
-유지되므로 같은 lane은 그 handler 완료 전까지 다음 callback을 시작하지 않는다.
+Channel handler는 channel별 async 수신 루프에서 실행된다. Handler가 `await`에
+도달하면 async 상태 머신만 멈추고(suspend) 실행 스레드는 풀로 돌아가 다른 일을
+처리한다. Spot handler의 logical turn은 그대로 유지되므로 같은 lane은 그 handler
+완료 전까지 다음 callback을 시작하지 않는다.
 
 아래 타임라인은 같은 흐름을 시간순으로 본 것이다. A가 `await`로 suspend 되면 같은
 스레드가 즉시 B를 처리하고, A는 응답이 오면 resume 된다.

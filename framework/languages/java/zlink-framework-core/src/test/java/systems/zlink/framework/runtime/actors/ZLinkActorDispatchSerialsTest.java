@@ -2,10 +2,13 @@ package systems.zlink.framework.runtime.actors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 final class ZLinkActorDispatchSerialsTest {
@@ -58,5 +61,57 @@ final class ZLinkActorDispatchSerialsTest {
         assertFalse(barrier.isDone());
         actorB.complete(null);
         barrier.join();
+    }
+
+    @Test
+    void teardownWaitsForAcceptedTurnsAndClosesAdmission() {
+        ZLinkActorDispatchSerials dispatches = new ZLinkActorDispatchSerials();
+        CompletableFuture<Void> release = new CompletableFuture<>();
+        AtomicInteger cleanupCount = new AtomicInteger();
+
+        CompletionStage<Void> active = dispatches.enqueue(
+            dispatches.prepare("actor-1"),
+            () -> release);
+        CompletionStage<Void> accepted = dispatches.enqueue(
+            dispatches.prepare("actor-1"),
+            () -> CompletableFuture.completedFuture(null));
+        CompletionStage<Void> teardown = dispatches.beginTeardown(
+            "actor-1",
+            () -> {
+                cleanupCount.incrementAndGet();
+                return CompletableFuture.completedFuture(null);
+            });
+
+        assertFalse(teardown.toCompletableFuture().isDone());
+        assertThrows(
+            IllegalStateException.class,
+            () -> dispatches.prepare("actor-1"));
+        assertEquals(0, cleanupCount.get());
+
+        release.complete(null);
+        CompletableFuture.allOf(
+            active.toCompletableFuture(),
+            accepted.toCompletableFuture(),
+            teardown.toCompletableFuture()).join();
+        assertEquals(1, cleanupCount.get());
+    }
+
+    @Test
+    void teardownStartedInsideCurrentTurnDoesNotWaitForItself() {
+        ZLinkActorDispatchSerials dispatches = new ZLinkActorDispatchSerials();
+        AtomicInteger cleanupCount = new AtomicInteger();
+
+        CompletionStage<Void> active = dispatches.enqueue(
+            dispatches.prepare("actor-1"),
+            () -> dispatches.beginTeardown(
+                "actor-1",
+                () -> {
+                    cleanupCount.incrementAndGet();
+                    return CompletableFuture.completedFuture(null);
+                }));
+
+        active.toCompletableFuture().join();
+        dispatches.awaitQuiescence().toCompletableFuture().join();
+        assertEquals(1, cleanupCount.get());
     }
 }

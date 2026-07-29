@@ -3,6 +3,7 @@
 
 #include "actor_transfer_coordinator.hpp"
 #include "runtime/channels/channel_runtime.hpp"
+#include "runtime/configuration/service_scope.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
 #include "runtime/execution/serial_execution_queue.hpp"
 #include "runtime/locations/location_lifecycle.hpp"
@@ -79,6 +80,7 @@ class spot_node_builder_state_t
     dispatch_options_t dispatch;
     runtime::location_lifecycle_t *location_lifecycle = nullptr;
     runtime::spot_address_resolver_t *spot_location_resolver = nullptr;
+    std::optional<service_provider_t> root_services;
     std::shared_ptr<std::atomic_bool> drain_flag;
     std::shared_ptr<monitoring_runtime_state_t> monitoring;
     std::chrono::milliseconds one_way_send_timeout{std::chrono::seconds (1)};
@@ -250,6 +252,10 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
     void detach_application_instance (bool notify_closing)
     {
         auto lifetime_guard = shared_from_this ();
+        {
+            std::lock_guard<std::mutex> callback_lock (callback_mutex);
+            callback_admission_closed = true;
+        }
         auto instance = std::move (spot_instance);
         std::exception_ptr callback_error;
         if (notify_closing && lifecycle.on_closing && instance) {
@@ -261,8 +267,13 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
             }
         }
         cancel_timers ();
-        node.reset ();
+        timer_handler_instances.clear ();
         instance.reset ();
+        if (activation_scope) {
+            activation_scope->close ();
+            activation_scope.reset ();
+        }
+        node.reset ();
         if (callback_error) {
             std::rethrow_exception (callback_error);
         }
@@ -280,7 +291,13 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
         }
         {
             std::lock_guard<std::mutex> callback_lock (callback_mutex);
+            if (callback_depth != 0) {
+                close_requested = true;
+                return true;
+            }
+            callback_admission_closed = true;
             close_requested = false;
+            closed = true;
         }
         const auto rid = std::string (spot_id);
         if (owner->location_lifecycle) {
@@ -297,12 +314,11 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
                 break;
             }
         }
-        closed = true;
         detach_application_instance (true);
         return true;
     }
 
-    void enter_callback ();
+    bool enter_callback ();
     void leave_callback ();
     bool is_current_callback_thread () const;
 
@@ -333,6 +349,8 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
     std::vector<std::string> ordering_log;
     std::weak_ptr<service::spot_t> native_spot;
     std::vector<std::shared_ptr<timer_state_t>> timers;
+    std::shared_ptr<service_scope_t> activation_scope;
+    std::map<std::type_index, std::shared_ptr<void>> timer_handler_instances;
     std::shared_ptr<void> spot_instance;
     std::shared_ptr<runtime::offload_executor_t> serial_executor;
     std::shared_ptr<runtime::serial_execution_queue_t> serial_queue;
@@ -350,6 +368,7 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
     std::map<std::type_index, std::function<task_t<void> (void *, void *)>>
       on_disconnect_actor_callbacks;
     bool close_requested = false;
+    bool callback_admission_closed = false;
     bool closed = false;
     std::size_t actor_count = 0;
     mutable std::mutex callback_mutex;
@@ -470,6 +489,7 @@ class spot_node_runtime_t
                                                 std::uint64_t membership_epoch);
     void bind_location_lifecycle (runtime::location_lifecycle_t &lifecycle);
     void bind_spot_location_resolver (runtime::spot_address_resolver_t &resolver);
+    void bind_service_provider (service_provider_t &services);
     void bind_drain_flag (std::shared_ptr<std::atomic_bool> flag);
     /* Entry spots are host infrastructure and are excluded. */
     std::size_t active_user_spot_count () const;

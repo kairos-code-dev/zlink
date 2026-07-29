@@ -20,6 +20,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkSpotEvent;
 import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
+import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwner;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
@@ -32,7 +33,7 @@ import systems.zlink.framework.spots.ZLinkTimerTick;
 final class ZLinkSpotTimerRegistry implements AutoCloseable {
     private final String spotId;
     private final ScheduledExecutorService executor;
-    private final ZLinkHandlerActivator handlerFactory;
+    private final ZLinkHandlerInstanceOwner handlers;
     private final List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers;
     private final ZLinkRuntimeEventDispatcher eventDispatcher;
     private final String sourceName;
@@ -49,9 +50,27 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         ZLinkRuntimeEventDispatcher eventDispatcher,
         String sourceName,
         Dispatch dispatch) {
+        this(
+            spotId,
+            executor,
+            new ZLinkHandlerInstanceOwner(handlerFactory),
+            suspendHandlerInvokers,
+            eventDispatcher,
+            sourceName,
+            dispatch);
+    }
+
+    ZLinkSpotTimerRegistry(
+        String spotId,
+        ScheduledExecutorService executor,
+        ZLinkHandlerInstanceOwner handlers,
+        List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers,
+        ZLinkRuntimeEventDispatcher eventDispatcher,
+        String sourceName,
+        Dispatch dispatch) {
         this.spotId = spotId;
         this.executor = executor;
-        this.handlerFactory = handlerFactory;
+        this.handlers = handlers;
         this.suspendHandlerInvokers = suspendHandlerInvokers;
         this.eventDispatcher = eventDispatcher;
         this.sourceName = sourceName;
@@ -160,7 +179,7 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
     @SuppressWarnings({"rawtypes", "unchecked"})
     private CompletionStage<Void> invokeHandler(Class<?> handlerType, ZLinkTimerTick tick) {
         try {
-            Object handler = handlerFactory.create(handlerType);
+            Object handler = handlers.instance(handlerType);
             return ZLinkHandlerMethodInvoker
                 .invokeHandler(
                     handler,

@@ -8,6 +8,7 @@ internal sealed partial class ZLinkActorSessionManager(
     IZLinkBoundSessionService boundSessionService)
 {
     private readonly ZLinkActorSessionRegistry _actorSessions = new(
+        services,
         runtime.LogActorHandoff,
         runtime.Registration.DefaultRequestTimeout
         + runtime.Registration.DefaultRequestTimeout);
@@ -344,9 +345,9 @@ internal sealed partial class ZLinkActorSessionManager(
         return _actorSessions.GetOrCreate(actorId);
     }
 
-    internal void ResetGeneration()
+    internal ValueTask ResetGenerationAsync()
     {
-        _actorSessions.ResetGeneration();
+        return _actorSessions.ResetGenerationAsync();
     }
 
     internal ValueTask ResetBoundSessionGenerationAsync() =>

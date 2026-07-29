@@ -21,7 +21,7 @@ import {
 import { validateTimerRegistration } from '../../contracts/Configuration/TimerRegistrationValidator';
 import { throwIfAborted } from '../abort';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
-import { createProviderInstance } from './spot-provider';
+import { resolveLifecycleHandler } from '../handlers/handler-instance-scope';
 import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
 import type { ZLinkExecutionBarrier } from '../execution';
 
@@ -81,7 +81,7 @@ export class ZLinkSpotTimerRegistry {
   ): Promise<ZLinkTimer> {
     validateTimerRegistration(name, periodMs, options);
     throwIfAborted(signal);
-    const handler = await createProviderInstance(handlerType, providerResolver);
+    const handler = await resolveLifecycleHandler(spot, handlerType, providerResolver);
     const previous = this.timers.get(name);
     if (previous !== undefined) {
       this.timers.delete(name);

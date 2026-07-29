@@ -233,6 +233,11 @@ Framework는 Actor type, message kind와 packet name으로 handler를 선택한�
 Actor handler namespace에 같은 key를 두 번 등록하면 startup 오류다.
 
 Handler type과 signature는 언어별 공개 interface 문서가 정의한다.
+Handler instance와 scoped dependency는 hosting Spot이 아니라 해당 Actor activation이
+소유한다. 서로 다른 Actor가 같은 handler instance를 공유하지 않으며 relocation과
+cross-node Join 뒤 target Actor activation에서 다시 만든다. 자세한 수명 계약은
+[Framework API의 handler 수명](06-framework-api.ko.md#82-handler-실행-객체와-dependency-수명)을
+따른다.
 
 Actor와 Actor Context는 composition 관계다. Framework는 factory를 호출하기 전에 `ActorId`,
 `ObjectGeneration`, current `MeshName`, nullable current `SpotId`와 bound-session capability를 가진 exact

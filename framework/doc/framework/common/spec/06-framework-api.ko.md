@@ -254,12 +254,52 @@ Handler filter는 ChannelName의 send/request dispatch에만 적용한다. Node 
 Logical Multicast와 classic fanout dispatch에는 적용하지 않는다. Filter는 root에 등록한 순서대로 handler
 앞에서 실행되며, 각 filter는 `next`를 최대 한 번 호출할 수 있다. `next`를 호출하면 남은 filter와 handler를
 실행하고, 호출하지 않으면 해당 dispatch를 종료한다. Filter 또는 handler에서 발생한 예외는 같은 dispatch
-실패 처리 규칙을 따른다. 각 filter는 해당 dispatch의 DI scope에서 resolve하며 handler와 같은 scoped
-dependency를 사용한다. Root singleton으로 한 번 resolve해 여러 dispatch에서 공유하지 않는다.
+실패 처리 규칙을 따른다. Channel handler와 각 filter는 해당 dispatch의 DI scope에서 resolve하며 같은
+scoped dependency를 사용한다. Root singleton이나 object activation scope에서 여러 dispatch가 공유하지
+않는다.
 
 언어별 exact interface는 filter context와 `next`의 구체적인 타입, 비동기 반환 타입과 short-circuit 결과
 표현을 소유한다. 적용 범위와 실행 순서는 이 절이 소유하므로 언어별 구현이 다른 dispatch owner까지 filter를
 임의로 확장하면 안 된다.
+
+### 8.2 Handler 실행 객체와 dependency 수명
+
+Handler 종류에 따라 실행 객체와 dependency의 소유 범위를 정한다.
+
+| Handler 종류 | 실행 객체와 dependency 소유 범위 |
+|---|---|
+| Channel handler와 filter | dispatch 시작부터 terminal completion까지 |
+| Spot packet·request·subscription·timer handler | 해당 Spot activation 시작부터 종료까지 |
+| Actor send·request handler | 해당 Actor activation 시작부터 종료까지 |
+
+별도 handler class를 사용하는 언어는 Spot과 Actor handler instance를 해당 activation에서
+한 번 만들고 이후 dispatch에서 재사용한다. Handler type을 application DI에서 직접
+resolve하지 않으므로 application이 handler type에 지정한 singleton·scoped·transient
+설정으로 이 수명을 바꿀 수 없다. 별도의 handler lifetime option도 제공하지 않는다.
+
+C++처럼 handler를 Spot member function으로 표현하는 언어는 별도 handler object를
+추가하지 않는다. Spot method는 Actor별 mutable state를 Spot field에 저장하지 않아야
+하며 Actor별 상태와 실행 resource는 Actor activation이 소유한다. 이 표현 차이가 서로
+다른 Actor 사이의 mutable handler state나 scoped dependency 공유를 허용하지 않는다.
+
+Spot handler의 생성자 dependency는 Spot activation scope에서 resolve한다. Actor
+handler의 생성자 dependency는 Actor activation scope에서 resolve한다. 서로 다른
+Actor는 같은 mutable handler state나 scoped dependency를 공유하지 않는다.
+`SpotWide`와 `PerActor`도 이 수명 규칙을 바꾸지 않는다.
+
+복구해야 하는 application state는 handler field가 아니라 Spot 또는 Actor가 소유한다.
+Handler instance와 dependency는 relocation payload에 넣지 않는다. Spot relocation은
+source Spot handler와 scope를 정리하고 target Spot activation에서 다시 만든다. Actor
+relocation과 cross-node Join은 source Actor handler와 scope를 정리하고 target Actor
+activation에서 다시 만든다. Same-node Join은 Actor activation을 유지하므로 handler와
+scope도 유지한다. Leave·destroy·close에서도 Framework가 해당 handler와 scope를 정확히
+한 번 정리한다.
+
+Activation을 끝낼 때는 새 dispatch를 먼저 막는다. 이미 queue가 받아들였거나 실행 중인
+handler가 terminal completion에 도달한 뒤 handler와 dependency scope를 정리한다. 비동기
+handler가 실행 중인데 dependency를 먼저 정리하거나, 종료가 시작된 activation에서 handler를
+다시 만들면 안 된다. Handler 자신이 종료 operation을 시작하는 경우에도 현재 dispatch를
+기다리는 순환 대기가 생기지 않아야 한다.
 
 Framework scheduler는 ready owner의 bounded mailbox를 drain하고 Node, Spot과 Actor handler를 해당
 application 실행 문맥에서 호출한다. Transport readiness는 application callback 인자가 아니다. Completion,

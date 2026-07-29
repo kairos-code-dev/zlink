@@ -76,13 +76,10 @@ internal sealed partial class ZLinkEntrySpotActivation :
                 EntrySpot,
                 SpotNodeName,
                 _runtime.Registration.Codecs,
-                _runtime.Registration.StreamCompressionCodec);
+                _runtime.Registration.StreamCompressionCodec,
+                actorHandlerInstances: ResolveActorHandlerInstances);
             _handlerExecutor = new ZLinkEntrySpotHandlerExecutor(
-                services,
-                EntrySpot,
-                SpotNodeName,
-                _runtime.Registration.Codecs,
-                _runtime.Registration.StreamCompressionCodec);
+                _invoker);
             _actorHandlers = new ZLinkSpotActorHandlerRegistry(
                 ZLinkSpotActorHandlerSurface.EntrySpot,
                 EntrySpot.GetType());
@@ -96,6 +93,13 @@ internal sealed partial class ZLinkEntrySpotActivation :
     }
 
     public IZLinkEntrySpot EntrySpot { get; }
+
+    private ZLinkScopedHandlerInstanceOwner ResolveActorHandlerInstances(
+        IZLinkActor actor)
+    {
+        var state = _runtime.GetOrCreateActorState(actor.Context.ActorId);
+        return state.HandlerInstances;
+    }
 
     public IZLinkRuntimeFailureReporter ErrorSink => _runtime.ErrorSink;
 

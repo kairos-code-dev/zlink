@@ -50,6 +50,8 @@ timer_t spot_context_t::add_timer_erased (std::string name,
                                           std::chrono::milliseconds period,
                                           timer_options_t options,
                                           std::type_index handler_type,
+                                          std::function<std::shared_ptr<void> (
+                                            service_provider_t *)> handler_factory,
                                           detail::timer_state_t::handler_invoker_t handler_invoker)
 {
     if (name.empty ()) {
@@ -80,6 +82,25 @@ timer_t spot_context_t::add_timer_erased (std::string name,
     state->period = period;
     state->options = options;
     state->handler_type = handler_type;
+    const auto existing_handler =
+      _state->timer_handler_instances.find (handler_type);
+    if (existing_handler != _state->timer_handler_instances.end ()) {
+        state->handler_instance = existing_handler->second;
+    } else {
+        auto *activation_services =
+          _state->activation_scope
+            ? &_state->activation_scope->provider ()
+            : nullptr;
+        auto handler_instance = handler_factory (activation_services);
+        if (!handler_instance) {
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "SPOT timer handler factory returned null");
+        }
+        _state->timer_handler_instances.emplace (
+          handler_type, handler_instance);
+        state->handler_instance = handler_instance;
+    }
     state->handler_invoker = std::move (handler_invoker);
     if (_state->execution_mode == user_spot_execution_mode_t::per_actor
         && _state->serial_executor) {
@@ -218,7 +239,12 @@ timer_runtime_t::dispatch_fire_count (timer_t &timer,
     }
 
     timer._state->running = true;
-    _context->enter_callback ();
+    if (!_context->enter_callback ()) {
+        timer._state->running = false;
+        return detail::boundary_failure<timer_tick_t> (
+          detail::boundary_error_t::closed,
+          "SPOT timer activation is closed");
+    }
     auto reset_running = [&timer, this] {
         timer._state->running = false;
         _context->leave_callback ();
@@ -283,7 +309,13 @@ task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (timer_t &timer,
                                                    "SPOT timer context is not configured");
     }
 
-    context->enter_callback ();
+    if (!context->enter_callback ()) {
+        std::lock_guard lock (state->mutex);
+        state->running = false;
+        co_return detail::boundary_failure<timer_tick_t> (
+          detail::boundary_error_t::closed,
+          "SPOT timer activation is closed");
+    }
     auto reset_running = [context, state] {
         bool post_pending = false;
         std::uint64_t pending_fire_count = 0;
@@ -309,7 +341,14 @@ task_t<timer_tick_t> timer_runtime_t::dispatch_fire_count_async (timer_t &timer,
         auto timer_flow = framework::runtime::flow_context_t::enter_current_or_create (
           flow_origin_t::timer,
           message_flow_tracer_t (context->channel_runtime->dispatch).capture_enabled ());
+        auto handler_instance = state->handler_instance.lock ();
+        if (!handler_instance) {
+            throw framework_exception_t (
+              framework_error_kind_t::request_protocol_error,
+              "SPOT timer handler activation is no longer available");
+        }
         auto handler_task = state->handler_invoker (spot_keep_alive.get (),
+                                                    handler_instance.get (),
                                                     *context->channel_runtime->serializers, tick);
         (void) co_await handler_task;
         reset_running ();

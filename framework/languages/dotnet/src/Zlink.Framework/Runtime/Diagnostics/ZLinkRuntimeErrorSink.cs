@@ -2,8 +2,15 @@ namespace Zlink.Framework.Runtime.Diagnostics;
 
 internal sealed class ZLinkRuntimeErrorSink : IZLinkRuntimeFailureReporter, IDisposable
 {
+    private readonly Action<Exception> _processFailure;
     private Action<Exception>? _unhandledCallbackException;
     private int _disposed;
+
+    public ZLinkRuntimeErrorSink(
+        Action<Exception>? processFailure = null)
+    {
+        _processFailure = processFailure ?? ReportProcessFailure;
+    }
 
     public event Action<Exception> UnhandledCallbackException
     {
@@ -33,6 +40,34 @@ internal sealed class ZLinkRuntimeErrorSink : IZLinkRuntimeFailureReporter, IDis
         ZLinkFrameworkDebugLog.UnhandledCallbackFailure(exception);
         NotifyUnhandledCallbackException(exception);
     }
+
+    public Action<Exception> CaptureGenerationReporter()
+    {
+        var callback = _unhandledCallbackException;
+        return exception =>
+        {
+            ZLinkFrameworkDebugLog.UnhandledCallbackFailure(exception);
+            try
+            {
+                _processFailure(exception);
+            }
+            catch
+            {
+            }
+            try
+            {
+                callback?.Invoke(exception);
+            }
+            catch
+            {
+            }
+        };
+    }
+
+    private static void ReportProcessFailure(Exception exception) =>
+        System.Diagnostics.Trace.TraceError(
+            "ZLink detached generation cleanup failed: {0}",
+            exception);
 
     private void NotifyUnhandledCallbackException(Exception exception)
     {

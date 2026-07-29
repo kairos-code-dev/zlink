@@ -55,7 +55,9 @@ internal sealed class ZLinkActorSessionRegistry(
         }
     }
 
-    public async ValueTask ResetGenerationAsync()
+    public async ValueTask ResetGenerationAsync(
+        CancellationToken cancellationToken = default,
+        Action<Exception>? detachedCleanupFailure = null)
     {
         ZLinkActorRuntimeState[] states;
         lock (_gate)
@@ -65,8 +67,44 @@ internal sealed class ZLinkActorSessionRegistry(
         }
 
         foreach (var state in states)
-            await state.InvalidateRuntimeGenerationAfterDispatchesAsync()
-                .ConfigureAwait(false);
+            state.FenceRuntimeGeneration();
+        var cleanup = Task.WhenAll(
+            states.Select(
+                static state => state
+                    .InvalidateRuntimeGenerationAfterDispatchesAsync()
+                    .AsTask()));
+        if (!cancellationToken.CanBeCanceled)
+        {
+            await cleanup.ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            await cleanup.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            _ = ObserveDetachedCleanupAsync(
+                cleanup,
+                detachedCleanupFailure);
+            throw;
+        }
+    }
+
+    private static async Task ObserveDetachedCleanupAsync(
+        Task cleanup,
+        Action<Exception>? reportFailure)
+    {
+        try
+        {
+            await cleanup.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            reportFailure?.Invoke(exception);
+        }
     }
 
     public ZLinkActorRuntimeState[] Snapshot()

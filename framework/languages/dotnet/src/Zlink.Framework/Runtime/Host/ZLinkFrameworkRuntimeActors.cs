@@ -3883,15 +3883,52 @@ internal sealed partial class ZLinkFrameworkRuntime
             .TryGetBoundSessionForOutbound(out session);
     }
 
-    private async ValueTask ResetActorRuntimeGenerationAsync()
+    private async ValueTask ResetActorRuntimeGenerationAsync(
+        CancellationToken cancellationToken = default,
+        Action<Exception>? detachedCleanupFailure = null)
     {
-        await _actorSessionManager.ResetGenerationAsync().ConfigureAwait(false);
+        var failures = new List<Exception>();
+        await CaptureAsync(
+                () => _actorSessionManager.ResetGenerationAsync(
+                    cancellationToken,
+                    detachedCleanupFailure))
+            .ConfigureAwait(false);
         using var cleanupDeadline = new CancellationTokenSource(
             TimeSpan.FromSeconds(5));
-        await _actorHandoffAdmissions.ResetGenerationAsync(
-                cleanupDeadline.Token)
+        await CaptureAsync(
+                () => _actorHandoffAdmissions.ResetGenerationAsync(
+                    cleanupDeadline.Token))
             .ConfigureAwait(false);
-        _actorBoundSessionCoordinator.ResetGeneration();
+        await CaptureAsync(
+                _actorSessionManager.ResetBoundSessionGenerationAsync)
+            .ConfigureAwait(false);
+        Capture(_actorBoundSessionCoordinator.ResetGeneration);
+        ThrowCleanupFailures(failures);
+        return;
+
+        async ValueTask CaptureAsync(Func<ValueTask> cleanup)
+        {
+            try
+            {
+                await cleanup().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        void Capture(Action cleanup)
+        {
+            try
+            {
+                cleanup();
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
     }
 
     internal bool SendActorBoundSession(

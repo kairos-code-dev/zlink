@@ -372,6 +372,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         if (AmbientOperation.Value is { IsActive: true } current
             && ReferenceEquals(current.Runtime, this))
         {
+            EnsureAmbientOperationCurrent(current);
             if (!countAsRequest) return new ZLinkRuntimeOperationLease();
             lock (_operationGate) _activeRequests++;
             return new ZLinkRuntimeOperationLease(this, countsRequest: true);
@@ -387,6 +388,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             || !ReferenceEquals(current.Runtime, this))
             throw new InvalidOperationException(
                 "Background work can retain only the current runtime operation.");
+        EnsureAmbientOperationCurrent(current);
 
         lock (_operationGate)
         {
@@ -405,6 +407,11 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         if (AmbientOperation.Value is { IsActive: true } current
             && ReferenceEquals(current.Runtime, this))
         {
+            if (!IsAmbientOperationCurrent(current))
+            {
+                lease = default!;
+                return false;
+            }
             if (!countAsRequest)
             {
                 lease = new ZLinkRuntimeOperationLease();
@@ -620,12 +627,21 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             try
             {
                 lock (_operationGate) _acceptingOperations = false;
+                stateToDispose?.FenceOperations();
                 stateToDispose?.CancelActiveSpotOperations();
                 stateToDispose?.ForceStopStreamSessions();
                 var failures = await CleanupRuntimeGenerationAsync(
                         stateToDispose,
                         cancellationToken)
                     .ConfigureAwait(false);
+                if (cancellationToken.IsCancellationRequested
+                    && failures.Count > 0)
+                    throw new OperationCanceledException(
+                        "Framework force-stop exceeded its cleanup deadline.",
+                        failures.Count == 1
+                            ? failures[0]
+                            : new AggregateException(failures),
+                        cancellationToken);
                 ThrowCleanupFailures(failures);
             }
             finally
@@ -668,7 +684,14 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         if (workerPool is not null) Capture(workerPool.RequestStop);
         if (_locationLifecycle is not null)
             await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);
-        await CaptureAsync(_actorSessionManager.ResetBoundSessionGenerationAsync).ConfigureAwait(false);
+        var generationCleanupReporter =
+            (state?.ErrorSink ?? Volatile.Read(ref _generationErrorSink))
+            ?.CaptureGenerationReporter();
+        await CaptureAsync(
+                () => ResetActorRuntimeGenerationAsync(
+                    forceStopToken,
+                    generationCleanupReporter))
+            .ConfigureAwait(false);
         if (state is not null)
             await CaptureAsync(forceStopToken.CanBeCanceled
                     ? () => state.ForceStopAsync(forceStopToken)
@@ -676,8 +699,6 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                 .ConfigureAwait(false);
         Capture(_standaloneActorRelocationRuntime.ReleaseRetainedPermits);
         if (state is not null) DetachErrorSink(state.ErrorSink);
-        await CaptureAsync(ResetActorRuntimeGenerationAsync)
-            .ConfigureAwait(false);
         if (_locationLifecycle is not null)
             await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);
 
@@ -772,6 +793,19 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         var ownership = new ZLinkRuntimeOperationOwnership(this, state);
         AmbientOperation.Value = ownership;
         return new ZLinkRuntimeOperationLease(this, ownership, previous, countAsRequest);
+    }
+
+    private bool IsAmbientOperationCurrent(
+        ZLinkRuntimeOperationOwnership ownership) =>
+        !ownership.State.IsOperationFenced
+        && ReferenceEquals(ownership.State, Volatile.Read(ref _state));
+
+    private void EnsureAmbientOperationCurrent(
+        ZLinkRuntimeOperationOwnership ownership)
+    {
+        if (!IsAmbientOperationCurrent(ownership))
+            throw new InvalidOperationException(
+                "The framework runtime operation belongs to a stopped generation.");
     }
 
     private void ExitOperation(bool countsOperation, bool countsRequest)

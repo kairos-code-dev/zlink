@@ -45,6 +45,7 @@ internal sealed class ZLinkActorContext(
         ArgumentNullException.ThrowIfNull(request);
         return ZLinkActorJoinCall.ForSpot(
             runtime,
+            state,
             CurrentActor,
             spotId,
             request);
@@ -56,6 +57,7 @@ internal sealed class ZLinkActorContext(
         ArgumentNullException.ThrowIfNull(request);
         return ZLinkActorJoinCall.ForEntrySpot(
             runtime,
+            state,
             CurrentActor,
             request);
     }
@@ -66,6 +68,7 @@ internal sealed class ZLinkActorJoinCall :
     IZLinkActorJoinEntrySpotCall
 {
     private readonly IZLinkActor _actor;
+    private readonly ZLinkActorRuntimeState _actorState;
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly ZLinkMessage _request;
     private readonly string? _targetSpotId;
@@ -74,11 +77,13 @@ internal sealed class ZLinkActorJoinCall :
 
     private ZLinkActorJoinCall(
         ZLinkFrameworkRuntime runtime,
+        ZLinkActorRuntimeState actorState,
         IZLinkActor actor,
         string? targetSpotId,
         ZLinkMessage request)
     {
         _runtime = runtime;
+        _actorState = actorState;
         _actor = actor;
         _targetSpotId = targetSpotId;
         _request = request;
@@ -86,20 +91,31 @@ internal sealed class ZLinkActorJoinCall :
 
     public static IZLinkActorJoinSpotCall ForSpot(
         ZLinkFrameworkRuntime runtime,
+        ZLinkActorRuntimeState actorState,
         IZLinkActor actor,
         string spotId,
         ZLinkMessage request)
     {
         return new ZLinkActorJoinCall(
-            runtime, actor, ZLinkSpotId.Require(spotId, nameof(spotId)), request);
+            runtime,
+            actorState,
+            actor,
+            ZLinkSpotId.Require(spotId, nameof(spotId)),
+            request);
     }
 
     public static IZLinkActorJoinEntrySpotCall ForEntrySpot(
         ZLinkFrameworkRuntime runtime,
+        ZLinkActorRuntimeState actorState,
         IZLinkActor actor,
         ZLinkMessage request)
     {
-        return new ZLinkActorJoinCall(runtime, actor, null, request);
+        return new ZLinkActorJoinCall(
+            runtime,
+            actorState,
+            actor,
+            null,
+            request);
     }
 
     IZLinkActorJoinSpotCall IZLinkActorJoinSpotCall.Timeout(TimeSpan timeout)
@@ -116,6 +132,7 @@ internal sealed class ZLinkActorJoinCall :
 
     public void Defer()
     {
+        _actorState.EnsureContextValid();
         if (Interlocked.Exchange(ref _submitted, 1) != 0)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.InvalidOperation,

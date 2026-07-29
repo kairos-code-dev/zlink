@@ -40,6 +40,7 @@ internal sealed class ZLinkActorRuntimeState(
     private readonly IServiceProvider _services = services ?? EmptyServices;
     private ZLinkActorHandlerActivation? _handlerActivation;
     private bool _handlerActivationClosed;
+    private int _contextInvalidated;
 
     public string ActorId { get; } = actorId;
 
@@ -144,7 +145,11 @@ internal sealed class ZLinkActorRuntimeState(
 
     public bool IsConfigured { get; private set; }
 
-    public bool ContextInvalidated { get; private set; }
+    public bool ContextInvalidated =>
+        Volatile.Read(ref _contextInvalidated) != 0;
+
+    internal void FenceRuntimeGeneration() =>
+        Interlocked.Exchange(ref _contextInvalidated, 1);
 
     private volatile ZLinkActorDestroyPhase _destroyPhase;
     private volatile bool _teardownPending;
@@ -278,7 +283,7 @@ internal sealed class ZLinkActorRuntimeState(
         EnsureReusable();
         if (Context is not null) return Context;
 
-        ContextInvalidated = false;
+        Interlocked.Exchange(ref _contextInvalidated, 0);
         return Context = createContext();
     }
 
@@ -1000,7 +1005,7 @@ internal sealed class ZLinkActorRuntimeState(
         ClearActorMetric();
         ActorType = null;
         IsConfigured = false;
-        ContextInvalidated = true;
+        FenceRuntimeGeneration();
         _actorCreationTask = null;
 
         switch (transition)
@@ -1050,7 +1055,7 @@ internal sealed class ZLinkActorRuntimeState(
                 $"Actor '{ActorId}' already has an active local instance.");
 
         NativeActorRef = null;
-        ContextInvalidated = false;
+        Interlocked.Exchange(ref _contextInvalidated, 0);
         lock (_sessionGate)
             _handlerActivationClosed = false;
         _dispatchMailbox.ReopenAdmission();
@@ -1065,7 +1070,7 @@ internal sealed class ZLinkActorRuntimeState(
     {
         CloseHandlerActivation();
         _teardownPending = true;
-        ContextInvalidated = true;
+        FenceRuntimeGeneration();
     }
 
     public ZLinkActorTeardownOperation BeginOrJoinTeardownAttempt()
@@ -1148,7 +1153,7 @@ internal sealed class ZLinkActorRuntimeState(
 
     public void InvalidateContext()
     {
-        ContextInvalidated = true;
+        FenceRuntimeGeneration();
         Activation = null;
     }
 
@@ -1189,7 +1194,7 @@ internal sealed class ZLinkActorRuntimeState(
                     Context = null;
                     NativeActorRef = null;
                     IsConfigured = false;
-                    ContextInvalidated = false;
+                    Interlocked.Exchange(ref _contextInvalidated, 0);
                 }
 
                 if (Actor is not null)
@@ -1455,7 +1460,7 @@ internal sealed class ZLinkActorRuntimeState(
         Activation = null;
         NativeActorRef = null;
         IsConfigured = false;
-        ContextInvalidated = true;
+        FenceRuntimeGeneration();
     }
 
     public readonly struct DispatchScope : IDisposable

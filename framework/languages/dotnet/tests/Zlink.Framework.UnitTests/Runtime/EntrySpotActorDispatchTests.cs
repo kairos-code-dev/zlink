@@ -1698,6 +1698,65 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task RuntimeForceStop_Fences_Old_Ambient_Operation_Across_Restart()
+    {
+        var (runtime, _) = await CreateStartedRuntimeAsync(
+            new CapturingSpotNode());
+        var oldOperation = runtime.EnterOperation();
+        try
+        {
+            Task forceStop;
+            using (ExecutionContext.SuppressFlow())
+                forceStop = Task.Run(
+                    async () => await runtime.ForceStopAsync(
+                        CancellationToken.None));
+            await forceStop.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Throws<InvalidOperationException>(
+                () => runtime.EnterOperation());
+
+            await runtime.StartAsync(CancellationToken.None);
+            Assert.Throws<InvalidOperationException>(
+                () => runtime.EnterOperation());
+        }
+        finally
+        {
+            oldOperation.Dispose();
+        }
+
+        using (runtime.EnterOperation())
+        {
+        }
+        await runtime.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Detached_Generation_Failure_Remains_With_Origin_After_Restart()
+    {
+        var (runtime, _) = await CreateStartedRuntimeAsync(
+            new CapturingSpotNode());
+        Exception? originFailure = null;
+        Exception? successorFailure = null;
+        var origin = runtime.ErrorSink;
+        origin.UnhandledCallbackException +=
+            exception => originFailure = exception;
+        var reporter = origin.CaptureGenerationReporter();
+
+        await runtime.ForceStopAsync(CancellationToken.None);
+        await runtime.StartAsync(CancellationToken.None);
+        runtime.ErrorSink.UnhandledCallbackException +=
+            exception => successorFailure = exception;
+        var failure = new InvalidOperationException(
+            "origin generation detached cleanup failed");
+
+        reporter(failure);
+
+        Assert.Same(failure, originFailure);
+        Assert.Null(successorFailure);
+        await runtime.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task Drain_Remainder_Request_Count_Excludes_Non_Request_Operations()
     {
         var (runtime, _) = await CreateStartedRuntimeAsync(new CapturingSpotNode());

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol;
+using Zlink.Framework.Contracts.Errors;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
@@ -59,6 +60,127 @@ public sealed class ActorHandlerActivationTests
         Assert.Equal(1, first.DisposeCount);
         Assert.Equal(1, second.DisposeCount);
         Assert.Equal(2, probe.DisposedDependencies);
+    }
+
+    [Fact]
+    public async Task Force_Stop_Closes_All_Actor_Activations_And_Respects_Its_Deadline()
+    {
+        var probe = new LifetimeProbe();
+        await using var services = new ServiceCollection()
+            .AddSingleton(probe)
+            .AddScoped<ScopedDependency>()
+            .BuildServiceProvider();
+        var registry = new ZLinkActorSessionRegistry(services);
+        var firstState = registry.GetOrCreate("actor-force-1");
+        var secondState = registry.GetOrCreate("actor-force-2");
+        var firstHandler = firstState.HandlerInstances.Resolve<BlockingHandler>();
+        var secondHandler = secondState.HandlerInstances.Resolve<BlockingHandler>();
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "force-stop-handler",
+            ZlinkStreamMetadata.Empty);
+        var firstDispatch = firstState.ExecuteDispatchAsync(
+                header,
+                firstHandler.HandleAsync,
+                CancellationToken.None)
+            .AsTask();
+        var secondDispatch = secondState.ExecuteDispatchAsync(
+                header,
+                secondHandler.HandleAsync,
+                CancellationToken.None)
+            .AsTask();
+        await Task.WhenAll(
+            firstHandler.Started.Task,
+            secondHandler.Started.Task).WaitAsync(TimeSpan.FromSeconds(5));
+
+        using var deadline = new CancellationTokenSource();
+        var reset = registry.ResetGenerationAsync(deadline.Token).AsTask();
+        Assert.Throws<InvalidOperationException>(() => firstState.HandlerInstances);
+        Assert.Throws<InvalidOperationException>(() => secondState.HandlerInstances);
+        Assert.Throws<ZLinkFrameworkException>(
+            firstState.EnsureContextValid);
+        Assert.Throws<ZLinkFrameworkException>(
+            secondState.EnsureContextValid);
+
+        deadline.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => reset);
+        Assert.Equal(0, firstHandler.DisposeCount);
+        Assert.Equal(0, secondHandler.DisposeCount);
+
+        firstHandler.Release.TrySetResult();
+        secondHandler.Release.TrySetResult();
+        await Task.WhenAll(firstDispatch, secondDispatch)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(
+            () => firstHandler.DisposeCount == 1
+                  && secondHandler.DisposeCount == 1);
+        Assert.Equal(2, probe.DisposedDependencies);
+    }
+
+    [Fact]
+    public async Task Detached_Force_Stop_Cleanup_Reports_Disposal_Failure()
+    {
+        Exception? reported = null;
+        await using var services = new ServiceCollection()
+            .BuildServiceProvider();
+        var registry = new ZLinkActorSessionRegistry(services);
+        var state = registry.GetOrCreate("actor-force-failure");
+        var handler = state.HandlerInstances.Resolve<FailingBlockingHandler>();
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "force-stop-failure",
+            ZlinkStreamMetadata.Empty);
+        var dispatch = state.ExecuteDispatchAsync(
+                header,
+                handler.HandleAsync,
+                CancellationToken.None)
+            .AsTask();
+        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using var deadline = new CancellationTokenSource();
+        var reset = registry.ResetGenerationAsync(
+                deadline.Token,
+                exception => reported = exception)
+            .AsTask();
+        deadline.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reset);
+
+        handler.Release.TrySetResult();
+        await dispatch.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(() => reported is not null);
+        Assert.IsType<InvalidOperationException>(reported);
+    }
+
+    [Fact]
+    public void Captured_Generation_Reporter_Survives_Detach_Without_Using_Successor_Sink()
+    {
+        Exception? processFailure = null;
+        Exception? originFailure = null;
+        Exception? successorFailure = null;
+        using var origin = new ZLinkRuntimeErrorSink(
+            exception => processFailure = exception);
+        origin.UnhandledCallbackException +=
+            exception => originFailure = exception;
+        var reporter = origin.CaptureGenerationReporter();
+        origin.Dispose();
+        using var successor = new ZLinkRuntimeErrorSink();
+        successor.UnhandledCallbackException +=
+            exception => successorFailure = exception;
+        var failure = new InvalidOperationException(
+            "origin generation cleanup failed");
+
+        reporter(failure);
+
+        Assert.Same(failure, processFailure);
+        Assert.Same(failure, originFailure);
+        Assert.Null(successorFailure);
     }
 
     [Fact]
@@ -181,6 +303,17 @@ public sealed class ActorHandlerActivationTests
         public int DisposedDependencies;
     }
 
+    private static async Task WaitUntilAsync(Func<bool> predicate)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (!predicate())
+        {
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException("The expected cleanup did not complete.");
+            await Task.Delay(10);
+        }
+    }
+
     private sealed class ScopedDependency(LifetimeProbe probe) : IAsyncDisposable
     {
         public int DisposeCount { get; private set; }
@@ -233,5 +366,24 @@ public sealed class ActorHandlerActivationTests
             DisposeCount++;
             return ValueTask.CompletedTask;
         }
+    }
+
+    private sealed class FailingBlockingHandler : IAsyncDisposable
+    {
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async ValueTask HandleAsync(CancellationToken cancellationToken)
+        {
+            Started.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+        }
+
+        public ValueTask DisposeAsync() =>
+            ValueTask.FromException(
+                new InvalidOperationException("detached cleanup failed"));
     }
 }

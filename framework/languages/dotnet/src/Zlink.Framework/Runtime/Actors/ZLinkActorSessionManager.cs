@@ -345,9 +345,13 @@ internal sealed partial class ZLinkActorSessionManager(
         return _actorSessions.GetOrCreate(actorId);
     }
 
-    internal ValueTask ResetGenerationAsync()
+    internal ValueTask ResetGenerationAsync(
+        CancellationToken cancellationToken = default,
+        Action<Exception>? detachedCleanupFailure = null)
     {
-        return _actorSessions.ResetGenerationAsync();
+        return _actorSessions.ResetGenerationAsync(
+            cancellationToken,
+            detachedCleanupFailure);
     }
 
     internal ValueTask ResetBoundSessionGenerationAsync() =>

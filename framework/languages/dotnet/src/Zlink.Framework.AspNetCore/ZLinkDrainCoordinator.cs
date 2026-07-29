@@ -404,15 +404,20 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
         {
             _logger?.LogError(error, "ZLink force-stopping terminal event publication failed.");
         }
+        using var teardownBound = new CancellationTokenSource(deadline);
         try
         {
-            using var teardownBound = new CancellationTokenSource(deadline);
             await _executor.ForceStopAsync(reason, teardownBound.Token)
                 .ConfigureAwait(false);
         }
         catch (ZLinkDrainForceException failure)
         {
             reason = failure.Reason;
+        }
+        catch (OperationCanceledException)
+            when (teardownBound.IsCancellationRequested)
+        {
+            reason = ZLinkDrainForceReason.DeadlineExceeded;
         }
         catch (Exception error)
         {

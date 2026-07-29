@@ -290,6 +290,24 @@ public sealed class MaintenanceRuntimeTests
         Assert.Equal(2, fixture.Executor.ExecuteCount);
     }
 
+    [Fact]
+    public async Task Shutdown_force_stop_deadline_remains_public_deadline_exceeded()
+    {
+        using var fixture = Create();
+        fixture.Runtime.MarkServing();
+        fixture.Executor.CancelForceStop = true;
+
+        var result = await fixture.Runtime.ShutdownAsync(
+            TimeSpan.FromMilliseconds(20));
+
+        Assert.Equal(
+            ZLinkFrameworkTerminationOutcome.ForceStopped,
+            result.Outcome);
+        Assert.Equal(
+            ZLinkFrameworkTerminationReason.DeadlineExceeded,
+            result.Reason);
+    }
+
     private static Fixture Create(
         Func<
             ZLinkFrameworkRelocationMode,
@@ -340,6 +358,8 @@ public sealed class MaintenanceRuntimeTests
 
         public ZLinkFrameworkLifecycleIntent? Intent { get; private set; }
 
+        public bool CancelForceStop { get; set; }
+
         public void RequestShutdown(TimeSpan deadline)
         {
             _ = deadline;
@@ -374,9 +394,15 @@ public sealed class MaintenanceRuntimeTests
             return await Complete.Task.WaitAsync(deadlineToken).ConfigureAwait(false);
         }
 
-        public ValueTask ForceStopAsync(
+        public async ValueTask ForceStopAsync(
             ZLinkDrainForceReason reason,
-            CancellationToken cancellationToken) =>
-            ValueTask.CompletedTask;
+            CancellationToken cancellationToken)
+        {
+            if (CancelForceStop)
+                await Task.Delay(
+                        Timeout.InfiniteTimeSpan,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+        }
     }
 }

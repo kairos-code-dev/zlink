@@ -4,6 +4,7 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
 {
     private readonly object _disposeGate = new();
     private Task? _disposeTask;
+    private int _operationFenced;
 
     public ZLinkFrameworkComponentState(
         IZLinkBackendContext context,
@@ -33,6 +34,12 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
     public ZLinkRuntimeTaskRunner TaskRunner { get; }
 
     public ZLinkRuntimeErrorSink ErrorSink { get; }
+
+    public bool IsOperationFenced =>
+        Volatile.Read(ref _operationFenced) != 0;
+
+    public void FenceOperations() =>
+        Interlocked.Exchange(ref _operationFenced, 1);
 
     public Dictionary<string, ZLinkChannelRuntimeBundle> SubscriberBundles { get; } = new(StringComparer.Ordinal);
 

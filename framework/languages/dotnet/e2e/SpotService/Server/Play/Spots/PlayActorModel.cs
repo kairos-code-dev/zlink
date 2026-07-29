@@ -14,6 +14,7 @@ internal sealed class ScenarioActorFactory(EvidenceStore evidence) : IZLinkActor
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"actor-factory|rid={evidence.Rid}|actor={context.ActorId}");
         return ValueTask.FromResult(new ScenarioActor(context.ActorId, context, evidence));
     }
 }

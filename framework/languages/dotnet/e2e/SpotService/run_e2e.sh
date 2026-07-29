@@ -1148,6 +1148,7 @@ if [[ "$SCENARIO_SET" == "track-g" ]]; then
   run_client sm-g1
 elif [[ "$SCENARIO_SET" == "all" || "$SCENARIO_SET" == "default-batch" ]]; then
   run_client sm-b1-b2-b3-b5
+  run_client sm-b0
   run_client sm-b6
   run_client sm-b8
   run_client sm-b9

@@ -248,6 +248,80 @@ internal static class GatewayHostFactory
                 actor.NodeRid.ToString(),
                 actor.ObjectGeneration));
         });
+        app.MapPost("/actor/manager-probe", async (
+            ActorManagerProbeReq request,
+            IZLinkActorManager actors,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.Equals(request.Operation, "find", StringComparison.Ordinal))
+            {
+                var found = await actors.FindAsync(request.ActorId, cancellationToken);
+                return Results.Ok(new ActorManagerProbeRes(
+                    request.Operation,
+                    found is null ? "Missing" : "Found",
+                    found is null
+                        ? null
+                        : new ActorRefRes(
+                            found.Value.ActorId,
+                            found.Value.NodeRid.ToString(),
+                            found.Value.ObjectGeneration)));
+            }
+
+            ZLinkActorCreateResult result;
+            if (string.Equals(request.Operation, "create", StringComparison.Ordinal))
+            {
+                result = await actors
+                    .Create(request.ActorId, SpotServiceNames.ActorType)
+                    .Request(new ScenarioActorCreateReq(request.Operation))
+                    .Timeout(TimeSpan.FromSeconds(15))
+                    .Async(cancellationToken);
+            }
+            else if (string.Equals(
+                         request.Operation,
+                         "get-or-create",
+                         StringComparison.Ordinal))
+            {
+                result = await actors
+                    .GetOrCreate(request.ActorId, SpotServiceNames.ActorType)
+                    .InMesh(SpotServiceNames.SpotChannel)
+                    .Request(new ScenarioActorCreateReq(request.Operation))
+                    .Timeout(TimeSpan.FromSeconds(15))
+                    .Async(cancellationToken);
+            }
+            else
+            {
+                throw new ArgumentException(
+                    $"Unknown Actor manager probe operation '{request.Operation}'.",
+                    nameof(request));
+            }
+
+            return result switch
+            {
+                ZLinkActorCreateResult.Created created =>
+                    Results.Ok(new ActorManagerProbeRes(
+                        request.Operation,
+                        "Created",
+                        new ActorRefRes(
+                            created.Actor.ActorId,
+                            created.Actor.NodeRid.ToString(),
+                            created.Actor.ObjectGeneration))),
+                ZLinkActorCreateResult.Existing existing =>
+                    Results.Ok(new ActorManagerProbeRes(
+                        request.Operation,
+                        "Existing",
+                        new ActorRefRes(
+                            existing.Actor.ActorId,
+                            existing.Actor.NodeRid.ToString(),
+                            existing.Actor.ObjectGeneration))),
+                ZLinkActorCreateResult.Rejected =>
+                    Results.Ok(new ActorManagerProbeRes(
+                        request.Operation,
+                        "Rejected",
+                        null)),
+                _ => throw new InvalidOperationException(
+                    "Unknown Actor create terminal result.")
+            };
+        });
         app.MapPost("/spot/get-or-create", async (
             CreateSpotReq request,
             IZLinkSpotManager spots,

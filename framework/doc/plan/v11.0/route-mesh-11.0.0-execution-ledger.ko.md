@@ -7559,6 +7559,27 @@ background descriptor 갱신과 구분하면서 validation 뒤 side effect가 �
 
 이 증거로 .NET SpotService feature map의 `SM-A11`을 구현으로 전환했다.
 
+## 2026-07-29 .NET SM-B0 Actor manager lifecycle checkpoint
+
+Config 2 `SM-B0`을 .NET actual process selector에 추가했다. 먼저 global Actor ID를
+manager `Find`로 조회해 Missing을 확인한다. 이 조회 전후의 owner별 factory evidence
+차이는 0이다.
+
+그 뒤 `play-a`의 placement weight만 positive로 두고 explicit Actor ID·stable type
+`Create`를 실행한다. 같은 ID의 `GetOrCreate(...).InMesh(...)`와 final `Find`를
+연속 실행한다. Terminal은 `Created`·`Existing`·`Found`이며 세 `ActorRef`의 ID,
+`ObjectGeneration`과 owner RID가 같다. `play-a` factory는 한 번 실행되고 weight가
+0인 `play-b` factory는 실행되지 않는다.
+
+- Gateway·Client E2E project build: warning·error 0
+- `StatefulServiceRuntimeTests`: 31/31
+- Actual `SM-B0`: 통과
+  (`framework/languages/dotnet/e2e/SpotService/logs/20260729-154921-2063035`)
+- Missing Find factory call: 0
+- Lifecycle factory call: `play-a` 1, `play-b` 0
+
+이 증거로 .NET SpotService feature map의 `SM-B0`을 구현으로 전환했다.
+
 ## 2026-07-29 Node wildcard listener identity checkpoint
 
 Node RouteMesh와 ClientServer listener는 wildcard BindHost를 사용할 때 remote가

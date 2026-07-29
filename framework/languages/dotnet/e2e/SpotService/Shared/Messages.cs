@@ -46,6 +46,13 @@ public sealed record EnsureActorRes(string ActorId, string NodeRid, ulong Genera
 
 public sealed record ScenarioActorCreateReq(string DisplayName);
 
+public sealed record ActorManagerProbeReq(string Operation, string ActorId);
+
+public sealed record ActorManagerProbeRes(
+    string Operation,
+    string State,
+    ActorRefRes? Actor);
+
 public sealed record StateReq(string Operation, int Delta);
 
 public sealed record StateRes(string SpotRid, string NodeRid, int Value);

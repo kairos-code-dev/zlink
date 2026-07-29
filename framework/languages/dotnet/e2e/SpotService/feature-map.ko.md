@@ -17,7 +17,7 @@
 | SM-A11 | 구현 | 예약된 Entry Spot ID를 User Spot `GetOrCreate`와 Instance Spot request에 제출하고 두 호출이 모두 `InvalidOperation`으로 끝나는지 확인한다. 해당 ID와 일치하는 Location Store read·write와 User·Instance Spot factory 실행은 모두 0이다. `./run_e2e.sh sm-a11` 증거는 `logs/20260729-154511-1994689/`에 있다. |
 | SM-A12 | 미구현 | User Spot automatic ID의 첫 collision 즉시 실패 E2E가 없다. |
 | SM-A13 | 미구현 | SpotId UTF-8 string 경계와 legacy binary Spot RID 거부 E2E가 없다. |
-| SM-B0 | 미구현 | explicit type global create와 existing-only find E2E가 없다. |
+| SM-B0 | 구현 | Missing ID의 manager `Find`가 factory를 실행하지 않는지 먼저 확인한다. 이어 `play-a`만 placement eligible로 두고 explicit Actor ID·stable type `Create`, duplicate `GetOrCreate(...).InMesh(...)`, final `Find`를 실행한다. 세 결과는 `Created`·`Existing`·`Found`이며 같은 Actor generation과 owner로 수렴한다. Factory 실행은 `play-a` 1회, weight 0인 `play-b` 0회다. `./run_e2e.sh sm-b0` 증거는 `logs/20260729-154921-2063035/`에 있다. |
 | SM-B0A | 미구현 | Actor 생성 승인·거절과 concurrent GetOrCreate terminal result E2E가 없다. |
 | SM-B1 | 구현 | local actor join marker가 있다. |
 | SM-B2 | 구현 | remote actor join marker가 있다. |

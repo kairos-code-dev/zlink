@@ -1115,7 +1115,7 @@ class spot_context_t
           });
     }
 
-  protected:
+  private:
     friend class spot_node_builder_t;
     friend class entry_spot_context_t;
     friend class instance_spot_context_t;
@@ -1123,6 +1123,9 @@ class spot_context_t
     friend class detail::timer_runtime_t;
 
     spot_context_t ();
+    explicit spot_context_t (std::shared_ptr<detail::spot_context_state_t> state);
+
+  protected:
     class erased_request_call_t
     {
       public:
@@ -1183,7 +1186,6 @@ class spot_context_t
         request_call_t<zlink::message_t>::preflight_fn_t _preflight;
     };
 
-    explicit spot_context_t (std::shared_ptr<detail::spot_context_state_t> state);
     bool has_same_source_fence (const spot_context_t &other) const noexcept;
 
     send_call_t

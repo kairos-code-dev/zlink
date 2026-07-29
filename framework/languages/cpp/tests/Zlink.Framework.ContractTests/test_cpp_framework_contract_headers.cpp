@@ -1378,6 +1378,12 @@ static_assert (std::is_same_v<decltype (std::declval<contract_spot_t &> ().on_ac
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().close ()),
                  zlink::framework::task_t<bool>>);
+class application_spot_context_t : public zlink::framework::spot_context_t
+{
+  public:
+    application_spot_context_t () = default;
+};
+static_assert (!std::is_default_constructible_v<application_spot_context_t>);
 static_assert (!std::is_copy_constructible_v<zlink::framework::spot_context_t>);
 static_assert (std::is_move_constructible_v<zlink::framework::spot_context_t>);
 static_assert (!std::is_move_assignable_v<zlink::framework::spot_context_t>);

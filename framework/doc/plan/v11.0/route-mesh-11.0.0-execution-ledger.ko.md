@@ -7641,3 +7641,25 @@ Static registry 자체는 현재 구현 세부이며 runtime·incarnation fence�
 아니므로 cleanup 단계 입력으로 분리한다. JVM deferred Join의 남은 완료 조건은
 Location authority에 연결한 durable completion cursor·reference release, Core-native
 경로와 실제 process crash·replay 증거다.
+
+## 2026-07-29 C++ Spot Context 생성 경계 보강
+
+`V11-M6-OBJECT-CONTEXT-CPP`의 move-only Context 계약을 다시 검사했다.
+`actor_context_t`, `entry_spot_context_t`와 `instance_spot_context_t`는 Framework만
+호출할 수 있는 private constructor를 이미 사용했다. 그러나 base `spot_context_t`의
+constructor는 `protected`여서 application이 파생 Context type을 선언하면 identity가
+없는 Context를 default construction할 수 있었다.
+
+`spot_context_t`의 default·state constructor를 private로 옮기고 Framework builder,
+runtime과 두 정식 derived Context만 friend로 유지했다. Application 파생 type이 default
+constructible하지 않음을 public contract compile assertion으로 고정했다. Copy와
+move-assignment 금지, move construction은 그대로 유지한다.
+
+- C++ Framework fresh build: 통과
+- `test_cpp_framework_contract_headers`: 통과
+- `test_cpp_framework_target_contract`: 통과
+- `git diff --check`: 통과
+
+이 변경으로 Context의 default construction·copy·assignment 제거 조건을 닫았다.
+`spot_t<TActor>`·`entry_spot_t<TActor>` exact base 전환과 이에 따른 C++ sample·E2E
+정렬은 계속 남아 있다.

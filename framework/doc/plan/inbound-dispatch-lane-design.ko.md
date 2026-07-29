@@ -50,6 +50,8 @@ Target의 처리 속도보다 source의 송신 속도가 빠르면 수신 대기
 - 언어별 `minimumMessageChargeBytes`와 memory amplification 측정값
 - Framework Application HWM과 Completion connection HWM의 production 기본값
 - Application LWM profile과 목표 동시 `Recv` 수
+- Host 전체 `maxPendingCompletionSends`, peer별 공정성 상한과 completion send permit 값
+- 복수 ingress poller의 성능 허용 기준과 budget shard를 사용할 조건
 - Completion connection handshake, reconnect와 pending request 종료 error
 - Framework Auto HWM profile의 비율과 절대 상한
 - Owner attribution top-N 수, 장시간 pause 진단 threshold와 조회 rate limit
@@ -92,15 +94,19 @@ relocation이나 shutdown 가운데 어느 경로로 끝나더라도 message 소
 정확히 한 번 차감한다.
 
 One-way message는 handler terminal에서 application payload 소유권을 반환할 때 차감한다.
-Request는 handler가 terminal 결과를 만들고 reply serialization을 끝낸 뒤, reply payload
-소유권을 `completionReserve`로 넘기는 시점에 원본 request의 application lease를 차감한다.
-이 transfer는 budget owner가 한 번에 처리하여 원본 request와 reply를 동시에 누락하거나
-이중으로 charge하지 않는다.
+Request handler는 실행 전에 최대 reply 한 건을 위한 completion send permit을 확보한다.
+Permit을 확보할 수 없으면 request를 Application queue에 남기고 application byte를 계속
+계산하며 handler를 시작하지 않는다.
 
-원본 request byte는 reply가 wire에 기록되거나 peer가 읽을 때까지 유지하지 않는다. 또한
-Completion connection의 local send admission이 끝날 때까지 기다리지 않는다. Completion
-send가 backpressured인 동안에는 reply payload만 completion reserve를 사용한다. 그래야 느린
-completion consumer가 상대 host의 application budget 반환을 막지 않는다.
+Handler가 terminal 결과를 만들고 reply serialization을 끝내면 budget owner는 원본 request의
+application lease를 반환하고, completion send permit을 실제 reply accounted byte로 바꾼다.
+사용하지 않은 permit byte는 같은 전환에서 반환한다. 이 전환은 원본 request와 reply byte를
+누락하거나 이중으로 계산하지 않도록 한 번에 처리한다.
+
+Terminal 뒤에는 원본 request byte를 reply가 wire에 기록되거나 peer가 읽을 때까지 유지하지
+않는다. Completion send가 backpressured인 동안에는 serialization을 마친 reply payload만
+completion reserve를 사용한다. 느린 completion consumer는 새 request handler admission을
+중단시킬 수 있지만, 이미 끝난 handler의 원본 request lease를 계속 점유하게 만들지는 않는다.
 
 HWM 계산에서 사용하는 `accountedMessageBytes`는 payload 크기만 뜻하지 않는다. Framework가
 message와 함께 보관하는 envelope, routing 정보와 고정 metadata를 포함하고, 작은 message도
@@ -271,7 +277,7 @@ memoryHwmBytes =
 | `processMemoryLimit` | Application이 명시한 process limit, container·cgroup 또는 Windows Job Object limit처럼 안정적인 memory 상한 |
 | `baselinePeakMemory` | Backlog가 없을 때 application state, 비어 있는 connection metadata, runtime과 GC가 사용하는 peak memory |
 | `coreTransportReserve` | Application·Completion connection의 Core pipe, transport buffer와 OS socket buffer가 사용할 memory |
-| `completionReserve` | Pending request metadata와 Framework가 Core에서 받은 reply를 완료할 때 사용할 memory |
+| `completionReserve` | 요청자의 pending request·reply 완료와 응답자의 handler reply permit·미전송 reply에 사용할 memory |
 | `ingressReceiveReserve` | 동시 `Recv` permit을 관리하면서 필요한 일시적 frame, decoding과 bookkeeping 여유 |
 | `emergencyHeadroom` | 일시적 allocation, GC, TLS, allocator와 OS buffer 증가를 감당할 여유 |
 | `memoryAmplification` | Framework가 센 message byte에 비해 실제 process memory가 증가하는 비율 |
@@ -391,7 +397,8 @@ Production HWM은 다음 순서로 결정한다.
 2. Backlog가 없는 정상 workload에서 `baselinePeakMemory`를 측정한다.
 3. Application과 Completion connection의 Core HWM을 합산하여 `coreTransportReserve`를
    계산한다.
-4. 최대 pending request 수와 completion 동시 처리량으로 `completionReserve`를 계산한다.
+4. 최대 pending request 수, completion 동시 처리량과 최대 미전송 reply 수로
+   `completionReserve`를 계산한다.
 5. 알려진 byte의 message를 Framework queue에 쌓아 `memoryAmplification`을 구한다.
 6. 지속 가능한 handler 처리 byte를 측정한다.
 7. 운영에서 허용할 `maximumQueueDelaySeconds`를 정한다.
@@ -512,25 +519,50 @@ Completion connection은 application payload를 전달하지 않으므로 Applic
 request 수와 동시에 완료될 수 있는 reply byte를 측정한 뒤 정한다. Connection 수와 file
 descriptor는 두 배가 되므로, 이 비용은 HWM 축소로 제거되지 않는다.
 
-### 4.10 Completion reserve와 pending request 상한
+### 4.10 Completion reserve와 request·reply 상한
 
 Completion connection의 Core pipe와 OS socket buffer는 `coreTransportReserve`에 포함한다.
-Core에서 reply를 받은 뒤 Framework가 pending request를 완료할 때 필요한 memory는 다음과
-같이 별도의 `completionReserve`로 계산한다.
+Framework의 `completionReserve`는 요청자가 reply를 기다리고 완료하는 비용과 응답자가
+request handler를 실행하고 아직 Core가 받지 않은 reply를 보관하는 비용을 모두 포함한다.
 
 ```text
-completionReserve =
+completionSendPermitBytes =
+    effectiveMaxReplyAccountedBytes
+    * completionMemoryAmplification
+
+requesterCompletionReserve =
     maxPendingRequests * pendingRequestMetadataBytes
     + completionDispatchConcurrency
         * effectiveMaxReplyAccountedBytes
         * completionMemoryAmplification
+
+responderCompletionSendReserve =
+    maxPendingCompletionSends
+    * completionSendPermitBytes
+
+completionReserve =
+    requesterCompletionReserve
+    + responderCompletionSendReserve
     + completionBookkeepingReserve
 ```
 
-Request handler terminal에서 reply payload를 completion reserve로 옮긴 뒤에는 original request
-application lease를 유지하지 않는다. Completion send admission, wire write와 peer receive가
-늦어져도 reply만 이 reserve를 사용한다. Send failure, timeout, cancellation이나 shutdown으로
-reply 소유권을 폐기할 때 completion byte를 정확히 한 번 반환한다.
+`maxPendingCompletionSends`는 host 전체에서 completion send permit을 확보한 request
+handler와 serialization을 끝냈지만 Core Completion connection이 아직 받지 않은 reply의 합계
+상한이다. Peer마다 이 값을 따로 허용하면 connection 수에 따라 memory가 증가하므로 host 전체
+상한은 반드시 유한해야 한다. 한 peer가 permit을 모두 사용하지 못하도록 별도의 peer별 공정성
+상한을 둘 수 있지만, peer별 상한의 합으로 host 상한을 대신하지 않는다.
+
+Request handler를 실행하기 전에 `completionSendPermitBytes`를 한 번 확보한다. 상한에
+도달하면 새 request handler admission을 기다리게 하고 request는 Application queue와
+application budget에 남긴다. Reply serialization을 끝내면 원본 request의 application lease를
+반환하고 permit을 실제 reply byte로 바꾸며, 남은 permit을 즉시 반환한다.
+
+Core가 Completion connection send를 받아들이면 reply 소유권과 accounted byte를
+`coreTransportReserve`로 한 번에 넘긴다. 이 전환에서도 두 reserve에 동시에 계산하거나 어느
+reserve에서도 누락하는 구간을 만들지 않는다. Core send admission, wire write와 peer receive가
+늦어지는 동안 Framework가 소유한 reply만 responder completion reserve를 사용한다. Send
+failure, timeout, cancellation이나 shutdown으로 reply 소유권을 폐기할 때 completion byte를
+정확히 한 번 반환한다.
 
 `maxPendingRequests`는 반드시 유한해야 한다. 상한에 도달하면 새 request를 application
 connection에 보내지 않고 request admission에서 기다리게 한다. Timeout, cancellation이나
@@ -545,7 +577,9 @@ completion reserve에 포함한다.
 
 `completionBookkeepingReserve`에는 두 connection 사이의 generation·epoch·sequence fence를
 기다리는 bounded control record도 포함한다. Fence 대기 count와 byte 상한을 넘으면 control을
-무제한 보관하지 않고 해당 peer connection을 protocol error로 종료한다.
+무제한 보관하지 않고 해당 peer의 Application·Completion connection pair 전체를 protocol
+error로 종료한다. Pair generation을 무효화하고 해당 pair의 pending request를 정해진 terminal
+error로 완료한 뒤에만 새 pair로 재연결한다.
 
 Application HWM과 Completion connection HWM은 서로 대신 사용할 수 없다. Application HWM을
 줄여도 pending request metadata가 줄어들지 않으며, Completion HWM을 크게 해도 Framework가
@@ -587,17 +621,20 @@ process memory limit을 넘으면 startup을 실패시키거나 connection 수�
 Memory HWM을 적용하려면 complete message마다 byte를 더하고 소유권을 반환할 때 빼는 연산은
 필요하다. 그 외의 memory 측정과 동기화는 normal dispatch hot path에 추가하지 않는다.
 
-Framework는 host마다 application budget owner 하나를 둔다. Budget owner는 다음 규칙을
-따른다.
+Framework는 host마다 application budget의 최종 회계 권한을 가진 owner 하나를 둔다. Owner가
+하나라는 것은 모든 MeshNode의 `Recv`와 dispatch를 한 thread에서 실행한다는 뜻이 아니다.
+각 MeshNode의 기존 ingress poller와 I/O thread 병렬성은 유지해야 한다.
+
+Budget owner와 ingress poller는 다음 규칙을 따른다.
 
 - `accountedMessageBytes`는 이미 수신한 part 길이와 미리 계산한 고정 charge로 구한다.
   Payload를 다시 순회하거나 복사하지 않는다.
 - Budget lease는 dispatch work item 안에 값으로 보관한다. Message마다 별도 accounting
   객체를 allocation하지 않는다.
-- 같은 ingress poller에서 reserve와 실제 크기 조정을 수행할 때는 일반 64-bit 정수 연산을
+- 한 ingress poller가 소유한 permit의 reserve와 실제 크기 조정에는 일반 64-bit 정수 연산을
   사용한다.
 - Handler가 다른 thread에서 끝나면 반환 byte만 lock-free 누적 counter에 한 번 더한다.
-  Ingress poller는 다음 loop에서 누적 반환값을 한 번에 회수한다.
+  Budget owner나 해당 shard의 ingress poller는 다음 loop에서 누적 반환값을 한 번에 회수한다.
 - Node, Channel, Spot과 Actor의 실행 owner에는 진단용 일반 64-bit retained-byte counter를
   둔다. 기존 execution gate나 budget owner가 값을 갱신하므로 owner마다 atomic counter나
   새 lock을 추가하지 않는다.
@@ -606,8 +643,14 @@ Framework는 host마다 application budget owner 하나를 둔다. Budget owner�
 
 Connection별 chunk lease는 기본 경로에 사용하지 않는다. 사용하지 않은 chunk도 전역 HWM에
 포함하면 안전한 동시 `Recv` 수가 늘지 않고, connection 수에 비례해 예약 byte만 증가한다.
-나중에 Core가 dequeue 전에 complete message의 정확한 accounted byte를 제공할 수 있을 때만
-실측 결과를 근거로 permit 방식을 다시 검토한다.
+복수 MeshNode와 복수 I/O thread benchmark에서 중앙 permit 발급이 병목으로 확인되면 고정된
+수의 ingress poller 또는 I/O thread별 budget shard를 사용한다. 전역 owner는 complete-message
+permit 단위로만 shard에 임대하고, 모든 shard의 committed byte 합이 Application HWM을 넘지
+않게 한다. Shard 수를 connection이나 무제한 MeshNode 수에 비례해 늘리지 않으며, 사용하지
+않은 permit은 정해진 idle·rebalance 시점에 전역 owner로 반환한다.
+
+나중에 Core가 dequeue 전에 complete message의 정확한 accounted byte를 제공할 수 있을 때는
+실측 결과를 근거로 최대 message 선예약 방식도 다시 검토한다.
 
 Core는 기존 pipe 동기화 구간에서 message count 증가를 accounted byte 증가로 바꾼다. HWM을
 위해 새 mutex나 message별 atomic counter를 추가하지 않는다. Multipart total은 기존
@@ -617,7 +660,10 @@ multipart transaction이 part를 처리할 때 함께 누적하고, HWM 검사�
 이 설계의 성능 목표는 HWM이 충분한 정상 상태에서 새 system call과 새 heap allocation이
 없고, complete message마다 고정 횟수의 정수 연산만 추가되는 것이다. 성능 검증에서는 HWM
 기능을 끈 build와 같은 workload를 비교하여 throughput, CPU/message와 p99 latency 변화를
-측정한다.
+측정한다. 복수 MeshNode와 복수 I/O thread에서 작은 message를 처리할 때도 현재 MeshNode별
+병렬 drain 대비 aggregate throughput과 scaling이 정식 계약 전에 정한 허용 범위 안에 있어야
+한다. 이 기준을 만족하지 못하면 중앙 permit 발급을 적용하지 않고 위의 bounded budget shard
+방식을 검증한다.
 
 ### 4.13 Framework monitoring
 
@@ -635,8 +681,9 @@ Framework runtime status에는 적어도 다음 값을 같은 snapshot 시점으
 | Pause count·duration | 수신 중단 횟수와 누적 시간 |
 | Minimum message charge | 현재 언어 runtime에 적용한 bytes |
 | Core transport reserve | Startup 계산에 사용한 bytes |
-| Completion reserve·used | 계획한 reserve와 현재 accounted bytes |
+| Completion reserve·used | 요청자·응답자별 계획 reserve와 현재 accounted bytes |
 | Pending request | 현재 값과 허용한 최대 count |
+| Completion send permit | 현재 permit·미전송 reply count와 bytes, host 상한과 peer별 상한 |
 
 Status를 만들 때 queue나 pending request map 전체를 순회하지 않는다. Budget owner와 request
 admission이 이미 유지하는 counter의 snapshot만 읽는다. Message마다 monitor event를 만들지
@@ -886,6 +933,11 @@ returnCredit =
     bytesReadSinceLastCredit >= lwmBytes
 ```
 
+이 Core pipe LWM은 transport credit을 반환하는 주기를 정하며 HWM의 절반으로 고정한다.
+Framework의 profile LWM과 `applicationResumeThresholdBytes`는 Application `Recv`를 재개하는
+별도 기준이다. Framework profile을 바꿔도 Core pipe LWM을 바꾸지 않으며, 두 값을 하나의
+설정으로 통합하지 않는다.
+
 다음 경로에서 byte를 누락하거나 두 번 반환하지 않아야 한다.
 
 - Single-part와 multipart write·read
@@ -942,7 +994,8 @@ C++ binding처럼 현재 HWM을 `message_count_t`로 표현하는 binding은 값
 11. Request/reply helper를 활성화해도 application·reply payload용 내부 PAIR socket,
     receive queue나 completion deque가 생성되지 않는지 확인한다.
 12. Application connection과 Completion connection의 pair identity, 연결 순서, 한쪽
-    connection의 단절과 재연결, 이전 connection에서 늦게 도착한 reply를 검증한다.
+    connection의 단절·protocol error 때 pair 전체가 종료되는지, 재연결 뒤 이전
+    connection에서 늦게 도착한 reply가 적용되지 않는지 검증한다.
 13. Zero-length, 작은 message와 routing frame에 minimum byte charge가 적용되는지 검증한다.
 14. 유한한 `MaxMessageSize`, `ApplicationHwmBytes >= effectiveMaxAccountedMessageBytes`와
     unlimited HWM 거부 조건을 startup contract test로 검증한다.
@@ -951,27 +1004,34 @@ C++ binding처럼 현재 HWM을 `message_count_t`로 표현하는 binding은 값
     `Recv`하는지 검증한다.
 16. 최대 pending request 수에 도달하면 새 request admission만 대기하고 기존 completion은
     계속 처리되는지 검증한다.
-17. 목표 최대 connection 수에서 `coreTransportReserve`, `completionReserve`와 Framework
-    backlog를 함께 채워도 process memory limit과 emergency headroom을 침범하지 않는지
-    검증한다.
+17. 목표 최대 connection 수에서 요청자·응답자 `completionReserve`,
+    `coreTransportReserve`와 Framework backlog를 함께 채워도 process memory limit과
+    emergency headroom을 침범하지 않는지 검증한다.
 18. HWM 기능을 끈 기준 build와 비교하여 새 allocation·mutex·system call이 hot path에
     추가되지 않았는지 확인하고 throughput, CPU/message와 p99 latency를 기록한다.
-19. 한 Spot이나 Actor가 대부분의 byte를 보유하면 host 합계와 owner·unattributed·infrastructure
+19. 복수 MeshNode와 복수 I/O thread에서 작은 message를 처리하여 현재 MeshNode별 병렬 drain
+    대비 aggregate throughput과 scaling이 허용 범위 안에 있는지 검증한다. 중앙 permit
+    발급이 기준에 미달하면 bounded budget shard가 전역 HWM을 넘지 않으면서 기준을
+    만족하는지 비교한다.
+20. 한 Spot이나 Actor가 대부분의 byte를 보유하면 host 합계와 owner·unattributed·infrastructure
     합계가 일치하고 명시적 top-N 진단에서 해당 owner가 확인되는지 검증한다.
-20. A와 B가 동시에 HWM에 도달한 상태에서 양방향 nested request를 보내고, Completion
+21. A와 B가 동시에 HWM에 도달한 상태에서 양방향 nested request를 보내고, Completion
     connection과 local timeout이 계속 진행되어 handler terminal 뒤 양쪽 budget과 ingress가
     회복되는지 검증한다.
-21. Request handler가 reply를 만든 뒤 Completion send admission이 장시간 backpressured여도
-    original request byte는 application budget에서 빠지고 reply byte만 completion reserve에
-    남는지 검증한다.
-22. HWM과 `MaxMessageSize` 조합별 `maxConcurrentReceivePermits`, startup log와 실제 permit
+22. Completion send permit이 host 상한에 도달하면 추가 request handler admission이
+    대기하고 request byte가 Application budget에 남는지 검증한다. 이미 terminal에 도달한
+    handler의 original request lease는 반환되고 미전송 reply count와 byte는 responder
+    completion reserve 상한을 넘지 않으며, Core가 send를 받아들일 때 두 reserve 사이에서
+    byte가 누락되거나 이중으로 계산되지 않아야 한다.
+23. HWM과 `MaxMessageSize` 조합별 `maxConcurrentReceivePermits`, startup log와 실제 permit
     상한이 일치하고 connection별 미사용 chunk reserve가 생기지 않는지 검증한다.
-23. Application message와 relocation·session binding·peer lifecycle control을 두
+24. Application message와 relocation·session binding·peer lifecycle control을 두
     connection에서 양방향으로 추월시켜도 generation, epoch, sequence와 barrier가 stale
-    control 적용과 순서 역전을 막는지 검증한다.
-24. LWM profile별 `applicationResumeThresholdBytes`, 실제 pause duration과 resume 횟수가
-    계산값과 일치하는지 검증한다.
-25. Framework `ApplicationHwmBytes=0`은 Auto 계산을 수행하고, 계산한 유한값을 Core에
+    control 적용과 순서 역전을 막는지 검증한다. Fence 대기 상한을 넘으면 pair 전체와 pair
+    generation이 종료되고 해당 pending request가 terminal error로 끝나는지도 확인한다.
+25. LWM profile별 `applicationResumeThresholdBytes`, 실제 pause duration과 resume 횟수가
+    계산값과 일치하며 Framework profile 변경이 Core pipe LWM을 바꾸지 않는지 검증한다.
+26. Framework `ApplicationHwmBytes=0`은 Auto 계산을 수행하고, 계산한 유한값을 Core에
     전달하며 Core HWM의 `0=무제한`과 혼동하지 않는지 contract test로 검증한다.
 
 ## 6. 적용 조건

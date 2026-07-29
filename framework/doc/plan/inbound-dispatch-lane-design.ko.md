@@ -1011,7 +1011,11 @@ HWM option은 local pipe admission 설정이므로 byte accounting 자체는 net
 | Request/reply runtime | 내부 payload queue를 제거하고 reply를 Completion connection에서 직접 완료한다. Handler 실행 전 completion send permit을 확보하고 request·reply byte의 소유권 전환을 한 번만 계산한다. |
 | Auto HWM | Profile·bucket 결과를 message slot이 아니라 최종 byte HWM으로 적용한다. |
 | Monitoring | Applied·deferred HWM, in-flight byte, pause, permit, owner attribution과 completion reserve를 제공한다. |
+| Core clean review | 동일한 immutable Core candidate를 Codex 5.6 High(`gpt-5.6-sol high`)와 Claude Fable이 독립 검토하고, 두 결과의 `Medium` 이상 finding이 0인지 확인한다. |
+| Core perf smoke | Core clean review를 통과한 candidate로 `bindings/c/perf`의 single·multi 전체 경로가 실행되는지 확인한다. |
 | Bindings | .NET, Java, Node.js와 C++에서 C 값 타입과 단위를 각 언어의 64-bit byte 타입으로 노출한다. |
+| Bindings clean review | 동일한 immutable bindings candidate를 Codex 5.6 High가 검토하고 `Medium` 이상 finding이 0인지 확인한다. |
+| Bindings perf smoke | Bindings clean review를 통과한 candidate에서도 같은 C single·multi smoke가 통과하는지 다시 확인한다. |
 | Framework | Host budget owner, owner-local attribution, receive permit, completion send permit과 nested overload 관측을 구현한다. |
 | Benchmark와 test | 기존 HWM 환경 변수와 fixture를 count에서 byte로 바꾸고 migration 값을 기록한다. |
 | Spec과 guide | Core draft, 정식 socket option, monitoring, bindings와 migration 문서를 함께 갱신한다. |
@@ -1076,12 +1080,17 @@ C++ binding처럼 현재 HWM을 `message_count_t`로 표현하는 binding은 값
     계산값과 일치하며 Framework profile 변경이 Core pipe LWM을 바꾸지 않는지 검증한다.
 26. Framework `ApplicationHwmBytes=0`은 Auto 계산을 수행하고, 계산한 유한값을 Core에
     전달하며 Core HWM의 `0=무제한`과 혼동하지 않는지 contract test로 검증한다.
+27. Core clean review를 통과한 candidate에서 `bindings/c/perf`의 single·multi 전체 pattern과
+    transport를 64B로 실행하고 두 report가 `status=complete`인지 검증한다.
+28. Bindings clean review를 통과한 candidate에서도 같은 C perf smoke를 다시 실행하고,
+    `core/build` runtime provenance와 두 report를 binding package manifest와 함께 기록한다.
 
 ## 8. 어떤 순서로 적용하는가
 
-최종 승인 뒤 작업은 Core, bindings, Framework의 세 단계로 나눈다. 각 단계는 바로 앞 단계의
-완료 조건과 증거를 확인한 뒤 시작한다. 뒤 단계의 코드를 먼저 추가하여 앞 단계의 미완성
-계약을 우회하지 않는다.
+최종 승인 뒤 작업은 Core 구현, Core clean review, Core perf smoke, bindings 구현,
+bindings clean review, bindings perf smoke, Framework 적용의 일곱 단계로 나눈다. 각 단계는
+바로 앞 단계의 완료 조건과 증거를 확인한 뒤 시작한다. 뒤 단계의 코드를 먼저 추가하여 앞
+단계의 미완성 계약을 우회하지 않는다.
 
 ### 8.1 1단계: Core 라이브러리 수정
 
@@ -1129,10 +1138,120 @@ HWM을 처리하고, peer마다 Application·Completion connection pair를 제�
 - HWM을 끈 기준 build와 비교한 Core 성능 결과와 memory amplification 측정값을 기록한다.
 - Core 정식 spec, C header와 test가 같은 타입, 단위, 기본값과 오류를 설명한다.
 
-### 8.2 2단계: bindings 라이브러리 수정
+### 8.2 2단계: Core clean review
 
-이 단계의 결과는 .NET, Java, Node.js와 C++ binding이 1단계 Core 계약을 같은 단위와 범위로
-제공하는 것이다. Java binding은 Java와 Kotlin Framework가 함께 사용한다.
+이 단계는 1단계 결과가 문서의 계약을 빠짐없이 구현했으며, 구조와 성능 측면에서도 bindings에
+전파할 수 있는 상태인지 확인한다. Codex 5.6 High(`gpt-5.6-sol high`)와 Claude Fable이 같은
+immutable Core candidate를 서로 독립적으로 검토한다. 두 reviewer가 모두 같은 candidate에서
+`Medium` 이상 finding을 한 건도 남기지 않은 경우에만 `CLEAN`으로 판정한다.
+
+#### 검토 입력과 기록
+
+Review coordinator는 각 round를 시작하기 전에 candidate commit SHA와 비교 기준 commit을
+고정한다. 두 reviewer에게 같은 범위, severity 기준과 질문을 제공하며 한 reviewer의 결과를
+다른 reviewer에게 미리 제공하지 않는다. 다음 자료를 전체 범위로 검토한다.
+
+- 이 설계 문서와 1단계에서 만든 Core draft·정식 spec
+- `AGENTS.md`, [spec 작성 지침](../../../doc/principal/documentation/spec-writing-guide.ko.md),
+  [source comment 원칙](../../../doc/principal/source-comment-principles.ko.md)과
+  [software design 원칙](../../../doc/principal/software-design-principles.ko.md)
+- C public header, Core source, test, benchmark와 monitoring 변경
+- 비교 기준 commit부터 candidate commit까지의 전체 diff
+- 이전 round finding과 수정 commit, test·benchmark 결과
+
+각 실행에는 reviewer 이름, 실제 model ID와 version, reasoning level, candidate SHA, 검토
+prompt·rubric version과 실행 시각을 기록한다. 지정한 reviewer를 사용할 수 없으면 임의의
+model로 대체하지 않고 이 단계를 `차단`으로 둔다. 결과는
+`framework/doc/plan/log/inbound-dispatch-lane-core-review.ko.md`에 round별로 남긴다.
+
+#### 공통 검토 기준
+
+두 reviewer는 다음 질문에 답한다.
+
+1. 이 문서의 지시와 수식, breaking contract, 제거 항목, 오류, monitoring과 검증 항목을
+   잘못 해석하거나 구현하지 않은 부분이 있는가. 문서에 없는 호환 경로나 추가 동작을
+   도입했는가.
+2. POSD 관점에서 shallow module, information leakage, pass-through method·variable,
+   temporal decomposition, 중복, 특수 경로와 범용 경로의 혼합, 호출자에게 전달된 복잡성이
+   있는가.
+3. DDD 관점에서 byte accounting, pipe admission, connection pair, request completion,
+   ownership, lifecycle, state transition과 failure invariant의 owner가 분명한가. Core,
+   bindings와 Framework의 책임이 섞이거나 transport·codec·storage detail이 상위 계약에
+   노출되었는가.
+4. Hot path에 불필요한 allocation, payload 재순회, copy, atomic, lock, system call, branch,
+   queue scan이나 cache contention이 추가되었는가. Memory amplification, throughput,
+   CPU/message, p99 latency와 다중 connection scaling을 개선할 여지가 있는가.
+5. 제거하기로 한 queue, deque, signal socket과 count 호환 경로가 남아 있거나 사용되지 않는
+   code·option·test가 새 계약을 흐리는가.
+
+POSD 또는 DDD finding은 위반한 원칙과 책임 경계를 적는다. 비자명한 구조 변경은 서로 다른
+대안 두 가지 이상을 제시하고 단순성, 일반성, 성능과 호출자 부담을 비교한 뒤 권장안을
+선택한다. Public interface를 바꾸는 권장안은 호출자 복잡성이 실제로 줄어드는지도 확인한다.
+성능 권장안은 먼저 critical path를 측정하고, 변경 전·후 결과가 의미 있게 달라지지 않으면
+추가한 복잡성을 되돌리는 조건을 포함한다.
+
+#### Severity와 `CLEAN` 판정
+
+| Severity | 판정 기준 | Gate 결과 |
+|---|---|---|
+| `Critical` | Data corruption, security 문제, ABI·wire 파손, deadlock 또는 유계가 아닌 memory 증가가 발생한다. | `NOT CLEAN` |
+| `High` | 핵심 contract·invariant를 위반하거나 실제 workload에서 큰 correctness·성능 regression이 발생할 가능성이 높다. | `NOT CLEAN` |
+| `Medium` | 다음 단계 전에 고쳐야 할 누락, 책임 경계 누출, 구체적인 리팩토링 대상 또는 측정 가능한 성능 위험이 있다. | `NOT CLEAN` |
+| `Low` | 현재 계약과 다음 단계의 안전성을 해치지 않는 선택적 개선이다. | 근거와 disposition을 기록하면 통과 가능 |
+
+각 finding에는 round, reviewer, ID, severity, category, file·line, 근거, 위반한 지시나 원칙,
+영향, 대안 둘 이상, 권장안, 처리 결과, fix commit과 재검토 결과를 기록한다. False positive나
+severity 하향은 반증 자료와 해당 reviewer의 재검토가 있어야 하며, coordinator의 판단만으로
+finding을 닫지 않는다. Reviewer 간 severity가 다르면 근거로 합의하기 전까지 더 높은
+severity를 적용한다.
+
+Review는 다음 순서로 반복한다.
+
+1. 고정한 candidate를 두 reviewer가 각각 전체 범위로 검토한다.
+2. 결과를 합쳐 `Critical`, `High` 또는 `Medium` finding이 하나라도 있으면
+   `NOT CLEAN`으로 판정한다.
+3. 구현 담당자가 finding을 수정하고 관련 test와 benchmark를 실행한 뒤 새 candidate SHA를
+   만든다.
+4. 두 reviewer가 새 candidate의 전체 범위를 다시 검토한다. 수정 diff만 검토해서는 안 된다.
+5. 최신 round의 같은 candidate SHA에서 두 reviewer 모두 `Medium` 이상 finding이 0건일
+   때만 `CLEAN`으로 판정한다. 남은 `Low` finding은 owner와 disposition을 기록한다.
+
+2단계에서 Core code, public header, contract 또는 test가 바뀔 때마다 이전 `CLEAN` 판정은
+무효다. 새 candidate로 두 reviewer의 전체 review를 다시 통과해야 한다.
+
+### 8.3 3단계: Core `bindings/c/perf` smoke
+
+이 단계는 2단계에서 `CLEAN`으로 판정한 Core candidate가 C 기준 benchmark의 모든 single·multi
+패턴과 transport를 실행할 수 있는지 확인한다. 성능 수치를 승인하는 단계가 아니라 runtime,
+runner와 주요 data path가 정상적으로 연결되는지를 확인하는 gate다.
+
+먼저 같은 candidate source로 공식 Core runtime을 다시 만든다. `build_cpp_release`나 다른 임시
+build 결과를 사용하지 않는다.
+
+```bash
+# Review를 통과한 Core source로 공식 runtime을 만든다.
+cmake --build core/build
+
+# 64B 하나로 single의 전체 pattern과 transport를 확인한다.
+bindings/c/perf/run_benchmarks.sh --pattern ALL --msg-sizes 64
+
+# 64B 하나로 multi의 전체 pattern과 transport를 확인한다.
+bindings/c/perf/run_benchmarks_multi.sh --pattern ALL --msg-sizes 64
+```
+
+두 runner가 출력한 실제 `libzlink.so` 경로가 `core/build` 아래에 있고 candidate source보다
+오래되지 않았는지 확인한다. Single과 multi report가 모두 `status=complete`이고 전체
+pattern·transport 조합에 `fail`이 없어야 통과한다. Candidate SHA, runtime 절대 경로와
+SHA-256, build 명령, 두 report 위치를 진행표에 기록한다.
+
+Smoke가 실패하면 3단계를 통과하지 못한다. 원인을 수정하여 source candidate가 바뀌면 2단계의
+두 reviewer review부터 다시 수행한다. 실행 환경 문제만 수정했고 candidate source가 바뀌지
+않았다면 같은 SHA로 smoke를 다시 실행하고 원인과 재실행 결과를 기록한다.
+
+### 8.4 4단계: bindings 라이브러리 수정
+
+이 단계의 결과는 .NET, Java, Node.js와 C++ binding이 3단계까지 통과한 Core 계약을 같은
+단위와 범위로 제공하는 것이다. Java binding은 Java와 Kotlin Framework가 함께 사용한다.
 
 각 binding은 구현 전에 해당 언어의 exact interface에 다음 계약을 기록한다.
 
@@ -1154,11 +1273,51 @@ HWM을 처리하고, peer마다 Application·Completion connection pair를 제�
 | C++ | Count 의미의 wrapper 타입을 byte 전용 타입으로 바꾸고 option, monitoring과 request/reply wrapper를 갱신한다. | Compile-time interface test와 64-bit 값 왕복 test가 통과한다. |
 
 모든 binding package는 같은 Core contract version을 사용해야 한다. 네 binding 가운데 하나라도
-이전 count 의미를 유지하면 2단계를 완료한 것으로 보지 않는다. 각 package는
+이전 count 의미를 유지하면 4단계를 완료한 것으로 보지 않는다. 각 package는
 [local package 배포 절차](../../../scripts/local-package/README.ko.md)를 따라 만들고, consumer
 test를 마친 뒤 version과 artifact 위치를 진행표에 기록한다.
 
-### 8.3 3단계: Framework 적용
+### 8.5 5단계: bindings clean review
+
+이 단계는 4단계의 bindings 변경을 Codex 5.6 High(`gpt-5.6-sol high`)가 검토한다. Claude
+Fable은 bindings review에 사용하지 않는다. Candidate commit SHA, 비교 기준, prompt·rubric
+version과 reviewer 실행 정보를 고정하고
+`framework/doc/plan/log/inbound-dispatch-lane-bindings-review.ko.md`에 기록한다.
+
+검토 범위는 2단계의 공통 검토 기준과 severity를 그대로 사용하되, 다음 항목을 네 binding과
+package 전체에서 확인한다.
+
+- Core C ABI의 64-bit byte 값, 오류, lifetime과 ownership을 손실 없이 표현하는가.
+- .NET, Java·Kotlin, Node.js와 C++의 public contract가 같은 의미를 제공하며 언어별 변환
+  과정에서 overflow, truncation이나 count 단위가 다시 생기지 않는가.
+- Binding이 Core 또는 Framework의 책임을 가져오지 않으며 pass-through layer, 중복 변환,
+  private API 접근이나 호환 adapter를 추가하지 않았는가.
+- Native call과 monitoring hot path에 불필요한 allocation, copy, boxing, JNI·N-API 전환,
+  lock 또는 반복 변환이 없는가.
+- Exact interface, package metadata, consumer test와 실제 구현이 일치하는가.
+
+`Critical`, `High` 또는 `Medium` finding이 하나라도 있으면 `NOT CLEAN`이다. 구현 담당자가
+수정하고 contract·consumer test와 필요한 benchmark를 실행한 뒤 새 SHA를 만든다. Codex는
+새 SHA의 전체 범위를 다시 검토한다. 최신 round에서 `Medium` 이상 finding이 0건일 때만
+`CLEAN`으로 판정하며, `Low` finding은 owner와 disposition을 기록한다.
+
+Finding 기록, 두 가지 이상 대안 비교, caller complexity 확인, 성능 측정과 false positive
+처리는 2단계 규칙을 그대로 적용한다. 수정이 Core code, Core public header나 Core contract를
+건드리면 5단계에서 계속 진행하지 않고 2단계 Core clean review부터 다시 시작한다.
+
+### 8.6 6단계: bindings 이후 `bindings/c/perf` smoke
+
+5단계에서 `CLEAN`으로 판정한 bindings candidate에서도 §8.3의 build와 C single·multi smoke
+명령을 동일하게 실행한다. 이 gate는 bindings 변경 뒤 Core ABI와 C 기준 runtime이 의도하지
+않게 달라지지 않았는지 확인한다. C perf는 binding package를 직접 사용하지 않으므로 package와
+Core의 조합은 4단계 consumer test가 검증한다.
+
+통과 조건과 증거는 §8.3과 같다. Candidate SHA, Core runtime 절대 경로와 SHA-256, package
+version·artifact manifest, single·multi report 위치를 함께 기록한다. Smoke 원인을 수정하면서
+bindings source가 바뀌면 5단계 review를 다시 수행한다. Core source나 contract가 바뀌면 2단계로
+돌아가 Core review, Core smoke와 bindings 단계를 순서대로 다시 통과해야 한다.
+
+### 8.7 7단계: Framework 적용
 
 이 단계의 결과는 Framework host가 Core와 bindings의 byte HWM을 사용하여 process 전체의
 application backlog를 제한하고, application 수신이 중단되어도 request completion을 계속
@@ -1168,7 +1327,7 @@ application backlog를 제한하고, application 수신이 중단되어도 reque
    따라 공통 spec과 .NET, Java, Kotlin, Node.js, C++ exact interface에
    `ApplicationHwmBytes`, 유한한 `MaxMessageSize`, startup error, Auto HWM 우선순위와
    monitoring 계약을 기록한다.
-2. 각 Framework는 2단계에서 만든 binding package version을 중앙 dependency 위치에서
+2. 각 Framework는 6단계까지 통과한 binding package version을 중앙 dependency 위치에서
    참조한다. Binding source를 직접 참조하거나 private API로 우회하지 않는다.
 3. Application·Completion connection을 함께 poll하되 Application HWM에 도달하면
    Application `Recv`만 중단한다. Core에서 받은 application message를 다른 payload queue로
@@ -1190,7 +1349,7 @@ application backlog를 제한하고, application 수신이 중단되어도 reque
 9. 다섯 Framework 언어에서 같은 public 동작과 E2E를 제공하고, memory·throughput·CPU/message·
    p99 latency와 다중 MeshNode scaling 결과를 기록한다.
 
-3단계는 §7의 모든 통합 검증을 통과하고, 정식 spec·guide·monitoring 문서가 구현과 일치해야
+7단계는 §7의 모든 통합 검증을 통과하고, 정식 spec·guide·monitoring 문서가 구현과 일치해야
 완료된다.
 
 ## 9. 진행표
@@ -1210,13 +1369,31 @@ application backlog를 제한하고, application 수신이 중단되어도 reque
 | C-06 | Core | 내부 PAIR receive queue와 completion deque 제거 | 검증 11 결과 | 승인 대기 |
 | C-07 | Core | Core memory·성능·wire regression 검증 | 검증 4~7, 9~13 결과와 benchmark log | 승인 대기 |
 | C-08 | Core | Core 정식 spec·monitoring·오류 문서 갱신 | C header·test와 문서 대조 결과 | 승인 대기 |
+| CR-01 | Core review | Candidate SHA, 비교 기준과 공통 review 입력 고정 | §8.2 입력 manifest | 승인 대기 |
+| CR-02 | Core review | Codex 5.6 High 독립 전체 review | Model·prompt 정보와 finding report | 승인 대기 |
+| CR-03 | Core review | Claude Fable 독립 전체 review | Model·prompt 정보와 finding report | 승인 대기 |
+| CR-04 | Core review | Finding 통합, severity와 대안 검토 | Round별 finding ledger | 승인 대기 |
+| CR-05 | Core review | `Medium` 이상 finding 수정과 회귀 검증 | Fix commit과 test·benchmark 결과 | 승인 대기 |
+| CR-06 | Core review | 변경 candidate의 두 reviewer 전체 재검토 | 같은 SHA의 두 최신 report | 승인 대기 |
+| CR-07 | Core review | 두 reviewer의 `Medium` 이상 0건 확인 | `CLEAN` 판정과 남은 `Low` disposition | 승인 대기 |
+| CP-01 | Core perf smoke | `core/build` 공식 runtime 재build와 provenance 확인 | Candidate·runtime SHA-256과 출력 경로 | 승인 대기 |
+| CP-02 | Core perf smoke | C single 전체 64B smoke 실행 | 검증 27의 `status=complete` report | 승인 대기 |
+| CP-03 | Core perf smoke | C multi 전체 64B smoke 실행 | 검증 27의 `status=complete` report | 승인 대기 |
 | B-01 | Bindings | .NET binding과 package 갱신 | .NET contract·consumer test와 artifact | 승인 대기 |
 | B-02 | Bindings | Java binding과 package 갱신 | Java·Kotlin contract·consumer test와 artifact | 승인 대기 |
 | B-03 | Bindings | Node.js binding과 package 갱신 | Node.js 경계값·consumer test와 artifact | 승인 대기 |
 | B-04 | Bindings | C++ binding과 package 갱신 | C++ compile-time·consumer test와 artifact | 승인 대기 |
 | B-05 | Bindings | 네 binding의 타입·단위·monitoring parity 확인 | 검증 8과 package version 목록 | 승인 대기 |
+| BR-01 | Bindings review | Candidate SHA, 비교 기준과 review 입력 고정 | §8.5 입력 manifest | 승인 대기 |
+| BR-02 | Bindings review | Codex 5.6 High 전체 review | Model·prompt 정보와 finding report | 승인 대기 |
+| BR-03 | Bindings review | `Medium` 이상 finding 수정과 회귀 검증 | Fix commit과 contract·consumer test 결과 | 승인 대기 |
+| BR-04 | Bindings review | 변경 candidate의 Codex 전체 재검토 | 최신 candidate SHA의 review report | 승인 대기 |
+| BR-05 | Bindings review | `Medium` 이상 0건 확인 | `CLEAN` 판정과 남은 `Low` disposition | 승인 대기 |
+| BP-01 | Bindings perf smoke | Candidate package와 `core/build` runtime provenance 확인 | Package manifest와 runtime SHA-256 | 승인 대기 |
+| BP-02 | Bindings perf smoke | C single 전체 64B smoke 재실행 | 검증 28의 `status=complete` report | 승인 대기 |
+| BP-03 | Bindings perf smoke | C multi 전체 64B smoke 재실행 | 검증 28의 `status=complete` report | 승인 대기 |
 | F-01 | Framework | 공통 spec과 다섯 언어 exact interface 확정 | Contract review와 문서 검증 결과 | 승인 대기 |
-| F-02 | Framework | Stage 2 binding package version 적용 | 언어별 중앙 dependency 변경과 restore log | 승인 대기 |
+| F-02 | Framework | 6단계 통과 binding package version 적용 | 언어별 중앙 dependency 변경과 restore log | 승인 대기 |
 | F-03 | Framework | 두 connection poll과 직접 Application `Recv` 적용 | 검증 11, 12, 15 결과 | 승인 대기 |
 | F-04 | Framework | Application HWM, receive permit과 Auto 계산 적용 | 검증 14, 17, 23, 25, 26 결과 | 승인 대기 |
 | F-05 | Framework | Completion reserve, send permit과 pending 상한 적용 | 검증 16, 17, 21, 22 결과 | 승인 대기 |
@@ -1231,9 +1408,15 @@ application backlog를 제한하고, application 수신이 중단되어도 reque
 측정 결과나 리뷰 완료만으로 자동 적용하지 않는다. 최종 승인 전에는 Core, bindings,
 Framework, wire protocol, public header와 정식 spec을 변경하지 않는다.
 
-1단계가 완료되기 전에 binding을 새 의미로 바꾸지 않는다. 2단계의 네 binding과 package
-검증이 모두 끝나기 전에 Framework 구현을 시작하지 않는다. 이전 count 동작을 보존하는
-option, alias, adapter나 runtime 자동 변환은 어느 단계에도 추가하지 않는다.
+1단계가 완료되기 전에 Core review를 시작하지 않는다. 2단계에서 두 reviewer가 같은 Core
+candidate를 `CLEAN`으로 판정하고 3단계 C perf smoke가 통과하기 전에는 binding을 새 의미로
+바꾸지 않는다. 4단계의 네 binding과 package 검증, 5단계 Codex `CLEAN` 판정과 6단계 C perf
+smoke가 모두 끝나기 전에 Framework 구현을 시작하지 않는다. 지정한 reviewer를 사용할 수
+없거나 `Medium` 이상 finding이 남으면 다음 단계로 넘어가지 않는다.
 
-3단계와 §7의 통합 검증이 끝나면 진행표의 모든 완료 증거를 확인한다. 누락된 항목이 있으면
+이전 count 동작을 보존하는 option, alias, adapter나 runtime 자동 변환은 어느 단계에도
+추가하지 않는다. Review나 smoke failure를 수정하면서 앞 단계의 source·contract가 바뀌면
+해당 clean review부터 다시 시작한다.
+
+7단계와 §7의 통합 검증이 끝나면 진행표의 모든 완료 증거를 확인한다. 누락된 항목이 있으면
 적용 완료로 판단하지 않는다.

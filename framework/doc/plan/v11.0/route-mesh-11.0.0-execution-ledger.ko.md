@@ -7619,3 +7619,25 @@ Fresh build 뒤 다음 focused binary가 모두 통과했다.
 따라서 오류 관찰 축은 더 이상 C++ deferred Join의 남은 gap이 아니다. Durable
 completion의 aggregate recovery와 실제 process crash·replay 증거는 별도 완료 조건으로
 계속 유지한다.
+
+## 2026-07-29 JVM deferred Join runtime 격리 재감사
+
+`V11-M6-DEFERRED-JOIN-JVM`의 이전 증거에 남아 있던 “같은 JVM의 두 runtime이 같은
+ActorId를 사용하면 open scope가 섞인다”는 설명을 현재 production source와 다시
+대조했다. 이 correctness gap은 `284ff4c084`에서 이미 해소됐다.
+
+Actor handler scope key는 runtime identity, Actor incarnation identity와 ActorId를
+함께 비교한다. Spot handler scope도 runtime identity가 같은 경우에만 Actor join
+registration을 받는다. 따라서 다른 runtime의 같은 ActorId나 같은 runtime에서 교체된
+Actor instance는 현재 scope를 재사용하지 않는다.
+
+다음 focused regression 13개가 모두 통과했다.
+
+- `ZLinkDeferredActorJoinScopeTest`: 11/11
+- `ZLinkDeferredJoinAcceptedRecoveryTest`: 2/2
+
+Static registry 자체는 현재 구현 세부이며 runtime·incarnation fence가 correctness를
+보장한다. Activation-owned registry로 옮기는 POSD refactoring은 public 동작 gap이
+아니므로 cleanup 단계 입력으로 분리한다. JVM deferred Join의 남은 완료 조건은
+Location authority에 연결한 durable completion cursor·reference release, Core-native
+경로와 실제 process crash·replay 증거다.

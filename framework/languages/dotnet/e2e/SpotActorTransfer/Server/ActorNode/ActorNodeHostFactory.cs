@@ -18,13 +18,11 @@ internal static class ActorNodeHostFactory
         var options = ServerOptions.Parse(args, "actor-node");
         ZLinkSpotRetireTargetRuntime
             .PostPublicationBeforeNormalizationTestHook =
-            string.Equals(
-                Environment.GetEnvironmentVariable(
-                    "ZLINK_E2E_CRASH_AT_TARGET_COMPLETE_GATE"),
-                "1",
-                StringComparison.Ordinal)
+            options.CrashAtTargetCompleteGate
                 ? static async cancellationToken =>
                 {
+                    Console.Error.WriteLine(
+                        "aggregate_target_complete_gate");
                     Console.Error.Flush();
                     await Task.Delay(
                             Timeout.InfiniteTimeSpan,

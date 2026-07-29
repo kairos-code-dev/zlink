@@ -32,6 +32,23 @@ public sealed class RelocationRuntimeTests
     }
 
     [Fact]
+    public void Target_takeover_requires_the_exact_application_version()
+    {
+        Assert.True(
+            ZLinkSpotRetireTargetRuntime.MatchesTakeoverApplicationVersion(
+                7,
+                7));
+        Assert.False(
+            ZLinkSpotRetireTargetRuntime.MatchesTakeoverApplicationVersion(
+                8,
+                7));
+        Assert.False(
+            ZLinkSpotRetireTargetRuntime.MatchesTakeoverApplicationVersion(
+                6,
+                7));
+    }
+
+    [Fact]
     public void Target_takeover_rejects_corrupt_target_descriptor_fence()
     {
         var (_, candidate) = CreateCanonicalPublishedReconciliationFixture(

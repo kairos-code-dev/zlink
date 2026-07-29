@@ -409,7 +409,7 @@ public sealed partial class RegressionTests
     public void Config_9_And_10_Keep_One_Client_Scenario_Per_File()
     {
         var root = ResolveE2eRoot();
-        AssertScenarioFiles(root, "SpotActorTransfer", "St", 31);
+        AssertScenarioFiles(root, "SpotActorTransfer", "St", 32);
         AssertScenarioFiles(root, "ToActorMessaging", "Ta", 7);
     }
 

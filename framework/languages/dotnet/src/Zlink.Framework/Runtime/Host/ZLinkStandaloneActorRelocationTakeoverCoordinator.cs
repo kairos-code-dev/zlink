@@ -370,7 +370,10 @@ internal sealed class ZLinkStandaloneActorRelocationTakeoverCoordinator(
                && candidate.LeaseGeneration > 0
                && candidate.Rid is { Size: > 0 }
                && !string.IsNullOrWhiteSpace(candidate.EntrySpotId)
-               && candidate.ApplicationVersion >= minimumApplicationVersion
+               && ZLinkSpotRetireTargetRuntime
+                   .MatchesTakeoverApplicationVersion(
+                       candidate.ApplicationVersion,
+                       minimumApplicationVersion)
                && ZLinkSpotRetireTargetRuntime.HasHeadroom(
                    candidate.Capacity.Actors,
                    1)

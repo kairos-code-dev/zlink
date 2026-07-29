@@ -241,6 +241,11 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         || capacity.Limit == 0
         || capacity.Limit - capacity.Active - capacity.Reserved >= required;
 
+    internal static bool MatchesTakeoverApplicationVersion(
+        long candidateApplicationVersion,
+        long requiredApplicationVersion) =>
+        candidateApplicationVersion == requiredApplicationVersion;
+
     public async ValueTask StageAsync(
         ZLinkSpotRetireReservation reservation,
         ZLinkPreparedSpotRetireStaging relocation,
@@ -822,8 +827,9 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 && descriptor.ObjectRole == ZLinkMeshNodeObjectRole.Server
                 && descriptor.PlacementWeight > 0
                 && descriptor.LeaseGeneration > 0
-                && descriptor.ApplicationVersion
-                   >= candidate.Envelope.CanonicalApplicationVersion
+                && MatchesTakeoverApplicationVersion(
+                    descriptor.ApplicationVersion,
+                    candidate.Envelope.CanonicalApplicationVersion)
                 && !StringComparer.Ordinal.Equals(
                     descriptor.Rid.ToHex(),
                     shared.State.TargetNodeRid)

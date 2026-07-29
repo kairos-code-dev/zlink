@@ -20,7 +20,8 @@ internal sealed record ServerOptions(
     string EvidenceFile,
     string LogDir,
     int RequestTimeoutMilliseconds,
-    bool CallerOnly = false)
+    bool CallerOnly = false,
+    bool CrashAtTargetCompleteGate = false)
 {
     public static ServerOptions Parse(string[] args, string role)
         => E2eConfiguration.Load<ServerOptions>(args);

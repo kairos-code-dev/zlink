@@ -6,13 +6,13 @@
   "baseline": {
     "revision": "86258cb9a3ecbc7db2dfd86a8c18de45a562734a",
     "reviewedV11FirstMembers": {
-      "count": 3086,
-      "sha256": "9918f44a085c5a3eb32262934ea204a92d545585327eb94028a9230498daa7e7",
+      "count": 3080,
+      "sha256": "7f6268b41bbcd1a683a0b6ba98e8a437bcf2dadf12a9fdab5f369171768be09f",
       "specReason": "The v11 formal contract and exact interfaces introduce this reviewed member after the frozen 10.x baseline."
     },
     "reviewedV11FirstOwners": {
-      "count": 771,
-      "sha256": "363ddcdec09502815ae05f57287d016f8b4e39e50ea9d10ac2e6b0272da50691",
+      "count": 758,
+      "sha256": "7871558ca3c4b650ae60577dcec97ed8e2e7132df1554738ddcc8493de397295",
       "specReason": "The v11 exact interface introduces this reviewed declaration owner after the frozen 10.x baseline."
     },
     "reviewedIntentionalRemovals": {
@@ -355,8 +355,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_actor_factory#6815e691e5e6eea7",
         "baselineSignatureSha256": "6815e691e5e6eea72c016364e7442389b2f838a3e093e4b15adf25f16e2dd8a3",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_actor_factory#a3c5e35480491193",
-        "targetSignatureSha256": "a3c5e35480491193c6925a99722df493bd056874c0b8ece59011f6a6c99171eb",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_actor_factory#e82b3c1f375de13a",
+        "targetSignatureSha256": "e82b3c1f375de13a15cf567ffc1db78a1e0b75a262030ea1808da076f378f192",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },

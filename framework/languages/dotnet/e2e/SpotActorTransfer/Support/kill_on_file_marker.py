@@ -38,7 +38,14 @@ def main() -> None:
         path = os.fsencode(args.path)
         if libc.inotify_add_watch(descriptor, path, IN_MODIFY) < 0:
             raise OSError(ctypes.get_errno(), "inotify_add_watch failed")
-        offset = os.path.getsize(args.path)
+        # Install the watch before reading existing content. This covers both
+        # a marker written before startup and one appended during the read.
+        with open(args.path, "r", encoding="utf-8") as stream:
+            existing = stream.read()
+            offset = stream.tell()
+        if args.marker in existing:
+            os.killpg(os.getpgid(args.pid), signal.SIGKILL)
+            return
         while time.monotonic() < deadline:
             timeout = max(0, deadline - time.monotonic())
             readable, _, _ = select.select([descriptor], [], [], timeout)

@@ -1924,7 +1924,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     app.add_zlink_framework ([&] (
                                zlink::framework::zlink_framework_options_t &options) {
         auto node = options.add_route_mesh ("spot-mesh");
-        node.channel_name ("spot-route");
         node.set_routing_id (
               zlink::routing_id_t::from ("spot-local-node"))
           .listen (endpoint)
@@ -1963,7 +1962,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     app.add_zlink_framework ([&] (
                                zlink::framework::zlink_framework_options_t &options) {
         auto node = options.add_route_mesh ("context-mesh");
-        node.channel_name ("context-route");
         node.set_routing_id (
               zlink::routing_id_t::from ("context-node"))
           .listen (endpoint)
@@ -2011,7 +2009,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
                                zlink::framework::zlink_framework_options_t &options) {
         options.add_location_store (store);
         auto node = options.add_route_mesh ("spot-collision-mesh");
-        node.channel_name ("spot-collision-route");
         node.set_routing_id (
               zlink::routing_id_t::from (
                 "spot-collision-node"))
@@ -2058,7 +2055,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
         options.add_location_store (store);
         auto node =
           options.add_route_mesh ("source-cleanup-mesh");
-        node.channel_name ("source-cleanup-route");
         node.set_routing_id (
               zlink::routing_id_t::from (
                 "source-cleanup-node"))
@@ -2251,7 +2247,9 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
           auto app = zlink::framework::app_t::create ();
           app.add_zlink_framework (
             [] (zlink::framework::zlink_framework_options_t &options) {
-                options.add_route_mesh ("mesh-a").channel_name ("orders");
+                options.add_route_mesh ("mesh-a")
+                  .channel_name ("orders")
+                  .client ();
                 options.add_client_server_channel ("orders")
                   .client ()
                   .connect ("tcp://127.0.0.1:29715");

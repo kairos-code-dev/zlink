@@ -166,10 +166,6 @@ void mesh_node_runtime_t::start ()
     if (!_state->routing_id) {
         throw configuration_error ("MeshNode routing id is required");
     }
-    if (_state->channels.empty ()
-        && _state->object_role != object_role_t::client) {
-        throw configuration_error ("MeshNode requires at least one ChannelName");
-    }
     for (const auto &[channel_name, channel] : _state->channels) {
         if (!channel.role_selected)
             throw configuration_error (

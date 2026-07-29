@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [공통 샘플](../../common/sample/README.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [다음: 샘플 고르기](15-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 14. ZLink를 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
@@ -328,7 +328,7 @@ ZLink가 대체 후보다. Actor·Spot lifecycle과 relocation timer 복원은 F
 - 공통 업무 시나리오: [Framework Common Sample Scenarios](../../common/sample/README.ko.md)
 - `.NET` 사용 방법: [Channel Messaging](05-channel-messaging.ko.md)
 - 표면 매핑: [05-channel-messaging](05-channel-messaging.ko.md) §0, [13-interface-catalog](13-interface-catalog.ko.md) §1.6
-- 기능 선택 지도: [04-feature-map](04-feature-map.ko.md)
+- 실행 코드로 보는 샘플: [15-samples](15-samples.ko.md)
 
 ### 참고 자료
 
@@ -342,5 +342,5 @@ ZLink가 대체 후보다. Actor·Spot lifecycle과 relocation timer 복원은 F
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [공통 샘플](../../common/sample/README.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [다음: 샘플 고르기](15-samples.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

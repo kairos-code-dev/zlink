@@ -210,6 +210,12 @@ Spot handler는 [05-channel-messaging](05-channel-messaging.ko.md)의 channel ha
 | 실행 | 서로 다른 dispatch는 동시에 실행될 수 있다 | 같은 실행 queue의 작업은 한 번에 하나씩 실행한다 |
 | application state | handler field에 보관하지 않는다 | Spot 또는 member Actor가 소유한다 |
 
+Spot handler는 Spot class의 메서드가 아니라 그 Spot에 바인딩된 **별도 class**다. 첫
+제네릭 인자로 대상 Spot 타입을 받고, `HandleAsync`의 첫 인자로 그 Spot instance를 받는다
+([아래 예시](#41-spot과-actor는-각-activation-scope를-사용한다)). Framework는 Spot
+activation에서 handler를 한 번 만들고 Spot이 닫히거나 relocation될 때 정리한다. Actor
+handler도 같은 방식으로 해당 Actor activation에 묶인다.
+
 `Configure()`에서 handler를 등록하고 lifecycle callback에서 초기화와 정리를 수행한다.
 
 ```csharp
@@ -324,6 +330,11 @@ public sealed class SaveScoreHandler(IServiceScopeFactory scopeFactory)
 
 Spot 수명 동안 유지해도 되는 의존성(설정, 싱글톤 client, 순수 계산 서비스)은 생성자로
 받아도 된다. 판단 기준은 "이 의존성을 Spot이 닫힐 때까지 붙잡고 있어도 되는가"다.
+
+상태를 두는 자리도 같은 기준으로 나뉜다. 변하는 도메인 상태(방의 좌석·점수 등)는
+**Spot 또는 member Actor**가 소유하고, 변하지 않는 구성은 싱글톤 서비스에, 여러 Spot이
+함께 쓰는 인프라(캐시·카운터)는 싱글톤에 두고 자체 동기화한다. Handler field는 어느
+경우에도 상태를 두는 자리가 아니다.
 
 ## 5. Spot으로 메시지 보내기
 

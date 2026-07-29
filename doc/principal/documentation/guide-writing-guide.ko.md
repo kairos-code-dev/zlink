@@ -6,7 +6,7 @@
 >
 > [기술문서 작성 원칙](documentation-principles.ko.md)의 얇은 보충 문서다. 원칙
 > 1~9는 그대로 적용한다. 이 문서의 §2·§3은 [스펙 작성 가이드](spec-writing-guide.ko.md)
-> §2·§3과 같은 자리를 차지하지만, 이미 완성된 `dotnet/guide/` 14개 문서를 실제로
+> §2·§3과 같은 자리를 차지하지만, 이미 완성된 `dotnet/guide/` 문서를 실제로
 > 분석해서 뽑은 절차다 — 추측이 아니라 그 문서들이 실제로 따르고 있는 관행이다.
 
 [기술문서 작성 원칙](documentation-principles.ko.md) ·
@@ -42,10 +42,10 @@ spec은 공개 계약을 **서술**한다. guide는 독자가 무엇을 왜 쓸�
 
 ### 2.2 독자의 질문으로 목차를 만든다
 
-기존 14개 챕터는 세 가지 모양으로 갈린다. 새 챕터를 쓸 때는 먼저 이 셋 중 어느
+기존 챕터는 세 가지 모양으로 갈린다. 새 챕터를 쓸 때는 먼저 이 셋 중 어느
 모양인지 정한다.
 
-**모양 A — 도입 판단** (예: 01-overview, 04-feature-map, 14-alternative)
+**모양 A — 도입 판단** (예: 01-overview, 14-alternative)
 
 1. 한 줄 정의, 체감 난이도
 2. 상황별 문제 → ZLink 기능 대응 표
@@ -160,7 +160,8 @@ spec처럼 항목별 대조표를 절마다 쓰지 않는다. 대신 대조는
   확인한다(§2.3). 링크만 걸고 설명이 없는 자리가 없는지 다시 훑는다.
 - guide는 dotnet에서 `Zlink.Framework.UnitTests/Documentation/Regression.cs`로
   구조적으로 검증된다.
-  - 14개 파일이 실제로 존재하고 nav 마커·H1을 갖췄는지(내용 정확성은 아님).
+  - 목록에 적은 파일이 모두 존재하고 nav 마커·H1을 갖췄는지(내용 정확성은 아님).
+    챕터를 더하거나 빼면 그 목록도 함께 고쳐야 한다.
   - 이름이 바뀌었거나 제거된 API를 걸러내는 금지 패턴 grep(예: 대체된
     `IZLinkSpotRefResolver` 계열, 폐기된 nested `Action<>` callback 모양을 문서에
     쓰지 않는지).

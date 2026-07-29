@@ -22,7 +22,7 @@ ZLink Framework가 **실시간 메시징 계층**으로 올라간다. 별도 런
 호출과 pub/sub는 별도 **gateway나 전용 로드밸런서 없이** 논리 `channel name`만으로
 대상을 찾는다. 실시간 상태 단위는 `SPOT`(room · stage · zone), actor(연결·사용자
 하나를 대표하는 상태 객체), `STREAM`(외부 client 연결) 세 가지다(용어가 낯설면
-[03-concepts §0](03-concepts.ko.md)의 한 줄 풀이를 먼저 본다). 개발자는 HTTP/gRPC를
+[03-concepts](03-concepts.ko.md)의 개념 설명을 먼저 본다). 개발자는 HTTP/gRPC를
 쓰던 감각으로 **handler, client, filter**를 작성하고, 연결·위치 조회·라우팅·재연결·
 correlation은 framework가 처리한다.
 
@@ -745,6 +745,44 @@ connection도 자동으로 새로 연결되거나 정리된다 — 설정 파일
 재구성할 일이 없다.
 ([05](05-channel-messaging.ko.md)·[06](06-spot.ko.md)·[09](09-stream.ko.md)·[10](10-location.ko.md))
 
+무엇을 어디서 선언하는지는 다음 세 자리로 정리된다.
+
+| 표면 | 역할 | 다루는 장 |
+| --- | --- | --- |
+| `builder.Services.AddZLinkFramework(...)` | channel·SPOT·STREAM 선언 | [5장](05-channel-messaging.ko.md)~[9장](09-stream.ko.md) |
+| `options.AddRouteMesh(...)` / `AddFanoutChannel(...)` | RouteMesh·fanout 선언 | [5장](05-channel-messaging.ko.md) |
+| runtime event handler | monitoring event 관찰 | [11장](11-monitoring.ko.md) |
+
+### 무엇부터 쓸지 고르기
+
+만들려는 것이 정해졌다면 아래 갈래로 시작 지점을 잡는다.
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+flowchart TD
+  Q1{외부 client를<br/>직접 받나?} -->|예| Stream[STREAM + Connector<br/>09]
+  Q1 -->|아니오| Q2{동적 단위<br/>room/stage가 있나?}
+  Q2 -->|아니오| Q3{응답이<br/>필요한가?}
+  Q3 -->|예| Req[request/response<br/>05]
+  Q3 -->|아니오| Q4{여러 구독자에게<br/>흩뿌리나?}
+  Q4 -->|예| Pub[pub/sub<br/>05]
+  Q4 -->|아니오| Send[one-way send<br/>05]
+  Q2 -->|예| Q5{참가자별 상태/<br/>세션이 있나?}
+  Q5 -->|아니오| Spot[SPOT<br/>06]
+  Q5 -->|예| Q6{연결 서버와<br/>로직 서버를 나누나?}
+  Q6 -->|아니오| Actor[actor + SPOT<br/>07]
+  Q6 -->|예| Sad[session actor dispatch<br/>08]
+```
+
+- **서비스끼리 호출만** → request/response 또는 send.
+  [02-getting-started](02-getting-started.ko.md)로 충분하다.
+- **이벤트를 흩뿌린다** → pub/sub.
+- **방·판·존 같은 동적 단위** → SPOT. 그 안에 참가자별 상태나 세션이 있으면 actor를 함께 쓴다.
+- **외부 게임·모바일 client** → STREAM(서버) + Stream Connector(client).
+- **연결 서버와 로직 서버 분리(재접속 이전성)** → session actor dispatch.
+
+실행되는 코드로 먼저 보고 싶다면 [15-samples](15-samples.ko.md)에서 가까운 샘플을 고른다.
+
 ## 4. 개념 요약
 
 이 framework의 기능 단위들이다. 각각 전용 장에서 상세히 다룬다.
@@ -959,7 +997,7 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 7. [09-stream](09-stream.ko.md) — 외부 client(STREAM) 서버 + Stream Connector
 8. [10-location](10-location.ko.md) — location store 기반 자동 연결과 운영 조회
 9. [11-monitoring](11-monitoring.ko.md) — runtime 이벤트 관찰
-10. [04-feature-map](04-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
+10. [15-samples](15-samples.ko.md) — 실행되는 샘플로 확인하기
 11. [13-interface-catalog](13-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
 12. [14-alternative](14-alternative.ko.md) — **ZLink를 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
 13. [공통 샘플](../../common/sample/README.ko.md) — 대표 업무 시나리오와 검증 기준

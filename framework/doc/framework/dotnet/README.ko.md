@@ -152,7 +152,6 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
 | [guide/01-overview.ko.md](guide/01-overview.ko.md) | 무엇/왜/누구를 위한 것, 기존 방식 대비 체감 난이도, 4축 |
 | [guide/02-getting-started.ko.md](guide/02-getting-started.ko.md) | 패키지부터 최소 예제 동작 확인까지 |
 | [guide/03-concepts.ko.md](guide/03-concepts.ko.md) | 핵심 개념과 공통 스펙 매핑 |
-| [guide/04-feature-map.ko.md](guide/04-feature-map.ko.md) | 기능 × 난이도 × 언제 쓰나 매트릭스 |
 | [guide/05-channel-messaging.ko.md](guide/05-channel-messaging.ko.md) | request / send / pub-sub 등록과 호출 사용법 |
 | [guide/06-spot.ko.md](guide/06-spot.ko.md) | room / stage / zone 같은 동적 SPOT 등록과 호출 사용법 |
 | [guide/07-actor-spot.ko.md](guide/07-actor-spot.ko.md) | actor 모델과 Spot 의 actor 호스팅(lifecycle 콜백·트리거 함수, location 축) |
@@ -163,6 +162,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
 | [guide/12-operations.ko.md](guide/12-operations.ko.md) | 운영 — 런타임 메트릭, graceful drain, readiness 통합 |
 | [guide/13-interface-catalog.ko.md](guide/13-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
 | [guide/14-alternative.ko.md](guide/14-alternative.ko.md) | **ZLink를 어디에 쓰나** — 사용처, 문제 신호, 기술 선택 경계 |
+| [guide/15-samples.ko.md](guide/15-samples.ko.md) | 어떤 샘플을 먼저 볼지 고르고 실행하는 방법 |
 
 ### 2.1 기준 문서 (interface catalog)
 

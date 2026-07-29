@@ -244,6 +244,12 @@ PlayerProfile profile = await actorClient
 Relocation 중에는 Framework가 current authority로 다시 전달하고, 이전 owner에 이미 도착한 메시지는
 Message Follow 규칙에 따라 새 owner로 relay한다. Application은 `NodeRid`를 추적하지 않는다.
 
+**이동 중에 보낸 request도 원래 caller에서 완료된다.** Target이 처리한 reply는 원래 caller로
+correlate되고, timeout은 caller의 기존 경로를 그대로 따르며, 늦게 도착한 reply는 drop된다
+([spot-actor 스펙 §10.5](../../common/spec/15-spot-actor.ko.md)). 이동 중 reply를 기다리는
+request 수는 `zlink.mesh_node.requests.inflight`의 `surface=actor` 값으로 관측한다
+([12-operations](12-operations.ko.md#1-런타임-메트릭)).
+
 ## 7. Relocation state adapter
 
 Adapter는 Actor instance의 application state만 byte 배열로 저장하고 복원한다. Location authority,

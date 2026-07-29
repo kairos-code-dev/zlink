@@ -28,7 +28,6 @@ public sealed class RegressionTests
         "01-overview.ko.md",
         "02-getting-started.ko.md",
         "03-concepts.ko.md",
-        "04-feature-map.ko.md",
         "05-channel-messaging.ko.md",
         "06-spot.ko.md",
         "07-actor-spot.ko.md",
@@ -38,7 +37,8 @@ public sealed class RegressionTests
         "11-monitoring.ko.md",
         "12-operations.ko.md",
         "13-interface-catalog.ko.md",
-        "14-alternative.ko.md"
+        "14-alternative.ko.md",
+        "15-samples.ko.md"
     ];
 
     [Fact]

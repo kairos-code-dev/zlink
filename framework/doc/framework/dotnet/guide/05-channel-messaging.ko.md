@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 기능 맵](04-feature-map.ko.md) | [다음: SPOT — room · stage · zone](06-spot.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 핵심 개념](03-concepts.ko.md) | [다음: SPOT — room · stage · zone](06-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 5. Channel Messaging — request · send · pub/sub
@@ -15,7 +15,7 @@ channel messaging은 framework의 가장 기본 축이다. 세 가지 상호작�
 - **publish/subscribe** — 여러 구독자에게 이벤트 fan-out (PUB / SUB)
 
 > 🔰 용어(channel·handler·client·codec 등)가 낯설면
-> [03-concepts §0](03-concepts.ko.md)의 한 줄 풀이를 먼저 본다.
+> [03-concepts](03-concepts.ko.md)의 개념 설명을 먼저 본다.
 > 괄호 안 `DEALER → ROUTER`·`PUB / SUB`는 하부 소켓 종류로, **어플리케이션이 직접 다루지
 > 않는다**(framework가 channel 종류에 따라 자동 매핑).
 
@@ -340,6 +340,15 @@ Spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된
 
 ## 2. handler 작성
 
+channel handler는 독립 class다. 서로 다른 요청이 동시에 실행될 수 있으므로 가변 도메인
+상태를 handler 멤버에 두지 않는다. Handler instance와 scoped dependency는 그 dispatch가
+끝날 때까지만 유지된다.
+
+> Framework는 HTTP 요청을 처리하지 않는다. `ASP.NET Core`의 endpoint·middleware가
+> HTTP를 맡고, channel handler는 그와 별개인 서버 간 메시지 dispatch 경로다. class를
+> 만들어 DI로 의존성을 받고 등록해 두면 runtime이 호출한다는 **작성 방식**이 controller
+> action과 닮았을 뿐이다.
+
 handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준다.
 
 ```csharp
@@ -449,6 +458,65 @@ handler 작성 방식은 다음 기준으로 고른다.
 - 샘플은 handler type을 발견한 뒤 `ChannelName(...)`의 typed registration으로
   노출 범위를 고정한다.
 
+### 비동기 실행 — `async`/`await`, `ValueTask`
+
+Framework 전반의 비동기 값은 `ValueTask` / `ValueTask<T>`로 표현된다. send는 source
+runtime이 작업을 제출할 수 있을 때까지 기다리며 target handler 완료는 기다리지 않는다.
+Request는 상대 reply가 도착할 때까지 기다린다. 송신 수락과 backpressure는 framework가
+처리한다. 규칙은 하나다 — **런타임(핸들러) 스레드에서는 `await`,
+blocking(`.Result`/`.GetAwaiter().GetResult()`)은 테스트·클라이언트 시나리오에서만.**
+
+```csharp
+public async ValueTask<CreateGameReply> HandleAsync(
+    CreateGameRequest request, IZLinkMessageContext context, CancellationToken ct)
+{
+    // 런타임(핸들러) 스레드 — await로 비운다. blocking(.Result/.GetAwaiter().GetResult())은 금지.
+    var room = await _client
+        .RequestToChannel("tictactoe.play", new CreateRoomRequest(request.GameName))
+        .Timeout(TimeSpan.FromSeconds(5))   // reply를 기다릴 상한.
+        .Async<CreateRoomReply>(ct);        // reply가 도착할 때까지 await로 대기하고 그 reply를 받는다.
+
+    return new CreateGameReply(room.RoomId, room.GameName);
+}
+```
+
+Channel handler는 channel별 async 수신 루프에서 실행된다. Handler가 `await`에 도달하면
+async 상태 머신만 멈추고(suspend) 실행 스레드는 풀로 돌아가 다른 일을 처리한다.
+
+아래 타임라인은 같은 흐름을 시간순으로 본 것이다. A가 `await`로 suspend 되면 같은
+스레드가 즉시 B를 처리하고, A는 응답이 오면 resume 된다.
+
+```mermaid
+sequenceDiagram
+    participant W as worker 스레드
+    participant H1 as 핸들러 A (async)
+    participant CH as Play 채널
+    participant H2 as 핸들러 B (async)
+
+    W->>H1: HandleAsync() 실행
+    activate H1
+    H1->>CH: await Request(...).Async()
+    deactivate H1
+    Note over H1: suspend — 응답 대기 (스레드 점유 없음)
+    Note over W: 워커는 즉시 다음 일로
+    W->>H2: HandleAsync() 실행
+    activate H2
+    H2-->>W: return (완료)
+    deactivate H2
+    CH-->>H1: 응답 도착 → resume
+    activate H1
+    H1-->>W: return (완료)
+    deactivate H1
+```
+
+그래서 비동기 호출을 콜백 없이 **동기식 코드처럼 위에서 아래로** 쓰면서도, worker
+몇 개로 수많은 동시 요청을 처리한다. 같은 코드를 `.Result`로 막으면 스레드 하나가
+계속 점유하기 때문에 핸들러 안에서 금지한다. 실패는 `await` 경로에서 예외로 던져진다.
+
+같은 `await` 규칙이 Spot·Actor handler에도 적용되지만, 그쪽은 turn이 handler 완료까지
+유지되어 동시 실행 범위가 다르다 —
+[06-spot §2.1](06-spot.ko.md#21-실행-모델--무엇이-무엇과-동시에-실행되나)이 다룬다.
+
 ## 3. handler를 channel에 노출하기
 
 framework는 발견한 handler를 모든 channel에 자동으로 열지 않는다. **발견과
@@ -501,7 +569,9 @@ fanout channel의 publish handler는 builder의 `AddHandler<...>()`로 등록한
 message kind와 packet name으로 구분한다. 같은 key를 중복 등록하면
 `ZLinkConfigurationException`으로 실패하고, 서로 다른 MeshName이나 ChannelName에는
 같은 packet name을 사용할 수 있다. Fanout handler는 독립 fanout channel builder에
-등록하며 RouteMesh handler와 섞지 않는다.
+등록하며 RouteMesh handler와 섞지 않는다. local endpoint나 peer 연결 정보가 빠진 경우와
+허용되지 않는 handler 반환형도 같은 자리에서 걸린다. 이 검사는 첫 호출까지 미루지 않고
+**host startup에서 즉시** 예외로 막는다.
 
 ## 4. outbound 호출
 
@@ -588,7 +658,7 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
 > ```
 
 > `Async(...)`/`Async<T>(...)`의 완료는 transport 위임까지만 보장한다.
-> remote handler 완료나 구독자 수신을 보장하지 않는다([03-concepts](03-concepts.ko.md) §6.2).
+> remote handler 완료나 구독자 수신을 보장하지 않는다([pub/sub은 두 갈래다](#13-pubsub은-두-갈래다)).
 
 > **pub/sub는 replay가 없다.** 구독자가 **아직 연결되기 전**에 publish 된 메시지나, **연결이 끊긴
 > 동안** 지나간 메시지는 다시 받지 못한다(재연결해도 그 사이 것은 안 온다). 놓치면 안 되는 이벤트는
@@ -966,7 +1036,7 @@ public sealed class UserCacheRefreshedEventHandler
 - **`ZLinkConfigurationException`** → channel이 없거나 해당 역할이 없는
   경우. 등록을 확인한다.
 - **시작 시 예외** → channel 이름 중복, 같은 channel `kind + packet 이름` 중복,
-  client에 연결 경로 없음. fail-fast 다([03-concepts](03-concepts.ko.md) §4).
+  client에 연결 경로 없음. fail-fast 다([잘못된 등록은 시작 단계에서 막힌다](#잘못된-등록은-시작-단계에서-막힌다)).
 - **`ZLink` vs `Zlink`** → 서버 framework 타입은 전부 `ZLink`(대문자 L)다.
 - **handler 없는 packet으로 보냈을 때(런타임)** → 시작 단계 검증과 별개로, 실행 중 등록되지
   않은 packet 이름이 도착하면 **request는 error reply로 실패**(client는 예외로 받음),
@@ -987,5 +1057,5 @@ public sealed class UserCacheRefreshedEventHandler
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: 기능 맵](04-feature-map.ko.md) | [다음: SPOT — room · stage · zone](06-spot.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 핵심 개념](03-concepts.ko.md) | [다음: SPOT — room · stage · zone](06-spot.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

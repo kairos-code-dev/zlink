@@ -67,8 +67,8 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 언어별 typed binding 
 | `C++` | [framework/cpp](framework/cpp/README.ko.md) | 가이드 + samples | C++ 계약 | runtime·backend·회귀 |
 
 > 가이드 골격(언어별 세부 번호는 다를 수 있음): 개요 → 시작하기 → 핵심 개념 →
-> 채널 메시징 → SPOT → actor/session → STREAM → Registry → 모니터링 → 기능 맵 →
-> 인터페이스 카탈로그 → gRPC 대안 → 정본 sample 문서 순으로 이어진다.
+> 채널 메시징 → SPOT → actor/session → STREAM → Registry → 모니터링 →
+> 인터페이스 카탈로그 → gRPC 대안 → 샘플 고르기 순으로 이어진다.
 
 ---
 

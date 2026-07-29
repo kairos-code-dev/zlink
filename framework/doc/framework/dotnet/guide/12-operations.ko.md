@@ -249,7 +249,35 @@ await foreach (var meshEvent in meshRuntime.ObserveAsync("game.room", cancellati
 }
 ```
 
-## 6. Host lifecycle 상태 관측
+## 6. Host lifecycle
+
+Framework runtime은 `ASP.NET Core`의 **hosted service**로 host 시작·종료에 묶인다.
+channel·SPOT·STREAM runtime은 startup에서 등록한 역할을 보고 생성되어 shutdown에서
+정리된다.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    state "구성 단계" as configure
+    state "서비스 중" as serving
+    state "종료" as stopping
+    [*] --> configure: WebApplication.CreateBuilder()
+    configure: Services / AddZLinkFramework
+    configure: channel / SPOT / stream / registry
+    configure --> serving: app.Run()
+    serving: channel·SPOT·stream dispatch
+    serving --> stopping: host shutdown
+    stopping: hosted service stop → runtime 정리
+    stopping --> [*]
+```
+
+- **구성 단계** — `app.Run()` 전에 모든 선언을 끝낸다. 잘못된 구성은 host
+  startup에서 예외로 거부된다.
+- **종료** — host shutdown 신호가 오면 hosted service `stop()` → channel/SPOT/STREAM
+  runtime 정리 순으로 내려간다.
+- 백그라운드 작업은 표준 `IHostedService`로 같은 수명주기에 편입시킨다.
+
+### 6.1 상태 관측
 
 Host `Relocate`·`Shutdown` 상태 전이는 `IZLinkFrameworkRuntime`의 bounded status stream에서 관측한다. MeshName별
 runtime은 component snapshot을 제공하지만 별도 termination authority나 partial drain operation을 만들지 않는다.

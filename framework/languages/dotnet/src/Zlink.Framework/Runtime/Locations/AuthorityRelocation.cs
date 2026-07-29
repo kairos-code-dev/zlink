@@ -355,7 +355,8 @@ internal sealed record ZLinkAggregatePrepareRequest(
     ZLinkMeshNodeDescriptorKey TargetDescriptor,
     ulong TargetDescriptorLifecycleGeneration,
     ZLinkCapacityVector Capacity,
-    ZLinkLocationOwnerToken TargetOwner);
+    ZLinkLocationOwnerToken TargetOwner,
+    bool AllowPreparingTarget = false);
 
 internal readonly record struct ZLinkAggregateFence(
     Guid AggregateId,

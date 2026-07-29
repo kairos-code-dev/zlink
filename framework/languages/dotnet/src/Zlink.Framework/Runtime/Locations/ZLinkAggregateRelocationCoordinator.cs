@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
+using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.Runtime.Locations;
 
@@ -947,18 +948,36 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
             published.Envelope.Participants.Count);
         ZLinkCanonicalRelocationAuthorityProjection? shared = null;
         var replyDeliveryPending = false;
+        var steadyAuthorities = 0;
         foreach (var participant in published.Envelope.Participants)
         {
             var read = await authorityStore.ReadAuthorityAsync(
                     participant.AuthorityKey,
                     cancellationToken)
                 .ConfigureAwait(false);
-            ZLinkCanonicalRelocationAuthorityProjection current = null!;
-            if (read is not ZLinkAuthorityReadResult.Found found
-                || !ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+            if (read is not ZLinkAuthorityReadResult.Found found)
+                throw new ZLinkRelocationDataLostException(
+                    $"Canonical relocation authority '{participant.AuthorityKey.Value}' disappeared during source cleanup.");
+            if (!ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
                     found.Snapshot.Payload.Span,
-                    out current)
-                || current.RelocationHigh
+                    out var current))
+            {
+                if (!IsExactNormalizedTargetAuthority(
+                        found.Snapshot,
+                        participant,
+                        published.Envelope.AggregateId,
+                        targetDescriptor,
+                        targetDescriptorLifecycleGeneration,
+                        targetOwner))
+                    throw new ZLinkRelocationDataLostException(
+                        $"Canonical relocation authority '{participant.AuthorityKey.Value}' has a different source-cleanup fence.");
+                steadyAuthorities++;
+                continue;
+            }
+            if (steadyAuthorities != 0)
+                throw new ZLinkRelocationDataLostException(
+                    "Canonical relocation source-cleanup completion is partially normalized.");
+            if (current.RelocationHigh
                    != published.Envelope.CanonicalRelocationHigh
                 || current.RelocationLow
                    != published.Envelope.CanonicalRelocationLow
@@ -1001,6 +1020,13 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
                 participant,
                 found.Snapshot,
                 current));
+        }
+        if (steadyAuthorities != 0)
+        {
+            if (steadyAuthorities != published.Envelope.Participants.Count)
+                throw new ZLinkRelocationDataLostException(
+                    "Canonical relocation source-cleanup completion is partially normalized.");
+            return true;
         }
         if (replyDeliveryPending)
             return false;
@@ -1084,6 +1110,63 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
                 "Canonical source-cleanup completion authority commit failed.",
                 ZLinkRetryAdvice.RetryAfterBackoff);
         return true;
+    }
+
+    internal static bool IsExactNormalizedTargetAuthority(
+        ZLinkAuthoritySnapshot snapshot,
+        ZLinkRelocationParticipantEnvelope participant,
+        Guid aggregateId,
+        ZLinkMeshNodeDescriptorKey targetDescriptor,
+        ulong targetDescriptorLifecycleGeneration,
+        ZLinkLocationOwnerToken targetOwner,
+        bool allowCurrentAuthorityGeneration = false)
+    {
+        if (ZLinkRelocationAuthorityPayloadCodec.TryDecode(
+                snapshot.Payload.Span,
+                out _)
+            || snapshot.Allocation.ObjectKind != participant.ObjectKind
+            || snapshot.Allocation.Descriptor != targetDescriptor
+            || snapshot.Allocation.DescriptorLifecycleGeneration
+               != targetDescriptorLifecycleGeneration
+            || snapshot.OwnerId != targetOwner.OwnerId
+            || snapshot.OwnerLeaseGeneration != targetOwner.LeaseGeneration
+            || snapshot.ObjectGeneration != participant.ObjectGeneration
+            || participant.AuthorityOwnerGeneration is 0 or > long.MaxValue
+            || (allowCurrentAuthorityGeneration
+                ? snapshot.AuthorityOwnerGeneration
+                  < participant.AuthorityOwnerGeneration
+                : snapshot.AuthorityOwnerGeneration
+                  <= participant.AuthorityOwnerGeneration))
+            return false;
+
+        ZLinkCanonicalParticipantRecovery recovery;
+        try
+        {
+            recovery = ZLinkCanonicalParticipantRecoveryCodec.Decode(
+                participant.RecoveryPayload.Span);
+        }
+        catch (Exception error) when (error is InvalidDataException
+                                      or ArgumentException
+                                      or OverflowException)
+        {
+            return false;
+        }
+        if (recovery.AuthorityKey != participant.AuthorityKey
+            || recovery.ObjectKind != participant.ObjectKind
+            || recovery.ObjectGeneration != participant.ObjectGeneration
+            || recovery.AuthorityOwnerGeneration
+               != participant.AuthorityOwnerGeneration
+            || snapshot.Allocation.StableType != recovery.StableType)
+            return false;
+
+        var expected = ZLinkSpotRetireTargetRuntime.BuildTargetReadyPayload(
+            participant.ObjectKind,
+            recovery.AuthorityPayload,
+            targetDescriptor.Rid,
+            targetDescriptorLifecycleGeneration,
+            targetOwner,
+            aggregateId);
+        return snapshot.Payload.Span.SequenceEqual(expected.Span);
     }
 
     internal async ValueTask AbortAsync(

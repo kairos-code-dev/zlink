@@ -1318,7 +1318,8 @@ internal sealed partial class ZLinkProviderLocationRepository
                 request.TargetOwner,
                 null,
                 null,
-                cancellationToken)
+                cancellationToken,
+                allowPreparingTarget: request.AllowPreparingTarget)
             .ConfigureAwait(false);
         if (target is null)
             return new ZLinkAggregatePrepareResult.Conflict();
@@ -1640,7 +1641,23 @@ internal sealed partial class ZLinkProviderLocationRepository
                 fence,
                 retryAttempt: 0,
                 retryDeadline,
-                cancellationToken)
+                cancellationToken,
+                allowPreparingTarget: false)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<ZLinkAggregateCommitResult>
+        CommitAggregateForRecoveryAsync(
+            ZLinkAggregateFence fence,
+            CancellationToken cancellationToken = default)
+    {
+        var retryDeadline = DateTimeOffset.UtcNow + CounterRetryWindow;
+        return await CommitAggregateCoreAsync(
+                fence,
+                retryAttempt: 0,
+                retryDeadline,
+                cancellationToken,
+                allowPreparingTarget: true)
             .ConfigureAwait(false);
     }
 
@@ -1649,7 +1666,8 @@ internal sealed partial class ZLinkProviderLocationRepository
             ZLinkAggregateFence fence,
             int retryAttempt,
             DateTimeOffset retryDeadline,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool allowPreparingTarget)
     {
         var key = AggregateKey(fence);
         var aggregate = await ReadRecordAsync<AggregateRecord>(
@@ -1684,7 +1702,8 @@ internal sealed partial class ZLinkProviderLocationRepository
                 request.TargetOwner,
                 null,
                 null,
-                cancellationToken)
+                cancellationToken,
+                allowPreparingTarget: allowPreparingTarget)
             .ConfigureAwait(false);
         if (target is null) return ZLinkAggregateCommitResult.Stale;
         var authorities = new StoredAuthority?[request.Participants.Count];
@@ -1873,10 +1892,11 @@ internal sealed partial class ZLinkProviderLocationRepository
                         cancellationToken)
                     .ConfigureAwait(false);
                 return await CommitAggregateCoreAsync(
-                        fence,
-                        retryAttempt + 1,
-                        retryDeadline,
-                        cancellationToken)
+                    fence,
+                    retryAttempt + 1,
+                    retryDeadline,
+                    cancellationToken,
+                    allowPreparingTarget)
                     .ConfigureAwait(false);
             }
             return ZLinkAggregateCommitResult.Stale;
@@ -4568,7 +4588,8 @@ internal sealed partial class ZLinkProviderLocationRepository
         ZLinkPlacementObjectKind? objectKind,
         string? stableType,
         CancellationToken cancellationToken,
-        bool requireNewPlacementEligibility = true)
+        bool requireNewPlacementEligibility = true,
+        bool allowPreparingTarget = false)
     {
         var descriptorKey = MeshKey(key.MeshName, key.Rid);
         var descriptorRead = await provider.ReadAsync(
@@ -4589,6 +4610,9 @@ internal sealed partial class ZLinkProviderLocationRepository
             || descriptor.ObjectRole != ZLinkMeshNodeObjectRole.Server
             || (requireNewPlacementEligibility
                 && (descriptor.State != ZLinkFrameworkRuntimeState.Serving
+                    && !(allowPreparingTarget
+                         && descriptor.State
+                         == ZLinkFrameworkRuntimeState.Preparing)
                     || descriptor.PlacementWeight <= 0)))
             return null;
         if (objectKind is { } kind

@@ -7,6 +7,7 @@ using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.Runtime.Spots;
 
 namespace SpotActorTransfer.ActorNode;
 
@@ -15,6 +16,22 @@ internal static class ActorNodeHostFactory
     public static (WebApplication App, ServerOptions Options) Create(string[] args)
     {
         var options = ServerOptions.Parse(args, "actor-node");
+        ZLinkSpotRetireTargetRuntime
+            .PostPublicationBeforeNormalizationTestHook =
+            string.Equals(
+                Environment.GetEnvironmentVariable(
+                    "ZLINK_E2E_CRASH_AT_TARGET_COMPLETE_GATE"),
+                "1",
+                StringComparison.Ordinal)
+                ? static async cancellationToken =>
+                {
+                    Console.Error.Flush();
+                    await Task.Delay(
+                            Timeout.InfiniteTimeSpan,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                : null;
         Directory.CreateDirectory(options.LogDir);
         var builder = WebApplication.CreateBuilder(args);
         builder.Configuration.Sources.Clear();

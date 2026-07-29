@@ -125,6 +125,11 @@ internal interface IZLinkLocationRepository
         ZLinkAggregateFence fence,
         CancellationToken cancellationToken = default);
 
+    ValueTask<ZLinkAggregateCommitResult> CommitAggregateForRecoveryAsync(
+        ZLinkAggregateFence fence,
+        CancellationToken cancellationToken = default) =>
+        CommitAggregateAsync(fence, cancellationToken);
+
     ValueTask<ZLinkAggregateAbortResult> AbortAggregateAsync(
         ZLinkAggregateFence fence,
         CancellationToken cancellationToken = default);

@@ -14,6 +14,8 @@ var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreC
     ["ST-B2"] = () => StB2SourceCleanupFailureAfterSuccessScenario.RunAsync(context),
     ["ST-B3"] = () => StB3MissingAdapterScenario.RunAsync(context),
     ["ST-B4"] = () => StB4EmptyStateTransferScenario.RunAsync(context),
+    ["ST-B5"] = () =>
+        StB5TargetCrashAggregateRecoveryScenario.RunAsync(context),
     ["ST-C1"] = () => StC1SourceDownBeforeCommitScenario.RunAsync(context),
     ["ST-C2"] = () => StC2SourceDownAfterTargetCommitScenario.RunAsync(context),
     ["ST-C3"] = () => StC3CallbackFailureClassificationScenario.RunAsync(context),

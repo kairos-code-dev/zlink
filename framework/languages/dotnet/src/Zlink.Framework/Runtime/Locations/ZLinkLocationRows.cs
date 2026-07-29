@@ -91,6 +91,7 @@ internal enum ZLinkMeshNodeObjectRole
 
 internal enum ZLinkObjectMaintenancePolicyKind
 {
+    Unspecified = 0,
     Disabled = 1,
     Recreate = 2,
     Snapshot = 3

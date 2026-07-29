@@ -1515,15 +1515,38 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (CreateDeferredJoinCompletionJournal() is null) return;
         _ = TryRunDetached(
             "actor-deferred-join-completion-recovery",
-            token => ZLinkReconciliationRunner.RunAsync(
+            token => RunDeferredJoinCompletionRecoveryAsync(
                 retryToken => RecoverDeferredJoinCompletionAsync(
-                    actorState,
-                    retryToken),
+                    actorState, retryToken),
                 exception => ZLinkFrameworkDebugLog.SpotDiscovery(
                     $"deferred Join completion retry actor={actorState.ActorId}: {exception.Message}"),
-                token,
-                static exception => exception is OperationCanceledException));
+                token));
     }
+
+    internal static async ValueTask RunDeferredJoinCompletionRecoveryAsync(
+        Func<CancellationToken, ValueTask> recover,
+        Action<Exception> report,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(recover);
+        ArgumentNullException.ThrowIfNull(report);
+        await ZLinkReconciliationRunner.RunAsync(
+                recover,
+                report,
+                cancellationToken,
+                static exception =>
+                    exception is OperationCanceledException
+                    || IsDeferredJoinCompletionTerminal(exception))
+            .ConfigureAwait(false);
+    }
+
+    private static bool IsDeferredJoinCompletionTerminal(
+        Exception exception) =>
+        exception is ZLinkRelocationDataLostException
+        || exception is ZLinkFrameworkException
+        {
+            RetryAdvice: ZLinkRetryAdvice.DoNotRetry
+        };
 
     internal async ValueTask RecoverPublishedRelocationsAsync(
         CancellationToken cancellationToken)

@@ -142,21 +142,38 @@ internal sealed partial class ZLinkFrameworkRuntime
                     ZLinkActorAuthorityPayloadCodec.AuthorityKey(
                         candidate.ActorId)
                     == participant.AuthorityKey);
-                if (!ZLinkActorAuthorityPayloadCodec.TryDecodeRelocating(
+                var hasActor =
+                    ZLinkActorAuthorityPayloadCodec.TryDecodeRelocating(
                         descriptor.AuthorityPayload,
-                        out var authority)
-                    || !ZLinkActorRelocationAuthorityPayloadCodec.TryDecode(
+                        out var authority);
+                var hasRelocation =
+                    ZLinkActorRelocationAuthorityPayloadCodec.TryDecode(
                         descriptor.AuthorityPayload,
-                        out var relocationAuthority)
-                    || relocationAuthority.RelocationId
-                       != envelope.AggregateId
-                    || relocationAuthority.Phase
-                       != ZLinkActorRelocationAuthorityPhase.Activated
-                    || !node.Registration.ActorRelocations.TryGetValue(
-                        authority.StableType,
-                        out var relocation))
+                        out var relocationAuthority);
+                var hasRegistration =
+                    node.Registration.ActorRelocations.TryGetValue(
+                        hasActor ? authority.StableType : string.Empty,
+                        out var relocation);
+                hasRegistration &= hasActor;
+                var publishedSteadyRecovery =
+                    preparedAggregate is null
+                    && reservedTargetAuthorityOwnerGeneration == 0
+                    && !hasRelocation
+                    && hasActor
+                    && authority.State == ZLinkActorAuthorityState.Ready;
+                if (!hasActor
+                    || !publishedSteadyRecovery
+                    && (!hasRelocation
+                        || relocationAuthority.RelocationId
+                           != envelope.AggregateId
+                        || relocationAuthority.Phase is not (
+                            ZLinkActorRelocationAuthorityPhase.Activated
+                            or ZLinkActorRelocationAuthorityPhase.Steady))
+                    || !hasRegistration)
+                {
                     throw new InvalidDataException(
                         $"Actor participant '{participant.AuthorityKey.Value}' cannot be restored on the target.");
+                }
 
                 var actorTargetAuthorityOwnerGeneration =
                     await ResolveInboundTargetAuthorityOwnerGenerationAsync(
@@ -169,7 +186,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                     .RelocateAndBindActorAsync(
                         authority.ActorId,
                         authority.StableType,
-                        relocation,
+                        relocation!,
                         participant.ApplicationState,
                         participant.ObjectGeneration,
                         actorTargetAuthorityOwnerGeneration,
@@ -183,7 +200,9 @@ internal sealed partial class ZLinkFrameworkRuntime
                     actorTargetAuthorityOwnerGeneration);
                 actorState.StageRelocationSessionRoute(
                     envelope.AggregateId.ToString("N"),
-                    relocationAuthority.BoundSessionRoute);
+                    hasRelocation
+                        ? relocationAuthority.BoundSessionRoute
+                        : default);
                 var acceptedFrames = ZLinkStandaloneActorRelocationRuntime
                     .DecodeAcceptedRecords(participant.AcceptedJobs)
                     .Select(static accepted => accepted.Frame)
@@ -272,6 +291,21 @@ internal sealed partial class ZLinkFrameworkRuntime
             ulong reservedTargetAuthorityOwnerGeneration,
             CancellationToken cancellationToken)
     {
+        if (preparedAggregate is null
+            && reservedTargetAuthorityOwnerGeneration == 0)
+        {
+            var published =
+                await ReadPublishedTargetAuthorityOwnerGenerationAsync(
+                        participant.AuthorityKey,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            if (published is 0 or > long.MaxValue
+                || participant.AuthorityOwnerGeneration != published)
+                throw new ZLinkRelocationDataLostException(
+                    $"Published target authority generation for '{participant.AuthorityKey.Value}' changed during recovery.");
+            return published;
+        }
+
         var targetGeneration = reservedTargetAuthorityOwnerGeneration > 0
             ? reservedTargetAuthorityOwnerGeneration
             : preparedAggregate is not null
@@ -728,6 +762,17 @@ internal sealed partial class ZLinkFrameworkRuntime
         TargetStage stage,
         CancellationToken cancellationToken)
     {
+        await CompleteInboundSpotAggregateReplayAsync(
+                stage,
+                cancellationToken)
+            .ConfigureAwait(false);
+        OpenInboundSpotAggregateAdmission(stage);
+    }
+
+    internal async ValueTask CompleteInboundSpotAggregateReplayAsync(
+        TargetStage stage,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(stage);
         if (Volatile.Read(ref stage.Published) == 0)
             throw new InvalidOperationException(
@@ -814,11 +859,14 @@ internal sealed partial class ZLinkFrameworkRuntime
                     $"Actor '{actorState.ActorId}' target replay did not drain its cutover backlog.");
         }
 
+    }
+
+    internal static void OpenInboundSpotAggregateAdmission(
+        TargetStage stage) =>
         OpenTargetAdmissionOnce(
             stage,
             () => stage.Spot.Activation.OpenRelocationTargetAdmission(
                 stage.TargetAdmissionSeal));
-    }
 
     private async ValueTask CompleteAcceptedActorReplayAsync(
         TargetStage stage,

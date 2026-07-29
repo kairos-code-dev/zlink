@@ -698,7 +698,8 @@ internal sealed partial class ZLinkInMemoryLocationStore
                         source.Allocation.ObjectKind,
                         source.Allocation.StableType,
                         now,
-                        out _))
+                        out _,
+                        request.AllowPreparingTarget))
                 || IsParticipantInPreparedAggregate(request.Participants)
                 || !TryGetTargetDescriptor(
                     request.TargetDescriptor,
@@ -1032,7 +1033,8 @@ internal sealed partial class ZLinkInMemoryLocationStore
         ZLinkPlacementObjectKind objectKind,
         string stableType,
         DateTimeOffset now,
-        out ZLinkMeshNodeDescriptor descriptor)
+        out ZLinkMeshNodeDescriptor descriptor,
+        bool allowPreparingTarget = false)
     {
         descriptor = null!;
         if (!MatchesLiveTarget(
@@ -1045,6 +1047,8 @@ internal sealed partial class ZLinkInMemoryLocationStore
         descriptor = _meshNodes.Rows[encoded];
         if (descriptor.ObjectRole != ZLinkMeshNodeObjectRole.Server
             || descriptor.State != ZLinkFrameworkRuntimeState.Serving
+            && !(allowPreparingTarget
+                 && descriptor.State == ZLinkFrameworkRuntimeState.Preparing)
             || descriptor.PlacementWeight <= 0)
             return false;
         var capability = descriptor.ObjectCapabilities.SingleOrDefault(
@@ -1390,6 +1394,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
             || left.TargetDescriptorLifecycleGeneration
             != right.TargetDescriptorLifecycleGeneration
             || left.Capacity != right.Capacity
+            || left.AllowPreparingTarget != right.AllowPreparingTarget
             || !left.InventoryDigest.Span.SequenceEqual(
                 right.InventoryDigest.Span)
             || left.Participants.Count != right.Participants.Count)

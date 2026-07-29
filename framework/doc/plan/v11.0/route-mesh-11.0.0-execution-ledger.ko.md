@@ -7190,3 +7190,46 @@ fixed-width field를 포함한다. 최대값을 동시에 사용한 encode·deco
 - maximum completion reply·metadata boundary test: 통과
 - .NET solution build: warning 0, error 0
 - scoped `git diff --check`: 통과
+
+## 2026-07-29 .NET ST-B5 target process crash recovery 완료
+
+앞 checkpoint에 남긴 User Spot aggregate의 target process crash gap을 닫았다.
+Target이 authority publication 뒤 종료되면 startup recovery는 exact target RID,
+lifecycle generation과 owner lease 만료를 확인한 뒤 같은 aggregate를 새 local
+target으로 인수한다. Takeover는 target attempt와 aggregate generation을 함께
+증가시키고 새 owner·descriptor fence와 immutable root reference를 authority에
+한 번에 반영한다.
+
+Target은 accepted journal replay를 봉인한 상태로 끝낸 뒤 Ready authority를 CAS한다.
+CAS 반환 뒤에는 비동기 I/O를 기다리지 않고 admission을 열며, 마지막으로 사용이 끝난
+root를 제거한다. Source-cleanup retry는 모든 participant의 Ready payload, object
+generation, target descriptor·lifecycle, owner lease와 authority generation이 정확히
+일치할 때만 이미 완료된 결과로 처리한다. 손상되거나 일부만 전환된 aggregate는
+`DataLost`다.
+
+Deferred Join recovery는 canonical participant의 synthetic storage key를 실제
+authority key로 복원한다. Current v3와 legacy v1 participant·v2 source-fence를 모두
+읽는다. Pending completion이 없는 aggregate는 no-op이며, 실제 `DataLost`나
+`DoNotRetry`는 반복하지 않고 runtime task failure reporter에 한 번 전달한다.
+
+Production Framework에는 환경 변수로 실행되는 crash failpoint가 없다. Actual-process
+runner의 ActorNode friend assembly만 internal hook을 설치하고, 외부 watcher가 exact
+post-publication marker에서 process를 SIGKILL한다.
+
+- `RelocationRuntimeTests`: 161/161
+- `ActorRelocationProtocolTests`: 15/15
+- `DeferredActorJoinDurabilityTests`: 9/9
+- 연속 target takeover repository test: generation 2 → 3, owner·descriptor·root exact
+- actual-process ST-B5:
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-095815-316461`
+- actual-process ST-B5 재실행:
+  `framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-095930-318405`
+- 두 실행 모두 object generation 보존, duplicate restore 0, service available,
+  recovered global route와 stale route 0
+- final `gpt-5.6-sol high` review: P0–P2 없음
+- scoped `git diff --check`: 통과
+
+09:00 KST 완료 목표는 이 crash recovery의 실제 E2E와 final review P1 수정 때문에
+초과했다. 완료 gate를 줄이지 않는다. 남은 언어 동형 수렴, 전체 회귀, E2E·sample,
+package와 smoke를 병렬로 진행하며 현재 전체 완료 예상은 2026-07-30 03:00 KST
+이전이다.

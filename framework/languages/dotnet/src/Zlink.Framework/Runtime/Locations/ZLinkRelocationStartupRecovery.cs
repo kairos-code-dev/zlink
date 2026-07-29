@@ -50,7 +50,11 @@ internal sealed class ZLinkRelocationStartupRecovery(
         var preparing = new Dictionary<string, ZLinkAuthorityEntry>(
             StringComparer.Ordinal);
         foreach (var prefix in Prefixes)
-            await ScanPrefixAsync(prefix, linked, preparing, cancellationToken)
+            await ScanPrefixAsync(
+                    prefix,
+                    linked,
+                    preparing,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
         if (recoverPreparing is not null)
@@ -78,6 +82,9 @@ internal sealed class ZLinkRelocationStartupRecovery(
                         group.Reference,
                         cancellationToken)
                     .ConfigureAwait(false);
+                envelope = BindManifestGeneration(
+                    envelope,
+                    group.Reference);
             }
             catch (ZLinkRelocationDataLostException error)
             {
@@ -132,7 +139,8 @@ internal sealed class ZLinkRelocationStartupRecovery(
             if (ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
                     found.Snapshot.Payload.Span,
                     out var canonical)
-                && canonical.Phase == 1)
+                && canonical.Phase == 1
+                && string.IsNullOrEmpty(canonical.RelocationReference))
             {
                 // Preparing has no immutable root yet and therefore cannot be
                 // reconciled as a published relocation tree.
@@ -157,6 +165,7 @@ internal sealed class ZLinkRelocationStartupRecovery(
                     relocationStore)
                 .ReadPreparedAsync(group.Reference, cancellationToken)
                 .ConfigureAwait(false);
+            envelope = BindManifestGeneration(envelope, group.Reference);
         }
         catch (ZLinkRelocationDataLostException error)
         {
@@ -171,6 +180,17 @@ internal sealed class ZLinkRelocationStartupRecovery(
                     StringComparer.Ordinal)
                 .ToArray());
     }
+
+    private static ZLinkRelocationEnvelope BindManifestGeneration(
+        ZLinkRelocationEnvelope envelope,
+        ZLinkRelocationManifestReference reference) =>
+        envelope.CanonicalLogicalStream.IsEmpty
+            || envelope.AggregateGeneration == reference.AggregateGeneration
+                ? envelope
+                : envelope with
+                {
+                    AggregateGeneration = reference.AggregateGeneration
+                };
 
     private async ValueTask ScanPrefixAsync(
         string prefix,

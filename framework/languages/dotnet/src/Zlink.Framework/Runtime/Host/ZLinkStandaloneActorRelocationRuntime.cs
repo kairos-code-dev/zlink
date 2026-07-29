@@ -177,7 +177,9 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         relocationId,
                         applicationState,
                         semanticSealRecords,
-                        route),
+                        route,
+                        maintenancePolicy: ToMaintenancePolicy(
+                            relocation.PolicyKind)),
                     registration.ApplicationVersion);
                 var publication = new ZLinkRelocationPublicationCoordinator(
                     authorityStore,
@@ -243,7 +245,9 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         relocationId,
                         applicationState,
                         acceptedRecords,
-                        route),
+                        route,
+                        maintenancePolicy: ToMaintenancePolicy(
+                            relocation.PolicyKind)),
                     registration.ApplicationVersion);
                 if (envelope.Participants.Single().AcceptedBoundary
                     != commitBoundary.AcceptedHighWater)
@@ -647,7 +651,9 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
         ReadOnlyMemory<byte> applicationState,
         IReadOnlyList<ZLinkActorAcceptedRecord> acceptedRecords,
         ZLinkRemoteActorBoundSessionRoute boundSessionRoute,
-        ReadOnlyMemory<byte> remoteJoinRecovery = default)
+        ReadOnlyMemory<byte> remoteJoinRecovery = default,
+        ZLinkObjectMaintenancePolicyKind maintenancePolicy =
+            ZLinkObjectMaintenancePolicyKind.Snapshot)
     {
         ArgumentNullException.ThrowIfNull(target);
         return CreateImmutableRoot(
@@ -670,8 +676,19 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             applicationState,
             acceptedRecords,
             boundSessionRoute,
-            remoteJoinRecovery);
+            remoteJoinRecovery,
+            maintenancePolicy);
     }
+
+    private static ZLinkObjectMaintenancePolicyKind ToMaintenancePolicy(
+        int policyKind) =>
+        policyKind switch
+        {
+            1 => ZLinkObjectMaintenancePolicyKind.Recreate,
+            2 => ZLinkObjectMaintenancePolicyKind.Snapshot,
+            _ => throw new ZLinkConfigurationException(
+                $"Unknown Actor relocation policy kind '{policyKind}'.")
+        };
 
     internal static ZLinkRelocationEnvelope CreateImmutableRoot(
         ZLinkAuthoritySnapshot sourceSnapshot,
@@ -681,7 +698,9 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
         ReadOnlyMemory<byte> applicationState,
         IReadOnlyList<ZLinkActorAcceptedRecord> acceptedRecords,
         ZLinkRemoteActorBoundSessionRoute boundSessionRoute,
-        ReadOnlyMemory<byte> remoteJoinRecovery = default)
+        ReadOnlyMemory<byte> remoteJoinRecovery = default,
+        ZLinkObjectMaintenancePolicyKind maintenancePolicy =
+            ZLinkObjectMaintenancePolicyKind.Snapshot)
     {
         ArgumentNullException.ThrowIfNull(sourceSnapshot);
         ArgumentNullException.ThrowIfNull(sourceAuthority);
@@ -750,7 +769,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         sourceFence.LeaseGeneration,
                         sourceFence.NodeRid,
                         sourceFence.NodeGeneration)),
-                remoteJoinRecovery));
+                remoteJoinRecovery,
+                maintenancePolicy));
         var participant = new ZLinkRelocationParticipantEnvelope(
             ZLinkActorAuthorityPayloadCodec.AuthorityKey(sourceAuthority.ActorId),
             ZLinkPlacementObjectKind.Actor,

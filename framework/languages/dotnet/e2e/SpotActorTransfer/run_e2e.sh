@@ -116,6 +116,7 @@ start_node() {
   local router="$3"
   local advertise_host="$4"
   local caller_only="${5:-false}"
+  local crash_at_complete_gate="${6:-0}"
   local config="$CONFIG_DIR/$rid.json"
   python3 "$ROOT_DIR/../write_role_config.py" "$config" -- \
     --rid "$rid" \
@@ -128,6 +129,8 @@ start_node() {
     --request-timeout-milliseconds 3000 \
     --evidence-file "$LOG_DIR/${rid}.evidence.log" \
     --log-dir "$LOG_DIR"
+  ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1 \
+  ZLINK_E2E_CRASH_AT_TARGET_COMPLETE_GATE="$crash_at_complete_gate" \
   setsid dotnet run --no-build --project "$SERVER_PROJECT" -- --config "$config" \
     9>&- \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
@@ -255,7 +258,8 @@ wait_health "$NODE_D_PROXY_ADMIN" actor-d-proxy
 
 start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" 127.0.0.1
 NODE_A_PID="${pids[${#pids[@]}-1]}"
-start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" 127.0.0.1
+start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" 127.0.0.1 false 1
+NODE_B_PID="${pids[${#pids[@]}-1]}"
 start_node actor-c "$NODE_C_URL" "$NODE_C_ROUTER" 127.0.0.1
 start_node actor-d "$NODE_D_URL" "$NODE_D_ROUTER" 127.0.0.1 true
 
@@ -271,7 +275,24 @@ wait_health "$SESSION_B_URL" session-b
 : >"$LOG_DIR/client.stdout.log"
 : >"$LOG_DIR/client.stderr.log"
 
-if [[ "$SCENARIO" == "all" ]]; then
+if [[ "$SCENARIO" == "ST-B5" ]]; then
+  python3 "$ROOT_DIR/Support/kill_on_file_marker.py" \
+    --pid "$NODE_B_PID" \
+    --path "$LOG_DIR/actor-b.stderr.log" \
+    --marker "aggregate_target_complete_gate" \
+    --timeout 60 &
+  TARGET_CRASH_WATCHER_PID="$!"
+  run_client "ST-B5" &
+  TARGET_CRASH_CLIENT_PID="$!"
+  wait "$TARGET_CRASH_WATCHER_PID"
+  wait_process_exit "$NODE_B_PID" actor-b
+  # Replacement is allowed only after the exact old owner lease expires.
+  sleep 11
+  start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" 127.0.0.1
+  NODE_B_PID="${pids[${#pids[@]}-1]}"
+  wait_health "$NODE_B_URL" actor-b
+  wait "$TARGET_CRASH_CLIENT_PID"
+elif [[ "$SCENARIO" == "all" ]]; then
   run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E1A,ST-E2,ST-F1,ST-F2,ST-F3,ST-F6"
   run_client "ST-B2"
   wait_process_exit "$NODE_A_PID" actor-a

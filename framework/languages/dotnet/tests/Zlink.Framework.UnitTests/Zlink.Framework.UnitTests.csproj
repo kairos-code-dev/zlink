@@ -120,6 +120,7 @@
         <Compile Include="Runtime/StandaloneActorRelocationRuntimeTests.cs"/>
         <Compile Include="Runtime/StandaloneActorRelocationPrecommitTests.cs"/>
         <Compile Include="Runtime/CanonicalActorAcceptedJournalTests.cs"/>
+        <Compile Include="Runtime/CanonicalAuthorityAggregateGenerationTests.cs"/>
         <Compile Include="Runtime/CanonicalRelocationReservationOwnerTests.cs"/>
         <Compile Include="Runtime/RelocationStartupRecoveryTests.cs"/>
         <Compile Include="Runtime/RouteCodecTests.cs"/>

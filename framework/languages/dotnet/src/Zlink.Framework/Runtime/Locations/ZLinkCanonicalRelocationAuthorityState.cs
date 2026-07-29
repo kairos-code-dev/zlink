@@ -24,7 +24,10 @@ internal sealed record ZLinkCanonicalRelocationAuthorityState(
     string RelocationReference,
     uint RelocationChecksumCrc32c,
     long ApplicationVersion,
-    byte SourceCleanupState);
+    byte SourceCleanupState)
+{
+    internal ulong AggregateGeneration { get; init; }
+}
 
 internal sealed record ZLinkCanonicalRelocationAuthorityProjection(
     ulong RelocationHigh,
@@ -40,7 +43,10 @@ internal sealed record ZLinkCanonicalRelocationAuthorityProjection(
     uint PendingRelayCount,
     byte SourceCleanupState,
     ReadOnlyMemory<byte> SteadyAuthorityPayload,
-    ZLinkCanonicalRelocationAuthorityState State);
+    ZLinkCanonicalRelocationAuthorityState State)
+{
+    internal ulong AggregateGeneration { get; init; }
+}
 
 internal static class ZLinkCanonicalRelocationAuthorityStateCodec
 {
@@ -111,6 +117,13 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
             var terminalCount = relocation.U32();
             var pendingCount = relocation.U32();
             var cleanup = relocation.U8();
+            var aggregateGeneration = 0UL;
+            if (!relocation.End)
+            {
+                if (relocation.U8() != 1)
+                    return false;
+                aggregateGeneration = relocation.U64();
+            }
             if (!relocation.End)
                 return false;
             var slotEnd = bodyReader.Offset;
@@ -136,11 +149,17 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
                 reservationGeneration,
                 coordinatorOwner, coordinatorLease,
                 coordinatorNodeRid, coordinatorNodeGeneration,
-                phase, reference, checksum, applicationVersion, cleanup);
+                phase, reference, checksum, applicationVersion, cleanup)
+            {
+                AggregateGeneration = aggregateGeneration
+            };
             projection = new ZLinkCanonicalRelocationAuthorityProjection(
                 high, low, attempt, targetOwner, targetLease, phase,
                 reference, checksum, applicationVersion,
-                terminalCount, pendingCount, cleanup, steady.ToArray(), state);
+                terminalCount, pendingCount, cleanup, steady.ToArray(), state)
+            {
+                AggregateGeneration = aggregateGeneration
+            };
             return true;
         }
         catch (Exception error) when (error is IOException
@@ -356,6 +375,10 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
         WriteU32(body, checked((uint)(root?.Participants.Sum(
             static participant => participant.PendingRelayCount) ?? 0)));
         body.WriteByte(value.SourceCleanupState);
+        body.WriteByte(1);
+        WriteU64(
+            body,
+            root?.AggregateGeneration ?? value.AggregateGeneration);
         using var slot = new MemoryStream();
         slot.WriteByte(1);
         WriteU32(slot, checked((uint)body.Length));

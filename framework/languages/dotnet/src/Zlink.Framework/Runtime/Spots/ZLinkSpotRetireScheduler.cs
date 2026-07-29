@@ -464,6 +464,7 @@ internal sealed class ZLinkSpotRetireScheduler(
                         aggregateId,
                         sealedSessionRoutes,
                         actorCaptures,
+                        inventory.RequiredCapabilities,
                         includeSpotTimers: !perActorShell,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -978,6 +979,7 @@ internal sealed class ZLinkSpotRetireScheduler(
         IReadOnlyDictionary<string, ZLinkRemoteActorBoundSessionRoute>
             sealedSessionRoutes,
         IReadOnlyDictionary<string, SourceActorCapture> actorCaptures,
+        IReadOnlyList<ZLinkObjectCapability> requiredCapabilities,
         bool includeSpotTimers,
         CancellationToken cancellationToken)
     {
@@ -1025,7 +1027,12 @@ internal sealed class ZLinkSpotRetireScheduler(
                 spot.StoreVersion,
                 spotStableType,
                 spot.Payload,
-                ReadOnlyMemory<byte>.Empty));
+                ReadOnlyMemory<byte>.Empty,
+                MaintenancePolicy: requiredCapabilities.Single(capability =>
+                    capability.ObjectKind == spotKind
+                    && StringComparer.Ordinal.Equals(
+                        capability.StableType,
+                        spotStableType)).Policy));
         participants.Add(new ZLinkAggregateRelocationParticipant(
             new ZLinkRelocationParticipantEnvelope(
                 spotKey,
@@ -1075,7 +1082,13 @@ internal sealed class ZLinkSpotRetireScheduler(
                     actor.StoreVersion,
                     actorAuthority.StableType,
                     relocationAuthority,
-                    ReadOnlyMemory<byte>.Empty));
+                    ReadOnlyMemory<byte>.Empty,
+                    MaintenancePolicy: requiredCapabilities.Single(capability =>
+                        capability.ObjectKind
+                        == ZLinkPlacementObjectKind.Actor
+                        && StringComparer.Ordinal.Equals(
+                            capability.StableType,
+                            actorAuthority.StableType)).Policy));
             participants.Add(new ZLinkAggregateRelocationParticipant(
                 new ZLinkRelocationParticipantEnvelope(
                     key,

@@ -641,7 +641,11 @@ internal sealed class ZLinkActorRemoteJoiner(
                     ? ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(
                         requestTemplate)
                     : default,
-                ZLinkActorRemoteJoinRecoveryCodec.Encode(recovery));
+                ZLinkActorRemoteJoinRecoveryCodec.Encode(recovery),
+                relocationState.ContentType
+                == ZLinkRemoteActorJoinPackets.SnapshotRelocationContentType
+                    ? ZLinkObjectMaintenancePolicyKind.Snapshot
+                    : ZLinkObjectMaintenancePolicyKind.Recreate);
         var publication = new ZLinkRelocationPublicationCoordinator(
             authorityStore,
             relocationStore);

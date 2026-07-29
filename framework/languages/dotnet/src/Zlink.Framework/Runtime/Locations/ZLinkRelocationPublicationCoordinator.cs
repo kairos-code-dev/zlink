@@ -1,5 +1,6 @@
 using System.Text;
 using System.Buffers.Binary;
+using Zlink.Framework.Runtime.Actors;
 
 namespace Zlink.Framework.Runtime.Locations;
 
@@ -556,6 +557,18 @@ internal static class ZLinkRelocationAuthorityPayloadCodec
                 encoded,
                 out var canonical))
         {
+            var aggregateGeneration = canonical.AggregateGeneration;
+            if (aggregateGeneration == 0
+                && ZLinkActorAuthorityPayloadCodec.TryDecodeDirect(
+                    canonical.SteadyAuthorityPayload.Span,
+                    out var actor)
+                && actor.CurrentSpotKind == ZLinkSpotKind.Entry)
+            {
+                // A standalone Actor relocation always owns a one-participant
+                // root at generation 1. Older canonical authority payloads did
+                // not persist that value, but this case is unambiguous.
+                aggregateGeneration = 1;
+            }
             Span<byte> id = stackalloc byte[16];
             BinaryPrimitives.WriteUInt64BigEndian(id, canonical.RelocationHigh);
             BinaryPrimitives.WriteUInt64BigEndian(id[8..], canonical.RelocationLow);
@@ -563,10 +576,7 @@ internal static class ZLinkRelocationAuthorityPayloadCodec
                 canonical.RelocationReference,
                 canonical.RelocationChecksumCrc32c,
                 new Guid(id, bigEndian: true),
-                // Standalone Actor relocation roots use one aggregate
-                // generation. The target attempt is an independent recovery
-                // fence and can still be zero while the root is Captured.
-                1,
+                aggregateGeneration,
                 new byte[32],
                 canonical.TargetOwnerId,
                 checked((long)canonical.TargetOwnerLeaseGeneration),

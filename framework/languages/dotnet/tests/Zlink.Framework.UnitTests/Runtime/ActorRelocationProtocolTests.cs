@@ -12,6 +12,166 @@ namespace Zlink.Framework.UnitTests.Runtime;
 public sealed class ActorRelocationProtocolTests
 {
     [Fact]
+    public async Task Deferred_join_data_loss_is_reported_once_and_stops()
+    {
+        var attempts = 0;
+        var reports = 0;
+
+        await Assert.ThrowsAsync<ZLinkRelocationDataLostException>(
+            () => ZLinkFrameworkRuntime
+                .RunDeferredJoinCompletionRecoveryAsync(
+                    _ =>
+                    {
+                        attempts++;
+                        throw new ZLinkRelocationDataLostException(
+                            "the authority advanced to another aggregate");
+                    },
+                    _ => reports++,
+                    CancellationToken.None)
+                .AsTask());
+
+        Assert.Equal(1, attempts);
+        Assert.Equal(0, reports);
+    }
+
+    [Fact]
+    public async Task Deferred_join_do_not_retry_error_is_reported_once_and_stops()
+    {
+        var attempts = 0;
+        var reports = 0;
+
+        await Assert.ThrowsAsync<ZLinkFrameworkException>(
+            () => ZLinkFrameworkRuntime
+                .RunDeferredJoinCompletionRecoveryAsync(
+                    _ =>
+                    {
+                        attempts++;
+                        throw new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.DataLost,
+                            "terminal deferred Join state",
+                            ZLinkRetryAdvice.DoNotRetry);
+                    },
+                    _ => reports++,
+                    CancellationToken.None)
+                .AsTask());
+
+        Assert.Equal(1, attempts);
+        Assert.Equal(0, reports);
+    }
+
+    [Theory]
+    [InlineData((int)ZLinkObjectMaintenancePolicyKind.Recreate)]
+    [InlineData((int)ZLinkObjectMaintenancePolicyKind.Snapshot)]
+    public void Canonical_participant_recovery_preserves_maintenance_policy(
+        int maintenancePolicyValue)
+    {
+        var maintenancePolicy =
+            (ZLinkObjectMaintenancePolicyKind)maintenancePolicyValue;
+        var recovery = CreateCanonicalParticipantRecovery(maintenancePolicy);
+
+        var restored = ZLinkCanonicalParticipantRecoveryCodec.Decode(
+            ZLinkCanonicalParticipantRecoveryCodec.Encode(recovery));
+
+        Assert.Equal(maintenancePolicy, restored.MaintenancePolicy);
+    }
+
+    [Fact]
+    public void Legacy_v2_participant_recovery_keeps_policy_unspecified()
+    {
+        var encoded = ZLinkCanonicalParticipantRecoveryCodec.Encode(
+            CreateCanonicalParticipantRecovery(
+                ZLinkObjectMaintenancePolicyKind.Recreate));
+        encoded[4] = 2;
+        Array.Resize(ref encoded, encoded.Length - 1);
+
+        var restored = ZLinkCanonicalParticipantRecoveryCodec.Decode(encoded);
+
+        Assert.Equal(
+            ZLinkObjectMaintenancePolicyKind.Unspecified,
+            restored.MaintenancePolicy);
+    }
+
+    [Fact]
+    public void Legacy_participant_recovery_preserves_remote_join_payload()
+    {
+        var recovery = CreateCanonicalParticipantRecovery(
+            ZLinkObjectMaintenancePolicyKind.Recreate);
+        var sourceFence = new ZLinkActorRelocationSourceFence(
+            "source-owner",
+            3,
+            RoutingId.From("source"),
+            7);
+        var versionOneFence =
+            ZLinkActorRelocationSourceFenceCodec.Encode(sourceFence);
+        var remoteJoin = new byte[] { 1 };
+        var versionTwoFence = new byte[
+            versionOneFence.Length + sizeof(uint) + remoteJoin.Length];
+        versionOneFence.CopyTo(versionTwoFence, 0);
+        versionTwoFence[4] = 2;
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(
+            versionTwoFence.AsSpan(
+                versionOneFence.Length,
+                sizeof(uint)),
+            checked((uint)remoteJoin.Length));
+        remoteJoin.CopyTo(
+            versionTwoFence.AsSpan(
+                versionOneFence.Length + sizeof(uint)));
+        var encoded = ZLinkCanonicalParticipantRecoveryCodec.Encode(
+            recovery with
+            {
+                MembershipMutation = versionTwoFence,
+                OperationRecovery = ReadOnlyMemory<byte>.Empty
+            });
+        encoded[4] = 1;
+        Array.Resize(
+            ref encoded,
+            encoded.Length - sizeof(uint) - sizeof(byte));
+
+        var restored = ZLinkCanonicalParticipantRecoveryCodec.Decode(encoded);
+        var restoredFence = ZLinkActorRelocationSourceFenceCodec.Decode(
+            restored.MembershipMutation.Span);
+
+        Assert.True(restored.OperationRecovery.IsEmpty);
+        Assert.Equal(
+            remoteJoin,
+            restoredFence.LegacyRemoteJoinRecovery.ToArray());
+    }
+
+    [Fact]
+    public void Canonical_participant_recovery_rejects_unknown_policy()
+    {
+        var encoded = ZLinkCanonicalParticipantRecoveryCodec.Encode(
+            CreateCanonicalParticipantRecovery(
+                ZLinkObjectMaintenancePolicyKind.Snapshot));
+        encoded[^1] = byte.MaxValue;
+
+        Assert.Throws<InvalidDataException>(
+            () => ZLinkCanonicalParticipantRecoveryCodec.Decode(encoded));
+    }
+
+    [Fact]
+    public void Deferred_join_binds_canonical_synthetic_key_from_recovery()
+    {
+        var recovery = CreateCanonicalParticipantRecovery(
+            ZLinkObjectMaintenancePolicyKind.Snapshot);
+        var participant = new ZLinkRelocationParticipantEnvelope(
+            new ZLinkAuthorityKey("root#participant:7"),
+            ZLinkPlacementObjectKind.Actor,
+            7,
+            3,
+            ReadOnlyMemory<byte>.Empty,
+            [],
+            [],
+            ZLinkCanonicalParticipantRecoveryCodec.Encode(recovery),
+            new byte[] { 1 });
+
+        Assert.Equal(
+            recovery.AuthorityKey,
+            ZLinkDeferredActorJoinCompletionJournal
+                .ResolveParticipantAuthorityKey(participant));
+    }
+
+    [Fact]
     public void Startup_recovery_rejects_mismatched_enclosing_identity_before_callback()
     {
         var recovery = CreateRecovery([1], [2]);
@@ -152,6 +312,21 @@ public sealed class ActorRelocationProtocolTests
             Assert.Equal(ZLinkFrameworkErrorKind.DataLost, error.Kind);
         }
     }
+
+    private static ZLinkCanonicalParticipantRecovery
+        CreateCanonicalParticipantRecovery(
+            ZLinkObjectMaintenancePolicyKind maintenancePolicy) =>
+        new(
+            new ZLinkAuthorityKey("actor:actor-1"),
+            ZLinkPlacementObjectKind.Actor,
+            7,
+            3,
+            "v1",
+            "player",
+            ReadOnlyMemory<byte>.Empty,
+            ReadOnlyMemory<byte>.Empty,
+            ReadOnlyMemory<byte>.Empty,
+            maintenancePolicy);
 
     [Fact]
     public void Remote_join_recovery_preserves_independent_one_megabyte_messages()

@@ -20,6 +20,305 @@ namespace Zlink.Framework.UnitTests;
 public sealed class RelocationRuntimeTests
 {
     [Fact]
+    public void Target_takeover_fence_advances_from_each_published_generation()
+    {
+        var first = ZLinkSpotRetireTargetRuntime.NextTakeoverFence(3, 17);
+        var second = ZLinkSpotRetireTargetRuntime.NextTakeoverFence(
+            first.TargetAttemptGeneration,
+            first.AggregateGeneration);
+
+        Assert.Equal((4UL, 18UL), first);
+        Assert.Equal((5UL, 19UL), second);
+    }
+
+    [Fact]
+    public void Target_takeover_rejects_corrupt_target_descriptor_fence()
+    {
+        var (_, candidate) = CreateCanonicalPublishedReconciliationFixture(
+            sourceCleanupState: 0);
+        var authority = Assert.Single(candidate.Authorities);
+        Assert.True(ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+            authority.Snapshot.Payload.Span,
+            out var projection));
+        Assert.True(
+            ZLinkSpotRetireTargetRuntime.HasExactTargetOwnedSnapshot(
+                authority.Snapshot,
+                projection));
+
+        var corrupt = authority.Snapshot with
+        {
+            Allocation = authority.Snapshot.Allocation with
+            {
+                Descriptor = new ZLinkMeshNodeDescriptorKey(
+                    "mesh",
+                    RoutingId.From("other-target"))
+            }
+        };
+
+        Assert.False(
+            ZLinkSpotRetireTargetRuntime.HasExactTargetOwnedSnapshot(
+                corrupt,
+                projection));
+    }
+
+    [Fact]
+    public async Task Consecutive_target_takeovers_publish_and_restore_exact_roots()
+    {
+        var (_, fixture) = CreateCanonicalPublishedReconciliationFixture(
+            sourceCleanupState: 0);
+        var initialAuthority = Assert.Single(fixture.Authorities);
+        var initial = fixture with
+        {
+            Envelope = fixture.Envelope with
+            {
+                Participants =
+                [
+                    fixture.Envelope.Participants[0] with
+                    {
+                        AuthorityKey = initialAuthority.Key
+                    }
+                ]
+            }
+        };
+        var store = new TakeoverRepositoryStore(initial.Authorities);
+        var relocation = new RecordingRelocationStore();
+
+        var generationTwo =
+            await ZLinkSpotRetireTargetRuntime
+                .TryCommitTakeoverPublicationAsync(
+                    store,
+                    relocation,
+                    initial,
+                    CreateTakeoverDescriptor("target-two", 2),
+                    TimeSpan.FromHours(24),
+                    CancellationToken.None);
+        Assert.NotNull(generationTwo);
+        Assert.Equal(2UL, generationTwo.Envelope.AggregateGeneration);
+        AssertTakeover(generationTwo, "target-two", 2);
+        generationTwo = BindAuthorityKeys(generationTwo);
+
+        var generationThree =
+            await ZLinkSpotRetireTargetRuntime
+                .TryCommitTakeoverPublicationAsync(
+                    store,
+                    relocation,
+                    generationTwo,
+                    CreateTakeoverDescriptor("target-three", 3),
+                    TimeSpan.FromHours(24),
+                    CancellationToken.None);
+        Assert.NotNull(generationThree);
+        Assert.Equal(3UL, generationThree.Envelope.AggregateGeneration);
+        AssertTakeover(generationThree, "target-three", 3);
+
+        static ZLinkMeshNodeDescriptor CreateTakeoverDescriptor(
+            string rid,
+            long lease) =>
+            new(
+                "mesh",
+                RoutingId.From(rid),
+                checked((ulong)lease),
+                1,
+                "tcp://127.0.0.1:1",
+                new Dictionary<string, int>(),
+                string.Empty,
+                $"{rid}-owner",
+                lease,
+                DateTimeOffset.UtcNow)
+            {
+                State = ZLinkFrameworkRuntimeState.Serving,
+                ObjectRole = ZLinkMeshNodeObjectRole.Server,
+                ApplicationVersion = 1
+            };
+
+        static void AssertTakeover(
+            ZLinkRelocationRecoveryCandidate candidate,
+            string rid,
+            ulong generation)
+        {
+            var authority = Assert.Single(candidate.Authorities);
+            Assert.True(
+                ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                    authority.Snapshot.Payload.Span,
+                    out var projection));
+            Assert.Equal(RoutingId.From(rid).ToHex(),
+                projection.State.TargetNodeRid);
+            Assert.Equal(generation, projection.AggregateGeneration);
+            Assert.Equal(candidate.Reference.Reference,
+                projection.RelocationReference);
+        }
+
+        static ZLinkRelocationRecoveryCandidate BindAuthorityKeys(
+            ZLinkRelocationRecoveryCandidate candidate) =>
+            candidate with
+            {
+                Envelope = candidate.Envelope with
+                {
+                    Participants = candidate.Envelope.Participants.Select(
+                            participant => participant with
+                            {
+                                AuthorityKey =
+                                    ZLinkCanonicalParticipantRecoveryCodec
+                                        .Decode(
+                                            participant.RecoveryPayload.Span)
+                                        .AuthorityKey
+                            })
+                        .ToArray()
+                }
+            };
+    }
+
+    [Fact]
+    public void Source_cleanup_retry_accepts_only_byte_exact_steady_authority()
+    {
+        var (stage, _) = CreateCanonicalPublishedReconciliationFixture(
+            sourceCleanupState: 1);
+        var participant = Assert.Single(stage.Envelope.Participants);
+        var target = new ZLinkMeshNodeDescriptorKey(
+            "mesh",
+            RoutingId.From("target"));
+        var owner = new ZLinkLocationOwnerToken("target-owner", 1);
+        var recovery = ZLinkCanonicalParticipantRecoveryCodec.Decode(
+            participant.RecoveryPayload.Span);
+        var payload = ZLinkSpotRetireTargetRuntime.BuildTargetReadyPayload(
+            participant.ObjectKind,
+            recovery.AuthorityPayload,
+            target.Rid,
+            1,
+            owner,
+            stage.Envelope.AggregateId);
+        var snapshot = new ZLinkAuthoritySnapshot(
+            "v-steady",
+            payload,
+            participant.ObjectGeneration,
+            checked(participant.AuthorityOwnerGeneration + 1),
+            owner.OwnerId,
+            owner.LeaseGeneration,
+            new ZLinkPlacementAllocation(
+                ZLinkPlacementAllocationState.Active,
+                participant.ObjectKind,
+                recovery.StableType,
+                target,
+                1,
+                new ZLinkCapacityVector(0, 1, null)),
+            null,
+            DateTimeOffset.UtcNow);
+
+        Assert.True(
+            ZLinkAggregateRelocationCoordinator
+                .IsExactNormalizedTargetAuthority(
+                    snapshot,
+                    participant,
+                    stage.Envelope.AggregateId,
+                    target,
+                    1,
+                    owner));
+    }
+
+    [Fact]
+    public void Source_cleanup_retry_rejects_corrupt_steady_authority()
+    {
+        var (stage, _) = CreateCanonicalPublishedReconciliationFixture(
+            sourceCleanupState: 1);
+        var participant = Assert.Single(stage.Envelope.Participants);
+        var target = new ZLinkMeshNodeDescriptorKey(
+            "mesh",
+            RoutingId.From("target"));
+        var owner = new ZLinkLocationOwnerToken("target-owner", 1);
+        var recovery = ZLinkCanonicalParticipantRecoveryCodec.Decode(
+            participant.RecoveryPayload.Span);
+        var payload = ZLinkSpotRetireTargetRuntime.BuildTargetReadyPayload(
+                participant.ObjectKind,
+                recovery.AuthorityPayload,
+                target.Rid,
+                1,
+                owner,
+                stage.Envelope.AggregateId)
+            .ToArray();
+        payload[^1] ^= 0x01;
+        var snapshot = new ZLinkAuthoritySnapshot(
+            "v-corrupt",
+            payload,
+            participant.ObjectGeneration,
+            checked(participant.AuthorityOwnerGeneration + 1),
+            owner.OwnerId,
+            owner.LeaseGeneration,
+            new ZLinkPlacementAllocation(
+                ZLinkPlacementAllocationState.Active,
+                participant.ObjectKind,
+                recovery.StableType,
+                target,
+                1,
+                new ZLinkCapacityVector(0, 1, null)),
+            null,
+            DateTimeOffset.UtcNow);
+
+        Assert.False(
+            ZLinkAggregateRelocationCoordinator
+                .IsExactNormalizedTargetAuthority(
+                    snapshot,
+                    participant,
+                    stage.Envelope.AggregateId,
+                    target,
+                    1,
+                    owner));
+    }
+
+    [Fact]
+    public async Task Owned_takeover_fence_is_aborted_when_commit_is_rejected()
+    {
+        var store = new TakeoverCommitStore(
+            ZLinkAggregateCommitResult.Stale);
+        var fence = new ZLinkAggregateFence(Guid.NewGuid(), 7);
+
+        var result = await ZLinkSpotRetireTargetRuntime
+            .CommitTakeoverFenceAsync(
+                store,
+                fence,
+                ownsPreparedFence: true,
+                CancellationToken.None);
+
+        Assert.Equal(ZLinkAggregateCommitResult.Stale, result);
+        Assert.Equal(1, store.AbortCount);
+        Assert.False(store.StagingHeld);
+        Assert.IsType<ZLinkAggregatePrepareResult.Prepared>(
+            await store.PrepareAggregateAsync(null!, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Already_prepared_takeover_fence_is_not_aborted_by_observer()
+    {
+        var store = new TakeoverCommitStore(
+            ZLinkAggregateCommitResult.Stale);
+
+        _ = await ZLinkSpotRetireTargetRuntime.CommitTakeoverFenceAsync(
+            store,
+            new ZLinkAggregateFence(Guid.NewGuid(), 7),
+            ownsPreparedFence: false,
+            CancellationToken.None);
+
+        Assert.Equal(0, store.AbortCount);
+        Assert.True(store.StagingHeld);
+    }
+
+    [Fact]
+    public async Task Owned_takeover_fence_is_aborted_when_commit_is_cancelled()
+    {
+        var store = new TakeoverCommitStore(
+            new OperationCanceledException());
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => ZLinkSpotRetireTargetRuntime.CommitTakeoverFenceAsync(
+                    store,
+                    new ZLinkAggregateFence(Guid.NewGuid(), 7),
+                    ownsPreparedFence: true,
+                    CancellationToken.None)
+                .AsTask());
+
+        Assert.Equal(1, store.AbortCount);
+        Assert.False(store.StagingHeld);
+    }
+
+    [Fact]
     public void TargetStage_UsesEachActorsPreparedAuthorityGeneration()
     {
         var stage = CreateTargetStageForHeldJournal() with
@@ -5036,7 +5335,8 @@ public sealed class RelocationRuntimeTests
             cancellationToken.ThrowIfCancellationRequested();
             var bytes = payload.ToArray();
             var reference = Convert.ToHexString(
-                System.Security.Cryptography.SHA256.HashData(bytes));
+                    System.Security.Cryptography.SHA256.HashData(bytes))
+                .ToLowerInvariant();
             Payloads[reference] = bytes;
             Events.Add((EventClock.Next(), "put"));
             var now = DateTimeOffset.UtcNow;
@@ -5716,6 +6016,129 @@ public sealed class RelocationRuntimeTests
     {
         public void Dispose()
         {
+        }
+    }
+
+    private sealed class TakeoverCommitStore : ZLinkLocationStoreTestDouble
+    {
+        private readonly ZLinkAggregateCommitResult? _result;
+        private readonly Exception? _error;
+
+        internal TakeoverCommitStore(ZLinkAggregateCommitResult result)
+        {
+            _result = result;
+        }
+
+        internal TakeoverCommitStore(Exception error)
+        {
+            _error = error;
+        }
+
+        internal int AbortCount { get; private set; }
+        internal bool StagingHeld { get; private set; } = true;
+
+        public override ValueTask<ZLinkAggregatePrepareResult>
+            PrepareAggregateAsync(
+                ZLinkAggregatePrepareRequest request,
+                CancellationToken cancellationToken = default)
+        {
+            StagingHeld = true;
+            return ValueTask.FromResult<ZLinkAggregatePrepareResult>(
+                new ZLinkAggregatePrepareResult.Prepared(
+                    new ZLinkAggregateFence(Guid.NewGuid(), 8)));
+        }
+
+        public override ValueTask<ZLinkAggregateCommitResult>
+            CommitAggregateAsync(
+                ZLinkAggregateFence fence,
+                CancellationToken cancellationToken = default) =>
+            _error is null
+                ? ValueTask.FromResult(_result!.Value)
+                : ValueTask.FromException<ZLinkAggregateCommitResult>(_error);
+
+        public override ValueTask<ZLinkAggregateAbortResult>
+            AbortAggregateAsync(
+                ZLinkAggregateFence fence,
+                CancellationToken cancellationToken = default)
+        {
+            AbortCount++;
+            StagingHeld = false;
+            return ValueTask.FromResult(ZLinkAggregateAbortResult.Aborted);
+        }
+    }
+
+    private sealed class TakeoverRepositoryStore
+        : ZLinkLocationStoreTestDouble
+    {
+        private readonly Dictionary<ZLinkAuthorityKey, ZLinkAuthoritySnapshot>
+            _authorities;
+        private ZLinkAggregatePrepareRequest? _prepared;
+
+        internal TakeoverRepositoryStore(
+            IReadOnlyList<ZLinkAuthorityEntry> authorities)
+        {
+            _authorities = authorities.ToDictionary(
+                static entry => entry.Key,
+                static entry => entry.Snapshot);
+        }
+
+        public override ValueTask<ZLinkAuthorityReadResult>
+            ReadAuthorityAsync(
+                ZLinkAuthorityKey key,
+                CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<ZLinkAuthorityReadResult>(
+                _authorities.TryGetValue(key, out var snapshot)
+                    ? new ZLinkAuthorityReadResult.Found(snapshot)
+                    : new ZLinkAuthorityReadResult.Missing(
+                        DateTimeOffset.UtcNow));
+
+        public override ValueTask<ZLinkAggregatePrepareResult>
+            PrepareAggregateAsync(
+                ZLinkAggregatePrepareRequest request,
+                CancellationToken cancellationToken = default)
+        {
+            _prepared = request;
+            return ValueTask.FromResult<ZLinkAggregatePrepareResult>(
+                new ZLinkAggregatePrepareResult.Prepared(
+                    new ZLinkAggregateFence(
+                        request.AggregateId,
+                        request.AggregateGeneration)));
+        }
+
+        public override ValueTask<ZLinkAggregateCommitResult>
+            CommitAggregateAsync(
+                ZLinkAggregateFence fence,
+                CancellationToken cancellationToken = default)
+        {
+            var request = Assert.IsType<ZLinkAggregatePrepareRequest>(
+                _prepared);
+            Assert.Equal(request.AggregateId, fence.AggregateId);
+            Assert.Equal(
+                request.AggregateGeneration,
+                fence.AggregateGeneration);
+            foreach (var mutation in request.Participants)
+            {
+                var current = _authorities[mutation.Key];
+                _authorities[mutation.Key] = current with
+                {
+                    StoreVersion =
+                        $"v-{request.AggregateGeneration}-{mutation.Key.Value}",
+                    Payload = mutation.AuthorityPayload,
+                    AuthorityOwnerGeneration =
+                        checked(current.AuthorityOwnerGeneration + 1),
+                    OwnerId = request.TargetOwner.OwnerId,
+                    OwnerLeaseGeneration =
+                        request.TargetOwner.LeaseGeneration,
+                    Allocation = current.Allocation with
+                    {
+                        Descriptor = request.TargetDescriptor,
+                        DescriptorLifecycleGeneration =
+                            request.TargetDescriptorLifecycleGeneration
+                    }
+                };
+            }
+            return ValueTask.FromResult(
+                ZLinkAggregateCommitResult.Committed);
         }
     }
 

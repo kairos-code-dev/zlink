@@ -252,6 +252,56 @@ public final class ZLinkServiceRelocationEnvelopeCodec {
             envelope, envelope.participantProgress(), completions));
     }
 
+    static Envelope putTerminalCompletion(
+        Envelope envelope,
+        Completion completion) {
+        Objects.requireNonNull(envelope, "envelope");
+        Objects.requireNonNull(completion, "completion");
+        List<Completion> completions = new ArrayList<>(
+            envelope.terminalCompletions());
+        int existing = -1;
+        for (int index = 0; index < completions.size(); index++) {
+            if (sameCompletion(completions.get(index), completion)) {
+                existing = index;
+                break;
+            }
+        }
+        if (existing >= 0) {
+            Completion current = completions.get(existing);
+            if (current.participantId() != completion.participantId()
+                || current.sequence() != completion.sequence()
+                || current.terminalResult() != completion.terminalResult()
+                || current.failureCode() != completion.failureCode()
+                || current.payload() == null != (completion.payload() == null)
+                || current.payload() != null
+                    && (!current.payload().packetName().equals(
+                            completion.payload().packetName())
+                        || !current.payload().contentType().equals(
+                            completion.payload().contentType())
+                        || !Arrays.equals(
+                            current.payload().bytes(),
+                            completion.payload().bytes()))) {
+                throw invalid("terminal completion identity conflict");
+            }
+            if (completion.deliveryState() < current.deliveryState()
+                || completion.deliveryState() > current.deliveryState() + 1) {
+                throw invalid("terminal completion delivery transition");
+            }
+            completions.set(existing, completion);
+        } else {
+            completions.add(completion);
+        }
+        completions.sort((left, right) -> {
+            int participant = Long.compareUnsigned(
+                left.participantId(), right.participantId());
+            return participant != 0
+                ? participant
+                : Long.compareUnsigned(left.sequence(), right.sequence());
+        });
+        return decode(encodeSuccessor(
+            envelope, envelope.participantProgress(), completions));
+    }
+
     private static boolean sameCompletion(
         Completion left, Completion right) {
         return left.operationHigh() == right.operationHigh()

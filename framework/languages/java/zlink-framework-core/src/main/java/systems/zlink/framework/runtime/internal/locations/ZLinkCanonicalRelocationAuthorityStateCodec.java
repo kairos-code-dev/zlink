@@ -74,40 +74,137 @@ final class ZLinkCanonicalRelocationAuthorityStateCodec {
 
     static Published decode(byte[] authorityPayload) {
         try {
-            Slot slot = slot(authorityPayload);
-            Reader state = new Reader(slot.state());
-            if (state.u8() != 1) return null;
-            Reader body = state.reader(state.u32());
-            if (!state.end()) return null;
-            UUID relocationId = new UUID(body.u64(), body.u64());
-            long generation = body.u64();
-            body.sized8(); body.u64(); body.text8(); body.u64();
-            body.sized8(); body.u64();
-            String targetOwnerId = body.text8();
-            long targetOwnerLeaseGeneration = body.u64();
-            body.u64(); body.text8(); body.u64(); body.sized8(); body.u64();
-            body.u8();
-            if (body.u8() != 1) return null;
-            Reader pointer = body.reader(body.u16());
-            String reference = pointer.text16();
-            long checksum = pointer.u32Unsigned();
-            if (!pointer.end()) return null;
-            body.u64();
-            int progress = body.u32();
-            for (int index = 0; index < progress; index++) {
-                body.u64(); body.u64(); body.u64();
-            }
-            body.u32(); body.u32();
-            boolean sourceCleanupCompleted = body.u8() == 1;
-            if (!body.end()) return null;
+            Current current = current(authorityPayload);
             return new Published(
-                reference, checksum, relocationId, generation,
-                targetOwnerId, targetOwnerLeaseGeneration,
+                current.reference(), current.checksumCrc32c(),
+                new UUID(current.relocationHigh(), current.relocationLow()),
+                current.aggregateGeneration(),
+                current.sourceOwnerId(),
+                current.sourceOwnerLeaseGeneration(),
+                current.sourceNodeRid(),
+                current.sourceNodeGeneration(),
+                current.targetOwnerId(), current.targetOwnerLeaseGeneration(),
                 replace(authorityPayload, EMPTY),
-                sourceCleanupCompleted);
+                current.sourceCleanupCompleted());
         } catch (RuntimeException invalid) {
             return null;
         }
+    }
+
+    static byte[] replaceRoot(
+        byte[] authorityPayload,
+        ZLinkRelocationStored stored,
+        ZLinkServiceRelocationEnvelopeCodec.Envelope root) {
+        return replaceRoot(authorityPayload, stored, root, false);
+    }
+
+    static byte[] completeSourceCleanup(
+        byte[] authorityPayload,
+        ZLinkRelocationStored stored,
+        ZLinkServiceRelocationEnvelopeCodec.Envelope root) {
+        return replaceRoot(authorityPayload, stored, root, true);
+    }
+
+    private static byte[] replaceRoot(
+        byte[] authorityPayload,
+        ZLinkRelocationStored stored,
+        ZLinkServiceRelocationEnvelopeCodec.Envelope root,
+        boolean completeSourceCleanup) {
+        Current current = current(authorityPayload);
+        if (root.relocationHigh() != current.relocationHigh()
+            || root.relocationLow() != current.relocationLow()) {
+            throw new IllegalArgumentException(
+                "successor root has a different relocation identity");
+        }
+        Writer body = new Writer();
+        body.u64(current.relocationHigh());
+        body.u64(current.relocationLow());
+        body.u64(current.aggregateGeneration());
+        body.sized8(current.sourceNodeRid().toBytes());
+        body.u64(current.sourceNodeGeneration());
+        body.text8(current.sourceOwnerId());
+        body.u64(current.sourceOwnerLeaseGeneration());
+        body.sized8(current.targetNodeRid().toBytes());
+        body.u64(current.targetNodeGeneration());
+        body.text8(current.targetOwnerId());
+        body.u64(current.targetOwnerLeaseGeneration());
+        body.u64(current.placementReservationToken());
+        body.text8(current.capacityOwnerId());
+        body.u64(current.capacityOwnerLeaseGeneration());
+        body.sized8(current.capacityDescriptorRid().toBytes());
+        body.u64(current.capacityDescriptorGeneration());
+        body.u8(completeSourceCleanup ? 8 : current.phase());
+        Writer pointer = new Writer();
+        pointer.text16(stored.reference());
+        pointer.u32(stored.checksumCrc32c());
+        body.u8(1);
+        body.u16(pointer.size());
+        body.raw(pointer.bytes());
+        body.u64(root.applicationVersion());
+        body.u32(root.participantProgress().size());
+        for (var progress : root.participantProgress()) {
+            body.u64(progress.participantId());
+            body.u64(progress.acceptedBoundary());
+            body.u64(progress.replayCursor());
+        }
+        body.u32(root.terminalCompletions().size());
+        body.u32(root.terminalCompletions().stream()
+            .filter(value -> value.deliveryState() == 0).count());
+        body.u8(completeSourceCleanup
+            || current.sourceCleanupCompleted() ? 1 : 0);
+        Writer state = new Writer();
+        state.u8(1);
+        state.u32(body.size());
+        state.raw(body.bytes());
+        return replace(authorityPayload, state.bytes());
+    }
+
+    private static Current current(byte[] authorityPayload) {
+        Slot slot = slot(authorityPayload);
+        Reader state = new Reader(slot.state());
+        if (state.u8() != 1) throw invalid();
+        Reader body = state.reader(state.u32());
+        if (!state.end()) throw invalid();
+        long relocationHigh = body.u64();
+        long relocationLow = body.u64();
+        long aggregateGeneration = body.u64();
+        RoutingId sourceNodeRid = RoutingId.from(body.sized8());
+        long sourceNodeGeneration = body.u64();
+        String sourceOwnerId = body.text8();
+        long sourceOwnerLeaseGeneration = body.u64();
+        RoutingId targetNodeRid = RoutingId.from(body.sized8());
+        long targetNodeGeneration = body.u64();
+        String targetOwnerId = body.text8();
+        long targetOwnerLeaseGeneration = body.u64();
+        long placementReservationToken = body.u64();
+        String capacityOwnerId = body.text8();
+        long capacityOwnerLeaseGeneration = body.u64();
+        RoutingId capacityDescriptorRid = RoutingId.from(body.sized8());
+        long capacityDescriptorGeneration = body.u64();
+        int phase = body.u8();
+        if (body.u8() != 1) throw invalid();
+        Reader pointer = body.reader(body.u16());
+        String reference = pointer.text16();
+        long checksumCrc32c = pointer.u32Unsigned();
+        if (!pointer.end()) throw invalid();
+        body.u64();
+        int progress = body.u32();
+        for (int index = 0; index < progress; index++) {
+            body.u64(); body.u64(); body.u64();
+        }
+        body.u32(); body.u32();
+        boolean sourceCleanupCompleted = body.u8() == 1;
+        if (!body.end()) throw invalid();
+        return new Current(
+            relocationHigh, relocationLow, aggregateGeneration,
+            sourceNodeRid, sourceNodeGeneration,
+            sourceOwnerId, sourceOwnerLeaseGeneration,
+            targetNodeRid, targetNodeGeneration,
+            targetOwnerId, targetOwnerLeaseGeneration,
+            placementReservationToken,
+            capacityOwnerId, capacityOwnerLeaseGeneration,
+            capacityDescriptorRid, capacityDescriptorGeneration,
+            phase, reference, checksumCrc32c, sourceCleanupCompleted);
     }
 
     private static Owner owner(byte[] payload) {
@@ -162,6 +259,10 @@ final class ZLinkCanonicalRelocationAuthorityStateCodec {
         long checksumCrc32c,
         UUID aggregateId,
         long aggregateGeneration,
+        String sourceOwnerId,
+        long sourceOwnerLeaseGeneration,
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
         String targetOwnerId,
         long targetOwnerLeaseGeneration,
         byte[] applicationPayload,
@@ -171,6 +272,27 @@ final class ZLinkCanonicalRelocationAuthorityStateCodec {
             return applicationPayload.clone();
         }
     }
+    private record Current(
+        long relocationHigh,
+        long relocationLow,
+        long aggregateGeneration,
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        String sourceOwnerId,
+        long sourceOwnerLeaseGeneration,
+        RoutingId targetNodeRid,
+        long targetNodeGeneration,
+        String targetOwnerId,
+        long targetOwnerLeaseGeneration,
+        long placementReservationToken,
+        String capacityOwnerId,
+        long capacityOwnerLeaseGeneration,
+        RoutingId capacityDescriptorRid,
+        long capacityDescriptorGeneration,
+        int phase,
+        String reference,
+        long checksumCrc32c,
+        boolean sourceCleanupCompleted) {}
     private record Owner(String ownerId, long ownerLeaseGeneration,
                          RoutingId nodeRid, long nodeGeneration) {}
     private record Slot(byte[] body, int start, int end, byte[] state) {}

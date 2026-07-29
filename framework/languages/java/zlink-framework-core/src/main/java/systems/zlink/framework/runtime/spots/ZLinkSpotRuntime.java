@@ -1623,6 +1623,7 @@ public final class ZLinkSpotRuntime
 
     public void attachActorRuntime(ZLinkActorRuntime actorRuntime) {
         actorRuntime.setDeferredJoinAcceptedRecovery(
+            frameworkRegistration.locations().storeInstance(),
             frameworkRegistration.relocationStore());
         actorSessions.attach(
             actorRuntime,

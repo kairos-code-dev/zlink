@@ -229,13 +229,22 @@ public final class ZLinkActorSpotRoutePackets {
             completionManifest == null ? "0"
                 : Long.toUnsignedString(completionManifest.checksumCrc32c()),
             completionManifest == null ? "0"
-                : Integer.toString(completionManifest.cursor()))
+                : Integer.toString(completionManifest.cursor()),
+            completionManifest == null ? "0"
+                : Long.toUnsignedString(completionManifest.operationIdHigh()),
+            completionManifest == null ? "0"
+                : Long.toUnsignedString(completionManifest.operationIdLow()),
+            completionManifest == null ? ""
+                : completionManifest.actorId(),
+            completionManifest == null ? "0"
+                : Long.toUnsignedString(completionManifest.objectGeneration()))
             .getBytes(StandardCharsets.UTF_8));
     }
 
     public static TransferRequest decodeTransferRequest(Message message) {
         String[] fields = message.toUtf8String().split("\n", -1);
-        if ((fields.length != 14 && fields.length != 21 && fields.length != 24)
+        if ((fields.length != 14 && fields.length != 21
+                && fields.length != 24 && fields.length != 28)
             || (!ADMISSION_PHASE.equals(fields[0]) && !COMMIT_PHASE.equals(fields[0]))
             || fields[1].isBlank()
             || fields[3].isBlank()
@@ -269,11 +278,18 @@ public final class ZLinkActorSpotRoutePackets {
             fields.length >= 21 ? Long.parseUnsignedLong(fields[18]) : 0L,
             fields.length >= 21 ? Long.parseUnsignedLong(fields[19]) : 0L,
             fields.length >= 21 ? Long.parseUnsignedLong(fields[20]) : 0L,
-            fields.length == 24 && !fields[21].isBlank()
+            fields.length >= 24 && !fields[21].isBlank()
                 ? new ZLinkDeferredJoinAcceptedRecovery.Manifest(
                     fields[21],
                     Long.parseUnsignedLong(fields[22]),
-                    Integer.parseInt(fields[23]))
+                    Integer.parseInt(fields[23]),
+                    fields.length == 28
+                        ? Long.parseUnsignedLong(fields[24]) : 0L,
+                    fields.length == 28
+                        ? Long.parseUnsignedLong(fields[25]) : 0L,
+                    fields.length == 28 ? fields[26] : "",
+                    fields.length == 28
+                        ? Long.parseUnsignedLong(fields[27]) : 0L)
                 : null);
     }
 

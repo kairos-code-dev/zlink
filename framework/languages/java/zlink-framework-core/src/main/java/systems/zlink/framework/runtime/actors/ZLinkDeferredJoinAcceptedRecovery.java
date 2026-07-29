@@ -25,6 +25,9 @@ import systems.zlink.framework.locations.ZLinkRelocationStore;
 import systems.zlink.framework.locations.ZLinkStoreCancellation;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.runtime.internal.locations
+    .ZLinkDeferredJoinCompletionAuthority;
 
 /**
  * Stores and replays the cross-node Accepted completion as part of the
@@ -38,6 +41,7 @@ final class ZLinkDeferredJoinAcceptedRecovery {
 
     private final ZLinkRelocationStore store;
     private final ZLinkMessageSerializer serializer;
+    private final ZLinkDeferredJoinCompletionAuthority authorityJournal;
     private final Set<ZLinkActorJoinOperationId> delivered =
         ConcurrentHashMap.newKeySet();
 
@@ -46,9 +50,39 @@ final class ZLinkDeferredJoinAcceptedRecovery {
         ZLinkMessageSerializer serializer) {
         this.store = Objects.requireNonNull(store, "store");
         this.serializer = Objects.requireNonNull(serializer, "serializer");
+        this.authorityJournal = null;
+    }
+
+    ZLinkDeferredJoinAcceptedRecovery(
+        ZLinkLocationStore authority,
+        ZLinkRelocationStore store,
+        ZLinkMessageSerializer serializer) {
+        this.store = Objects.requireNonNull(store, "store");
+        this.serializer = Objects.requireNonNull(serializer, "serializer");
+        this.authorityJournal = new ZLinkDeferredJoinCompletionAuthority(
+            Objects.requireNonNull(authority, "authority"),
+            store);
     }
 
     CompletionStage<Manifest> prepare(
+        ZLinkActorJoinOperationId operationId,
+        ZLinkBackendActorRef actor,
+        byte[] rawReply) {
+        if (authorityJournal != null) {
+            return authorityJournal.prepare(operationId, actor, rawReply)
+                .thenApply(value -> new Manifest(
+                    value.reference(),
+                    value.checksumCrc32c(),
+                    value.cursor(),
+                    operationId.high(),
+                    operationId.low(),
+                    actor.actorId(),
+                    actor.generation()));
+        }
+        return prepareLegacy(operationId, actor, rawReply);
+    }
+
+    private CompletionStage<Manifest> prepareLegacy(
         ZLinkActorJoinOperationId operationId,
         ZLinkBackendActorRef actor,
         byte[] rawReply) {
@@ -79,6 +113,14 @@ final class ZLinkDeferredJoinAcceptedRecovery {
         Function<String, ZLinkActor> actorResolver,
         BiFunction<String, Supplier<CompletionStage<Void>>, CompletionStage<Void>>
             mailbox) {
+        if (authorityJournal != null && !manifest.actorId().isEmpty()) {
+            return deliverCanonical(
+                manifest,
+                currentActor,
+                meshName,
+                actorResolver,
+                mailbox);
+        }
         return store.get(manifest.reference(), NOT_CANCELLED)
             .thenCompose(result -> {
                 if (!(result instanceof ZLinkRelocationFound found)) {
@@ -138,6 +180,98 @@ final class ZLinkDeferredJoinAcceptedRecovery {
                         }
                     });
             });
+    }
+
+    private static boolean isCanonicalRootMissing(Throwable error) {
+        Throwable current = error;
+        while (current instanceof java.util.concurrent.CompletionException
+            && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current instanceof ZLinkDeferredJoinCompletionAuthority
+            .CanonicalRootMissingException;
+    }
+
+    private CompletionStage<Void> deliverCanonical(
+        Manifest manifest,
+        ZLinkBackendActorRef currentActor,
+        String meshName,
+        Function<String, ZLinkActor> actorResolver,
+        BiFunction<String, Supplier<CompletionStage<Void>>, CompletionStage<Void>>
+            mailbox) {
+        ZLinkActorJoinOperationId operationId =
+            new ZLinkActorJoinOperationId(
+                manifest.operationIdHigh(),
+                manifest.operationIdLow());
+        return authorityJournal.restore(
+                manifest.reference(),
+                manifest.checksumCrc32c(),
+                operationId,
+                currentActor)
+            .exceptionallyCompose(error ->
+                isCanonicalRootMissing(error)
+                    ? authorityJournal.recoverSuccessor(
+                        manifest.reference(),
+                        operationId,
+                        currentActor)
+                    : CompletableFuture.failedFuture(error))
+            .thenCompose(restored -> authorityJournal.advance(
+                restored,
+                currentActor,
+                2))
+            .thenCompose(committed -> {
+                if (committed.cursor() == 3) {
+                    return CompletableFuture.completedFuture(committed);
+                }
+                ZLinkActor actor = actorResolver.apply(committed.actorId());
+                if (actor == null) {
+                    return CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "target Actor is not materialized for Join completion"));
+                }
+                ActorRef publicRef = ZLinkActorRuntime.toPublicActorRef(
+                    currentActor,
+                    meshName);
+                ZLinkMessage reply = committed.rawReply().length == 0
+                    ? ZLinkMessage.empty()
+                    : ZLinkMessage.fromEncoded(
+                        ZLinkEncodedPayload.from(committed.rawReply()),
+                        serializer);
+                return mailbox.apply(
+                        committed.actorId(),
+                        () -> {
+                            CompletionStage<Void> callback =
+                                actor.onJoinCompleted(
+                                    new ZLinkActorJoinCompletion.Accepted(
+                                        committed.operationId(),
+                                        publicRef,
+                                        reply));
+                            return callback == null
+                                ? CompletableFuture.completedFuture(null)
+                                : callback;
+                        })
+                    .thenCompose(ignored -> authorityJournal.advance(
+                        committed,
+                        currentActor,
+                        3));
+            })
+            .thenApply(deliveredRoot -> null);
+    }
+
+    CompletionStage<Void> completeSourceCleanup(
+        Manifest manifest,
+        ZLinkBackendActorRef currentActor) {
+        if (authorityJournal == null || manifest.actorId().isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        var operationId = new ZLinkActorJoinOperationId(
+            manifest.operationIdHigh(),
+            manifest.operationIdLow());
+        return authorityJournal.recover(operationId, currentActor)
+            .thenCompose(delivered ->
+                authorityJournal.completeSourceCleanupAndRelease(
+                    delivered,
+                    currentActor));
     }
 
     private static byte[] encode(
@@ -200,12 +334,31 @@ final class ZLinkDeferredJoinAcceptedRecovery {
     record Manifest(
         String reference,
         long checksumCrc32c,
-        int cursor) {
+        int cursor,
+        long operationIdHigh,
+        long operationIdLow,
+        String actorId,
+        long objectGeneration) {
+        Manifest(String reference, long checksumCrc32c, int cursor) {
+            this(reference, checksumCrc32c, cursor, 0, 0, "", 0);
+        }
         Manifest {
             Objects.requireNonNull(reference, "reference");
             if (reference.isBlank() || cursor != CURSOR_COMMITTED) {
                 throw new IllegalArgumentException(
                     "invalid deferred Actor Join completion manifest");
+            }
+            Objects.requireNonNull(actorId, "actorId");
+            boolean hasIdentity = operationIdHigh != 0
+                || operationIdLow != 0
+                || !actorId.isEmpty()
+                || objectGeneration != 0;
+            if (hasIdentity
+                && ((operationIdHigh == 0 && operationIdLow == 0)
+                    || actorId.isBlank()
+                    || objectGeneration == 0)) {
+                throw new IllegalArgumentException(
+                    "incomplete deferred Actor Join completion identity");
             }
         }
     }

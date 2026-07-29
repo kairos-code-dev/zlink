@@ -148,10 +148,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     }
 
     public void setDeferredJoinAcceptedRecovery(
+        systems.zlink.framework.locations.ZLinkLocationStore authority,
         systems.zlink.framework.locations.ZLinkRelocationStore store) {
-        deferredJoinAcceptedRecovery = store == null
+        deferredJoinAcceptedRecovery = authority == null || store == null
             ? null
-            : new ZLinkDeferredJoinAcceptedRecovery(store, serializer);
+            : new ZLinkDeferredJoinAcceptedRecovery(
+                authority,
+                store,
+                serializer);
     }
 
     CompletionStage<ZLinkDeferredJoinAcceptedRecovery.Manifest>
@@ -183,6 +187,16 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             request.completionManifest(),
             actor,
             0);
+    }
+
+    CompletionStage<Void> completeDeferredJoinAcceptedSourceCleanup(
+        ZLinkDeferredJoinAcceptedRecovery.Manifest manifest,
+        ZLinkBackendActorRef actor) {
+        ZLinkDeferredJoinAcceptedRecovery recovery =
+            deferredJoinAcceptedRecovery;
+        return recovery == null || manifest == null
+            ? CompletableFuture.completedFuture(null)
+            : recovery.completeSourceCleanup(manifest, actor);
     }
 
     private CompletionStage<Void> deliverDeferredJoinAcceptedWithRetry(

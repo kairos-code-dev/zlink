@@ -57,6 +57,8 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         new AtomicReference<>();
     private final AtomicBoolean acceptedCompletionDeliveredOnTarget =
         new AtomicBoolean();
+    private final AtomicReference<ZLinkDeferredJoinAcceptedRecovery.Manifest>
+        acceptedCompletionManifest = new AtomicReference<>();
 
     ZLinkActorSpotJoinCall(
         ZLinkActorRuntime.DefaultActorContext context,
@@ -440,7 +442,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
             ? CompletableFuture.completedFuture(null)
             : context.rebindNativeActor(result.actor(), timeout);
         Supplier<CompletionStage<Void>> cleanup = () -> rebound
-            .thenRun(() -> {
+            .thenCompose(ignored -> {
                 String joinedSpotId = effectiveJoinedSpotId(result);
                 if (entryTarget) {
                     context.markMovedToEntrySpot(
@@ -461,6 +463,10 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                             messageFollowAddress.get(),
                             "committed Message Follow address"));
                 }
+                return services.actors()
+                    .completeDeferredJoinAcceptedSourceCleanup(
+                        acceptedCompletionManifest.get(),
+                        result.actor());
             });
         if (retainMessageFollowSource && services.actors().isActorDispatchActive(context.actor())) {
             services.actors().continueAfterActorDispatch(context.actor(), cleanup);
@@ -617,8 +623,9 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                     abortCoreTransfer(corePrepared);
                 }
             })
-            .thenCompose(manifest ->
-            services.actors().beginRemoteMove(actor)
+            .thenCompose(manifest -> {
+            acceptedCompletionManifest.set(manifest);
+            return services.actors().beginRemoteMove(actor)
             .thenCompose(ignored -> services.actors().transferOut(actor))
             .thenCompose(transfer -> services.actors().leaveSourceForCoreRemoteMove(actor)
                 .thenApply(ignored -> {
@@ -700,7 +707,8 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                     failPackets(committedBacklog.get(), error);
                     services.actors().failRemoteMove(actor, error);
                 }
-            }));
+            });
+        });
     }
 
     private void abortCoreTransfer(PrepareActorTransferResult prepared) {

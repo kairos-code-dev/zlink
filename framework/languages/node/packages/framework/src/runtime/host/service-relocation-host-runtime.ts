@@ -2723,9 +2723,13 @@ function canonicalQueuedFrozenRecord(
 }
 
 function parseHandoffOperationId(value: string): { readonly high: bigint; readonly low: bigint } {
-  const parts = value.split(':');
-  if (parts.length !== 2) throw new Error('Captured Actor operation ID is invalid.');
-  const operation = { high: BigInt(parts[0]!), low: BigInt(parts[1]!) };
+  if (!/^[0-9a-f]{32}$/.test(value)) {
+    throw new Error('Captured Actor operation ID is invalid.');
+  }
+  const operation = {
+    high: BigInt(`0x${value.slice(0, 16)}`),
+    low: BigInt(`0x${value.slice(16)}`)
+  };
   if (operation.high === 0n && operation.low === 0n) {
     throw new Error('Captured Actor operation ID must not be zero.');
   }

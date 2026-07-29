@@ -8,11 +8,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import systems.zlink.framework.locations.ZLinkLocationPage
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor
 import systems.zlink.framework.locations.ZLinkLocationTopologyEntry
 import systems.zlink.framework.locations.ZLinkLocationTopologyFilter
 import systems.zlink.framework.locations.ZLinkPageRequest
 
+@JvmSynthetic
 internal fun <T> locationPages(
     firstPage: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
     load: (ZLinkPageRequest) -> CompletionStage<ZLinkLocationPage<T>>,
@@ -30,12 +30,6 @@ internal fun <T> locationPages(
         request = ZLinkPageRequest(request.pageSize(), next)
     }
 }
-
-fun ZLinkLocationRuntimeQuery.meshNodes(
-    meshName: String,
-    pageSize: Int = 100,
-): Flow<ZLinkMeshNodeDescriptor> =
-    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listMeshNodes(meshName, page) }
 
 fun ZLinkLocationRuntimeQuery.topology(
     filter: ZLinkLocationTopologyFilter,

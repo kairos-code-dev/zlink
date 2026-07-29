@@ -423,7 +423,12 @@ test('location lifecycle rolls failed activation back and renews actor spot stat
   await node.lifecycle.setActorRef(
     'player',
     'actor-1',
-    { nodeRid: rid('node-a'), actorId: 'actor-1', generation: 1n },
+    {
+      nodeRid: rid('node-a'),
+      actorId: 'actor-1',
+      objectGeneration: 1n,
+      meshName: 'play'
+    },
     3n
   );
   await node.lifecycle.notifyActorJoinedSpot('player', 'actor-1', 'play', 'spot-1', 7n, 11n, 3n);
@@ -431,7 +436,8 @@ test('location lifecycle rolls failed activation back and renews actor spot stat
   assert.deepEqual(joined.actorRef, {
     nodeRid: rid('node-a'),
     actorId: 'actor-1',
-    generation: 1n
+    objectGeneration: 1n,
+    meshName: 'play'
   });
   assert.equal(joined.spotKind, framework.ZLinkSpotKind.User);
   assert.equal(joined.meshName, 'play');
@@ -569,7 +575,12 @@ test('store location resolvers seed reusable SpotHandle snapshots from live rows
   await node.lifecycle.setActorRef(
     'player',
     'actor-1',
-    { nodeRid: rid('node-a'), actorId: 'actor-1', generation: 1n },
+    {
+      nodeRid: rid('node-a'),
+      actorId: 'actor-1',
+      objectGeneration: 1n,
+      meshName: 'play'
+    },
     3n
   );
   await node.lifecycle.notifyActorJoinedSpot('player', 'actor-1', 'play', 'spot-1', 7n, 11n, 3n);
@@ -616,7 +627,8 @@ test('actor resolver rejects a stale membership when the same SPOT RID is recrea
   await firstOwner.lifecycle.setActorRef('player', actorId, {
     nodeRid: rid('node-a'),
     actorId,
-    generation: 5n
+    objectGeneration: 5n,
+    meshName: 'play'
   });
   await firstOwner.lifecycle.notifyActorJoinedSpot(
     'player',
@@ -644,7 +656,12 @@ test('actor resolver rejects a stale membership when the same SPOT RID is recrea
   await successor.lifecycle.takeoverActorJoinedSpot(
     'player',
     actorId,
-    { nodeRid: rid('node-b'), actorId, generation: 6n },
+    {
+      nodeRid: rid('node-b'),
+      actorId,
+      objectGeneration: 6n,
+      meshName: 'play'
+    },
     'play',
     spotId,
     8n,
@@ -653,14 +670,19 @@ test('actor resolver rejects a stale membership when the same SPOT RID is recrea
   );
   const current = await resolvers.resolveActorRef(actorId);
   assert.equal(String(current.nodeRid), 'node-b');
-  assert.equal(current.generation, 6n);
+  assert.equal(current.objectGeneration, 6n);
 });
 
 test('store location resolver returns a live remote ActorRef', async () => {
   const store = new internal.ZLinkInMemoryLocationStore();
   const runtime = runtimeFor(store, { ownerId: 'owner-a' });
   await runtime.start(rid('node-a'));
-  const actorRef = { nodeRid: rid('node-b'), actorId: 'alice', generation: 9n };
+  const actorRef = {
+    nodeRid: rid('node-b'),
+    actorId: 'alice',
+    objectGeneration: 9n,
+    meshName: 'play'
+  };
   await runtime.writeActor({
     ...actor('owner-a', 0n),
     actorId: 'alice',
@@ -796,6 +818,42 @@ test('production repository persists owner lease and MeshNode records through on
   assert.equal((await writer.listMeshNodes('play')).items.length, 0);
 });
 
+test('production repository reconciles an opaque write applied before its response is lost', async () => {
+  const now = new Date(Date.UTC(2026, 6, 3, 0, 0, 0));
+  const inner = new internal.ZLinkInMemoryProviderLocationStore(() => now);
+  const provider = new ReplyLossLocationStore(inner);
+  const repository = new internal.ZLinkLocationStoreRepository(provider, () => now);
+
+  provider.loseNextResponse = true;
+  const claimed = await repository.claimOwnerLease('owner-ambiguous', 30_000);
+
+  assert.equal(claimed.kind, 'claimed');
+  assert.equal(provider.observedWrites, 1);
+  assert.deepEqual(
+    await repository.readOwnerLease('owner-ambiguous'),
+    {
+      kind: 'found',
+      token: claimed.token,
+      leaseExpiresAt: new Date(now.getTime() + 30_000),
+      storeNow: now
+    }
+  );
+});
+
+test('production repository classifies a changed ambiguous write as conflict', async () => {
+  const now = new Date(Date.UTC(2026, 6, 3, 0, 0, 0));
+  const inner = new internal.ZLinkInMemoryProviderLocationStore(() => now);
+  const provider = new ReplyLossLocationStore(inner);
+  const repository = new internal.ZLinkLocationStoreRepository(provider, () => now);
+
+  provider.loseNextResponse = true;
+  provider.replaceFirstMutationBeforeFailure = true;
+  const claimed = await repository.claimOwnerLease('owner-conflict', 30_000);
+
+  assert.deepEqual(claimed, { kind: 'conflict' });
+  assert.equal(provider.observedWrites, 2);
+});
+
 test('production repository shares ClientServer and fanout discovery through only opaque Store primitives', async () => {
   const now = new Date(Date.UTC(2026, 6, 3, 0, 0, 0));
   const provider = new internal.ZLinkInMemoryProviderLocationStore(() => now);
@@ -863,6 +921,49 @@ test('production repository shares ClientServer and fanout discovery through onl
   assert.equal((await writer.listClientServers('orders')).items.length, 0);
   assert.equal((await writer.listFanoutPublishers('events')).items.length, 0);
 });
+
+class ReplyLossLocationStore {
+  loseNextResponse = false;
+  replaceFirstMutationBeforeFailure = false;
+  observedWrites = 0;
+
+  constructor(inner) {
+    this.inner = inner;
+  }
+
+  read(key, signal) {
+    return this.inner.read(key, signal);
+  }
+
+  scan(request, signal) {
+    return this.inner.scan(request, signal);
+  }
+
+  async write(request, signal) {
+    this.observedWrites += 1;
+    const result = await this.inner.write(request, signal);
+    if (!this.loseNextResponse || result.kind !== 'applied') return result;
+
+    this.loseNextResponse = false;
+    if (this.replaceFirstMutationBeforeFailure) {
+      const mutation = request.mutations[0];
+      assert.equal(mutation.kind, 'put');
+      const version = result.putVersions.find(
+        candidate => candidate.key.value === mutation.key.value
+      )?.version;
+      assert.notEqual(version, undefined);
+      await this.inner.write({
+        conditions: [{ kind: 'version', key: mutation.key, expected: version }],
+        mutations: [{ kind: 'put', key: mutation.key, bytes: Buffer.from('changed') }]
+      });
+      this.observedWrites += 1;
+    }
+    throw new DOMException(
+      'provider applied the write but its response timed out',
+      'TimeoutError'
+    );
+  }
+}
 
 test('production repository shares Spot Actor and route ownership through only opaque Store primitives', async () => {
   const now = new Date(Date.UTC(2026, 6, 3, 0, 0, 0));
@@ -991,7 +1092,12 @@ function actor(ownerId, _generation) {
     meshName: 'play',
     actorType: 'player',
     actorId: 'actor-1',
-    actorRef: { nodeRid: rid('node-1'), actorId: 'actor-1', generation: 1n },
+    actorRef: {
+      nodeRid: rid('node-1'),
+      actorId: 'actor-1',
+      objectGeneration: 1n,
+      meshName: 'play'
+    },
     ownerNodeRid: rid('node-1'),
     ownerNodeGeneration: 1n,
     spotId: 'play-entry-node-1',

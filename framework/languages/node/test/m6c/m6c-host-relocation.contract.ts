@@ -15,6 +15,11 @@ import {
 } from '../../packages/framework/src/runtime/foundation/service-relocation-runtime';
 import { encodeAuthorityKey } from '../../packages/framework/src/runtime/locations/authority-key-codec';
 import {
+  actorMessageFollowPayloadChecksum,
+  messageFollowOwnerFenceKey,
+  ownerFence
+} from '../../packages/framework/src/runtime/actors/actor-message-follow-context';
+import {
   decodeMaintenanceReplyRelayAck,
   encodeMaintenanceReplyRelay,
   encodeMaintenanceReplyRelayAck,
@@ -30,6 +35,11 @@ import {
 
 const spotKey = encodeAuthorityKey('user_spot', 'spot-a').value;
 const actorKey = encodeAuthorityKey('actor', 'actor-a').value;
+const acceptedOperationId = '11111111111111111111111111111111';
+const acceptedOperation = {
+  high: 0x1111111111111111n,
+  low: 0x1111111111111111n
+};
 
 test('two host owners exchange canonical relocation reservation publish replay and seal commands', async () => {
   const events: string[] = [];
@@ -582,7 +592,7 @@ function acceptedFrozenRecord(
       authorityOwnerGeneration: participant.authorityOwnerGeneration + 1n,
       ownerLeaseGeneration: candidate.ownerLeaseGeneration
     },
-    operationId: { high: 0n, low: 1n },
+    operationId: acceptedOperation,
     payload: {
       packetName: '__zlink.actor.handoff.accepted',
       contentType: 'application/json',
@@ -592,6 +602,27 @@ function acceptedFrozenRecord(
 }
 
 function relocationEnvelope(): ServiceRelocationEnvelope {
+  const header = Buffer.from('header');
+  const payload = Buffer.from('payload');
+  const parts = [Message.from(header), Message.from(payload)];
+  const queuedOwner = ownerFence({
+    ownerId: 'owner-source',
+    ownerLeaseGeneration: 7n,
+    nodeRid: 'node-source',
+    nodeGeneration: 11n,
+    authorityOwnerGeneration: 1n
+  });
+  const messageFollowContext = {
+    operationId: acceptedOperationId,
+    objectGeneration: '1',
+    sourceOwner: queuedOwner,
+    targetOwner: queuedOwner,
+    request: false,
+    hopCount: 0,
+    visitedOwners: [messageFollowOwnerFenceKey(queuedOwner)],
+    payloadChecksumSha256: actorMessageFollowPayloadChecksum(parts)
+  };
+  parts.forEach(part => part.close());
   return { aggregateId: '11111111-1111-4111-8111-111111111111', aggregateGeneration: 1n,
     sourceCleanup: 'pending', participants: [
       { key: spotKey, objectKind: 'user_spot', stableType: 'SpotType',
@@ -604,11 +635,11 @@ function relocationEnvelope(): ServiceRelocationEnvelope {
         terminalReplies: Buffer.alloc(0), pendingRelayCount: 0,
         queuedMessages: [{ sequence: 1n, payload: Buffer.from(JSON.stringify({
           index: 0,
-          header: Buffer.from('header').toString('base64'),
-          payload: Buffer.from('payload').toString('base64'),
+          header: header.toString('base64'),
+          payload: payload.toString('base64'),
           returnResponse: false,
-          operationId: '0:1',
-          messageFollowHopCount: 0
+          operationId: `${acceptedOperation.high}:${acceptedOperation.low}`,
+          messageFollowContext
         })) }], timers: [] }
     ], memberships: [{ actorKey, spotKey, spotObjectGeneration: 1n, membershipEpoch: 1n }] };
 }

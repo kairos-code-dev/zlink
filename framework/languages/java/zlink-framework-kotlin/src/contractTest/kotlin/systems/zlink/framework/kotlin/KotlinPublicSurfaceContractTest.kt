@@ -180,7 +180,6 @@ class KotlinPublicSurfaceContractTest {
             "ZLinkKotlinSendCall",
             "ZLinkKotlinStreamConnector",
             "ZLinkStreamTypedWaitCall",
-            "ZLinkSuspendingLocationStore",
         )
         expectedTypes.forEach { Class.forName("systems.zlink.framework.kotlin.$it") }
 
@@ -194,21 +193,14 @@ class KotlinPublicSurfaceContractTest {
         // interfaces (actors.ko.md:213-216, spots.ko.md:345-348), which the Kotlin module does
         // not declare yet, so they are tracked as a contract gap rather than asserted here.
         val expectedFunctionNames = setOf(
-            "actorFactory", "actorRef", "addHandler", "actors", "asFlow", "await", "awaitReply",
-            "bindOrGetActor", "changes",
+            "actorFactory", "actorRef", "addHandler", "asFlow", "await", "awaitReply",
+            "bindOrGetActor",
             "configureStreamCompression", "configureDispatch", "decode",
             "ensureActor", "errors", "findActor", "isPeerReady", "kotlin",
-            "listActorLocations", "listLivePeers", "listPeerLocations",
-            "listRouteLocations", "listServiceSummaries", "listSpotLocations", "listTopology",
-            "locationPages", "messageOf", "messages", "onMessageFlow", "publishToTopic",
-            // location-maintenance.ko.md:551-555 fixes the owner-lease vocabulary as
-            // claim / read / renew / release plus removeAllByOwner.
-            "claimOwnerLease", "readOwnerLease", "releaseOwnerLease",
-            "request", "removeActor", "removeAllByOwner", "removePeer",
-            "removeRoute", "removeSpot", "renewOwnerLease", "requestToActorAwait",
-            "resolveActor", "resolveActorSpotHandle", "resolveRoute", "resolveSpot",
-            "resolveSpotHandle", "routes", "send", "snapshot", "spots", "status", "topology",
-            "updateActor", "updatePeer", "updateRoute", "updateSpot", "useCoroutineHandlers",
+            "listServiceSummaries", "listTopology",
+            "messageOf", "messages", "onMessageFlow", "publishToTopic",
+            "request", "requestToActorAwait",
+            "send", "snapshot", "status", "topology", "useCoroutineHandlers",
             "waitFor", "withDefaultStreamCompression", "withLz4StreamCompression",
             "withStreamCompression", "withoutStreamCompression",
         )
@@ -256,24 +248,11 @@ class KotlinPublicSurfaceContractTest {
         assertFacadeMethodCounts(
             "ZLinkLocationExtensionsKt",
             mapOf(
-                "locationPages" to 1, "spots" to 1, "actors" to 1,
-                "routes" to 1, "topology" to 1, "updatePeer" to 1,
-                "removePeer" to 1, "listPeerLocations" to 2,
-                "updateSpot" to 1, "removeSpot" to 1, "resolveSpot" to 1,
-                "listSpotLocations" to 2, "updateActor" to 1,
-                "removeActor" to 1, "resolveActor" to 1,
-                "listActorLocations" to 2, "updateRoute" to 1,
-                "removeRoute" to 1, "resolveRoute" to 1,
-                "listRouteLocations" to 2,
-                // location-maintenance.ko.md:131-147 adds the MeshNode descriptor store and
-                // :551-555 fixes the owner-lease vocabulary as claim / read / renew / release.
-                "updateMeshNode" to 1, "removeMeshNode" to 1, "listMeshNodes" to 1,
-                "claimOwnerLease" to 1, "readOwnerLease" to 1,
-                "renewOwnerLease" to 1, "releaseOwnerLease" to 1,
-                "removeAllByOwner" to 1, "listLivePeers" to 1,
-                "resolveSpotHandle" to 1, "resolveActorSpotHandle" to 1,
-                "status" to 1, "listTopology" to 1,
-                "listServiceSummaries" to 1, "changes" to 1, "asFlow" to 1,
+                "topology" to 1,
+                "status" to 1,
+                "listTopology" to 1,
+                "listServiceSummaries" to 1,
+                "asFlow" to 1,
             ),
         )
         assertFacadeMethodCounts(
@@ -350,7 +329,7 @@ class KotlinPublicSurfaceContractTest {
             "ZLinkCoroutineTurnAwaitKt" to "0e58ca9d82f2e14d26e4763e955296534d7ce8e863c8fdd5b5231148a5661d5f",
             "ZLinkDispatchOptionsExtensionsKt" to "eb26c767da350a140c90c974e5485a3ba7af9265bb0f6badec8a381efb591443",
             "ZLinkFrameworkExtensionsKt" to "269802638a1b53095e969d738fbf4789b295cc3e388e03729f82f7523e5b5bfb",
-            "ZLinkLocationExtensionsKt" to "46e8044eb9e9cfb26fb9f97aaf78dd537574d00ddc7f53ffd0ebde3c1ae80873",
+            "ZLinkLocationExtensionsKt" to "81932a1fe63f6a00014d4eab8258c4e905529694e94bfa0e64ee8293d03e2100",
             "ZLinkMessageExtensionsKt" to "836b0c8038be8ee1beae9f8cf1f59cbd7e0811e936d1a4d47e7625b37abdaa9e",
             "ZLinkSpotHandlerRegistryExtensionsKt" to "0cc8a319eb99070b97332cab96c480fc74c14b9b160b022fa8d60ab4de814196",
             "ZLinkKotlinStreamConnector" to "eaf3cd7485e7e0a2bbf9d4db7ff5268422637947f00718083684002034c00993",
@@ -380,6 +359,7 @@ class KotlinPublicSurfaceContractTest {
             .filter { method ->
                 Modifier.isPublic(method.modifiers) &&
                     method.name != "awaitFrameworkStage" &&
+                    method.name != "locationPages" &&
                     !method.name.endsWith("\$default") &&
                     !method.name.startsWith("access\$") &&
                     !method.name.startsWith("getInner")
@@ -418,7 +398,7 @@ class KotlinPublicSurfaceContractTest {
     }
 
     private fun assertFacadeMethodCounts(typeName: String, expected: Map<String, Int>) {
-        val ignoredNames = setOf("awaitFrameworkStage")
+        val ignoredNames = setOf("awaitFrameworkStage", "locationPages")
         val actual = Class.forName("systems.zlink.framework.kotlin.$typeName")
             .declaredMethods
             .filter { method ->

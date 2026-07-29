@@ -15,9 +15,10 @@ final class ZLinkStreamJsonTest {
     @Test
     void frameworkActorReferencesRoundTripThroughDefaultJsonCodec() {
         ActorRefSnapshot expected = new ActorRefSnapshot(
-            RoutingId.from(new byte[] {0, 65, 66}),
             "courier-a",
-            7L);
+            7L,
+            "courier-mesh",
+            RoutingId.from(new byte[] {0, 65, 66}));
 
         ActorRefSnapshot actual = ZLinkStreamJson.decode(
             ZLinkStreamJson.encode("actor-ref", expected),

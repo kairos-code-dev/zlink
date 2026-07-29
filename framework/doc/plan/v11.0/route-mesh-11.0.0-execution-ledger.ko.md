@@ -2770,7 +2770,7 @@ Framework runtime source를 구현하지 않는다.
 | `V11-CA-STORE-POSD-IFACE` | 다섯 언어 exact interface와 package 경계 정렬 | C++·DN·JVM·Node contract lanes, `P-DEEP` | `V11-CA-STORE-POSD-SPEC` | 완료 | C++·.NET·Java·Kotlin·Node.js의 Store primitive, closed result·error, async input lifetime, cancellation reconcile, ownership·dispose와 public declaration trace parity 100% | 다섯 언어를 generic atomic Location Store와 Framework-issued immutable Relocation Store로 정렬했다. Redis 공개 표면은 두 Store class의 최소 constructor·options뿐이며 중복 등록 helper가 없다. Trace는 documents 51, owners 1,237, members 4,421, unclassified·ambiguous·unknown 0이다. |
 | `V11-M6-STORE-POSD-DN` | .NET generic Store 기준 구현과 회귀 | .NET runtime·provider lanes, `P-DEEP` | `V11-CA-STORE-POSD-IFACE` | 완료 | provider abstraction, in-memory·Redis 구현과 authority·relocation adapter가 정식 primitive만 사용하고 contract snapshot·provider·Redis·crash-retry·E2E focused test 및 전체 `.NET M6-RUNTIME` 통과 | Redis package의 domain-specific Location repository·Lua·key codec과 물리 schema test는 제거하고 opaque SPI·Framework private adapter test로 교체했다. 남아 있던 Relocation internal repository 직접 구현과 전체 `Zlink.Framework` dependency도 제거했다. 별도 `Zlink.Framework.Provider.Abstractions` package를 package manifest·snapshot·소비 검증에 포함했으며 Redis package는 이 package만 exact version으로 참조한다. Framework adapter는 operation별 unique reference를 `Put` 전에 한 번 발급하고 응답 유실 뒤 같은 reference를 exact read하여 동일 bytes만 성공으로 reconcile한다. 따라서 동일 payload의 독립 relocation이 reference·retention·delete 수명을 공유하지 않는다. Linux Redis build warning·error 0, Redis 25/25, ambiguous completion focused 2/2, 전체 Unit 1,103/1,103, Contract 67/67과 fixed packaged contract·실제 NuGet 소비 검증이 통과했다. 후속 `BLK-047` 교정은 서로 다른 64개 object의 concurrent reservation·generic commit·terminal publication이 공유 capacity CAS와 경쟁해도 자기 reservation을 잃지 않도록 bounded retry를 연결했으며 focused 3/3이 통과했다. Process E2E `logs/20260728-035041-2190321`은 실제 client에서 `TD-A1..C5`를 통과해 `TD-A2` Store 공유 경로를 재검증했다. 후속 진단에서 Session gateway의 잘못된 Object Server capability, Entry Spot에서 실행하던 D1·D2·F3 setup, per-mesh RID를 그대로 사용하던 evidence route와 Entry/User Spot Join marker 차이를 수정했다. Framework 내부 route descriptor만 있고 DI 등록이 빠졌던 session route seal·abort·commit·unseal handler 네 개를 내부 runtime service로 등록하고 focused registration test를 추가했다. Join completion의 request ID와 marker는 timing 값에서 추론하지 않고 immutable `JoinDelayReq` payload에 명시해 recreated Actor가 public completion reply에서 복원한다. Route commit ACK가 검증한 relocation·object·owner generation fence와 session owner RID를 private completion result에 보존한다. Authority를 Steady로 전이하고 정상 payload로 정리한 뒤 이 RID로 ingress를 unseal하므로 제거된 relocation metadata를 다시 읽지 않는다. Duplicate commit에서도 같은 RID가 유지되는 focused test 2건이 통과했다. 실제 multi-process 실행은 `logs/20260728-050239-3599515`에서 TD-D1, `logs/20260728-050340-3689192`에서 TD-D2·TD-F3가 통과했다. `BLK-046` 교정은 prepare claim 뒤 실패를 독립 5초 reconcile 범위로 묶고 exact `Prepared/Committed` 또는 `Staging→Aborted`와 inventory 기반 fence 해제를 보장한다. Participant meta 손실, root·meta·payload 손상, ordinal permutation, 10,000-participant publication probe와 projection, 64·256 MiB decode memory를 회귀로 고정했다. `ProviderLocationRepositoryAuthorityTests` 29/29, `RelocationRuntimeTests` 140/140, `RelocationTreeParallelIoTests` 4/4와 Framework build warning·error 0이 통과했다. 이 blocker는 해소됐으며 immutable candidate `ROW-GATE`와 독립 high review는 후속 row가 계속 소유한다. |
 | `V11-M6-STORE-POSD-DN-REVIEW` | .NET Store 기준 구현 POSD·DDD review와 reference 고정 | .NET independent review lane, `P-HIGH` | `V11-M6-STORE-POSD-DN` | 완료 | Codex `gpt-5.6-sol high` finding 0, focused·전체 회귀 재통과, public snapshot과 `REMOVE` clean, immutable candidate·`ROW-GATE` 통과 | 후속 review의 cursor materialization, completed token bound, fixed cleanup batch, descriptor exact read-back, sub-ms retention 올림, envelope bound와 Redis shared connection pool을 현재 구현·test와 다시 대조했다. Provider authority 43/43, provider relocation 4/4, Redis lifecycle 12/12, Redis opaque 10/10과 Redis project build warning·error 0이 통과했다. 전체 `.NET` 회귀와 public snapshot·`ROW-GATE`를 같은 candidate에서 통과하기 전에는 완료로 바꾸지 않는다. |
-| `V11-M6-STORE-POSD-MIRROR` | 네 언어 Store 구현 미러링 | C++·JVM·Node runtime·provider lanes, `P-DEEP` | `V11-M6-STORE-POSD-DN-REVIEW` | 대기 | C++·Java·Kotlin·Node.js의 provider·Redis·crash-retry·public snapshot과 대응 `M6-RUNTIME` 통과, 구현 차이마다 row 증거 존재 | .NET의 component 경계, state machine, atomic ordering, ownership, 오류 분류, resource 수명과 test 구성을 각 언어에 이식한다. 언어별 backend 차이는 public 계약을 늘리지 않고 internal 구현으로 흡수한다. |
+| `V11-M6-STORE-POSD-MIRROR` | 네 언어 Store 구현 미러링 | C++·JVM·Node runtime·provider lanes, `P-DEEP` | `V11-M6-STORE-POSD-DN-REVIEW` | 수정 진행 | C++·Java·Kotlin·Node.js의 provider·Redis·crash-retry·public snapshot과 대응 `M6-RUNTIME` 통과, 구현 차이마다 row 증거 존재 | .NET의 component 경계, state machine, atomic ordering, ownership, 오류 분류, resource 수명과 test 구성을 각 언어에 이식한다. 언어별 backend 차이는 public 계약을 늘리지 않고 internal 구현으로 흡수한다. Node의 Framework-private repository는 opaque atomic write의 응답이 유실되면 원래 cancellation과 분리된 5초 범위에서 모든 mutation을 exact read한다. Put bytes와 conditioned version 전이, delete 부재가 모두 일치할 때만 applied로 복구하고 변경된 row는 conflict로 분류한다. Public Store API는 바꾸지 않았다. Node build가 통과했고 focused ambiguous completion 2/2가 통과했다. `location-runtime.test.js` 전체 실행은 기존 SpotHandle·Actor resolver 3건이 `undefined`를 반환해 24/27이므로 Node `M6-RUNTIME`과 이 row는 완료하지 않는다. C++·JVM generic provider 이관도 남아 있다. |
 
 `V11-M6-STORE-POSD-DN` 재검토 증거(2026-07-28): aggregate claim 직후
 cancellation과 startup corrupt root를 추가로 교정했다. Canonical·non-seekable
@@ -3182,8 +3182,8 @@ registration을 삭제하거나 runtime 통과용 compatibility helper를 추가
   삭제하고 `IZLinkLocationStore`의 authority·owner lease transaction domain을 직접 검증한다. Unit
   project compile은 warning·error 0이지만 Object Server test descriptor의 필수 `EntrySpotId` 보강과
   전체 Unit·Contract 재실행은 아직 남아 있으므로 완료 증거로 사용하지 않는다.
-| `V11-M6A-JVM` | JVM topology·dispatch·Location·liveness runtime | JVM lane, `P-DEEP` | `V11-R4B` | 수정 진행 | Java·Kotlin API, remote placement, CAS·executor·coroutine·reconnect internal contract 통과 | 최신 `systems.zlink:zlink:11.0.0` public raw binding만 사용해 Framework ROUTER owner와 exact hello·admit·update, Node·Channel send/request/reply, bounded mailbox, Location CAS/watch, placement selector, reconnect와 5초/15초 liveness를 구현했다. Classic fanout connection fence·beacon·timeout contract를 포함한 service·binding regression과 M5 foundation, Java·Kotlin compile이 통과했다. 전체 core test 383개 중 M6B stateful Spot·Actor 구현을 요구하는 기존 6개만 격리됐다. Sample·E2E 변경·실행은 0이다. 관련 blocked issue: `BLK-006`, `BLK-016`, `BLK-017`, `BLK-018`. |
-| `V11-M6A-NODE` | Node topology·dispatch·Location·liveness runtime | Node lane, `P-DEEP` | `V11-R4B` | 수정 진행 | topology·remote placement·CAS·Promise·event-loop·reconnect internal contract 통과 | Public raw binding만 사용하는 owner에 admission, node·Channel send/request, mailbox, topology·placement, Location CAS, liveness와 전용 ClientServer·fanout registry를 구현하고 public host factory를 연결해 제거된 `createMeshNode` 의존을 없앴다. Framework TypeScript compile, M6A 7/7, M5 4/4와 changed-source ESLint가 통과했다. M6B 기능은 가짜 성공 없이 `NotSupported`로 유지하며 Sample·E2E 변경·실행은 0이다. RouteMesh self-selection을 기대하던 backend fixture 세 건을 실제 TCP peer admission·remote dispatch로 바꾸고, node-direct fixture를 exact MessageContext로 맞춰 `backend-contract.test.js` 34/34를 통과했다. `BLK-006`에 이어 `channel-client.test.js`도 91/91·exit 0으로 정상 종료해 `BLK-009`를 해결했다. 다른 M6A·review 잔여는 계속 추적한다. 관련 blocked issue: `BLK-006`, `BLK-009`. |
+| `V11-M6A-JVM` | JVM topology·dispatch·Location·liveness runtime | JVM lane, `P-DEEP` | `V11-R4B` | 완료 | Java·Kotlin API, remote placement, CAS·executor·coroutine·reconnect internal contract 통과 | 최신 `systems.zlink:zlink:11.0.0` public raw binding만 사용하는 Framework ROUTER owner, exact hello·admit·update, Node·Channel send/request/reply, bounded mailbox, Location CAS, placement selector, reconnect와 liveness를 구현했다. Kotlin public surface에서 provider용 Location Store projection을 제거하고 Java public contract와 맞췄다. `M6-RUNTIME` 11/11과 exact candidate `ROW-GATE`가 통과했다. Sample·E2E source는 candidate에 포함하지 않았다. |
+| `V11-M6A-NODE` | Node topology·dispatch·Location·liveness runtime | Node lane, `P-DEEP` | `V11-R4B` | 완료 | topology·remote placement·CAS·Promise·event-loop·reconnect internal contract 통과 | Public raw binding만 사용하는 owner에 admission, node·Channel send/request, mailbox, topology·placement, Location CAS, liveness와 전용 ClientServer·fanout registry를 구현하고 public host factory를 연결했다. Exact `ActorRef` resolver fixture와 relocation 중 보존하는 Message Follow 128-bit operation ID를 현재 계약에 맞췄다. Candidate 318개 파일에서 compile, public declaration 39/39, M6A 12/12, M6B 39/39, M6C 64/64, resource 20/20과 protocol 14/14가 통과했다. `M6-RUNTIME` 7/7, 같은 candidate의 `ROW-GATE`, `DOC`와 scoped diff check가 통과했다. Candidate의 Sample·E2E 실행과 소유 파일은 0건이다. 증거: `.artifacts/v11/evidence/V11-M6A-NODE/result-current.json` |
 | `V11-R5A` | Topology runtime slice 독립 review; Codex 단독 reviewer | Codex review lane, `P-HIGH` | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | 수정 진행 | topology·dispatch·placement·authority·liveness와 실행 격리의 I1·I2·I3 review clean, §2.3 조합 수렴의 I4 clean | Codex 5.6 sol xhigh review에서 확인한 C++ public host의 삭제된 Core Service header·owner 잔존은 Framework raw owner·stateful runtime을 실제 app·MeshNode·Spot·Actor·STREAM host 경계에 연결해 해소했다. 전체 C++ framework compile과 focused regression 5/5가 통과했다. .NET descriptor의 ObjectRole·security·placement/capacity configuration과 physical connection identity 기반 duplicate-pipe 판정은 public-contract parity 후속 조건으로 남는다. Sample·E2E source 변경은 0이다. 지금까지의 round는 Codex `gpt-5.6-sol xhigh`와 Claude `claude-sonnet-5` 두 reviewer가 수행했고, 남은 round는 Codex `gpt-5.6-sol high` 단독 reviewer가 수행한다. |
 
 #### `V11-M6B-CPP` object routing 추가 증거
@@ -7301,3 +7301,56 @@ dependency 순서를 유지하기 위해 상태는 완료로 바꾸지 않고, �
 
 현재 실행 행 205개의 상태는 완료 142개, 진행 18개, 수정 진행 12개, 대기 33개,
 차단 0개다.
+
+## 2026-07-29 JVM M6A runtime 완료
+
+JVM topology·dispatch·Location·liveness candidate를 현재 public contract에 맞춰
+다시 검증했다. Kotlin facade에 남아 있던 provider용 Location Store projection은
+public surface에서 제거했다. `ActorRefSnapshot`을 이전 RoutingId 중심 생성자로
+만들던 stream connector fixture도 현재 Actor ID·object generation·Mesh·Node RID
+계약으로 맞췄다.
+
+- Candidate:
+  `.artifacts/v11/evidence/V11-M6A-JVM/candidate-current.json`
+- Candidate source revision: `cee66e3fd3f1f5f12b707136792c64a53c907e76`
+- Candidate 파일: 111개
+- JVM compile과 public declaration: 통과
+- Java core·Kotlin·HTTP client·Spring internal regression: 통과
+- Resource와 protocol codec·core·connector regression: 통과
+- `M6-RUNTIME`: required command 11/11
+- 같은 candidate의 `ROW-GATE`: 통과
+- scoped `git diff --check`: 통과
+
+이 증거로 `V11-M6A-JVM`을 완료로 전환했다. Sample·E2E source는 이 candidate의
+소유 범위에 포함하지 않았다.
+
+## 2026-07-29 Node M6A runtime 완료
+
+Node topology·dispatch·Location·liveness candidate를 2026-07-26의 M6A 전 기준
+revision에서 다시 만들었다. Candidate는 Node framework production package와 contract·M6
+test만 소유한다. Sample과 E2E source는 포함하지 않았다.
+
+Location resolver test에 남아 있던 이전 `ActorRef.generation` fixture는 현재 공개 계약의
+`objectGeneration`과 `meshName`으로 교체했다. Relocation mailbox fixture는 Message Follow
+context와 source fence를 함께 보존한다. Production relocation runtime도 이 context의
+32자리 lowercase hexadecimal operation ID를 두 64-bit wire field로 변환한다. 이전
+decimal `high:low` 입력은 compatibility 경로로 유지하지 않는다.
+
+- Candidate:
+  `.artifacts/v11/evidence/V11-M6A-NODE/candidate-current.json`
+- Candidate source revision: `cee66e3fd3f1f5f12b707136792c64a53c907e76`
+- Candidate 파일: 318개
+- Compile: 통과
+- Public declaration: 39/39
+- M6A internal: 12/12
+- M6B internal: 39/39
+- M6C internal: 64/64
+- Resource regression: 20/20
+- Protocol regression: 14/14
+- `M6-RUNTIME`: required command 7/7
+- 같은 candidate의 `ROW-GATE`: 통과
+- `DOC`와 scoped `git diff --check`: 통과
+- Sample·E2E project와 task 실행: 0
+
+이 증거로 `V11-M6A-NODE`를 완료로 전환했다. Store provider 동형 수렴과 M6B·M6C
+행은 각 행의 별도 완료 조건을 계속 따른다.

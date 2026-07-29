@@ -499,6 +499,8 @@ final class ZLinkAsyncSerialQueueTest {
         remote.complete(null);
         continuationFinished.get(3, TimeUnit.SECONDS);
         dispatch.get(3, TimeUnit.SECONDS);
+        queue.awaitQuiescence().toCompletableFuture()
+            .get(3, TimeUnit.SECONDS);
 
         assertTrue(queue.trySealRelocation().isPresent());
     }

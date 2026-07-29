@@ -10,17 +10,10 @@ import systems.zlink.framework.locations.ZLinkLocationServiceSummary
 import systems.zlink.framework.locations.ZLinkLocationServiceSummaryFilter
 import systems.zlink.framework.locations.ZLinkLocationTopologyEntry
 import systems.zlink.framework.locations.ZLinkLocationTopologyFilter
-import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor
 import systems.zlink.framework.locations.ZLinkPageRequest
 
 suspend fun ZLinkLocationRuntimeQuery.status(): ZLinkLocationRuntimeStatus =
     awaitFrameworkStage(status)
-
-suspend fun ZLinkLocationRuntimeQuery.listMeshNodes(
-    meshName: String,
-    page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
-): ZLinkLocationPage<ZLinkMeshNodeDescriptor> =
-    awaitFrameworkStage(listMeshNodes(meshName, page))
 
 suspend fun ZLinkLocationRuntimeQuery.listTopology(
     filter: ZLinkLocationTopologyFilter,

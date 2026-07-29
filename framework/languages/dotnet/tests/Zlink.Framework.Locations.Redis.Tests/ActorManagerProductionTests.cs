@@ -19,7 +19,7 @@ namespace Zlink.Framework.Locations.Redis.Tests;
 public sealed class ActorManagerProductionTests
 {
     [Fact]
-    public async Task CapacityRaceRemovesFirstCandidateAndExecutesSecondNodeCallback()
+    public async Task CapacityRaceReleasesLosingReservationAndRunsOnlyFinalFactory()
     {
         TestActorFactory.Reset();
         var inner = new ZLinkInMemoryLocationStore();
@@ -30,9 +30,17 @@ public sealed class ActorManagerProductionTests
         var sourceEndpoint = $"tcp://127.0.0.1:{FindFreeTcpPort()}";
 
         await using var firstProvider = BuildServer(
-            store, firstEndpoint);
+            store,
+            firstEndpoint,
+            "z-high",
+            placementWeight: 300,
+            actorLimit: 1);
         await using var secondProvider = BuildServer(
-            store, secondEndpoint);
+            store,
+            secondEndpoint,
+            "a-low",
+            placementWeight: 100,
+            actorLimit: 1);
         await using var sourceProvider = BuildClient(
             store,
             sourceEndpoint);
@@ -71,8 +79,38 @@ public sealed class ActorManagerProductionTests
 
             Assert.IsType<ZLinkActorCreateResult.Created>(result);
             Assert.Equal(2, capacityRace.ActorReserveAttempts);
+            Assert.Equal(
+                [firstRid, secondRid],
+                capacityRace.ActorReserveTargets);
             Assert.Equal(1, TestActorFactory.CreateCount);
             Assert.Equal(1, TestEntrySpot.CreateCount);
+            Assert.Equal(
+                (1L, 0L),
+                inner.GetPlacementCapacityUsage(
+                    new ZLinkMeshNodeDescriptorKey("objects", firstRid),
+                    first.GetSpotNodeRuntime("objects").Node.MeshStatus()
+                        .LifecycleGeneration,
+                    ZLinkPlacementObjectKind.Actor,
+                    "player"));
+            Assert.Equal(
+                (0L, 1L),
+                inner.GetPlacementCapacityUsage(
+                    new ZLinkMeshNodeDescriptorKey("objects", secondRid),
+                    second.GetSpotNodeRuntime("objects").Node.MeshStatus()
+                        .LifecycleGeneration,
+                    ZLinkPlacementObjectKind.Actor,
+                    "player"));
+
+            Assert.IsType<ZLinkObjectAbortResult.Aborted>(
+                await capacityRace.ReleaseCompetingReservationAsync());
+            Assert.Equal(
+                (0L, 0L),
+                inner.GetPlacementCapacityUsage(
+                    new ZLinkMeshNodeDescriptorKey("objects", firstRid),
+                    first.GetSpotNodeRuntime("objects").Node.MeshStatus()
+                        .LifecycleGeneration,
+                    ZLinkPlacementObjectKind.Actor,
+                    "player"));
         }
         finally
         {
@@ -216,7 +254,10 @@ public sealed class ActorManagerProductionTests
 
     private static ServiceProvider BuildServer(
         IZLinkLocationRepository store,
-        string endpoint)
+        string endpoint,
+        string? routingIdPrefix = null,
+        int placementWeight = 100,
+        int actorLimit = 0)
     {
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
@@ -224,6 +265,10 @@ public sealed class ActorManagerProductionTests
             options.AddLocationStore(store);
             var node = options.AddRouteMesh("objects")
                 .Listen(endpoint);
+            if (routingIdPrefix is not null)
+                node.SetRoutingIdPrefix(routingIdPrefix);
+            node.SetPlacementWeight(placementWeight);
+            node.SetActorLimit(actorLimit);
             node.Channel("objects").Server();
             node.Objects().Server()
                 .AddEntrySpot<TestEntrySpot>()
@@ -363,9 +408,21 @@ public sealed class ActorManagerProductionTests
     {
         private IZLinkLocationRepository _inner = null!;
         private int _actorReserveAttempts;
+        private readonly object _gate = new();
+        private readonly List<RoutingId> _actorReserveTargets = [];
+        private ZLinkObjectReservation? _competingReservation;
 
         public int ActorReserveAttempts => Volatile.Read(
             ref _actorReserveAttempts);
+
+        public IReadOnlyList<RoutingId> ActorReserveTargets
+        {
+            get
+            {
+                lock (_gate)
+                    return _actorReserveTargets.ToArray();
+            }
+        }
 
         public static (
             IZLinkLocationRepository Store,
@@ -390,10 +447,18 @@ public sealed class ActorManagerProductionTests
                 && args[0] is ZLinkObjectReservationRequest
                 {
                     ObjectKind: ZLinkPlacementObjectKind.Actor
-                }
-                && Interlocked.Increment(ref _actorReserveAttempts) == 1)
-                return ValueTask.FromResult<ZLinkObjectReserveResult>(
-                    new ZLinkObjectReserveResult.PlacementCapacityExhausted());
+                } request)
+            {
+                var attempt = Interlocked.Increment(ref _actorReserveAttempts);
+                lock (_gate)
+                    _actorReserveTargets.Add(request.TargetDescriptor.Rid);
+                if (attempt == 1)
+                    return ReserveAfterCompetingReservationAsync(
+                        request,
+                        args.Length > 1 && args[1] is CancellationToken token
+                            ? token
+                            : CancellationToken.None);
+            }
 
             try
             {
@@ -404,6 +469,38 @@ public sealed class ActorManagerProductionTests
             {
                 throw exception.InnerException;
             }
+        }
+
+        public async ValueTask<ZLinkObjectAbortResult>
+            ReleaseCompetingReservationAsync()
+        {
+            ZLinkObjectReservation reservation;
+            lock (_gate)
+                reservation = _competingReservation
+                    ?? throw new InvalidOperationException(
+                        "The competing reservation was not created.");
+            return await _inner.AbortAsync(reservation);
+        }
+
+        private async ValueTask<ZLinkObjectReserveResult>
+            ReserveAfterCompetingReservationAsync(
+                ZLinkObjectReservationRequest request,
+                CancellationToken cancellationToken)
+        {
+            var competing = await _inner.ReserveAsync(
+                request with
+                {
+                    Key = new ZLinkAuthorityKey(
+                        $"{request.Key.Value}:capacity-race"),
+                    CreationIntentReference =
+                        $"{request.CreationIntentReference}:capacity-race"
+                },
+                cancellationToken);
+            var reserved = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+                competing);
+            lock (_gate)
+                _competingReservation = reserved.Reservation;
+            return await _inner.ReserveAsync(request, cancellationToken);
         }
     }
 

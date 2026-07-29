@@ -3249,6 +3249,105 @@ public sealed class RelocationRuntimeTests
     }
 
     [Fact]
+    public async Task AcquiredRelocationReservationSurvivesTargetWeightZero()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        var source = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "weight-source-owner",
+                TimeSpan.FromMinutes(1)));
+        var target = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "weight-target-owner",
+                TimeSpan.FromMinutes(1)));
+        var sourceDescriptor = new ZLinkMeshNodeDescriptorKey(
+            "mesh",
+            RoutingId.From("weight-source"));
+        var targetDescriptor = new ZLinkMeshNodeDescriptorKey(
+            "mesh",
+            RoutingId.From("weight-target"));
+        await store.UpdateMeshNodeAsync(
+            AuthorityDescriptor("weight-source", source.Token),
+            ZLinkLocationWriteIntent.NewClaim);
+        var targetRow = AuthorityDescriptor("weight-target", target.Token);
+        await store.UpdateMeshNodeAsync(
+            targetRow,
+            ZLinkLocationWriteIntent.NewClaim);
+
+        var firstCreation = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                ObjectReservation(
+                    "actor:mesh:relocate",
+                    sourceDescriptor,
+                    source.Token)));
+        var firstReady = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(
+                firstCreation.Reservation,
+                new byte[] { 0x01 }));
+        var acquired = Assert.IsType<
+            ZLinkRelocationCapacityReserveResult.Reserved>(
+            await store.ReserveRelocationCapacityAsync(
+                RelocationReservation(
+                    firstReady.Snapshot,
+                    sourceDescriptor,
+                    source.Token,
+                    targetDescriptor,
+                    target.Token)));
+
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await store.UpdateMeshNodeAsync(
+                targetRow with
+                {
+                    DescriptorRevision = targetRow.DescriptorRevision + 1,
+                    PlacementWeight = 0
+                },
+                ZLinkLocationWriteIntent.Renew)).Status);
+
+        var secondCreation = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                ObjectReservation(
+                    "actor:mesh:weight-new",
+                    sourceDescriptor,
+                    source.Token)));
+        var secondReady = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(
+                secondCreation.Reservation,
+                new byte[] { 0x02 }));
+        Assert.IsType<ZLinkRelocationCapacityReserveResult.TargetUnavailable>(
+            await store.ReserveRelocationCapacityAsync(
+                RelocationReservation(
+                    secondReady.Snapshot,
+                    sourceDescriptor,
+                    source.Token,
+                    targetDescriptor,
+                    target.Token) with
+                {
+                    Key = secondCreation.Reservation.Key
+                }));
+
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
+            await store.CompareExchangeAuthorityAsync(
+                firstCreation.Reservation.Key,
+                firstReady.Snapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Put(
+                    new byte[] { 0x03 },
+                    ZLinkAuthorityGenerationTransition.NewOwner,
+                    target.Token,
+                    acquired.Fence)));
+        Assert.Equal(
+            ZLinkRelocationCapacityAbortResult.AlreadyCommitted,
+            await store.AbortRelocationCapacityAsync(acquired.Fence));
+        Assert.Equal(
+            (0L, 1L),
+            store.GetPlacementCapacityUsage(
+                targetDescriptor,
+                targetRow.LifecycleGeneration,
+                ZLinkPlacementObjectKind.Actor,
+                "Game.Actor"));
+    }
+
+    [Fact]
     public async Task Relocation_capacity_reservation_generation_is_used_without_source_plus_one_assumption()
     {
         var store = new ZLinkInMemoryLocationStore();

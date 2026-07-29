@@ -15,6 +15,76 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 
 final class ZLinkDeferredActorJoinScopeTest {
     @Test
+    void actorScopeDoesNotCrossRuntimeOrActorIncarnation() {
+        Object runtime = new Object();
+        Object incarnation = new Object();
+
+        try (ZLinkDeferredActorJoinScope.Scope ignored =
+                 ZLinkDeferredActorJoinScope.enter(
+                     runtime,
+                     incarnation,
+                     "actor-a")) {
+            ZLinkFrameworkException otherRuntime = assertThrows(
+                ZLinkFrameworkException.class,
+                () -> ZLinkDeferredActorJoinScope.registerWithActorBarrier(
+                    new Object(),
+                    incarnation,
+                    "actor-a",
+                    0,
+                    Long.MAX_VALUE,
+                    () -> CompletableFuture.completedFuture(null),
+                    operation -> operation.get(),
+                    () -> { }));
+            assertEquals(
+                ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                otherRuntime.kind());
+
+            ZLinkFrameworkException replacementIncarnation = assertThrows(
+                ZLinkFrameworkException.class,
+                () -> ZLinkDeferredActorJoinScope.registerWithActorBarrier(
+                    runtime,
+                    new Object(),
+                    "actor-a",
+                    0,
+                    Long.MAX_VALUE,
+                    () -> CompletableFuture.completedFuture(null),
+                    operation -> operation.get(),
+                    () -> { }));
+            assertEquals(
+                ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                replacementIncarnation.kind());
+        }
+    }
+
+    @Test
+    void spotHandlerScopeDoesNotCrossRuntime() {
+        Object handlerRuntime = new Object();
+
+        CompletionStage<Void> handler = ZLinkDeferredActorJoinHandlerScope.run(
+            handlerRuntime,
+            actorId -> actorId.equals("actor-a"),
+            () -> {
+                ZLinkFrameworkException otherRuntime = assertThrows(
+                    ZLinkFrameworkException.class,
+                    () -> ZLinkDeferredActorJoinScope.registerWithActorBarrier(
+                        new Object(),
+                        new Object(),
+                        "actor-a",
+                        0,
+                        Long.MAX_VALUE,
+                        () -> CompletableFuture.completedFuture(null),
+                        operation -> operation.get(),
+                        () -> { }));
+                assertEquals(
+                    ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                    otherRuntime.kind());
+                return CompletableFuture.completedFuture(null);
+            });
+
+        handler.toCompletableFuture().join();
+    }
+
+    @Test
     void activatesOnlyAfterNormalHandlerTerminal() {
         ZLinkActorDispatchSerials serials = new ZLinkActorDispatchSerials();
         List<String> order = new ArrayList<>();

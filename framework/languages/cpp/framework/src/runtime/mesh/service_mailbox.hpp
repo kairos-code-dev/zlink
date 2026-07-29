@@ -49,7 +49,7 @@ class service_mailbox_t
                        std::size_t infrastructure_message_budget,
                        std::size_t infrastructure_byte_budget);
 
-    bool try_enqueue (service_mailbox_record_t record);
+    bool try_enqueue (service_mailbox_record_t &&record);
     std::optional<service_mailbox_claim_t>
     try_claim (service_mailbox_domain_t domain,
                std::size_t message_budget,

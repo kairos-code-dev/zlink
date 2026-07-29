@@ -40,7 +40,7 @@ service_mailbox_t::domain (service_mailbox_domain_t value) const
                                                            : _infrastructure;
 }
 
-bool service_mailbox_t::try_enqueue (service_mailbox_record_t record)
+bool service_mailbox_t::try_enqueue (service_mailbox_record_t &&record)
 {
     if (record.owner.empty () || record.parts.empty ()) {
         throw std::invalid_argument (

@@ -77,7 +77,9 @@ bool raw_route_port_t::send (const raw_bytes_t &target_routing_id,
     for (std::size_t index = 1; index < messages.size (); ++index) {
         operation = std::move (operation).message (messages[index]);
     }
-    return std::move (operation).submit ();
+    return std::move (operation)
+      .flags (static_cast<int> (zlink::send_flags_t::dontwait))
+      .submit ();
 }
 
 bool raw_route_port_t::request (const raw_bytes_t &target_routing_id,

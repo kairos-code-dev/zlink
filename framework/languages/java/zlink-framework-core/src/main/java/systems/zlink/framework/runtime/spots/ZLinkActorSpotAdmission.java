@@ -63,6 +63,11 @@ final class ZLinkActorSpotAdmission {
         return requireActors().isActorAtSpot(actorId, spotId);
     }
 
+    Object deferredJoinRuntimeScope() {
+        ZLinkActorRuntime runtime = actors;
+        return runtime == null ? this : runtime;
+    }
+
     CompletionStage<Void> destroyFromEntry(RoutingId nodeRid, ZLinkActor actor) {
         return requireActors().destroyFromEntrySpot(nodeRid, actor);
     }

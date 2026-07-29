@@ -333,6 +333,29 @@ void verify_independent_mailbox_domains_and_claim_fence ()
       mailbox.try_claim (mesh::service_mailbox_domain_t::application, 1, 1);
     assert (oversized && oversized->records.size () == 1);
     assert (mailbox.release (*oversized));
+
+    mesh::service_mailbox_t saturated (1, 64, 1, 64);
+    assert (saturated.try_enqueue (
+      {"first", mesh::service_mailbox_domain_t::application,
+       {{1}}}));
+    mesh::service_mailbox_record_t retained{
+      "second", mesh::service_mailbox_domain_t::application,
+      {{2, 3, 4}}};
+    assert (!saturated.try_enqueue (std::move (retained)));
+    assert (retained.owner == "second");
+    assert ((retained.parts
+             == std::vector<std::vector<std::uint8_t>>{{2, 3, 4}}));
+    auto first = saturated.try_claim (
+      mesh::service_mailbox_domain_t::application, 1, 64);
+    assert (first && saturated.release (*first));
+    assert (saturated.try_enqueue (std::move (retained)));
+    auto second = saturated.try_claim (
+      mesh::service_mailbox_domain_t::application, 1, 64);
+    assert (second && second->records.size () == 1);
+    assert (second->records.front ().owner == "second");
+    assert ((second->records.front ().parts
+             == std::vector<std::vector<std::uint8_t>>{{2, 3, 4}}));
+    assert (saturated.release (*second));
 }
 
 void verify_liveness_reuses_probe_and_fences_reconnect ()
@@ -694,7 +717,12 @@ void verify_raw_owner_node_send_and_liveness ()
     mesh::raw_mesh_node_owner_t first (
       mesh::raw_mesh_node_options_t{descriptor ("raw-a")});
     mesh::raw_mesh_node_owner_t second (
-      mesh::raw_mesh_node_options_t{descriptor ("raw-b")});
+      mesh::raw_mesh_node_options_t{
+        descriptor ("raw-b"),
+        1,
+        16u * 1024u * 1024u,
+        1024,
+        4u * 1024u * 1024u});
     first.start ();
     second.start ();
     assert (first.started () && second.started ());
@@ -746,6 +774,27 @@ void verify_raw_owner_node_send_and_liveness ()
         }
     }
     assert (pumped == mesh::raw_mesh_pump_result_t::application);
+
+    bool retained_submitted = false;
+    while (!retained_submitted
+           && mesh::service_liveness_registry_t::clock_t::now () < deadline) {
+        retained_submitted = first.send_to_node (
+          second_descriptor.node_routing_id,
+          {"Probe", "application/json", bytes ("retained")});
+        if (!retained_submitted)
+            std::this_thread::sleep_for (1ms);
+    }
+    assert (retained_submitted);
+    mesh::raw_mesh_pump_result_t retained_pump =
+      mesh::raw_mesh_pump_result_t::no_data;
+    while (retained_pump == mesh::raw_mesh_pump_result_t::no_data
+           && mesh::service_liveness_registry_t::clock_t::now () < deadline) {
+        retained_pump = second.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+    }
+    assert (retained_pump
+            == mesh::raw_mesh_pump_result_t::backpressured);
+
     auto claim = second.mailbox ().try_claim (
       mesh::service_mailbox_domain_t::application, 1, 1024);
     assert (claim && claim->records.size () == 1);
@@ -759,6 +808,19 @@ void verify_raw_owner_node_send_and_liveness ()
               claim->records.front ().parts.at (1))
             == expected_payload);
     assert (second.mailbox ().release (*claim));
+
+    assert (second.pump_one (
+              mesh::service_liveness_registry_t::clock_t::now ())
+            == mesh::raw_mesh_pump_result_t::application);
+    auto retained_claim = second.mailbox ().try_claim (
+      mesh::service_mailbox_domain_t::application, 1, 1024);
+    assert (retained_claim && retained_claim->records.size () == 1);
+    const protocol::application_payload_t retained_payload{
+      "Probe", "application/json", bytes ("retained")};
+    assert (protocol::decode_application_payload (
+              retained_claim->records.front ().parts.at (1))
+            == retained_payload);
+    assert (second.mailbox ().release (*retained_claim));
 
     bool channel_submitted = false;
     while (!channel_submitted

@@ -10,9 +10,9 @@ test('location key codec matches the dotnet canonical segment format', () => {
 
   assert.equal(
     internal.ZLinkLocationKeyCodec.encodePeerKey({
-      autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
+      autoConnectType: internal.ZLinkLocationAutoConnectType.RouteMesh,
       meshName: 'game',
-      role: framework.ZLinkLocationRole.Router,
+      role: internal.ZLinkLocationRole.Router,
       nodeRid,
       endpoint: 'tcp://ignored'
     }),
@@ -20,9 +20,9 @@ test('location key codec matches the dotnet canonical segment format', () => {
   );
   assert.equal(
     internal.ZLinkLocationKeyCodec.encodePeerKey({
-      autoConnectType: framework.ZLinkLocationAutoConnectType.Fanout,
+      autoConnectType: internal.ZLinkLocationAutoConnectType.Fanout,
       meshName: 'events',
-      role: framework.ZLinkLocationRole.Sub,
+      role: internal.ZLinkLocationRole.Sub,
       endpoint: 'tcp://127.0.0.1:7001'
     }),
     '6:fanout6:events3:sub20:tcp://127.0.0.1:7001'
@@ -37,7 +37,7 @@ test('location key codec matches the dotnet canonical segment format', () => {
   );
   assert.equal(
     internal.ZLinkLocationKeyCodec.encodeRouteKey({
-      routeKind: framework.ZLinkRouteKind.ActorSession,
+      routeKind: internal.ZLinkRouteKind.ActorSession,
       routeKey: 'session-1'
     }),
     '1:19:session-1'
@@ -51,18 +51,19 @@ test('location canonical names reject values outside the shared contract', () =>
   // entry for either, so exercise the two auto-connect types that still
   // exist instead of the removed ones.
   assert.equal(
-    internal.zlinkLocationAutoConnectTypeName(framework.ZLinkLocationAutoConnectType.Fanout),
+    internal.zlinkLocationAutoConnectTypeName(internal.ZLinkLocationAutoConnectType.Fanout),
     'fanout'
   );
-  assert.equal(internal.zlinkLocationRoleName(framework.ZLinkLocationRole.Dealer), 'dealer');
+  assert.equal(internal.zlinkLocationRoleName(internal.ZLinkLocationRole.Dealer), 'dealer');
   assert.equal(
     internal.tryParseZLinkLocationAutoConnectType('route-mesh'),
-    framework.ZLinkLocationAutoConnectType.RouteMesh
+    internal.ZLinkLocationAutoConnectType.RouteMesh
   );
   assert.equal(internal.tryParseZLinkLocationAutoConnectType('spot-mesh'), undefined);
-  assert.equal(internal.tryParseZLinkLocationRole('pub'), framework.ZLinkLocationRole.Pub);
+  assert.equal(internal.tryParseZLinkLocationRole('pub'), internal.ZLinkLocationRole.Pub);
   assert.throws(() => internal.zlinkLocationAutoConnectTypeName(999), /Unknown location auto-connect type/);
   assert.throws(() => internal.zlinkLocationRoleName(999), /Unknown location role/);
   assert.equal(framework.zlinkLocationAutoConnectTypeName, undefined);
   assert.equal(framework.zlinkLocationRoleName, undefined);
+  assert.equal(framework.ZLinkLocationAutoConnectType, undefined);
 });

@@ -19,6 +19,25 @@ namespace zlink::framework::runtime::mesh
 namespace
 {
 
+std::string advertised_endpoint (
+  std::string bound_endpoint,
+  const std::optional<std::string> &advertise_host)
+{
+    if (!advertise_host)
+        return bound_endpoint;
+    const auto port = bound_endpoint.rfind (':');
+    if (!bound_endpoint.starts_with ("tcp://")
+        || port == std::string::npos || port < 6) {
+        throw std::invalid_argument (
+          "MeshNode advertise host requires a TCP bind endpoint");
+    }
+    const auto host =
+      advertise_host->find (':') == std::string::npos
+        ? *advertise_host
+        : "[" + *advertise_host + "]";
+    return "tcp://" + host + bound_endpoint.substr (port);
+}
+
 std::vector<std::uint8_t> pack_infrastructure_reply (
   const detail::backend::raw_message_t &parts)
 {
@@ -87,6 +106,19 @@ void raw_mesh_node_owner_t::start ()
     router->options ().handover (true);
     router->options ().mandatory (true);
     router->options ().linger (std::chrono::milliseconds (0));
+    router->options ().send_hwm (
+      zlink::message_count_t::value (_options.send_high_water_mark));
+    router->options ().recv_hwm (
+      zlink::message_count_t::value (_options.receive_high_water_mark));
+    router->set_send_ready_handler ([this] {
+        std::function<void ()> handler;
+        {
+            std::lock_guard lifecycle_lock (_lifecycle_mutex);
+            handler = _send_ready_handler;
+        }
+        if (handler)
+            handler ();
+    });
     router->set_routing_id (
       zlink::routing_id_t::from (_options.descriptor.node_routing_id));
     auto monitor = std::make_unique<zlink::socket_monitor_t> (
@@ -99,7 +131,8 @@ void raw_mesh_node_owner_t::start ()
         == std::numeric_limits<std::uint64_t>::max ()) {
         throw std::overflow_error ("service descriptor revision is exhausted");
     }
-    descriptor.advertised_endpoint = router->options ().last_endpoint ();
+    descriptor.advertised_endpoint = advertised_endpoint (
+      router->options ().last_endpoint (), _options.advertise_host);
     descriptor.state = service_node_state_t::serving;
     ++descriptor.descriptor_revision;
     _topology.publish_local (descriptor);
@@ -153,6 +186,13 @@ bool raw_mesh_node_owner_t::started () const noexcept
 {
     std::lock_guard lifecycle_lock (_lifecycle_mutex);
     return static_cast<bool> (_port);
+}
+
+void raw_mesh_node_owner_t::set_send_ready_handler (
+  std::function<void ()> handler)
+{
+    std::lock_guard lifecycle_lock (_lifecycle_mutex);
+    _send_ready_handler = std::move (handler);
 }
 
 std::string raw_mesh_node_owner_t::endpoint () const
@@ -1165,6 +1205,23 @@ bool raw_mesh_node_owner_t::reply_user_spot_close (
         reply.header.failure_code, reply.closed));
 }
 
+raw_mesh_pump_result_t raw_mesh_node_owner_t::enqueue_received_or_retain (
+  service_mailbox_record_t record,
+  raw_mesh_pump_result_t accepted_result)
+{
+    if (_mailbox.try_enqueue (std::move (record))) {
+        return accepted_result;
+    }
+    if (_pending_received) {
+        throw std::logic_error (
+          "raw mesh owner already retains a received mailbox record");
+    }
+    _pending_received.emplace (
+      pending_received_mailbox_record_t{
+        std::move (record), accepted_result});
+    return raw_mesh_pump_result_t::backpressured;
+}
+
 raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
   service_liveness_registry_t::clock_t::time_point now)
 {
@@ -1175,6 +1232,16 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
     }
     if (!port) {
         return raw_mesh_pump_result_t::no_data;
+    }
+    if (_pending_received) {
+        const auto accepted_result =
+          _pending_received->accepted_result;
+        if (!_mailbox.try_enqueue (
+              std::move (_pending_received->record))) {
+            return raw_mesh_pump_result_t::backpressured;
+        }
+        _pending_received.reset ();
+        return accepted_result;
     }
     auto received = port->try_receive ();
     if (!received) {
@@ -1333,20 +1400,18 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
             }
             (void) protocol::decode_application_payload (
               received->parts.back ());
-            if (!_mailbox.try_enqueue (
-                  service_mailbox_record_t{
-                    owner_key (local.node_routing_id),
-                    service_mailbox_domain_t::infrastructure,
-                    std::move (received->parts),
-                    std::move (received->source_routing_id),
-                    received->request_sequence,
-                    activation.request
-                      ? std::make_optional (
-                          activation.reply_route_id)
-                      : std::nullopt})) {
-                return raw_mesh_pump_result_t::backpressured;
-            }
-            return raw_mesh_pump_result_t::infrastructure;
+            return enqueue_received_or_retain (
+              service_mailbox_record_t{
+                owner_key (local.node_routing_id),
+                service_mailbox_domain_t::infrastructure,
+                std::move (received->parts),
+                std::move (received->source_routing_id),
+                received->request_sequence,
+                activation.request
+                  ? std::make_optional (
+                      activation.reply_route_id)
+                  : std::nullopt},
+              raw_mesh_pump_result_t::infrastructure);
         }
         if (header.kind == protocol::command::userSpotCreate
             || header.kind == protocol::command::userSpotClose) {
@@ -1400,17 +1465,15 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                      != local.lifecycle_generation) {
                 return raw_mesh_pump_result_t::protocol_error;
             }
-            if (!_mailbox.try_enqueue (
-                  service_mailbox_record_t{
-                    owner_key (local.node_routing_id),
-                    service_mailbox_domain_t::infrastructure,
-                    std::move (received->parts),
-                    std::move (received->source_routing_id),
-                    received->request_sequence,
-                    correlation})) {
-                return raw_mesh_pump_result_t::backpressured;
-            }
-            return raw_mesh_pump_result_t::infrastructure;
+            return enqueue_received_or_retain (
+              service_mailbox_record_t{
+                owner_key (local.node_routing_id),
+                service_mailbox_domain_t::infrastructure,
+                std::move (received->parts),
+                std::move (received->source_routing_id),
+                received->request_sequence,
+                correlation},
+              raw_mesh_pump_result_t::infrastructure);
         }
         if (header.kind == protocol::command::relocationPrepare
             || header.kind == protocol::command::relocationReady
@@ -1481,17 +1544,15 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                 return raw_mesh_pump_result_t::protocol_error;
             }
             const auto local = _topology.local_descriptor ();
-            if (!_mailbox.try_enqueue (
-                  service_mailbox_record_t{
-                    owner_key (local.node_routing_id),
-                    service_mailbox_domain_t::infrastructure,
-                    std::move (received->parts),
-                    std::move (received->source_routing_id),
-                    std::nullopt, std::nullopt,
-                    admitted->descriptor.lifecycle_generation})) {
-                return raw_mesh_pump_result_t::backpressured;
-            }
-            return raw_mesh_pump_result_t::infrastructure;
+            return enqueue_received_or_retain (
+              service_mailbox_record_t{
+                owner_key (local.node_routing_id),
+                service_mailbox_domain_t::infrastructure,
+                std::move (received->parts),
+                std::move (received->source_routing_id),
+                std::nullopt, std::nullopt,
+                admitted->descriptor.lifecycle_generation},
+              raw_mesh_pump_result_t::infrastructure);
         }
         if (header.kind == protocol::command::replyRelay
             || header.kind == protocol::command::replyRelayAck) {
@@ -1529,17 +1590,15 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                     return raw_mesh_pump_result_t::protocol_error;
                 }
             }
-            if (!_mailbox.try_enqueue (
-                  service_mailbox_record_t{
-                    owner_key (local.node_routing_id),
-                    service_mailbox_domain_t::infrastructure,
-                    std::move (received->parts),
-                    std::move (received->source_routing_id),
-                    std::nullopt, std::nullopt,
-                    admitted->descriptor.lifecycle_generation})) {
-                return raw_mesh_pump_result_t::backpressured;
-            }
-            return raw_mesh_pump_result_t::infrastructure;
+            return enqueue_received_or_retain (
+              service_mailbox_record_t{
+                owner_key (local.node_routing_id),
+                service_mailbox_domain_t::infrastructure,
+                std::move (received->parts),
+                std::move (received->source_routing_id),
+                std::nullopt, std::nullopt,
+                admitted->descriptor.lifecycle_generation},
+              raw_mesh_pump_result_t::infrastructure);
         }
         if (header.kind
               == protocol::command::sessionRelocationSeal
@@ -1579,16 +1638,14 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                          != admitted->descriptor.lifecycle_generation) {
                     return raw_mesh_pump_result_t::protocol_error;
                 }
-                if (!_mailbox.try_enqueue (
-                      service_mailbox_record_t{
-                        owner_key (local.node_routing_id),
-                        service_mailbox_domain_t::infrastructure,
-                        std::move (received->parts),
-                        std::move (received->source_routing_id),
-                        std::nullopt, std::nullopt})) {
-                    return raw_mesh_pump_result_t::backpressured;
-                }
-                return raw_mesh_pump_result_t::infrastructure;
+                return enqueue_received_or_retain (
+                  service_mailbox_record_t{
+                    owner_key (local.node_routing_id),
+                    service_mailbox_domain_t::infrastructure,
+                    std::move (received->parts),
+                    std::move (received->source_routing_id),
+                    std::nullopt, std::nullopt},
+                  raw_mesh_pump_result_t::infrastructure);
             }
             if (header.kind
                 == protocol::command::sessionRelocationRoute) {
@@ -1621,16 +1678,14 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                          != admitted->descriptor.lifecycle_generation) {
                     return raw_mesh_pump_result_t::protocol_error;
                 }
-                if (!_mailbox.try_enqueue (
-                      service_mailbox_record_t{
-                        owner_key (local.node_routing_id),
-                        service_mailbox_domain_t::infrastructure,
-                        std::move (received->parts),
-                        std::move (received->source_routing_id),
-                        std::nullopt, std::nullopt})) {
-                    return raw_mesh_pump_result_t::backpressured;
-                }
-                return raw_mesh_pump_result_t::infrastructure;
+                return enqueue_received_or_retain (
+                  service_mailbox_record_t{
+                    owner_key (local.node_routing_id),
+                    service_mailbox_domain_t::infrastructure,
+                    std::move (received->parts),
+                    std::move (received->source_routing_id),
+                    std::nullopt, std::nullopt},
+                  raw_mesh_pump_result_t::infrastructure);
             }
             if (header.kind
                 == protocol::command::sessionRelocationSealed) {
@@ -1766,19 +1821,17 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
               actor.operation.high, actor.operation.low};
             mailbox_owner = "actor:" + actor.target.actor_id;
         }
-        if (!_mailbox.try_enqueue (
-              service_mailbox_record_t{
-                std::move (mailbox_owner),
-                service_mailbox_domain_t::application,
-                std::move (received->parts),
-                std::move (received->source_routing_id),
-                received->request_sequence,
-                correlation,
-                admitted->descriptor.lifecycle_generation,
-                operation})) {
-            return raw_mesh_pump_result_t::backpressured;
-        }
-        return raw_mesh_pump_result_t::application;
+        return enqueue_received_or_retain (
+          service_mailbox_record_t{
+            std::move (mailbox_owner),
+            service_mailbox_domain_t::application,
+            std::move (received->parts),
+            std::move (received->source_routing_id),
+            received->request_sequence,
+            correlation,
+            admitted->descriptor.lifecycle_generation,
+            operation},
+          raw_mesh_pump_result_t::application);
     }
     catch (const protocol::service_wire_error_t &) {
         return raw_mesh_pump_result_t::protocol_error;

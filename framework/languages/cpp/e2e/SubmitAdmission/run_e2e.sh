@@ -9,10 +9,13 @@ STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
 mkdir -p "$REPO_ROOT/.artifacts/tmp"
 TEMP_DIR="$(mktemp -d "$REPO_ROOT/.artifacts/tmp/submit-admission.XXXXXX")"
-BUILD_DIR="$TEMP_DIR/framework-build"
-INSTALL_DIR="$TEMP_DIR/framework-install"
-PACKAGE_ROOT="$TEMP_DIR/local-package"
-BINDING_BUILD_DIR="$TEMP_DIR/binding-build"
+CACHE_ROOT="${ZLINK_SUBMIT_ADMISSION_CACHE_ROOT:-$TEMP_DIR}"
+mkdir -p "$CACHE_ROOT"
+BUILD_DIR="$CACHE_ROOT/framework-build"
+INSTALL_DIR="$CACHE_ROOT/framework-install"
+PACKAGE_ROOT="$CACHE_ROOT/local-package"
+BINDING_BUILD_DIR="$CACHE_ROOT/binding-build"
+CORE_INSTALL_DIR="$PACKAGE_ROOT/install/zlink-core"
 EVIDENCE_FILE="$LOG_DIR/evidence.jsonl"
 mkdir -p "$LOG_DIR" "$PACKAGE_ROOT/install/zlink-cpp"
 
@@ -88,14 +91,25 @@ if find "$REPO_ROOT/core/src" "$REPO_ROOT/core/include" -type f -newer "$CORE_RU
 fi
 CORE_RUNTIME_SHA="$(sha256sum "$CORE_RUNTIME" | awk '{print $1}')"
 CORE_RUNTIME_BUILD_ID="$(readelf -n "$CORE_RUNTIME" | sed -n 's/.*Build ID: //p' | head -n1)"
-ZLINK_LOCAL_PACKAGE_ROOT="$PACKAGE_ROOT" \
-ZLINK_CPP_LOCAL_BUILD_DIR="$BINDING_BUILD_DIR" \
-ZLINK_CPP_INSTALL_PREFIX="$PACKAGE_ROOT/install/zlink-cpp/$VERSION" \
-  "$REPO_ROOT/scripts/local-package/cpp/build-wsl.sh" \
-    -DZLINK_CPP_USE_CORE_BUILD_RUNTIME=ON \
-    -DZLINK_CPP_CORE_BUILD_DIR="$REPO_ROOT/core/build" \
-    >"$LOG_DIR/binding-candidate-build.log" 2>&1
-CANDIDATE_NATIVE="$PACKAGE_ROOT/install/zlink-cpp/$VERSION/lib/libzlink.so.$VERSION"
+CORE_INSTALL_DIR="$CORE_INSTALL_DIR/$VERSION"
+BINDING_INSTALL_DIR="$PACKAGE_ROOT/install/zlink-cpp/$VERSION"
+
+# This E2E consumes the already-built official runtime. It installs that exact
+# binary into an isolated package root and never rebuilds Core.
+cmake --install "$REPO_ROOT/core/build" --prefix "$CORE_INSTALL_DIR" \
+  >"$LOG_DIR/core-candidate-install.log" 2>&1
+cmake -S "$REPO_ROOT/bindings/cpp" -B "$BINDING_BUILD_DIR" \
+  -DCMAKE_INSTALL_PREFIX="$BINDING_INSTALL_DIR" \
+  -DZLINK_CPP_CORE_PACKAGE_PREFIX="$CORE_INSTALL_DIR" \
+  -DZLINK_CPP_BUILD_TESTS=OFF \
+  -DZLINK_CPP_BUILD_SAMPLES=OFF \
+  >"$LOG_DIR/binding-candidate-configure.log" 2>&1
+cmake --build "$BINDING_BUILD_DIR" -j2 \
+  >"$LOG_DIR/binding-candidate-build.log" 2>&1
+cmake --install "$BINDING_BUILD_DIR" \
+  >"$LOG_DIR/binding-candidate-install.log" 2>&1
+
+CANDIDATE_NATIVE="$CORE_INSTALL_DIR/lib/libzlink.so"
 if [[ ! -f "$CANDIDATE_NATIVE" ]]; then
   echo "C++ binding candidate native runtime is missing: $CANDIDATE_NATIVE" >&2
   exit 1
@@ -107,7 +121,7 @@ if [[ "$CANDIDATE_NATIVE_SHA" != "$CORE_RUNTIME_SHA" \
   echo "C++ binding candidate does not contain the official Core runtime" >&2
   exit 1
 fi
-PACKAGE_SHA="$(cd "$PACKAGE_ROOT/install/zlink-cpp/$VERSION" && \
+PACKAGE_SHA="$(cd "$PACKAGE_ROOT/install" && \
   { find . -type f -print0 | sort -z | xargs -0 sha256sum; } \
     | sha256sum | awk '{print $1}')"
 echo "package_mode_root=$PACKAGE_ROOT" | tee "$LOG_DIR/package-mode.log"
@@ -217,9 +231,9 @@ for selector in "${SELECTORS[@]}"; do
 done
 
 if [[ "${#PROCESS_SELECTORS[@]}" -gt 0 ]]; then
-  read -r CALLER_HTTP TARGET_HTTP PUBLISHER_HTTP CS_CALLER_HTTP CS_TARGET_A_HTTP \
-    CS_TARGET_B_HTTP STREAM_GATEWAY_HTTP STREAM_PEER_HTTP ACTOR_TARGET_HTTP \
-    CALLER_MESH TARGET_MESH \
+  read -r CALLER_HTTP TARGET_HTTP OBJECT_CLIENT_HTTP PUBLISHER_HTTP CS_CALLER_HTTP \
+    CS_TARGET_A_HTTP CS_TARGET_B_HTTP STREAM_GATEWAY_HTTP STREAM_PEER_HTTP ACTOR_TARGET_HTTP \
+    CALLER_MESH TARGET_MESH OBJECT_CLIENT_MESH \
     MESH_GATE_FRONT FANOUT_ENDPOINT CS_TARGET_A_ENDPOINT CS_TARGET_B_ENDPOINT \
     STREAM_GATEWAY_ENDPOINT STREAM_GATE_FRONT STREAM_GATEWAY_ACTOR_MESH ACTOR_TARGET_MESH \
     GATE_CONTROL COLLECTOR_HTTP \
@@ -229,14 +243,14 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(22):
+    for _ in range(24):
         value = socket.socket()
         value.bind(("127.0.0.1", 0))
         sockets.append(value)
         ports.append(value.getsockname()[1])
-    print(*(f"http://127.0.0.1:{port}" for port in ports[:9]),
-          *(f"tcp://127.0.0.1:{port}" for port in ports[9:19]),
-          *(f"http://127.0.0.1:{port}" for port in ports[19:]))
+    print(*(f"http://127.0.0.1:{port}" for port in ports[:10]),
+          *(f"tcp://127.0.0.1:{port}" for port in ports[10:21]),
+          *(f"http://127.0.0.1:{port}" for port in ports[21:]))
 finally:
     for value in sockets:
         value.close()
@@ -244,6 +258,8 @@ PY
   )
   CALLER_RID=submit-caller
   TARGET_RID=submit-target
+  OBJECT_CLIENT_RID=submit-object-client
+  TARGET_MESH="tcp://127.0.0.2:${MESH_GATE_FRONT##*:}"
   ROLE="$BUILD_DIR/zlink_cpp_e2e_submit_admission_role"
   CONFIG_DIR="$TEMP_DIR/config"
   mkdir -p "$CONFIG_DIR"
@@ -260,20 +276,29 @@ import stat
 import sys
 
 path, role, rid, http, mesh, peer_rid, peer, fanout, client_server, client_server_peer, stream, log_dir = sys.argv[1:]
-pathlib.Path(path).write_text(json.dumps({"e2e": {
+config = {"e2e": {
     "role": role, "rid": rid, "httpEndpoint": http, "meshEndpoint": mesh,
     "peerRid": peer_rid, "peerEndpoint": peer, "fanoutEndpoint": fanout,
     "clientServerEndpoint": client_server,
     "clientServerPeerEndpoint": client_server_peer,
     "streamEndpoint": stream,
+    "redis": {
+        "endpoint": "127.0.0.1:6379",
+        "keyPrefix": f"zlink:e2e:submit-admission:{pathlib.Path(log_dir).name}:",
+    },
     "logDir": log_dir
-}}, indent=2), encoding="utf-8")
+}}
+if role == "target":
+    config["e2e"]["meshAdvertiseHost"] = "127.0.0.1"
+pathlib.Path(path).write_text(json.dumps(config, indent=2), encoding="utf-8")
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
   }
 
   write_role_config "$CONFIG_DIR/target.json" target "$TARGET_RID" "$TARGET_HTTP" "$TARGET_MESH" '' '' '' '' '' ''
   write_role_config "$CONFIG_DIR/caller.json" caller "$CALLER_RID" "$CALLER_HTTP" "$CALLER_MESH" "$TARGET_RID" "$MESH_GATE_FRONT" '' '' '' ''
+  write_role_config "$CONFIG_DIR/object-client.json" object-client "$OBJECT_CLIENT_RID" \
+    "$OBJECT_CLIENT_HTTP" "$OBJECT_CLIENT_MESH" "$CALLER_RID" "$CALLER_MESH" '' '' '' ''
   write_role_config "$CONFIG_DIR/publisher.json" publisher submit-publisher "$PUBLISHER_HTTP" '' '' '' "$FANOUT_ENDPOINT" '' '' ''
   write_role_config "$CONFIG_DIR/client-server-target-a.json" client-server-target \
     submit-client-server-target-a "$CS_TARGET_A_HTTP" '' '' '' '' "$CS_TARGET_A_ENDPOINT" '' ''
@@ -311,76 +336,80 @@ PY
   PIDS+=("$!")
   wait_health evidence-collector "$COLLECTOR_HTTP"
 
-  start_role target "$CONFIG_DIR/target.json"
-  wait_health target "$TARGET_HTTP"
-  python3 "$SCRIPT_DIR/Support/receiver_gate.py" \
-    --listen "$MESH_GATE_FRONT" --backend "$TARGET_MESH" --control "$GATE_CONTROL" \
-    >"$LOG_DIR/mesh-receiver-gate.stdout.log" 2>"$LOG_DIR/mesh-receiver-gate.stderr.log" &
-  PIDS+=("$!")
-  wait_health mesh-receiver-gate "$GATE_CONTROL"
-  start_role caller "$CONFIG_DIR/caller.json"
-  wait_health caller "$CALLER_HTTP"
-  start_role publisher "$CONFIG_DIR/publisher.json"
-  wait_health publisher "$PUBLISHER_HTTP"
-  start_role client-server-target-a "$CONFIG_DIR/client-server-target-a.json"
-  wait_health client-server-target-a "$CS_TARGET_A_HTTP"
-  start_role client-server-target-b "$CONFIG_DIR/client-server-target-b.json"
-  wait_health client-server-target-b "$CS_TARGET_B_HTTP"
-  start_role client-server-caller "$CONFIG_DIR/client-server-caller.json"
-  wait_health client-server-caller "$CS_CALLER_HTTP"
-  start_role actor-target "$CONFIG_DIR/actor-target.json"
-  wait_health actor-target "$ACTOR_TARGET_HTTP"
-  start_role stream-gateway "$CONFIG_DIR/stream-gateway.json"
-  wait_health stream-gateway "$STREAM_GATEWAY_HTTP"
-  actor_route_ready=0
-  for _ in $(seq 1 30); do
-    if curl --connect-timeout 0.2 --max-time 0.2 -fsS \
-        "$STREAM_GATEWAY_HTTP/ready/actor?targetRid=submit-actor-target" \
-        >"$LOG_DIR/actor-route-ready-last.json" 2>/dev/null; then
-      actor_route_ready=1
-      break
-    fi
-    sleep 0.1
+  mesh_process=0
+  for selector in "${PROCESS_SELECTORS[@]}"; do
+    case "$selector" in
+      SA-E2E-01|SA-E2E-08|SA-E2E-09|SA-E2E-20) mesh_process=1 ;;
+    esac
   done
-  if [[ "$actor_route_ready" != 1 ]]; then
-    echo "Remote Actor route did not become ready within 3s." >&2
-    exit 1
-  fi
-  python3 "$SCRIPT_DIR/Support/receiver_gate.py" \
-    --listen "$STREAM_GATE_FRONT" --backend "$STREAM_GATEWAY_ENDPOINT" \
-    --control "$STREAM_GATE_CONTROL" --blocked-direction backend-to-frontend \
-    >"$LOG_DIR/stream-receiver-gate.stdout.log" \
-    2>"$LOG_DIR/stream-receiver-gate.stderr.log" &
-  PIDS+=("$!")
-  wait_health stream-receiver-gate "$STREAM_GATE_CONTROL"
-  start_role stream-peer "$CONFIG_DIR/stream-peer.json"
-  wait_health stream-peer "$STREAM_PEER_HTTP"
-  for _ in $(seq 1 30); do
-    if curl --connect-timeout 0.2 --max-time 0.2 -sS \
-        "$CALLER_HTTP/ready?targetRid=$TARGET_RID" \
-        >"$LOG_DIR/route-ready-last.json" 2>/dev/null \
-        && python3 - "$LOG_DIR/route-ready-last.json" <<'PY'
+  if [[ "$mesh_process" == 1 ]]; then
+    start_role target "$CONFIG_DIR/target.json"
+    wait_health target "$TARGET_HTTP"
+    python3 "$SCRIPT_DIR/Support/receiver_gate.py" \
+      --listen "$MESH_GATE_FRONT" --backend "$TARGET_MESH" --control "$GATE_CONTROL" \
+      >"$LOG_DIR/mesh-receiver-gate.stdout.log" 2>"$LOG_DIR/mesh-receiver-gate.stderr.log" &
+    PIDS+=("$!")
+    wait_health mesh-receiver-gate "$GATE_CONTROL"
+    start_role caller "$CONFIG_DIR/caller.json"
+    wait_health caller "$CALLER_HTTP"
+    for _ in $(seq 1 30); do
+      if curl --connect-timeout 0.2 --max-time 0.2 -sS \
+          "$CALLER_HTTP/ready?targetRid=$TARGET_RID" \
+          >"$LOG_DIR/route-ready-last.json" 2>/dev/null \
+          && python3 - "$LOG_DIR/route-ready-last.json" <<'PY'
 import json
 import sys
 with open(sys.argv[1], encoding="utf-8") as source:
     raise SystemExit(0 if json.load(source).get("ready") is True else 1)
 PY
-    then
-      ready=1
-      break
+      then
+        ready=1
+        break
+      fi
+      sleep 0.1
+    done
+    if [[ "${ready:-0}" != 1 ]]; then
+      cat "$LOG_DIR/route-ready-last.json" >&2 || true
+      echo "Target route did not become ready within 3s." >&2
+      exit 1
     fi
-    sleep 0.1
-  done
-  if [[ "${ready:-0}" != 1 ]]; then
-    cat "$LOG_DIR/route-ready-last.json" >&2 || true
-    echo "Target route did not become ready within 3s." >&2
-    exit 1
+  fi
+  if contains SA-E2E-08 "${PROCESS_SELECTORS[@]}"; then
+    start_role object-client "$CONFIG_DIR/object-client.json"
+    wait_health object-client "$OBJECT_CLIENT_HTTP"
+    object_client_ready=0
+    for _ in $(seq 1 30); do
+      if curl --connect-timeout 0.2 --max-time 0.2 -sS \
+          "$CALLER_HTTP/ready?targetRid=$OBJECT_CLIENT_RID" \
+          >"$LOG_DIR/object-client-ready-last.json" 2>/dev/null \
+          && python3 - "$LOG_DIR/object-client-ready-last.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as source:
+    raise SystemExit(0 if json.load(source).get("ready") is True else 1)
+PY
+      then
+        object_client_ready=1
+        break
+      fi
+      sleep 0.1
+    done
+    if [[ "$object_client_ready" != 1 ]]; then
+      cat "$LOG_DIR/object-client-ready-last.json" >&2 || true
+      echo "Object Client route did not become Ready within 3s." >&2
+      exit 1
+    fi
+  fi
+  if contains SA-E2E-14 "${PROCESS_SELECTORS[@]}"; then
+    start_role publisher "$CONFIG_DIR/publisher.json"
+    wait_health publisher "$PUBLISHER_HTTP"
   fi
 
   python3 "$SCRIPT_DIR/Support/scenario_client.py" \
     --caller-url "$CALLER_HTTP" --target-url "$TARGET_HTTP" \
     --publisher-url "$PUBLISHER_HTTP" --caller-rid "$CALLER_RID" \
-    --target-rid "$TARGET_RID" --client-server-caller-url "$CS_CALLER_HTTP" \
+    --target-rid "$TARGET_RID" --object-client-rid "$OBJECT_CLIENT_RID" \
+    --client-server-caller-url "$CS_CALLER_HTTP" \
     --client-server-target-url "$CS_TARGET_A_HTTP" \
     --client-server-target-url "$CS_TARGET_B_HTTP" \
     --stream-gateway-url "$STREAM_GATEWAY_HTTP" --stream-peer-url "$STREAM_PEER_HTTP" \

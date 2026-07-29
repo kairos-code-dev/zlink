@@ -1761,6 +1761,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     e2e/SubmitAdmission/Server/main.cpp)
   target_link_libraries(zlink_cpp_e2e_submit_admission_role PRIVATE
     zlink::framework
+    zlink::framework_locations_redis
     zlink::stream_connector)
   target_include_directories(zlink_cpp_e2e_submit_admission_role PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)

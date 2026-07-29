@@ -265,6 +265,14 @@ client_server_pump_result_t raw_client_server_server_t::pump_one (
     if (!port) {
         return client_server_pump_result_t::no_data;
     }
+    if (_pending_received) {
+        if (!_mailbox.try_enqueue (
+              std::move (*_pending_received))) {
+            return client_server_pump_result_t::backpressured;
+        }
+        _pending_received.reset ();
+        return client_server_pump_result_t::application;
+    }
     const auto received = port->try_receive ();
     if (!received) {
         return client_server_pump_result_t::no_data;
@@ -368,13 +376,15 @@ client_server_pump_result_t raw_client_server_server_t::pump_one (
             return client_server_pump_result_t::protocol_error;
         }
         (void) protocol::decode_application_payload (received->parts[1]);
-        if (!_mailbox.try_enqueue (
-              {std::move (channel),
-               mesh::service_mailbox_domain_t::application,
-               std::move (received->parts),
-               std::move (received->source_routing_id),
-               received->request_sequence,
-               correlation})) {
+        mesh::service_mailbox_record_t record{
+          std::move (channel),
+          mesh::service_mailbox_domain_t::application,
+          std::move (received->parts),
+          std::move (received->source_routing_id),
+          received->request_sequence,
+          correlation};
+        if (!_mailbox.try_enqueue (std::move (record))) {
+            _pending_received.emplace (std::move (record));
             return client_server_pump_result_t::backpressured;
         }
         return client_server_pump_result_t::application;

@@ -47,6 +47,9 @@ struct raw_mesh_node_options_t
     std::size_t application_byte_budget = 16u * 1024u * 1024u;
     std::size_t infrastructure_message_budget = 1024;
     std::size_t infrastructure_byte_budget = 4u * 1024u * 1024u;
+    int send_high_water_mark = 1000;
+    int receive_high_water_mark = 1000;
+    std::optional<std::string> advertise_host;
 };
 
 struct raw_mesh_byte_vector_less_t
@@ -67,6 +70,7 @@ class raw_mesh_node_owner_t
     void start ();
     void close () noexcept;
     bool started () const noexcept;
+    void set_send_ready_handler (std::function<void ()> handler);
 
     std::string endpoint () const;
     zlink::context_t &context ();
@@ -204,6 +208,12 @@ class raw_mesh_node_owner_t
     tick_liveness (service_liveness_registry_t::clock_t::time_point now);
 
   private:
+    struct pending_received_mailbox_record_t
+    {
+        service_mailbox_record_t record;
+        raw_mesh_pump_result_t accepted_result;
+    };
+
     static std::string owner_key (const std::vector<std::uint8_t> &routing_id);
     static foundation::operation_id_t operation_id (
       std::uint64_t lifecycle_generation,
@@ -238,6 +248,9 @@ class raw_mesh_node_owner_t
     bool reply_infrastructure (
       const service_mailbox_record_t &request,
       std::vector<std::uint8_t> header);
+    raw_mesh_pump_result_t enqueue_received_or_retain (
+      service_mailbox_record_t record,
+      raw_mesh_pump_result_t accepted_result);
 
     raw_mesh_node_options_t _options;
     mutable std::mutex _lifecycle_mutex;
@@ -245,10 +258,12 @@ class raw_mesh_node_owner_t
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::router_socket_t> _router;
     std::unique_ptr<zlink::socket_monitor_t> _monitor;
+    std::function<void ()> _send_ready_handler;
     std::shared_ptr<detail::backend::raw_route_port_t> _port;
     service_topology_registry_t _topology;
     service_liveness_registry_t _liveness;
     service_mailbox_t _mailbox;
+    std::optional<pending_received_mailbox_record_t> _pending_received;
     std::shared_ptr<foundation::operation_registry_t> _operations;
     std::map<std::vector<std::uint8_t>, service_node_descriptor_t,
              raw_mesh_byte_vector_less_t>

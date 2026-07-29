@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.actors;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicReference;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkBoundSession;
@@ -28,6 +29,7 @@ final class ZLinkActorContextState {
     private boolean joined;
     private boolean destroying;
     private boolean moving;
+    private final AtomicReference<Object> deferredJoinClaim = new AtomicReference<>();
     private CompletableFuture<Void> moveCompletion = CompletableFuture.completedFuture(null);
 
     ZLinkActorContextState(
@@ -140,6 +142,16 @@ final class ZLinkActorContextState {
 
     CompletionStage<Void> moveCompletion() {
         return moveCompletion;
+    }
+
+    boolean tryClaimDeferredJoin(Object claim) {
+        return claim != null && deferredJoinClaim.compareAndSet(null, claim);
+    }
+
+    void releaseDeferredJoin(Object claim) {
+        if (claim != null) {
+            deferredJoinClaim.compareAndSet(claim, null);
+        }
     }
 
     ZLinkBoundSession requireBoundSession() {

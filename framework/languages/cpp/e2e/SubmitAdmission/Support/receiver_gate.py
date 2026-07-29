@@ -198,6 +198,7 @@ def main():
 
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    configure_socket(listener)
     listener.bind(listen_address)
     listener.listen()
     try:

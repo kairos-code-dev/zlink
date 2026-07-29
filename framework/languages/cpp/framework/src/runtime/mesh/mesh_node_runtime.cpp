@@ -230,7 +230,10 @@ void mesh_node_runtime_t::start ()
           _state->socket.mailbox_message_budget,
           _state->socket.mailbox_byte_budget,
           1024,
-          4u * 1024u * 1024u},
+          4u * 1024u * 1024u,
+          _state->socket.send_high_water_mark,
+          _state->socket.receive_high_water_mark,
+          _state->advertise_host},
         _state->spot_state->snapshot.entry_spot_name.value_or ("entry"),
         std::move (object_stable_types)});
     if (_user_spot_store && _user_spot_materializer) {
@@ -245,6 +248,9 @@ void mesh_node_runtime_t::start ()
     if (_session_route_owner_resolver)
         node->configure_session_route_owner (
           _session_route_owner_resolver);
+    node->transport ().set_send_ready_handler ([this] {
+        runtime::messaging::notify_submit_ready (this);
+    });
     node->start ();
     if (_instance_spot_materializer)
         (void) node->recover_instance_spot_activations ();
@@ -1540,6 +1546,24 @@ void mesh_node_runtime_t::application_work_finished () noexcept
     _active_application_callbacks.fetch_sub (1, std::memory_order_relaxed);
 }
 
+void mesh_node_runtime_t::note_local_node_submit_attempt ()
+{
+    const auto rid = routing_id ();
+    if (!rid)
+        return;
+    runtime::messaging::note_submit_attempt (
+      node_submit_target (*rid), this, one_way_send_timeout (*_state),
+      _state->max_pending);
+}
+
+void mesh_node_runtime_t::local_application_work_finished () noexcept
+{
+    application_work_finished ();
+    if (const auto rid = routing_id ()) {
+        runtime::messaging::notify_submit_ready (node_submit_target (*rid), this);
+    }
+}
+
 std::uint64_t mesh_node_runtime_t::pending_application_callbacks () const noexcept
 {
     return _pending_application_callbacks.load (std::memory_order_relaxed);
@@ -1724,6 +1748,17 @@ mesh_node_builder_t &mesh_node_builder_t::listen (std::string endpoint)
     }
     std::lock_guard lock (_state->mutex);
     _state->listen_endpoint = std::move (endpoint);
+    return *this;
+}
+
+mesh_node_builder_t &
+mesh_node_builder_t::set_advertise_host (std::string host)
+{
+    if (host.empty ())
+        throw detail::configuration_error (
+          "MeshNode advertise host is required");
+    std::lock_guard lock (_state->mutex);
+    _state->advertise_host = std::move (host);
     return *this;
 }
 

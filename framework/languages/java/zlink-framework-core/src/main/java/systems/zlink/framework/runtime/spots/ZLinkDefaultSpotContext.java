@@ -165,6 +165,7 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
                  .ZLinkSuspendInvocationContext.enterApplicationExecution(execution)) {
             return systems.zlink.framework.runtime.actors
                 .ZLinkDeferredActorJoinHandlerScope.run(
+                    host.deferredActorJoinRuntimeScope(),
                     candidate -> host.isActorAtSpot(candidate, spotId()),
                     operation);
         } catch (RuntimeException failure) {
@@ -536,6 +537,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
             }
             return systems.zlink.framework.runtime.actors
                 .ZLinkDeferredActorJoinHandlerScope.run(
+                    host.deferredActorJoinRuntimeScope(),
                     candidate -> host.isActorMember(spotId(), candidate),
                     operation);
         } catch (RuntimeException failure) {

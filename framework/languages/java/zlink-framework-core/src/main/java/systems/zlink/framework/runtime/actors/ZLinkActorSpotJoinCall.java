@@ -168,14 +168,27 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
             ? Long.MAX_VALUE
             : now + timeoutNanos;
         ZLinkActorJoinOperationId operationId = newOperationId();
-        ZLinkDeferredActorJoinScope.registerWithActorBarrier(
-            context.actorRef().actorId(),
-            request.size(),
-            deadline,
-            () -> executeDeferred(operationId, deadline),
-            operation -> services.actors().submitDeferredJoinBarrier(
+        if (!context.tryClaimDeferredJoin(deferred)) {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ACTOR_MOVING,
+                "Actor already has a pending membership transition");
+        }
+        try {
+            ZLinkDeferredActorJoinScope.registerWithActorBarrier(
+                services.actors().deferredJoinRuntimeScope(),
+                services.actors().deferredJoinIncarnation(context),
                 context.actorRef().actorId(),
-                operation));
+                request.size(),
+                deadline,
+                () -> executeDeferred(operationId, deadline),
+                operation -> services.actors().submitDeferredJoinBarrier(
+                    context.actorRef().actorId(),
+                    operation),
+                () -> context.releaseDeferredJoin(deferred));
+        } catch (RuntimeException error) {
+            context.releaseDeferredJoin(deferred);
+            throw error;
+        }
     }
 
     CompletionStage<ZLinkActorJoinOutcome> execute() {

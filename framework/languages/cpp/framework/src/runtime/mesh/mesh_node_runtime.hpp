@@ -43,6 +43,7 @@ struct mesh_node_builder_state_t
     std::mutex mutex;
     std::string mesh_name;
     std::string listen_endpoint;
+    std::optional<std::string> advertise_host;
     std::optional<zlink::routing_id_t> routing_id;
     object_role_t object_role = object_role_t::server;
     bool has_node_direct_handler = false;
@@ -256,6 +257,8 @@ class mesh_node_runtime_t
     void application_work_enqueued () noexcept;
     void application_work_started () noexcept;
     void application_work_finished () noexcept;
+    void note_local_node_submit_attempt ();
+    void local_application_work_finished () noexcept;
     std::uint64_t pending_application_callbacks () const noexcept;
     std::uint64_t active_application_callbacks () const noexcept;
 

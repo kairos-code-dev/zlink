@@ -1509,8 +1509,12 @@ zlink::submit_result_t public_host_runtime_t::send_to_node (
   const zlink::routing_id_t &target,
   const std::vector<zlink::message_t> &parts)
 {
-    return submitted (_transport->send_to_node (
-      target.to_bytes (), encode_application (parts)));
+    const auto target_bytes = target.to_bytes ();
+    if (_transport->send_to_node (target_bytes, encode_application (parts)))
+        return zlink::submit_result_t::ok;
+    return _transport->topology ().peer (target_bytes)
+      ? zlink::submit_result_t::backpressured
+      : zlink::submit_result_t::not_connected;
 }
 
 zlink::submit_result_t public_host_runtime_t::request_to_node (

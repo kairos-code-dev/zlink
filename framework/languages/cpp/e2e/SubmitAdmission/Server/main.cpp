@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../Shared/contracts.hpp"
-
 #include <zlink/framework.hpp>
+#include <zlink/locations/redis.hpp>
 #include <zlink/stream_connector.hpp>
 
 #include <algorithm>
@@ -30,12 +30,15 @@ struct role_options_t
     std::string rid;
     std::string http_endpoint;
     std::string mesh_endpoint;
+    std::string mesh_advertise_host;
     std::string peer_rid;
     std::string peer_endpoint;
     std::string fanout_endpoint;
     std::string client_server_endpoint;
     std::string client_server_peer_endpoint;
     std::string stream_endpoint;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
     std::string log_dir;
 
     static role_options_t bind (const zlink::framework::configuration_section_t &section)
@@ -44,6 +47,8 @@ struct role_options_t
                 .rid = section.require ("rid"),
                 .http_endpoint = section.require ("httpEndpoint"),
                 .mesh_endpoint = section.get ("meshEndpoint").value_or (""),
+                .mesh_advertise_host =
+                  section.get ("meshAdvertiseHost").value_or (""),
                 .peer_rid = section.get ("peerRid").value_or (""),
                 .peer_endpoint = section.get ("peerEndpoint").value_or (""),
                 .fanout_endpoint = section.get ("fanoutEndpoint").value_or (""),
@@ -52,6 +57,8 @@ struct role_options_t
                 .client_server_peer_endpoint =
                   section.get ("clientServerPeerEndpoint").value_or (""),
                 .stream_endpoint = section.get ("streamEndpoint").value_or (""),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix"),
                 .log_dir = section.require ("logDir")};
     }
 };
@@ -141,7 +148,7 @@ class admission_handler_t
     }
 
     void handle (const sa::admission_message_t &message,
-                 const zlink::framework::route_handler_context_t &)
+                 const zlink::framework::route_message_context_t &)
     {
         _evidence.entered (message.operation_id);
         _gate.wait ();
@@ -357,6 +364,7 @@ class ready_handler_t
                 return {.body = nlohmann::json{{"ready", true},
                                                {"rid", target->second},
                                                {"generation", peer.lifecycle_generation},
+                                               {"peerCount", snapshot.peers.size ()},
                                                {"peers", peers}}
                                   .dump ()};
             }
@@ -365,6 +373,7 @@ class ready_handler_t
                 .body = nlohmann::json{{"ready", false},
                                        {"rid", target->second},
                                        {"localEndpoint", snapshot.endpoint},
+                                       {"peerCount", snapshot.peers.size ()},
                                        {"peers", peers}}
                           .dump ()};
     }
@@ -489,11 +498,21 @@ class admission_actor_factory_t final
 class admission_actor_spot_t final : public zlink::framework::entry_spot_t
 {
   public:
-    explicit admission_actor_spot_t (sa::evidence_store_t &evidence) : _evidence (evidence) {}
-
-    void configure (zlink::framework::spot_context_t &context)
+    admission_actor_spot_t (zlink::framework::entry_spot_context_t context,
+                            sa::evidence_store_t &evidence) :
+        _context (std::move (context)), _evidence (evidence)
     {
-        context.handlers ().add_actor_send<&admission_actor_spot_t::on_admission> (
+    }
+
+    zlink::framework::entry_spot_context_t &context () noexcept { return _context; }
+    const zlink::framework::entry_spot_context_t &context () const noexcept
+    {
+        return _context;
+    }
+
+    void configure ()
+    {
+        _context.handlers ().add_actor_send<&admission_actor_spot_t::on_admission> (
           "admission");
     }
 
@@ -505,7 +524,7 @@ class admission_actor_spot_t final : public zlink::framework::entry_spot_t
     }
 
     void on_admission (admission_actor_t &,
-                       zlink::framework::spot_actor_send_context_t &,
+                       const zlink::framework::message_context_t &,
                        const sa::admission_message_t &message)
     {
         _evidence.entered (message.operation_id);
@@ -513,6 +532,7 @@ class admission_actor_spot_t final : public zlink::framework::entry_spot_t
     }
 
   private:
+    zlink::framework::entry_spot_context_t _context;
     sa::evidence_store_t &_evidence;
 };
 
@@ -963,6 +983,11 @@ class stream_peer_evidence_handler_t
 void configure_mesh_role (zlink::framework::zlink_framework_options_t &framework,
                           const role_options_t &options)
 {
+    framework.add_location_store (
+      std::make_shared<zlink::framework::locations::redis::redis_location_store_t> (
+        zlink::framework::locations::redis::redis_location_options_t{
+          .connection_string = options.redis_endpoint,
+          .key_prefix = options.redis_key_prefix}));
     framework.services ().add_singleton<sa::handler_gate_t> ();
     framework.services ().add_singleton<sa::evidence_store_t> ();
     framework.services ().add_transient<admission_handler_t,
@@ -970,11 +995,20 @@ void configure_mesh_role (zlink::framework::zlink_framework_options_t &framework
                                          sa::evidence_store_t> ();
 
     auto mesh = framework.add_route_mesh (sa::mesh_name);
-    mesh.listen (options.mesh_endpoint)
-      .set_routing_id (zlink::routing_id_t::from (options.rid))
-      .add_route_send_handler<admission_handler_t, sa::admission_message_t> ();
+    auto &socket = mesh.configure_router_socket ();
+    socket.send_high_water_mark = 1;
+    socket.receive_high_water_mark = 1;
+    socket.mailbox_message_budget = 1;
+    socket.send_timeout = std::chrono::milliseconds (300);
+    auto &node = mesh.listen (options.mesh_endpoint)
+                   .set_routing_id (zlink::routing_id_t::from (options.rid))
+                   .set_object_role (zlink::framework::object_role_t::server);
+    if (!options.mesh_advertise_host.empty ())
+        node.set_advertise_host (options.mesh_advertise_host);
+    node.add_route_send_handler<admission_handler_t, sa::admission_message_t> ();
     auto channel = mesh.channel_name (sa::channel_name);
-    channel.set_weight (options.role == "target" ? 100 : 0)
+    channel.server ()
+      .set_weight (options.role == "target" ? 100 : 0)
       .add_send_handler<admission_handler_t, sa::admission_message_t> ();
     if (!options.peer_endpoint.empty ()) {
         mesh.peer_connections ().connect (options.peer_endpoint);
@@ -990,6 +1024,47 @@ void configure_mesh_role (zlink::framework::zlink_framework_options_t &framework
           .map_post<node_submit_handler_t> ("/submit/node")
           .map_post<channel_submit_handler_t> ("/submit/channel");
     }
+}
+
+void configure_object_client_role (
+  zlink::framework::zlink_framework_options_t &framework,
+  const role_options_t &options)
+{
+    framework.add_location_store (
+      std::make_shared<zlink::framework::locations::redis::redis_location_store_t> (
+        zlink::framework::locations::redis::redis_location_options_t{
+          .connection_string = options.redis_endpoint,
+          .key_prefix = options.redis_key_prefix}));
+    framework.services ().add_singleton<sa::handler_gate_t> ();
+    framework.services ().add_singleton<sa::evidence_store_t> ();
+    framework.services ().add_transient<admission_handler_t,
+                                         sa::handler_gate_t,
+                                         sa::evidence_store_t> ();
+
+    auto mesh = framework.add_route_mesh (sa::mesh_name);
+    auto &socket = mesh.configure_router_socket ();
+    socket.send_high_water_mark = 1;
+    socket.receive_high_water_mark = 1;
+    socket.mailbox_message_budget = 1;
+    socket.send_timeout = std::chrono::milliseconds (300);
+    mesh.listen (options.mesh_endpoint)
+      .set_routing_id (zlink::routing_id_t::from (options.rid))
+      .set_object_role (zlink::framework::object_role_t::client);
+    mesh.channel_name (sa::channel_name)
+      .server ()
+      .set_weight (0)
+      .add_send_handler<admission_handler_t, sa::admission_message_t> ();
+    if (!options.peer_endpoint.empty ()) {
+        mesh.peer_connections ().connect (
+          zlink::routing_id_t::from (options.peer_rid), options.peer_endpoint);
+    }
+
+    framework.http ()
+      .listen (options.http_endpoint)
+      .map_health ("/health")
+      .map_get<evidence_handler_t> ("/evidence")
+      .map_post<gate_close_handler_t> ("/gate/close")
+      .map_post<gate_open_handler_t> ("/gate/open");
 }
 
 void configure_publisher_role (zlink::framework::zlink_framework_options_t &framework,
@@ -1054,7 +1129,10 @@ void configure_stream_gateway_role (zlink::framework::zlink_framework_options_t 
     mesh.listen (options.mesh_endpoint)
       .set_routing_id (zlink::routing_id_t::from (options.rid))
       .add_entry_spot<admission_actor_spot_t> (
-        [evidence_ptr] { return std::make_shared<admission_actor_spot_t> (*evidence_ptr); })
+        [evidence_ptr] (zlink::framework::entry_spot_context_t context) {
+            return std::make_shared<admission_actor_spot_t> (
+              std::move (context), *evidence_ptr);
+        })
       .add_actor_factory<admission_actor_t, admission_actor_factory_t> (
         admission_actor_type,
         std::make_shared<admission_actor_factory_t> (),
@@ -1087,7 +1165,10 @@ void configure_actor_target_role (zlink::framework::zlink_framework_options_t &f
     mesh.listen (options.mesh_endpoint)
       .set_routing_id (zlink::routing_id_t::from (options.rid))
       .add_entry_spot<admission_actor_spot_t> (
-        [evidence_ptr] { return std::make_shared<admission_actor_spot_t> (*evidence_ptr); })
+        [evidence_ptr] (zlink::framework::entry_spot_context_t context) {
+            return std::make_shared<admission_actor_spot_t> (
+              std::move (context), *evidence_ptr);
+        })
       .add_actor_factory<admission_actor_t, admission_actor_factory_t> (
         admission_actor_type,
         std::make_shared<admission_actor_factory_t> (),
@@ -1127,12 +1208,15 @@ int main (int argc, char **argv)
     try {
         auto app = zlink::framework::app_t::create ();
         const auto options = read_options (app, argc, argv);
+        app.advanced ().zlink ().max_pending (1);
         app.logging ()
           .use_file (options.log_dir + "/" + options.role + "-" + options.rid + ".log")
           .set_min_level (zlink::framework::log_level_t::debug);
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &framework) {
             if (options.role == "caller" || options.role == "target") {
                 configure_mesh_role (framework, options);
+            } else if (options.role == "object-client") {
+                configure_object_client_role (framework, options);
             } else if (options.role == "publisher") {
                 configure_publisher_role (framework, options);
             } else if (options.role == "client-server-target") {

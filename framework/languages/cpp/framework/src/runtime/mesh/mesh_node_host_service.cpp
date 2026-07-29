@@ -1949,6 +1949,7 @@ zlink::submit_result_t mesh_node_host_service_t::submit_local_node_send (
     const auto source_rid = node->routing_id ();
     if (!source_rid)
         return zlink::submit_result_t::not_found;
+    node->note_local_node_submit_attempt ();
 
     std::vector<std::vector<std::uint8_t>> owned_part_bytes;
     owned_part_bytes.reserve (parts.size ());
@@ -1987,17 +1988,17 @@ zlink::submit_result_t mesh_node_host_service_t::submit_local_node_send (
                   (void) dispatcher.dispatch (record, std::move (owned_parts));
               }
               catch (...) {
-                  node->application_work_finished ();
+                  node->local_application_work_finished ();
                   _dispatch_gate_changed.notify_all ();
                   return;
               }
-              node->application_work_finished ();
+              node->local_application_work_finished ();
               _dispatch_gate_changed.notify_all ();
           });
     }
     catch (...) {
         node->application_work_started ();
-        node->application_work_finished ();
+        node->local_application_work_finished ();
         _dispatch_gate_changed.notify_all ();
         return zlink::submit_result_t::backpressured;
     }

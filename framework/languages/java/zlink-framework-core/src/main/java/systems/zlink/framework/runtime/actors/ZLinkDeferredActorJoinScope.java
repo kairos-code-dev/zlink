@@ -22,13 +22,17 @@ final class ZLinkDeferredActorJoinScope {
     static final int MAX_REQUEST_BYTES = 1024 * 1024;
     static final int MAX_TOTAL_REQUEST_BYTES = 8 * 1024 * 1024;
 
-    private static final ConcurrentMap<String, State> CLAIMS = new ConcurrentHashMap<>();
-    private static final ConcurrentMap<String, State> ACTIVE_ACTOR_SCOPES =
+    private static final Object LEGACY_RUNTIME_SCOPE = new Object();
+    private static final ConcurrentMap<ActorScopeKey, State> ACTIVE_ACTOR_SCOPES =
         new ConcurrentHashMap<>();
     private static final java.util.Set<State> ACTIVE_HANDLER_SCOPES =
         ConcurrentHashMap.newKeySet();
 
     private ZLinkDeferredActorJoinScope() {
+    }
+
+    static Object legacyRuntimeScope() {
+        return LEGACY_RUNTIME_SCOPE;
     }
 
     static State current() {
@@ -37,26 +41,54 @@ final class ZLinkDeferredActorJoinScope {
     }
 
     static Scope enter(String actorId) {
+        return enter(LEGACY_RUNTIME_SCOPE, actorId, actorId);
+    }
+
+    static Scope enter(
+        Object runtimeScope,
+        Object actorIncarnation,
+        String actorId) {
         return enter(
+            runtimeScope,
+            actorIncarnation,
             actorId,
             candidate -> Objects.equals(actorId, candidate),
             true);
     }
 
     static Scope enterHandler(Predicate<String> actorAllowed) {
-        return enter(null, Objects.requireNonNull(actorAllowed, "actorAllowed"), false);
+        return enterHandler(LEGACY_RUNTIME_SCOPE, actorAllowed);
+    }
+
+    static Scope enterHandler(
+        Object runtimeScope,
+        Predicate<String> actorAllowed) {
+        return enter(
+            runtimeScope,
+            null,
+            null,
+            Objects.requireNonNull(actorAllowed, "actorAllowed"),
+            false);
     }
 
     private static Scope enter(
+        Object runtimeScope,
+        Object actorIncarnation,
         String dispatchActorId,
         Predicate<String> actorAllowed,
         boolean actorScope) {
         ThreadLocal<Object> local = systems.zlink.framework.runtime.internal.handlers
             .ZLinkSuspendInvocationContext.deferredActorJoinThreadLocal();
         Object previous = local.get();
-        State state = new State(dispatchActorId, actorAllowed);
+        ActorScopeKey actorKey = actorScope
+            ? new ActorScopeKey(
+                Objects.requireNonNull(runtimeScope, "runtimeScope"),
+                Objects.requireNonNull(actorIncarnation, "actorIncarnation"),
+                Objects.requireNonNull(dispatchActorId, "dispatchActorId"))
+            : null;
+        State state = new State(runtimeScope, actorKey, dispatchActorId, actorAllowed);
         if (actorScope) {
-            State active = ACTIVE_ACTOR_SCOPES.putIfAbsent(dispatchActorId, state);
+            State active = ACTIVE_ACTOR_SCOPES.putIfAbsent(actorKey, state);
             if (active != null) {
                 state = active;
             }
@@ -73,7 +105,15 @@ final class ZLinkDeferredActorJoinScope {
         int requestBytes,
         long deadlineNanos,
         Supplier<CompletionStage<Void>> operation) {
-        register(actorId, requestBytes, deadlineNanos, operation, null);
+        register(
+            LEGACY_RUNTIME_SCOPE,
+            actorId,
+            actorId,
+            requestBytes,
+            deadlineNanos,
+            operation,
+            null,
+            () -> { });
     }
 
     static void registerWithActorBarrier(
@@ -83,29 +123,63 @@ final class ZLinkDeferredActorJoinScope {
         Supplier<CompletionStage<Void>> operation,
         Function<Supplier<CompletionStage<Void>>, CompletionStage<Void>>
             actorMailbox) {
-        register(
+        registerWithActorBarrier(
+            LEGACY_RUNTIME_SCOPE,
+            actorId,
             actorId,
             requestBytes,
             deadlineNanos,
             operation,
-            Objects.requireNonNull(actorMailbox, "actorMailbox"));
+            actorMailbox,
+            () -> { });
     }
 
-    private static void register(
+    static void registerWithActorBarrier(
+        Object runtimeScope,
+        Object actorIncarnation,
         String actorId,
         int requestBytes,
         long deadlineNanos,
         Supplier<CompletionStage<Void>> operation,
         Function<Supplier<CompletionStage<Void>>, CompletionStage<Void>>
-            actorMailbox) {
+            actorMailbox,
+        Runnable releaseClaim) {
+        register(
+            runtimeScope,
+            actorIncarnation,
+            actorId,
+            requestBytes,
+            deadlineNanos,
+            operation,
+            Objects.requireNonNull(actorMailbox, "actorMailbox"),
+            Objects.requireNonNull(releaseClaim, "releaseClaim"));
+    }
+
+    private static void register(
+        Object runtimeScope,
+        Object actorIncarnation,
+        String actorId,
+        int requestBytes,
+        long deadlineNanos,
+        Supplier<CompletionStage<Void>> operation,
+        Function<Supplier<CompletionStage<Void>>, CompletionStage<Void>>
+            actorMailbox,
+        Runnable releaseClaim) {
+        ActorScopeKey actorKey = new ActorScopeKey(
+            Objects.requireNonNull(runtimeScope, "runtimeScope"),
+            Objects.requireNonNull(actorIncarnation, "actorIncarnation"),
+            Objects.requireNonNull(actorId, "actorId"));
         State state = current();
+        if (state != null && !state.matches(runtimeScope, actorKey, actorId)) {
+            state = null;
+        }
         if (state == null) {
-            state = ACTIVE_ACTOR_SCOPES.get(actorId);
+            state = ACTIVE_ACTOR_SCOPES.get(actorKey);
         }
         if (state == null) {
             State matched = null;
             for (State candidate : ACTIVE_HANDLER_SCOPES) {
-                if (!candidate.accepts(actorId)) {
+                if (!candidate.matches(runtimeScope, actorKey, actorId)) {
                     continue;
                 }
                 if (matched != null && matched != candidate) {
@@ -144,12 +218,13 @@ final class ZLinkDeferredActorJoinScope {
                     ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
                     "Actor join registrations exceed the handler limit");
             }
-            if (CLAIMS.putIfAbsent(actorId, state) != null) {
+            if (state.claimedActorIds.contains(actorId)) {
                 throw failure(
                     ZLinkFrameworkErrorKind.ACTOR_MOVING,
                     "Actor already has a pending membership transition");
             }
             state.claimedActorIds.add(actorId);
+            state.claimReleases.add(releaseClaim);
             state.requestBytes += requestBytes;
             if (actorMailbox == null
                 || Objects.equals(state.dispatchActorId, actorId)) {
@@ -164,9 +239,11 @@ final class ZLinkDeferredActorJoinScope {
                         ? operation.get()
                         : CompletableFuture.completedFuture(null)));
             } catch (RuntimeException error) {
-                state.claimedActorIds.remove(actorId);
+                int claimIndex = state.claimedActorIds.lastIndexOf(actorId);
+                state.claimedActorIds.remove(claimIndex);
+                Runnable removedRelease = state.claimReleases.remove(claimIndex);
                 state.requestBytes -= requestBytes;
-                CLAIMS.remove(actorId, state);
+                removedRelease.run();
                 throw error;
             }
             state.intents.add(new Intent(
@@ -294,7 +371,7 @@ final class ZLinkDeferredActorJoinScope {
 
         private void removeActiveScope() {
             if (actorScope) {
-                ACTIVE_ACTOR_SCOPES.remove(state.dispatchActorId, state);
+                ACTIVE_ACTOR_SCOPES.remove(state.actorKey, state);
             } else {
                 ACTIVE_HANDLER_SCOPES.remove(state);
             }
@@ -302,17 +379,24 @@ final class ZLinkDeferredActorJoinScope {
     }
 
     static final class State {
+        private final Object runtimeScope;
+        private final ActorScopeKey actorKey;
         private final String dispatchActorId;
         private final Predicate<String> actorAllowed;
         private final List<Intent> intents = new ArrayList<>();
         private final List<String> claimedActorIds = new ArrayList<>();
+        private final List<Runnable> claimReleases = new ArrayList<>();
         private int requestBytes;
         private volatile boolean sealed;
         private boolean finishStarted;
 
         private State(
+            Object runtimeScope,
+            ActorScopeKey actorKey,
             String dispatchActorId,
             Predicate<String> actorAllowed) {
+            this.runtimeScope = Objects.requireNonNull(runtimeScope, "runtimeScope");
+            this.actorKey = actorKey;
             this.dispatchActorId = dispatchActorId;
             this.actorAllowed = Objects.requireNonNull(actorAllowed, "actorAllowed");
         }
@@ -321,10 +405,21 @@ final class ZLinkDeferredActorJoinScope {
             return actorId != null && actorAllowed.test(actorId);
         }
 
-        private void releaseClaims() {
-            for (String actorId : claimedActorIds) {
-                CLAIMS.remove(actorId, this);
+        private boolean matches(
+            Object candidateRuntimeScope,
+            ActorScopeKey candidateActorKey,
+            String actorId) {
+            if (runtimeScope != candidateRuntimeScope || !accepts(actorId)) {
+                return false;
             }
+            return actorKey == null || actorKey.equals(candidateActorKey);
+        }
+
+        private void releaseClaims() {
+            for (Runnable releaseClaim : List.copyOf(claimReleases)) {
+                releaseClaim.run();
+            }
+            claimReleases.clear();
             claimedActorIds.clear();
             intents.clear();
         }
@@ -340,6 +435,12 @@ final class ZLinkDeferredActorJoinScope {
         long deadlineNanos,
         Supplier<CompletionStage<Void>> operation,
         Runnable discard) {
+    }
+
+    private record ActorScopeKey(
+        Object runtimeScope,
+        Object actorIncarnation,
+        String actorId) {
     }
 
     private static Throwable unwrap(Throwable error) {

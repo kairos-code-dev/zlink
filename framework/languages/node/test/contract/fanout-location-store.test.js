@@ -113,7 +113,7 @@ test('location runtime owner exposes the dedicated fanout capability from in-mem
   assert.equal(typeof stores.fanoutStore.listFanoutPublishers, 'function');
 });
 
-test('automatic fanout registration requires dedicated publisher descriptor operations', () => {
+test('automatic fanout registration requires only the opaque location provider SPI', () => {
   assert.throws(() => internal.createFrameworkRegistration({
     channels: {
       events: {
@@ -122,12 +122,19 @@ test('automatic fanout registration requires dedicated publisher descriptor oper
       }
     },
     locations: { storeInstance: {} }
-  }), /dedicated fanout publisher descriptor store operations/);
+  }), /Location Store must implement read, write, and scan/);
 
   assert.throws(() => internal.createFrameworkRegistration({
     channels: { events: { publisher: { bind: 'tcp://127.0.0.1:9501' } } },
     locations: { storeInstance: {} }
-  }), /dedicated fanout publisher descriptor store operations/);
+  }), /Location Store must implement read, write, and scan/);
+
+  const provider = new internal.ZLinkInMemoryProviderLocationStore();
+  assert.doesNotThrow(() => internal.createFrameworkRegistration({
+    channels: { events: { publisher: { bind: 'tcp://127.0.0.1:9501' } } },
+    locations: { storeInstance: provider }
+  }));
+  assert.equal(provider.updateFanoutPublisher, undefined);
 
   assert.doesNotThrow(() => internal.createFrameworkRegistration({
     channels: {

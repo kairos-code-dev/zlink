@@ -2660,6 +2660,11 @@ public final class ZLinkSpotRuntime
     }
 
     @Override
+    Object deferredActorJoinRuntimeScope() {
+        return actorAdmissions.deferredJoinRuntimeScope();
+    }
+
+    @Override
     <T> CompletionStage<T> runWithOutbound(
         DefaultSpotOutbound outbound,
         Supplier<CompletionStage<T>> operation) {

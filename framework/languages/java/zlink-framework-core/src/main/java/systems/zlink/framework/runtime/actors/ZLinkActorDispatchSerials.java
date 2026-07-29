@@ -9,12 +9,28 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
+import java.util.function.Function;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 
 final class ZLinkActorDispatchSerials {
+    private final Object runtimeScope;
+    private final Function<String, Object> incarnationResolver;
     private final Map<String, ZLinkAsyncSerialQueue> queues = new HashMap<>();
     private final Set<String> activeActorIds = new HashSet<>();
     private final Map<String, CompletionStage<Void>> teardowns = new HashMap<>();
+
+    ZLinkActorDispatchSerials() {
+        this(ZLinkDeferredActorJoinScope.legacyRuntimeScope(), actorId -> actorId);
+    }
+
+    ZLinkActorDispatchSerials(
+        Object runtimeScope,
+        Function<String, Object> incarnationResolver) {
+        this.runtimeScope = java.util.Objects.requireNonNull(
+            runtimeScope, "runtimeScope");
+        this.incarnationResolver = java.util.Objects.requireNonNull(
+            incarnationResolver, "incarnationResolver");
+    }
 
     boolean isCurrent(String actorId) {
         return actorId.equals(systems.zlink.framework.runtime.internal.handlers
@@ -186,7 +202,12 @@ final class ZLinkActorDispatchSerials {
                  systems.zlink.framework.runtime.internal.handlers
                      .ZLinkSuspendInvocationContext.enterActorDispatch(actorId);
              ZLinkDeferredActorJoinScope.Scope joins =
-                 ZLinkDeferredActorJoinScope.enter(actorId)) {
+                 ZLinkDeferredActorJoinScope.enter(
+                     runtimeScope,
+                     java.util.Objects.requireNonNull(
+                         incarnationResolver.apply(actorId),
+                         "actor incarnation"),
+                     actorId)) {
             CompletionStage<T> handler = operation.get();
             CompletableFuture<T> completed = new CompletableFuture<>();
             joins.finish(handler, null).whenComplete((nothing, error) -> {

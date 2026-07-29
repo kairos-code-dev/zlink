@@ -139,6 +139,7 @@ class mesh_node_builder_t
   public:
     mesh_channel_builder_t channel_name (std::string channel_name);
     mesh_node_builder_t &listen (std::string endpoint);
+    mesh_node_builder_t &set_advertise_host (std::string host);
     mesh_node_builder_t &set_routing_id (zlink::routing_id_t routing_id);
     mesh_node_builder_t &set_object_role (object_role_t role);
     mesh_node_builder_t &set_placement_weight (int weight);

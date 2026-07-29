@@ -1,6 +1,8 @@
 package systems.zlink.framework.runtime.actors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
@@ -10,6 +12,32 @@ import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 
 final class ZLinkActorContextStateRelocationTest {
+    @Test
+    void deferredJoinClaimBelongsToActorIncarnationRatherThanGlobalActorId() {
+        var source = new ZLinkActorContextState(
+            new ZLinkBackendActorRef(RoutingId.from("source"), "actor-a", 7),
+            "mesh",
+            "entry-source");
+        var target = new ZLinkActorContextState(
+            new ZLinkBackendActorRef(RoutingId.from("target"), "actor-a", 8),
+            "mesh",
+            "entry-target");
+        Object first = new Object();
+        Object second = new Object();
+        Object replacement = new Object();
+
+        assertTrue(source.tryClaimDeferredJoin(first));
+        assertFalse(source.tryClaimDeferredJoin(second));
+        assertTrue(target.tryClaimDeferredJoin(second));
+        source.releaseDeferredJoin(second);
+        assertFalse(source.tryClaimDeferredJoin(replacement));
+        source.releaseDeferredJoin(first);
+        assertTrue(source.tryClaimDeferredJoin(replacement));
+
+        source.releaseDeferredJoin(replacement);
+        target.releaseDeferredJoin(second);
+    }
+
     @Test
     void snapshotsBoundSessionFenceWithoutAdvancingAcceptedSequence() {
         RoutingId actorNode = RoutingId.from("actor-node");

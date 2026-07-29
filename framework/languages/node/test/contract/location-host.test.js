@@ -7,7 +7,7 @@ const flowContext = require('../../packages/framework/dist/runtime/diagnostics/f
 const nestjs = require('../../packages/nestjs/dist');
 
 test('framework and NestJS builders register separate location and relocation stores', async () => {
-  const store = new framework.ZLinkInMemoryLocationStore();
+  const store = new framework.ZLinkInMemoryProviderLocationStore();
   const relocationStore = {};
 
   const options = framework.createFrameworkOptions((builder) => {
@@ -33,7 +33,7 @@ test('framework and NestJS builders register separate location and relocation st
 });
 
 test('framework runtime host uses the explicit location store for Actor lifecycle and authority routing', () => {
-  const store = new framework.ZLinkInMemoryLocationStore();
+  const store = new framework.ZLinkInMemoryProviderLocationStore();
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
       locations: {
@@ -51,18 +51,15 @@ test('framework runtime host uses the explicit location store for Actor lifecycl
 });
 
 test('framework runtime host starts location runtime and injects lifecycle into managers', async () => {
-  const store = new framework.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const now = () => new Date(Date.UTC(2026, 6, 3, 0, 0, 0));
+  const provider = new framework.ZLinkInMemoryProviderLocationStore(now);
+  const store = new framework.ZLinkLocationStoreRepository(provider, now);
   const calls = [];
-  const removePeer = store.removePeer.bind(store);
-  store.removePeer = async (...args) => {
-    calls.push('peer:remove');
-    return await removePeer(...args);
-  };
   const nodeRid = rid('node-a');
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
       locations: {
-        storeInstance: store,
+        storeInstance: provider,
         options: {
           heartbeatIntervalMs: 1000
         }
@@ -106,7 +103,6 @@ test('framework runtime host starts location runtime and injects lifecycle into 
   assert.equal(await store.resolveActor({ meshName: 'play', actorId: 'actor-1' }), undefined);
   assert.deepEqual(calls, [
     'spot:dispose',
-    'peer:remove',
     'context:dispose'
   ]);
 });
@@ -140,7 +136,9 @@ test('framework host startup begins a lifecycle flow', async () => {
 });
 
 test('framework runtime host starts channel auto-connect loops from location peers', async () => {
-  const store = new framework.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const now = () => new Date(Date.UTC(2026, 6, 3, 0, 0, 0));
+  const provider = new framework.ZLinkInMemoryProviderLocationStore(now);
+  const store = new framework.ZLinkLocationStoreRepository(provider, now);
   const calls = [];
   const nodeRid = rid('node-a');
 
@@ -166,7 +164,7 @@ test('framework runtime host starts channel auto-connect loops from location pee
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
       locations: {
-        storeInstance: store,
+        storeInstance: provider,
         options: {
           heartbeatIntervalMs: 1000,
           pollingIntervalMs: 1000
@@ -228,7 +226,6 @@ test('framework runtime host starts channel auto-connect loops from location pee
         'subscriber:events:connect:tcp://remote-events'
       ].sort()
     );
-    assert.ok(calls.includes('spot:connectPeer:tcp://remote-spot'), JSON.stringify(calls));
     const publisherRows = await store.listFanoutPublishers('local-events');
     assert.equal(publisherRows.items.length, 1);
     assert.equal(String(publisherRows.items[0].publisherRid), 'node-a');
@@ -236,7 +233,6 @@ test('framework runtime host starts channel auto-connect loops from location pee
     await runtime.stop();
   }
   assert.ok(calls.includes('dealer:api:disconnect:tcp://remote-api'));
-  assert.ok(calls.some((call) => call.startsWith('spot:removePeerConnection:')));
   assert.ok(calls.includes('subscriber:events:disconnect:tcp://remote-events'));
   assert.equal(calls.some((call) => call.includes('tcp://remote-manual')), false);
   assert.equal(
@@ -246,7 +242,9 @@ test('framework runtime host starts channel auto-connect loops from location pee
 });
 
 test('manual Mesh router connection suppresses only the matching store-driven route', async () => {
-  const store = new framework.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
+  const now = () => new Date(Date.UTC(2026, 6, 3, 0, 0, 0));
+  const provider = new framework.ZLinkInMemoryProviderLocationStore(now);
+  const store = new framework.ZLinkLocationStoreRepository(provider, now);
   const calls = [];
   const nodeRid = rid('node-a');
 
@@ -267,7 +265,7 @@ test('manual Mesh router connection suppresses only the matching store-driven ro
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
       locations: {
-        storeInstance: store,
+        storeInstance: provider,
         options: {
           heartbeatIntervalMs: 1000,
           pollingIntervalMs: 1000

@@ -108,7 +108,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     private final ZLinkHandlerActivator handlerFactory;
     private final ZLinkStreamCodec defaultStreamCodec;
     private final ActorRegistry actorRegistry = new ActorRegistry();
-    private final ZLinkActorDispatchSerials dispatches = new ZLinkActorDispatchSerials();
+    private final ZLinkActorDispatchSerials dispatches;
     private final ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
     private final java.util.concurrent.ConcurrentMap<String, Long> transferStarts =
         new java.util.concurrent.ConcurrentHashMap<>();
@@ -422,6 +422,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             throw new ZLinkConfigurationException("handlerFactory is required");
         }
         this.spotNode = spotNode;
+        this.dispatches = new ZLinkActorDispatchSerials(
+            this,
+            this::deferredJoinIncarnation);
         this.meshName = spotNode.routingId().toString();
         this.factories = Map.copyOf(factories);
         this.defaultRequestTimeout = defaultRequestTimeout;
@@ -2096,6 +2099,19 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         }
     }
 
+    Object deferredJoinRuntimeScope() {
+        return this;
+    }
+
+    Object deferredJoinIncarnation(DefaultActorContext context) {
+        return context;
+    }
+
+    private Object deferredJoinIncarnation(String actorId) {
+        ZLinkActor actor = actorRegistry.actor(actorId);
+        return actor == null ? actorId : actorRegistry.context(actor);
+    }
+
     void continueAfterActorDispatch(
         ZLinkActor actor,
         Supplier<CompletionStage<Void>> operation) {
@@ -2661,6 +2677,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             state.setActor(actor);
             systems.zlink.framework.runtime.internal.handlers
                 .ZLinkActorHandlerInstances.bind(actor, handlerInstances);
+        }
+
+        boolean tryClaimDeferredJoin(Object claim) {
+            return state.tryClaimDeferredJoin(claim);
+        }
+
+        void releaseDeferredJoin(Object claim) {
+            state.releaseDeferredJoin(claim);
         }
 
         void beginMove() {

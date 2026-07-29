@@ -2,6 +2,7 @@
 """HTTP-only driver for C++ Config 13 process scenarios."""
 
 import argparse
+import concurrent.futures
 import json
 import sys
 import time
@@ -23,11 +24,11 @@ def request_json(method, url, body=None, timeout=1.0):
         return json.loads(response.read().decode("utf-8"))
 
 
-def message(marker):
+def message(marker, payload_bytes=32768):
     return {
         "operationId": f"{marker}-{uuid.uuid4().hex}",
         "sequence": 1,
-        "payload": "x" * 128,
+        "payload": "x" * payload_bytes,
     }
 
 
@@ -56,7 +57,17 @@ class Driver:
             "POST",
             f"{self.arguments.caller_url}/submit/node",
             {"targetRid": target_rid, "message": payload},
+            timeout=2.0,
         )
+
+    @staticmethod
+    def assert_pending(future, label):
+        time.sleep(0.075)
+        if future.done():
+            raise RuntimeError(
+                f"{label} did not remain pending until the receiver capacity changed: "
+                f"{future.result()}"
+            )
 
     def submit_channel(self, payload):
         return request_json(
@@ -321,13 +332,257 @@ class Driver:
                 remote["operationId"],
                 lambda value: value.get("handlerCompletedCount") == 1,
             )
+
+            object_topology_before = request_json(
+                "GET",
+                f"{self.arguments.caller_url}/ready?"
+                + urllib.parse.urlencode(
+                    {"targetRid": self.arguments.object_client_rid}
+                ),
+            )
+            object_client = message("object-client-node")
+            object_client_result = self.submit_node(
+                self.arguments.object_client_rid, object_client
+            )
+            assert_submit(object_client_result, "TargetNotFound")
+            object_topology_after = request_json(
+                "GET",
+                f"{self.arguments.caller_url}/ready?"
+                + urllib.parse.urlencode(
+                    {"targetRid": self.arguments.object_client_rid}
+                ),
+            )
+            if (
+                object_topology_before.get("ready") is not True
+                or object_topology_after.get("ready") is not True
+                or object_topology_before.get("peerCount")
+                != object_topology_after.get("peerCount")
+                or object_topology_before.get("generation")
+                != object_topology_after.get("generation")
+            ):
+                raise RuntimeError(
+                    "Object Client Node direct changed the existing Ready topology: "
+                    f"{object_topology_before} -> {object_topology_after}"
+                )
+
+            request_json("POST", f"{self.arguments.caller_url}/gate/close")
+            local_delayed_started = time.monotonic_ns()
+            local_fills = []
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                local_delayed = None
+                local_delayed_future = None
+                for index in range(1, 65):
+                    candidate = message(f"local-delayed-{index}")
+                    candidate_future = executor.submit(
+                        self.submit_node, self.arguments.caller_rid, candidate
+                    )
+                    time.sleep(0.075)
+                    if not candidate_future.done():
+                        local_delayed = candidate
+                        local_delayed_future = candidate_future
+                        break
+                    assert_submit(candidate_future.result())
+                    local_fills.append(candidate)
+                if local_delayed_future is None:
+                    request_json(
+                        "POST", f"{self.arguments.caller_url}/gate/open"
+                    )
+                    raise RuntimeError(
+                        "local receiver gate did not exhaust the configured HWM "
+                        "within 64 submissions"
+                    )
+                request_json("POST", f"{self.arguments.caller_url}/gate/open")
+                local_delayed_result = local_delayed_future.result(timeout=2.0)
+            local_delayed_completed = time.monotonic_ns()
+            assert_submit(local_delayed_result)
+            local_delayed_evidence = None
+            for payload in (*local_fills, local_delayed):
+                observed = self.wait_evidence(
+                    self.arguments.caller_url,
+                    payload["operationId"],
+                    lambda value: value.get("handlerCompletedCount") == 1,
+                )
+                if payload is local_delayed:
+                    local_delayed_evidence = observed
+
+            request_json("POST", f"{self.arguments.caller_url}/gate/close")
+            local_timeout_fills = [
+                message(f"local-timeout-fill-{index}")
+                for index in range(1, len(local_fills) + 1)
+            ]
+            local_timeout = message("local-timeout")
+            for payload in local_timeout_fills:
+                assert_submit(
+                    self.submit_node(self.arguments.caller_rid, payload)
+                )
+            local_timeout_started = time.monotonic_ns()
+            local_timeout_result = self.submit_node(
+                self.arguments.caller_rid, local_timeout
+            )
+            local_timeout_completed = time.monotonic_ns()
+            assert_submit(local_timeout_result, "DeadlineExceeded")
+            local_timeout_before_release = self.evidence(
+                self.arguments.caller_url, local_timeout["operationId"]
+            )
+            if (
+                local_timeout_before_release.get("handlerEnteredCount") != 0
+                or local_timeout_before_release.get("handlerCompletedCount") != 0
+            ):
+                raise RuntimeError(
+                    "local timed-out operation entered the application handler: "
+                    f"{local_timeout_before_release}"
+            )
+            request_json("POST", f"{self.arguments.caller_url}/gate/open")
+            for payload in local_timeout_fills:
+                self.wait_evidence(
+                    self.arguments.caller_url,
+                    payload["operationId"],
+                    lambda value: value.get("handlerCompletedCount") == 1,
+                )
+            time.sleep(0.05)
+            local_timeout_after_release = self.evidence(
+                self.arguments.caller_url, local_timeout["operationId"]
+            )
+            if (
+                local_timeout_after_release.get("handlerEnteredCount") != 0
+                or local_timeout_after_release.get("handlerCompletedCount") != 0
+            ):
+                raise RuntimeError(
+                    "local timed-out operation was admitted after capacity returned: "
+                    f"{local_timeout_after_release}"
+                )
+
+            request_json("POST", f"{self.arguments.receiver_gate_url}/close")
+            remote_delayed_started = time.monotonic_ns()
+            remote_fills = []
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                remote_delayed = None
+                remote_delayed_future = None
+                for index in range(1, 65):
+                    candidate = message(f"remote-delayed-{index}")
+                    candidate_future = executor.submit(
+                        self.submit_node, self.arguments.target_rid, candidate
+                    )
+                    time.sleep(0.075)
+                    if not candidate_future.done():
+                        remote_delayed = candidate
+                        remote_delayed_future = candidate_future
+                        break
+                    assert_submit(candidate_future.result())
+                    remote_fills.append(candidate)
+                if remote_delayed_future is None:
+                    request_json(
+                        "POST", f"{self.arguments.receiver_gate_url}/open"
+                    )
+                    raise RuntimeError(
+                        "remote receiver gate did not exhaust the configured HWM "
+                        "within 64 submissions"
+                    )
+                remote_gate_before_release = request_json(
+                    "GET", f"{self.arguments.receiver_gate_url}/status"
+                )
+                request_json("POST", f"{self.arguments.receiver_gate_url}/open")
+                remote_delayed_result = remote_delayed_future.result(timeout=2.0)
+            remote_delayed_completed = time.monotonic_ns()
+            assert_submit(remote_delayed_result)
+            remote_delayed_evidence = None
+            for payload in (*remote_fills, remote_delayed):
+                observed = self.wait_evidence(
+                    self.arguments.target_url,
+                    payload["operationId"],
+                    lambda value: value.get("handlerCompletedCount") == 1,
+                )
+                if payload is remote_delayed:
+                    remote_delayed_evidence = observed
+
+            request_json("POST", f"{self.arguments.receiver_gate_url}/close")
+            remote_timeout_fills = [
+                message(f"remote-timeout-fill-{index}")
+                for index in range(1, len(remote_fills) + 1)
+            ]
+            remote_timeout = message("remote-timeout")
+            for payload in remote_timeout_fills:
+                assert_submit(self.submit_node(self.arguments.target_rid, payload))
+            remote_timeout_started = time.monotonic_ns()
+            remote_timeout_result = self.submit_node(
+                self.arguments.target_rid, remote_timeout
+            )
+            remote_timeout_completed = time.monotonic_ns()
+            assert_submit(remote_timeout_result, "DeadlineExceeded")
+            remote_timeout_before_release = self.evidence(
+                self.arguments.target_url, remote_timeout["operationId"]
+            )
+            request_json("POST", f"{self.arguments.receiver_gate_url}/open")
+            for payload in remote_timeout_fills:
+                self.wait_evidence(
+                    self.arguments.target_url,
+                    payload["operationId"],
+                    lambda value: value.get("handlerCompletedCount") == 1,
+                )
+            time.sleep(0.05)
+            remote_timeout_after_release = self.evidence(
+                self.arguments.target_url, remote_timeout["operationId"]
+            )
+            if (
+                remote_timeout_before_release.get("handlerEnteredCount") != 0
+                or remote_timeout_before_release.get("handlerCompletedCount") != 0
+                or remote_timeout_after_release.get("handlerEnteredCount") != 0
+                or remote_timeout_after_release.get("handlerCompletedCount") != 0
+            ):
+                raise RuntimeError(
+                    "remote timed-out operation reached the handler: "
+                    f"{remote_timeout_before_release} -> "
+                    f"{remote_timeout_after_release}"
+                )
             self.record(
                 scenario,
                 {
-                    "local": local_result,
-                    "remote": remote_result,
-                    "localEvidence": local_evidence,
-                    "remoteEvidence": remote_evidence,
+                    "immediate": {
+                        "local": local_result,
+                        "remote": remote_result,
+                        "localEvidence": local_evidence,
+                        "remoteEvidence": remote_evidence,
+                    },
+                    "delayed": {
+                        "local": local_delayed_result,
+                        "remote": remote_delayed_result,
+                        "localEvidence": local_delayed_evidence,
+                        "remoteEvidence": remote_delayed_evidence,
+                        "localElapsedMs": (
+                            local_delayed_completed - local_delayed_started
+                        )
+                        / 1_000_000,
+                        "remoteElapsedMs": (
+                            remote_delayed_completed - remote_delayed_started
+                        )
+                        / 1_000_000,
+                        "localQueueFillCount": len(local_fills),
+                        "remoteQueueFillCount": len(remote_fills),
+                        "remoteGateBeforeRelease": remote_gate_before_release,
+                    },
+                    "deadline": {
+                        "local": local_timeout_result,
+                        "remote": remote_timeout_result,
+                        "localElapsedMs": (
+                            local_timeout_completed - local_timeout_started
+                        )
+                        / 1_000_000,
+                        "remoteElapsedMs": (
+                            remote_timeout_completed - remote_timeout_started
+                        )
+                        / 1_000_000,
+                        "localQueueFillCount": len(local_timeout_fills),
+                        "remoteQueueFillCount": len(remote_timeout_fills),
+                        "localBeforeRelease": local_timeout_before_release,
+                        "localAfterRelease": local_timeout_after_release,
+                        "remoteBeforeRelease": remote_timeout_before_release,
+                        "remoteAfterRelease": remote_timeout_after_release,
+                    },
+                    "objectClient": {
+                        "submit": object_client_result,
+                        "topologyBefore": object_topology_before,
+                        "topologyAfter": object_topology_after,
+                    },
                 },
             )
         elif scenario == "SA-E2E-09":
@@ -384,6 +639,7 @@ def main():
     parser.add_argument("--publisher-url", required=True)
     parser.add_argument("--caller-rid", required=True)
     parser.add_argument("--target-rid", required=True)
+    parser.add_argument("--object-client-rid", required=True)
     parser.add_argument("--client-server-caller-url", required=True)
     parser.add_argument(
         "--client-server-target-url", action="append", required=True

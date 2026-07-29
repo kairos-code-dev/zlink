@@ -85,6 +85,7 @@ class raw_client_server_server_t
     std::unique_ptr<zlink::socket_monitor_t> _monitor;
     std::shared_ptr<detail::backend::raw_route_port_t> _port;
     mesh::service_mailbox_t _mailbox;
+    std::optional<mesh::service_mailbox_record_t> _pending_received;
     mesh::service_liveness_registry_t _liveness;
     std::map<std::vector<std::uint8_t>, std::vector<std::uint8_t>,
              byte_vector_less_t>

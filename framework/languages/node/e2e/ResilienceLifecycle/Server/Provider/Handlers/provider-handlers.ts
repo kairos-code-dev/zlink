@@ -39,6 +39,9 @@ export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileReq, Pr
     if (request.value === 'slow') {
       await delay(3000);
     }
+    if (request.value === 'accepted') {
+      await delay(1500);
+    }
     this.evidence.add(`profile-request|rid=${this.evidence.rid}|value=${request.value}|marker=${marker}|packet=${context.packetName}`);
     return { value: `profile:${request.value}`, providerRid: this.evidence.rid };
   }

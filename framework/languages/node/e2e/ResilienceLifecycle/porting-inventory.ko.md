@@ -20,7 +20,7 @@
 | RL-B1 | `Client/Scenarios/RlB1CancellationCleanupScenario.cs` | `Client/Scenarios/rl-b1-cancellation-cleanup-scenario.ts` | done | cancellation cleanup. PASS: `logs/20260703-211853-78546` |
 | RL-B2 | `Client/Scenarios/RlB2CrashDuringInflightScenario.cs` | `Client/Scenarios/rl-b2-crash-during-inflight-scenario.ts` | done | crash during in-flight request. PASS: `logs/20260703-211853-78546` |
 | RL-B3 | `Client/Scenarios/RlB3GracefulShutdownScenario.cs` | `Client/Scenarios/rl-b3-graceful-shutdown-scenario.ts` | done | graceful shutdown stale endpoint avoidance. PASS: `logs/20260703-211853-78546` |
-| RL-B4 | `Client/Scenarios/RlB4RuntimeDrainScenario.cs` | `Client/Scenarios/rl-b4-runtime-drain-scenario.ts` | done | runtime drain/restore public path. PASS: `logs/20260703-211853-78546` |
+| RL-B4 | `Client/Scenarios/RlB4RuntimeDrainScenario.cs` | `Client/Scenarios/rl-b4-runtime-drain-scenario.ts` | done | 11.0 public RouteMesh channel weight로 descriptor 갱신, 신규 선택 제외, accepted work 완료와 복원을 검증했다. PASS: `log/20260729-163732-3388194` |
 | RL-B5 | `Client/Scenarios/RlB5DrainInflightScenario.cs` | `Client/Scenarios/rl-b5-drain-inflight-scenario.ts` | done | runtime drain 중 in-flight slow reply 보존. PASS: `logs/20260703-211853-78546` |
 | RL-B6 | `Client/Scenarios/RlB6GrayFaultScenario.cs` | `Client/Scenarios/rl-b6-gray-fault-scenario.ts` | done | gray failure and recovery. PASS: `logs/20260703-211853-78546` |
 | RL-C1 | `Client/Scenarios/RlC1ClientHostLifecycleScenario.cs` | `Client/Scenarios/rl-c1-client-host-lifecycle-scenario.ts` | done | short-lived client host lifecycle. PASS: `logs/20260703-211853-78546` |

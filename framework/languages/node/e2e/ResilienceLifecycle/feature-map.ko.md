@@ -16,7 +16,7 @@
 | RL-B1 | 구현 | slow request를 100ms timeout으로 끝낸 뒤 follow-up request, 늦은 server completion evidence, later request를 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-B2 | 구현 | public evidence로 slow request가 `api-b`에서 시작된 것을 확인한 뒤 provider crash를 유발하고, in-flight public failure, surviving provider follow-up, `api-b` 복구 traffic을 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-B3 | 구현 | provider B 정상 종료 뒤 topology 이탈, 후속 request의 `api-a` 수렴, provider B 복구 readiness와 topology 재등록을 검증했다. 로그: `logs/20260703-211853-78546` |
-| RL-B4 | 10.0.0 전환 대상 | public `ZLinkRouteMeshRuntimeOptions.channel(meshName, channelName).weight`로 신규 select-one 제외·복원을 검증한다. source·runner 적용은 S9에서 수행한다. |
+| RL-B4 | 구현 | public `ZLinkRouteMeshRuntimeOptions.channel(channelName).weight`로 api-b를 0으로 제외하고 100으로 복원했다. Location Store descriptor revision 증가, endpoint·lifecycle 유지, 신규 request 제외, 기존 accepted work 완료와 복원 뒤 실제 재선택을 검증했다. 로그: `log/20260729-163732-3388194` |
 | RL-B5 | 구현 | public runtime drain 중 새 request는 drained provider로 가지 않고, drain 전에 시작된 slow request는 completion evidence와 reply를 모두 보존하는지 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-B6 | 구현 | provider B에 gray fault를 주입하고, no-retry request에서 public failure와 `api-a` healthy success를 함께 관찰한 뒤 fault 해제 후 follow-up request와 evidence marker를 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-C1 | 구현 | short-lived client host request를 반복한 뒤 follow-up request와 provider evidence marker를 검증했다. 로그: `logs/20260703-211853-78546` |
@@ -39,8 +39,9 @@
   - RL-D3 actual PASS: `log/20260729-162011-2856469`
   - RL-D4 actual PASS: `log/20260729-162134-2885402`
   - RL-D2 actual PASS: `log/20260729-162800-3166911`
+  - RL-B4 actual PASS: `log/20260729-163732-3388194`
   - 최신 전체 순서 재검증은 RL-A1에서 별도 topology probe가 `api-b` 제거를 확인한 직후 consumer의
     두 번째 request가 제거 중인 endpoint로 전달되어 실패했다: `logs/20260715-082315-2395393`.
     RL-D5에는 도달하지 않았으며, consumer 자체 peer 수렴을 확인하지 않는 RL-A1 검증 race는 별도로 추적한다.
-- 남은 scenario: RL-B4. RL-A1의 consumer peer 수렴 race도 재검증해야 한다.
+- 남은 scenario: 없음. RL-A1의 consumer peer 수렴 race는 별도 재검증 대상이다.
 - 미착수 scenario: 없음

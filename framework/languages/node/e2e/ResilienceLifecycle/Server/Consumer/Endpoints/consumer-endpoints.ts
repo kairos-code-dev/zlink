@@ -35,7 +35,10 @@ export function createConsumerEndpoints(
           serviceRole: 'router',
           routingId: String(row.rid),
           rid: String(row.rid),
-          endpoint: row.endpoint
+          endpoint: row.endpoint,
+          lifecycleGeneration: row.lifecycleGeneration.toString(),
+          descriptorRevision: row.descriptorRevision.toString(),
+          channelWeight: row.channelWeights.profile
         }));
       }
     },

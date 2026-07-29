@@ -13,7 +13,7 @@ Framework가 handler를 실행할 때 결정해야 하는 두 계약을 다룬�
 | 주제 | 정한 것 | 상태 | 절 |
 | --- | --- | --- | --- |
 | Handler 인스턴스 수명 | Handler instance를 언제 만들고 언제 정리하는가 | 공통 spec·다섯 언어 구현·contract test 반영 완료 | [2](#2-handler-수명--무엇이-문제였나)~[4](#4-handler-수명--반영-결과) |
-| Filter 적용 범위 | Handler filter가 어느 dispatch 경로에서 실행되는가 | 설계 결정과 반영안 검토 완료, spec·구현에는 아직 반영하지 않음 | [5](#5-filter-범위--무엇이-문제였나)~[8](#8-filter-범위--남은-작업) |
+| Filter 적용 범위 | Handler filter가 어느 dispatch 경로에서 실행되는가 | 공통 spec·다섯 언어 구현·contract test 반영 완료 | [5](#5-filter-범위--무엇이-문제였나)~[8](#8-filter-범위--반영-결과) |
 
 두 주제에서 공통으로 쓰는 말을 먼저 정리한다.
 
@@ -365,47 +365,39 @@ handler instance를 쓴다. 한 handler에서 filter가 `next`를 호출하지 �
 
 [6](#6-filter-범위--무엇으로-정했나)의 결정을 `06-framework-api.ko.md` §8.1과 `.NET`
 exact interface(`server/languages/dotnet/interfaces/03-configuration-topology.ko.md`)에
-반영하기 전에 변경안을 검토했다. 정식 spec과 exact interface는 아직 바꾸지 않았다.
-검토 결과 다음 네 가지를 함께 반영해야 한다.
+반영했다. 다음 네 가지 검토 결과도 함께 반영했다.
 
-**같은 계약을 반대로 말하는 문장이 다른 spec에 남아 있다.** §8.1만 고치면 두 문서가
-서로 충돌한다.
+**같은 계약을 반대로 말하던 문장도 함께 고쳤다.** §8.1만 고치면 두 문서가 서로
+충돌하므로 관련 문서를 함께 정리했다.
 
-| 문서 | 지금 문장 | 고칠 방향 |
+| 문서 | 확인한 기존 문장 | 반영한 내용 |
 | --- | --- | --- |
-| `19-stream-session.ko.md` | "Handler filter pipeline은 ChannelName dispatch에만 적용한다. Node direct, Spot, Actor와 STREAM session dispatch에는 적용하지 않는다" | 이 문서가 소유할 내용은 STREAM session을 제외한다는 것 하나다. Node direct를 빼고 나머지 범위는 §8.1 링크에 맡긴다 |
-| `04-message-model.ko.md` | "Handler filter는 handler와 같은 current `MessageContext`를 직접 받는다" | filter는 그 message 정보에 더해 [6.2](#62-dispatch-종류를-filter-context에-드러낸다)의 dispatch 분류를 함께 받는다로 고친다 |
+| `19-stream-session.ko.md` | "Handler filter pipeline은 ChannelName dispatch에만 적용한다. Node direct, Spot, Actor와 STREAM session dispatch에는 적용하지 않는다" | STREAM session을 제외한다는 내용만 남기고, 전체 범위는 §8.1을 참조하게 했다 |
+| `04-message-model.ko.md` | "Handler filter는 handler와 같은 current `MessageContext`를 직접 받는다" | 기존 message 정보와 [6.2](#62-dispatch-종류를-filter-context에-드러낸다)의 dispatch 분류를 함께 받도록 고쳤다 |
 
-**현재 실패 규칙을 반영안에서도 유지한다.** 현재 §8.1의 "Filter 또는 handler에서
-발생한 예외는 같은 dispatch 실패 처리 규칙을 따른다"는 문장이 검토한 반영안에서
-빠져 있었다. Fanout에서 다른 구독 handler를 취소하지 않는다는 것과 어느 결과로 끝나도
-한 번 정리한다는 규칙만으로는 **filter가 던진 예외를 호출한 쪽이 무엇으로 받는지**
-알 수 없다. 이 문장과 [6.4](#64-next를-호출하지-않으면-어떻게-되나)의 규칙을 공통
-spec에 함께 넣는다.
+**기존 실패 규칙을 유지했다.** Filter 또는 handler에서 발생한 예외는 같은 dispatch의
+실패 처리 규칙을 따른다. Fanout에서는 해당 handler의 dispatch만 실패하고 다른 구독
+handler는 계속 실행한다. 이 규칙과
+[6.4](#64-next를-호출하지-않으면-어떻게-되나)의 중단 결과를 공통 spec에 함께 넣었다.
 
-**설명 없이 들어간 용어를 푼다.** 공통 spec 본문에 `short-circuit`과 `programmer
-error`가 뜻을 밝히지 않은 채 쓰였다. 특히 `programmer error`는 재시도 대상이 아니라는
-것이 계약의 일부인데 단어만으로는 드러나지 않는다. 오류 이름(`.NET`은
-`ZLinkFrameworkErrorKind.InvalidOperation`)은 언어별 exact interface가 소유하므로, 공통
-spec은 "handler를 다시 실행하지 않고 오류로 거부한다. 이 오류는 application 코드의
-잘못이므로 재시도하지 않는다"처럼 결과로 쓴다. `short-circuit`도 "`next`를 호출하지 않고
-끝난 경우"로 바꾼다.
+**설명 없이 들어간 용어를 풀었다.** 공통 spec에서 `short-circuit`은 "`next`를 호출하지
+않고 끝난 경우"로 바꿨다. `programmer error`는 "handler를 다시 실행하지 않고 오류로
+거부한다. 이 오류는 application 코드의 잘못이므로 재시도하지 않는다"로 설명했다.
+구체적인 오류 이름은 언어별 exact interface가 정한다.
 
-**cancellation token 공유 규칙이 빠졌다.** [6.3](#63-실행-순서와-수명)의 "Framework가
-`InvokeAsync`에 전달한 cancellation token을 같은 dispatch의 filter와 handler에 함께 전달한다"는
-규칙을 §8.1에 넣어야 한다. 없으면 filter가 handler와 다른 token을 쓸 수 있다고 읽힌다.
+**cancellation token 공유 규칙도 넣었다.** Framework가 `InvokeAsync`에 전달한
+cancellation token은 같은 dispatch의 filter와 handler에 함께 전달한다.
 
 ### 7.2 `.NET`
 
-filter를 실행하는 `ZLinkHandlerDispatcher`가 어느 경로에 연결되어 있는지 확인한
-결과다.
+반영 뒤 `ZLinkHandlerDispatcher`와 각 진입 경로를 확인한 결과다.
 
-| 경로 | 지금 filter 실행 | [6.1](#61-framework-root에-등록하는-handler-전부에-적용한다) 기준 | 필요한 작업 |
+| 경로 | filter 실행 | [6.1](#61-framework-root에-등록하는-handler-전부에-적용한다) 기준 | 반영 결과 |
 | --- | --- | --- | --- |
 | RouteMesh channel send·request | 실행한다 | 적용 | filter 전용 context, request 중단 처리, 중복 `next` 거부 |
 | ClientServer channel send·request | 실행한다 | 적용 | filter 전용 context, request 중단 처리, 중복 `next` 거부 |
-| classic fanout 구독(`ZLinkFanoutPacketDispatcher`) | 실행한다 | 적용 | filter 전용 context, `MeshName`의 `"fanout"` 제거, 중복 `next` 거부 |
-| Node direct route | **실행하지 않는다** — `ZLinkRouteHandlerInvoker`가 filter 없이 handler를 직접 호출한다 | 적용 | filter 연결과 handler scope 구현 |
+| classic fanout 구독(`ZLinkFanoutPacketDispatcher`) | 실행한다 | 적용 | filter 전용 context를 만들고 `MeshName`을 제공하지 않음 |
+| Node direct route | 실행한다 | 적용 | filter와 handler를 dispatch scope에 연결 |
 | Spot·Actor·Logical Multicast 구독·STREAM session | 실행하지 않는다 | 제외 | 없음 |
 
 [6.5](#65-classic-fanout의-실행-단위)의 실행 단위는 이미 그렇게 동작한다.
@@ -414,9 +406,9 @@ filter를 실행하는 `ZLinkHandlerDispatcher`가 어느 경로에 연결되어
 실패 처리도 반복문 안에서 끝나 다른 handler를 막지 않는다. 이 동작은 구현을 바꾸지
 않고 contract test로 고정한다.
 
-**공통 pipeline에 필요한 작업.** channel과 classic fanout에 함께 적용한다.
+**공통 pipeline에 반영한 작업.** channel과 classic fanout에 함께 적용했다.
 
-1. Filter가 받는 context를 `IZLinkHandlerFilterContext`로 바꾼다.
+1. Filter가 받는 context를 `IZLinkHandlerFilterContext`로 바꿨다.
 2. Dispatch 종류를 pipeline 진입 지점에서 정한다.
 3. `next` 호출 여부와 횟수를 기록한다.
 4. Request가 중단되면 `null` 대신 `Rejected` 오류 reply를 보낸다.
@@ -427,10 +419,9 @@ filter를 실행하는 `ZLinkHandlerDispatcher`가 어느 경로에 연결되어
 `IZLinkMessageContext`에서 `IZLinkHandlerFilterContext`로 바뀐다. v11.0에서는 이전
 context signature를 호환 overload나 adapter로 유지하지 않는다.
 
-**Node direct에 추가로 필요한 작업.** 현재 `ZLinkRouteHandlerInvoker`는 application
-service provider의 `GetRequiredService(...)`로 handler를 직접 가져온다. 그래서
-application이 등록한 lifetime이 실제 handler 수명을 바꾼다 —
-[3.2](#32-수명-규칙)가 금지한 동작이다.
+**Node direct에 추가로 반영한 작업.** 기존 `ZLinkRouteHandlerInvoker`는 application
+service provider에서 handler를 직접 가져왔다. 이 경로를 dispatch scope 안에서
+handler와 filter를 만드는 방식으로 바꿨다.
 
 1. Node direct dispatch마다 DI scope를 하나 연다.
 2. Framework가 handler와 filter를 그 scope에서 한 번씩 만든다.
@@ -439,8 +430,8 @@ application이 등록한 lifetime이 실제 handler 수명을 바꾼다 —
 
 ### 7.3 다섯 언어
 
-공통 spec 변경은 `.NET` 현황만으로 끝나지 않는다. Java·Kotlin, Node.js와 C++에서
-다음을 확인하고 같은 의미로 맞춘다.
+공통 spec 변경은 `.NET` 현황만으로 끝나지 않는다. Java·Kotlin, Node.js와 C++도 다음
+항목을 같은 의미로 맞추고 검증했다.
 
 - Node direct와 classic fanout이 실제로 filter를 거치는지
 - handler 하나마다 새 filter chain과 DI scope를 만드는지
@@ -454,7 +445,7 @@ Java·Node.js·C++에서 filter가 값을 반환하는 형태는 유지해도 �
 해석하지 않는다. C++ exact interface의 기존 reply 대체 문장도 제거한다. Kotlin은 Java
 runtime과 같은 의미를 공유한다. 구현 형태가 달라도 위 동작은 같아야 한다.
 
-이 변경은 기존 filter 구현을 깨뜨린다.
+이 변경은 기존 filter 구현을 깨뜨리는 v11.0 breaking change다.
 
 - C++ exact interface가 보장하던 "filter가 `next()` 결과 대신 새 `message_t`를 반환해
   request reply를 대체한다"는 계약을 제거한다.
@@ -464,32 +455,43 @@ runtime과 같은 의미를 공유한다. 구현 형태가 달라도 위 동작�
   application service로 옮겨야 한다.
 - v11.0에서는 reply 대체 동작을 compatibility adapter로 유지하지 않는다.
 
-## 8. Filter 범위 — 남은 작업
+## 8. Filter 범위 — 반영 결과
 
-[6](#6-filter-범위--무엇으로-정했나)의 설계와 반영안 검토를 마쳤다. 공통 spec, 다섯
-언어 exact interface와 구현은 아직 바꾸지 않았다. 아래를 모두 마친 뒤 이 주제를 완료로
-표시한다.
+[6](#6-filter-범위--무엇으로-정했나)의 설계와 반영안 검토를 마쳤다. 공통 spec과
+다섯 언어의 exact interface·구현·contract test에 반영했다. `.NET`·Java/Kotlin·Node.js
+교차 검토와 C++ 독립 검토에서 확인한 문제도 모두 수정했다.
 
-1. `06-framework-api.ko.md`와 다섯 언어 exact interface에 적용 범위, filter 전용
+| 구현 | 상태 | 확인한 내용 |
+| --- | --- | --- |
+| `.NET` | 완료 | 다섯 dispatch 종류, `MeshName`, request `Rejected`, 중복 `next`, dispatch scope와 fanout 격리 |
+| Java/Kotlin | 완료 | Java runtime을 공유하는 Kotlin을 포함해 같은 public contract와 실행 결과 |
+| Node.js | 완료 | classic fanout에서 내부 placeholder와 관계없이 `MeshName`을 제공하지 않는 것까지 회귀 검증 |
+| C++ | 완료 | dispatch scope·fanout 격리, 기존 typed reply header와 exact terminal/failure pair 검증 |
+
+아래 공통 checklist를 모두 확인했으며 이 주제는 완료했다.
+
+- [x] `06-framework-api.ko.md`와 다섯 언어 exact interface에 적용 범위, filter 전용
    dispatch 종류, 실행 순서, 중단 결과와 fanout 실행 단위를 반영했는가?
-2. `19-stream-session.ko.md`와 `04-message-model.ko.md`의 filter 문장을
+- [x] `19-stream-session.ko.md`와 `04-message-model.ko.md`의 filter 문장을
    [7.1](#71-공통-spec)의 방향으로 고쳐 §8.1과 어긋나지 않게 했는가?
-3. filter나 handler가 던진 예외를 호출한 쪽이 무엇으로 받는지 공통 spec에 남겼는가?
-4. `short-circuit`과 `programmer error`를 결과가 드러나는 문장으로 바꿨는가?
-5. `InvokeAsync`에 전달한 cancellation token을 같은 dispatch의 filter와 handler에 함께
+- [x] filter나 handler가 던진 예외를 호출한 쪽이 무엇으로 받는지 공통 spec에 남겼는가?
+- [x] `short-circuit`과 `programmer error`를 결과가 드러나는 문장으로 바꿨는가?
+- [x] `InvokeAsync`에 전달한 cancellation token을 같은 dispatch의 filter와 handler에 함께
    전달한다는 규칙을 §8.1에 넣었는가?
-6. 기존 filter 구현이 바꿔야 하는 context 인자와 C++·Java·Node.js의 reply 대체 계약
+- [x] 기존 filter 구현이 바꿔야 하는 context 인자와 C++·Java·Node.js의 reply 대체 계약
    제거를 언어별 migration 안내에 breaking change로 적었는가?
-7. `.NET` channel과 classic fanout에
+- [x] `.NET` channel과 classic fanout에
    [7.2](#72-net)의 공통 pipeline 여섯 항목을 구현했는가?
-8. `.NET` Node direct handler와 filter를 공통 dispatch scope에 연결했는가?
-9. Java·Kotlin, Node.js와 C++의 Node direct·fanout 구현을 같은 계약으로 맞췄는가?
-10. 각 언어 contract test가 다섯 dispatch 종류와 request `Rejected`를 확인하는가?
-11. fanout에서 두 handler 중 하나만 중단되거나 실패해도 다른 handler가 실행되는지
+- [x] `.NET` Node direct handler와 filter를 공통 dispatch scope에 연결했는가?
+- [x] Java·Kotlin, Node.js와 C++의 Node direct·fanout 구현을 같은 계약으로 맞췄는가?
+- [x] 각 언어 contract test가 다섯 dispatch 종류와 request `Rejected`를 확인하는가?
+- [x] fanout에서 두 handler 중 하나만 중단되거나 실패해도 다른 handler가 실행되는지
     확인하는가?
-12. handler·filter instance와 의존성의 생성·정리가 dispatch마다 정확히 한 번인지
+- [x] handler·filter instance와 의존성의 생성·정리가 dispatch마다 정확히 한 번인지
     확인하는가?
-13. 공통 spec, exact interface, guide, implementation gap과 execution ledger를 갱신했는가?
+- [x] 공통 spec, exact interface, guide, implementation gap과 execution ledger를 갱신했는가?
 
-`dotnet/guide/05-channel-messaging.ko.md`의 filter 절은 현행 §8.1(ChannelName
-send·request 전용)에 맞춰 두었다. 1번을 마친 뒤 이 문서의 결정으로 바꾼다.
+`dotnet/guide/05-channel-messaging.ko.md`의 filter 절은 이 문서의 결정을 반영했다 —
+적용 범위, dispatch 분류, 실행 순서, `next`를 호출하지 않았을 때의 결과, dispatch 단위
+scope와 fanout의 실행 횟수를 사용자 관점으로 서술했다. 남은 언어의 guide는 해당 언어
+구현이 이 계약을 만족한 뒤에 맞춘다.

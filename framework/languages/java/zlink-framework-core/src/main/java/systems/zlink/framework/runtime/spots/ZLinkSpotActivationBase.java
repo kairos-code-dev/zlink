@@ -275,8 +275,20 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
 
     final CompletionStage<Void> handleRoutedBoundSessionSendParts(
         List<Message> parts) {
-        ZLinkActorSpotRoutePackets.BoundSessionSend send =
-            ZLinkActorSpotRoutePackets.decodeBoundSessionSend(parts);
+        List<Message> packetParts = parts.size() == 2
+            ? systems.zlink.framework.runtime.actors
+                .ZLinkActorEntryTransferEnvelope.decode(parts.get(1))
+            : parts;
+        boolean ownsPacketParts = packetParts != parts;
+        ZLinkActorSpotRoutePackets.BoundSessionSend send;
+        try {
+            send = ZLinkActorSpotRoutePackets.decodeBoundSessionSend(
+                packetParts);
+        } finally {
+            if (ownsPacketParts) {
+                packetParts.forEach(Message::close);
+            }
+        }
         byte[] frameBytes = send.frame().toByteArray();
         CompletionStage<Void> sendStage = host.actorSessions().sendBoundSession(
             send.actorRef(),
@@ -316,7 +328,17 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 packet.actorRef().actorId(),
                 packet.handoffArrivalIndex());
         }
-        return host.dispatchLocalSessionActor(packet.actorRef(), packet.header(), packet.payload())
+        CompletionStage<Optional<Message>> dispatched =
+            packet.handoffArrivalIndex() == null
+                ? host.dispatchLocalSessionActor(
+                    packet.actorRef(),
+                    packet.header(),
+                    packet.payload())
+                : host.dispatchTransferBacklog(
+                    packet.actorRef(),
+                    packet.header(),
+                    packet.payload());
+        return dispatched
             .thenApply(reply -> {
                 Optional<Message> completed = host.replyTransferredRequestDirect(
                     packet.actorRef(), packet.header(), packet.replyRoute(), reply);

@@ -55,7 +55,8 @@ export enum ZLinkFrameworkErrorKind {
   RuntimeShutdown = 'runtimeShutdown',
   RelocationDisabled = 'relocationDisabled',
   RelocationTargetUnavailable = 'relocationTargetUnavailable',
-  RelocationFailed = 'relocationFailed'
+  RelocationFailed = 'relocationFailed',
+  InvalidOperation = 'invalidOperation'
 }
 
 export const ZLINK_FRAMEWORK_ERROR_KIND_VALUES: Readonly<Record<ZLinkFrameworkErrorKind, number>> = Object.freeze({
@@ -98,7 +99,8 @@ export const ZLINK_FRAMEWORK_ERROR_KIND_VALUES: Readonly<Record<ZLinkFrameworkEr
   [ZLinkFrameworkErrorKind.RuntimeShutdown]: 36,
   [ZLinkFrameworkErrorKind.RelocationDisabled]: 37,
   [ZLinkFrameworkErrorKind.RelocationTargetUnavailable]: 38,
-  [ZLinkFrameworkErrorKind.RelocationFailed]: 39
+  [ZLinkFrameworkErrorKind.RelocationFailed]: 39,
+  [ZLinkFrameworkErrorKind.InvalidOperation]: 40
 });
 
 export function isZLinkFrameworkErrorRetriableByDefault(kind: ZLinkFrameworkErrorKind): boolean {

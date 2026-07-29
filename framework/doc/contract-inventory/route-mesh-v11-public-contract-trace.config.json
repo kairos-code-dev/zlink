@@ -6,13 +6,13 @@
   "baseline": {
     "revision": "86258cb9a3ecbc7db2dfd86a8c18de45a562734a",
     "reviewedV11FirstMembers": {
-      "count": 3080,
-      "sha256": "7f6268b41bbcd1a683a0b6ba98e8a437bcf2dadf12a9fdab5f369171768be09f",
+      "count": 3103,
+      "sha256": "0ac332730d1bccfa7a78108300d172b695b6836b4cc6706ca403d159bd3b0ff9",
       "specReason": "The v11 formal contract and exact interfaces introduce this reviewed member after the frozen 10.x baseline."
     },
     "reviewedV11FirstOwners": {
-      "count": 758,
-      "sha256": "7871558ca3c4b650ae60577dcec97ed8e2e7132df1554738ddcc8493de397295",
+      "count": 766,
+      "sha256": "59b7cf12e081ce5836e573756e4e6078e83bcd8a7155cddcc8e88927acfa8858",
       "specReason": "The v11 exact interface introduces this reviewed declaration owner after the frozen 10.x baseline."
     },
     "reviewedIntentionalRemovals": {
@@ -1091,8 +1091,8 @@
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkHandlerFilter.InvokeAsync#590ccdb3bbd4ff96",
         "baselineSignatureSha256": "590ccdb3bbd4ff961514fa9fa2e6f1087181a5762ab8e5987c298bf0916bf964",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkHandlerFilter.InvokeAsync#3147994cc500fb19",
-        "targetSignatureSha256": "3147994cc500fb1960aa575649a0e91b26b0bcf25bbbc7bb94027b9f5adac2e6",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkHandlerFilter.InvokeAsync#767505d7a58d0fc2",
+        "targetSignatureSha256": "767505d7a58d0fc2587d0a9ddfebf5364d6fa33cd92cabb147dae077af87bd51",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1763,8 +1763,8 @@
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkHandlerFilter.invoke#2681b5ec650dba7f",
         "baselineSignatureSha256": "2681b5ec650dba7f04384f76c0ff1682004511ae2be18b55787c8c64e230e8e2",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkHandlerFilter.invoke#823664cf3b854a89",
-        "targetSignatureSha256": "823664cf3b854a89757dc47cbac04e0e5975cd018f714482d431e3f8ec7df9d2",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkHandlerFilter.invoke#60eb2a057eb3f355",
+        "targetSignatureSha256": "60eb2a057eb3f355c8a4406f8c784b91cf5272852c7d3116c6c6140af42e6cfb",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },

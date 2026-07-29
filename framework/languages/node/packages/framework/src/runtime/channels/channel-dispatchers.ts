@@ -138,7 +138,8 @@ export class ZLinkChannelRequestDispatcher {
         envelope,
         codecs: this.options.codecs,
         handler,
-        context
+        context,
+        signal
       });
       return;
     }
@@ -173,6 +174,7 @@ export class ZLinkChannelRequestDispatcher {
       codecs: this.options.codecs,
       handler,
       context,
+      signal,
       missingHandlerMessage: `No channel request handler is registered for '${this.options.channelName}:${packetName}'.`,
       writeReply: reply => this.submitReply(
         appendParts(
@@ -192,7 +194,6 @@ export class ZLinkChannelRequestDispatcher {
   }
 
   async dispatchMesh(record: ReceiveRecord, signal?: AbortSignal): Promise<void> {
-    void signal;
     if (record.parts.length === 0 || record.parts[0].data().length === 0) {
       return;
     }
@@ -221,7 +222,8 @@ export class ZLinkChannelRequestDispatcher {
           packetName,
           metadata: zlinkMessageMetadata(envelope.header.metadata),
           correlationId
-        }
+        },
+        signal
       });
       return;
     }
@@ -248,6 +250,7 @@ export class ZLinkChannelRequestDispatcher {
         metadata: zlinkMessageMetadata(envelope.header.metadata),
         correlationId
       },
+      signal,
       missingHandlerMessage: `No channel request handler is registered for '${this.options.channelName}:${packetName}'.`,
       writeReply: async (reply) => {
         requireMeshReplyAccepted(record.reply(
@@ -308,7 +311,10 @@ export class ZLinkChannelPublishDispatcher {
     });
   }
 
-  async dispatch(topicMessage: { readonly topic: string; readonly parts: readonly Message[] }): Promise<void> {
+  async dispatch(
+    topicMessage: { readonly topic: string; readonly parts: readonly Message[] },
+    signal?: AbortSignal
+  ): Promise<void> {
     if (topicMessage.parts.length === 0 || topicMessage.parts[0].data().length === 0) {
       return;
     }
@@ -349,7 +355,8 @@ export class ZLinkChannelPublishDispatcher {
       envelope,
       codecs: this.options.codecs,
       handler,
-      context
+      context,
+      signal
     });
   }
 }
@@ -428,7 +435,7 @@ export class ZLinkRoutePacketDispatcher {
     send?: () => ZLinkMultipartOperation<ZLinkMultipartSubmitOperation>;
   }, router: {
     reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
-  }): Promise<boolean | void> {
+  }, signal?: AbortSignal): Promise<boolean | void> {
     if (
       this.spotRouteBridge !== undefined &&
       !isChannelEnvelope(received.parts)
@@ -479,7 +486,8 @@ export class ZLinkRoutePacketDispatcher {
         envelope,
         codecs: codecsForFrameworkPacket(packetName, this.codecs),
         handler,
-        context: this.createRouteContext(envelope, received.routingId)
+        context: this.createRouteContext(envelope, received.routingId),
+        signal
       });
       return;
     }
@@ -517,6 +525,7 @@ export class ZLinkRoutePacketDispatcher {
       codecs,
       handler,
       context: this.createRouteContext(envelope, received.routingId),
+      signal,
       missingHandlerMessage: `No routed request handler is registered for '${this.routerChannelId}:${packetName}'.`,
       writeReply: reply => this.submitReply(
         appendParts(
@@ -533,7 +542,7 @@ export class ZLinkRoutePacketDispatcher {
     });
   }
 
-  async dispatchMesh(record: ReceiveRecord): Promise<void> {
+  async dispatchMesh(record: ReceiveRecord, signal?: AbortSignal): Promise<void> {
     if (record.parts.length === 0 || record.parts[0].data().length === 0) {
       return;
     }
@@ -545,7 +554,7 @@ export class ZLinkRoutePacketDispatcher {
     const sourceNodeRid = String(record.sourceNodeRid ?? '');
     const correlationId = envelope.header.correlationId ?? undefined;
     if (envelope.header.kind === ZLinkChannelMessageKind.Command) {
-      await this.dispatchMeshCommand(envelope, packetName, sourceNodeRid, record.sourceNodeRid);
+      await this.dispatchMeshCommand(envelope, packetName, sourceNodeRid, record.sourceNodeRid, signal);
       return;
     }
     if (envelope.header.kind !== ZLinkChannelMessageKind.Request) {
@@ -566,6 +575,7 @@ export class ZLinkRoutePacketDispatcher {
       codecs,
       handler: this.requestHandlers.get(packetName),
       context: this.createRouteContext(envelope, record.sourceNodeRid),
+      signal,
       missingHandlerMessage: `No routed request handler is registered for '${this.routerChannelId}:${packetName}'.`,
       writeReply: async (reply) => {
         requireMeshReplyAccepted(record.reply(encodeChannelReplyParts(envelope.header, reply, codecs)));
@@ -576,7 +586,11 @@ export class ZLinkRoutePacketDispatcher {
     });
   }
 
-  async dispatchLocalCommand(parts: readonly Message[], sourceNodeRid: RoutingId): Promise<void> {
+  async dispatchLocalCommand(
+    parts: readonly Message[],
+    sourceNodeRid: RoutingId,
+    signal?: AbortSignal
+  ): Promise<void> {
     if (parts.length === 0 || parts[0].data().length === 0) return;
     const envelope = decodeChannelEnvelope(parts);
     if (envelope.header.kind !== ZLinkChannelMessageKind.Command) {
@@ -586,14 +600,15 @@ export class ZLinkRoutePacketDispatcher {
     if (packetName === undefined) {
       throw new ZLinkConfigurationException('Route packet is missing packetName.');
     }
-    await this.dispatchMeshCommand(envelope, packetName, String(sourceNodeRid), sourceNodeRid);
+    await this.dispatchMeshCommand(envelope, packetName, String(sourceNodeRid), sourceNodeRid, signal);
   }
 
   private dispatchMeshCommand(
     envelope: ReturnType<typeof decodeChannelEnvelope>,
     packetName: string,
     sourceRid: string,
-    sourceNodeRid: unknown
+    sourceNodeRid: unknown,
+    signal?: AbortSignal
   ): Promise<void> {
     return this.pipeline.dispatchOneWay({
       fields: {
@@ -607,7 +622,8 @@ export class ZLinkRoutePacketDispatcher {
       envelope,
       codecs: codecsForFrameworkPacket(packetName, this.codecs),
       handler: this.sendHandlers.get(packetName),
-      context: this.createRouteContext(envelope, sourceNodeRid)
+      context: this.createRouteContext(envelope, sourceNodeRid),
+      signal
     });
   }
 

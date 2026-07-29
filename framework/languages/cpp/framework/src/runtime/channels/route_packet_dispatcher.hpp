@@ -22,7 +22,12 @@ class route_packet_dispatcher_t
                                serializer_registry_t &serializers,
                                const route_handler_registry_t &handlers,
                                const route_internal_packet_dispatcher_t &internal_packets,
-                               dispatch_options_t dispatch_options = {});
+                               dispatch_options_t dispatch_options = {},
+                               const handler_registry_t *filters = nullptr,
+                               handler_dispatch_kind_t send_dispatch_kind =
+                                 handler_dispatch_kind_t::node_direct_send,
+                               handler_dispatch_kind_t request_dispatch_kind =
+                                 handler_dispatch_kind_t::node_direct_request);
 
     result_t<std::optional<route_dispatch_reply_t>>
     dispatch (const route_received_packet_t &received) const;
@@ -50,9 +55,14 @@ class route_packet_dispatcher_t
     service_provider_t *_services = nullptr;
     serializer_registry_t *_serializers = nullptr;
     const route_handler_registry_t *_handlers = nullptr;
+    const handler_registry_t *_filters = nullptr;
     const route_internal_packet_dispatcher_t *_internal_packets = nullptr;
     route_handler_invoker_t _invoker;
     dispatch_options_t _dispatch_options;
+    handler_dispatch_kind_t _send_dispatch_kind =
+      handler_dispatch_kind_t::node_direct_send;
+    handler_dispatch_kind_t _request_dispatch_kind =
+      handler_dispatch_kind_t::node_direct_request;
 };
 
 } // namespace zlink::framework::detail

@@ -25,6 +25,7 @@ namespace zlink::framework
 namespace detail
 {
 class handler_registry_state_t;
+class route_handler_invoker_t;
 } // namespace detail
 
 enum class handler_kind_t
@@ -73,7 +74,8 @@ class payload_view_t
     encoded_payload_t _payload;
 };
 
-using handler_next_t = std::function<task_t<zlink::message_t> ()>;
+/// Continues the current dispatch pipeline. A filter may call it at most once.
+using handler_next_t = std::function<task_t<void> ()>;
 
 class handler_registry_t
 {
@@ -85,10 +87,10 @@ class handler_registry_t
                                               const zlink::message_t &,
                                               const detail::inbound_message_context_t &)>;
     using failure_observer_t = std::function<void (const handler_failure_event_t &)>;
-    using filter_invoker_t = std::function<task_t<zlink::message_t> (service_provider_t &,
-                                                                     serializer_registry_t &,
-                                                                     const message_context_t &,
-                                                                     handler_next_t)>;
+    using filter_invoker_t = std::function<task_t<void> (service_provider_t &,
+                                                          serializer_registry_t &,
+                                                          const handler_filter_context_t &,
+                                                          handler_next_t)>;
 
     handler_registry_t ();
     ~handler_registry_t ();
@@ -371,8 +373,8 @@ class handler_registry_t
     template <typename TFilter> handler_registry_t &use_filter ()
     {
         return add_filter ([] (service_provider_t &services, serializer_registry_t &,
-                               const message_context_t &context,
-                               handler_next_t next) -> task_t<zlink::message_t> {
+                               const handler_filter_context_t &context,
+                               handler_next_t next) -> task_t<void> {
             auto &filter = services.get_required<TFilter> ();
             return filter.invoke (context, std::move (next));
         });
@@ -401,6 +403,15 @@ class handler_registry_t
                                        const detail::inbound_message_context_t &inbound = {}) const;
 
   private:
+    using terminal_invoker_t = std::function<task_t<zlink::message_t> ()>;
+
+    task_t<zlink::message_t>
+    invoke_filters_async (handler_dispatch_kind_t dispatch_kind,
+                          service_provider_t &services,
+                          serializer_registry_t &serializers,
+                          const message_context_t &context,
+                          terminal_invoker_t terminal) const;
+
     task_t<zlink::message_t> invoke_async (std::string_view channel_name,
                                            std::string_view packet_name,
                                            service_provider_t &services,
@@ -558,6 +569,8 @@ class handler_registry_t
     handler_registry_t &add_handler (handler_descriptor_t descriptor, invoker_t invoker);
     void emit_failure (const handler_descriptor_t &descriptor,
                        const framework_exception_t &error) const;
+
+    friend class detail::route_handler_invoker_t;
 
     std::unique_ptr<detail::handler_registry_state_t> _state;
 };

@@ -753,6 +753,8 @@ connection도 자동으로 새로 연결되거나 정리된다 — 설정 파일
 | `options.AddRouteMesh(...)` / `AddFanoutChannel(...)` | RouteMesh·fanout 선언 | [5장](05-channel-messaging.ko.md) |
 | runtime event handler | monitoring event 관찰 | [11장](11-monitoring.ko.md) |
 
+각 표면에서 정할 수 있는 옵션 전체와 기본값은 [16-options](16-options.ko.md)에 모아 두었다.
+
 ### 무엇부터 쓸지 고르기
 
 만들려는 것이 정해졌다면 아래 갈래로 시작 지점을 잡는다.
@@ -998,6 +1000,7 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 8. [10-location](10-location.ko.md) — location store 기반 자동 연결과 운영 조회
 9. [11-monitoring](11-monitoring.ko.md) — runtime 이벤트 관찰
 10. [15-samples](15-samples.ko.md) — 실행되는 샘플로 확인하기
+11. [16-options](16-options.ko.md) — 옵션 목록과 기본값, 무엇을 언제 바꾸나
 11. [13-interface-catalog](13-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
 12. [14-alternative](14-alternative.ko.md) — **ZLink를 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
 13. [공통 샘플](../../common/sample/README.ko.md) — 대표 업무 시나리오와 검증 기준

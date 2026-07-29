@@ -114,4 +114,30 @@ final class ZLinkActorDispatchSerialsTest {
         dispatches.awaitQuiescence().toCompletableFuture().join();
         assertEquals(1, cleanupCount.get());
     }
+
+    @Test
+    void consecutiveAcceptedPacketTurnsReleaseTheActorLane() {
+        ZLinkActorDispatchSerials dispatches = new ZLinkActorDispatchSerials();
+        List<String> order = new ArrayList<>();
+
+        CompletionStage<Void> first = dispatches.enqueue(
+            dispatches.prepare("actor-1"),
+            new byte[] {1},
+            () -> dispatches.runTurn("actor-1", () -> {
+                order.add("first");
+                return CompletableFuture.completedFuture(null);
+            }));
+        CompletionStage<Void> second = dispatches.enqueue(
+            dispatches.prepare("actor-1"),
+            new byte[] {2},
+            () -> dispatches.runTurn("actor-1", () -> {
+                order.add("second");
+                return CompletableFuture.completedFuture(null);
+            }));
+
+        CompletableFuture.allOf(
+            first.toCompletableFuture(),
+            second.toCompletableFuture()).join();
+        assertEquals(List.of("first", "second"), order);
+    }
 }

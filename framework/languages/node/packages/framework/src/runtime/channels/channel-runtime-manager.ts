@@ -189,16 +189,21 @@ export class ZLinkChannelRuntimeManager {
     return this.lifecycle.dispatchMeshChannel(meshName, record, signal);
   }
 
-  dispatchMeshRoute(meshName: string, record: ReceiveRecord): Promise<void> {
-    return this.lifecycle.dispatchMeshRoute(meshName, record);
+  dispatchMeshRoute(
+    meshName: string,
+    record: ReceiveRecord,
+    signal?: AbortSignal
+  ): Promise<void> {
+    return this.lifecycle.dispatchMeshRoute(meshName, record, signal);
   }
 
   dispatchLocalMeshRoute(
     meshName: string,
     sourceNodeRid: RoutingId,
-    parts: readonly Message[]
+    parts: readonly Message[],
+    signal?: AbortSignal
   ): Promise<void> {
-    return this.lifecycle.dispatchLocalMeshRoute(meshName, sourceNodeRid, parts);
+    return this.lifecycle.dispatchLocalMeshRoute(meshName, sourceNodeRid, parts, signal);
   }
 
   canDispatchLocalMeshRoute(meshName: string): boolean {

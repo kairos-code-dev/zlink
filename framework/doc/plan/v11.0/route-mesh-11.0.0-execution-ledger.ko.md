@@ -2915,8 +2915,8 @@ disconnect의 기존 fixed snapshot all-settled cleanup은 유지한다.
 | `V11-M6C-CAPACITY-DN` | .NET runtime·Redis typed capacity | .NET Location provider lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | creation·relocation·aggregate·abort·destroy가 단일 typed bundle을 원자적으로 처리하고 cross-language Redis fixture 통과 | .NET public capacity vector는 Actor total, Spot total과 optional Spot stable-type delta를 함께 표현한다. InMemory·Redis creation, standalone relocation, aggregate prepare·commit·abort와 delete가 같은 typed bundle을 원자적으로 적용하고 Redis schema는 `zlink-capacity-bundle-v2`를 사용한다. Root 재검증에서 `RelocationRuntimeTests` 23/23과 실제 Redis `RedisAuthorityRelocationTests` 11/11이 통과했다. |
 | `V11-M6C-CAPACITY-JVM` | JVM runtime·Redis typed capacity | JVM Location provider lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | creation·relocation·aggregate·abort·destroy가 단일 typed bundle을 원자적으로 처리하고 cross-language Redis fixture 통과 | Root가 Core와 Redis module 전체를 `--rerun-tasks`로 재실행해 build 성공을 확인했다. Core 494/494, Redis module 35건 실패 0이며 환경 비대상 2건만 skip했다. Descriptor v2 fixture와 creation·standalone relocation·aggregate·abort·destroy의 Actor total·Spot total·Spot stable-type bundle 원자성을 실제 Redis 7.0.15에서 검증했고 legacy scalar aggregate Lua와 relocation helper는 production source에서 제거했다. |
 | `V11-M6C-CAPACITY-NODE` | Node.js runtime·Redis typed capacity | Node.js Location provider lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | creation·relocation·aggregate·abort·destroy가 단일 typed bundle을 원자적으로 처리하고 cross-language Redis fixture 통과 | Root가 production typecheck·Node/browser build와 실제 Redis filtered 3/3을 재실행했다. Descriptor v2·authority fixture, exact 14-field admission과 creation·standalone relocation·aggregate·abort·destroy의 Actor total·Spot total·Spot stable-type bundle 원자성을 검증했다. 전체 M6C 36건 중 capacity와 무관한 Entry/User Spot collision 정책 2건은 `V11-M6B-ENTRY-IDENTITY-NODE` gap으로 분리한다. |
-| `V11-M6C-CAPACITY-MONITORING` | 다섯 언어 capacity 관측 구현 | monitoring lanes, `P-DELIVERY` | `V11-M6C-CAPACITY-CPP`, `V11-M6C-CAPACITY-DN`, `V11-M6C-CAPACITY-JVM`, `V11-M6C-CAPACITY-NODE` | 진행 | Actor total·Spot total·Spot stable type별 active·reserved·limit, activation active·limit과 unlimited 표현의 parity test 통과 | C++는 Location Store descriptor의 Actor·Spot·stable type별 active·reserved·limit과 activation active·limit을 snapshot에 투영하고 store 불가 시 registration limit으로 fallback한다. .NET은 descriptor cache를 snapshot에 투영하고 capacity 변경 시 placement event를 발행한다. JVM도 같은 descriptor 값을 Java exact `objectCapacity`·`activationConcurrency`에 투영하며 Actor·Spot total과 User·Instance Spot stable type의 active·reserved·limit을 유지하고 limit 0을 unlimited로 표현한다. Store row를 조회할 수 없으면 registration의 configured limit으로 fallback한다. Spring monitor는 100 ms 간격으로 local descriptor를 비교해 `zlink.runtime.object.placement_changed`를 발행하며, exact Java event가 허용하는 descriptor revision과 `updated` reason으로 변화 시점을 알리고 값은 같은 runtime의 snapshot에서 읽는다. Exact snapshot constructor·accessor와 Java·Kotlin 사용 표면을 검증했고 Java core 565/565, Spring starter 32/32, Kotlin 49/49가 통과했다. Node observer도 관찰자가 있을 때만 100 ms 간격으로 local descriptor의 typed population·activation capacity를 비교하고, 값이 바뀌면 `zlink.runtime.object.placement_changed`와 `updated` reason, 변경된 두 snapshot을 함께 발행한다. 마지막 관찰자가 종료되면 polling을 중단한다. Node typecheck·production/browser build와 `drain-control` focused 16/16이 통과했다. .NET focused 2건과 public contract snapshot, C++ framework·contract header·runtime integration build/run도 통과했다. C++ vertical target은 기존 generated include와 stale service API 오류로 전체 compile evidence를 만들지 못했으므로 이 row는 진행 상태를 유지한다. |
-| `V11-M6B-ENTRY-IDENTITY-CPP` | C++ global SpotId와 Framework-issued lifecycle identity | C++ runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 수정 진행 | 모든 Spot path가 UTF-8 string SpotId를 사용하고 Entry·User UUID v4, exact descriptor mapping·v3 provider·cleanup contract test 통과 | C++ runtime은 User Spot create reply를 `RoutingId`로 변환하지 않고 wire의 UTF-8 SpotId를 그대로 보존한다. InMemory·Redis Location Store는 descriptor `NewClaim`에서 Entry SpotId claim, User·Instance authority 충돌 검사와 descriptor 저장을 한 transaction으로 처리한다. Descriptor remove와 owner cleanup은 exact owner lease·lifecycle이 일치할 때만 claim을 해제하며 stale cleanup은 replacement claim을 변경하지 않는다. Generic Spot reservation은 live Entry claim을 authority `Missing` conflict로 반환한다. UUID v4 version·variant, generated User Spot 첫 conflict의 추가 UUID·reservation 0, descriptor exact mapping과 InMemory lifecycle test를 포함한 `test_cpp_framework_m6b_runtime` 1/1이 통과했다. 실제 Redis claim HASH·무기한 retention, reverse authority collision, duplicate claim, exact remove·owner cleanup focused 1/1과 provider 전체 17/17도 통과했다. checkpoint `29f7be7ade87c74dcd36657afed3e8baedbcbffa`의 immutable candidate로 실행한 전체 C++ `M6-RUNTIME`은 configure·runtime compile·public build까지 통과했으나 public contract test 1/3 통과, 2/3 실패로 PASS evidence를 만들지 못했다. 후속 조사에서 Bingo는 별도 handler가 아니라 Entry Spot `on_create_actor`가 생성 승인과 초기화를 소유하고, Actor lookup은 global ActorId authority key를 사용하며, ST-D1·SM-F4는 string SpotId field로 이미 계약을 검증하는 것을 확인했다. Contract gate를 이 현행 의미에 맞춰 고치고 ObservabilityOps에 owner lease의 before/during renewal과 기존 route 8/8 성공 증거를 추가했다. `test_cpp_framework_layout_contract`와 `test_cpp_framework_target_contract`가 모두 통과했고 ObservabilityOps host target도 compile됐다. 전체 `M6-RUNTIME`과 `ROW-GATE`는 새 immutable candidate로 다시 실행하기 전까지 완료하지 않는다. |
+| `V11-M6C-CAPACITY-MONITORING` | 다섯 언어 capacity 관측 구현 | monitoring lanes, `P-DELIVERY` | `V11-M6C-CAPACITY-CPP`, `V11-M6C-CAPACITY-DN`, `V11-M6C-CAPACITY-JVM`, `V11-M6C-CAPACITY-NODE` | 완료 | Actor total·Spot total·Spot stable type별 active·reserved·limit, activation active·limit과 unlimited 표현의 parity test 통과 | C++는 Location Store descriptor의 Actor·Spot·stable type별 active·reserved·limit과 activation active·limit을 snapshot에 투영하고 store 불가 시 registration limit으로 fallback한다. .NET은 descriptor cache를 snapshot에 투영하고 capacity 변경 시 placement event를 발행한다. JVM도 같은 descriptor 값을 Java exact `objectCapacity`·`activationConcurrency`에 투영하며 Actor·Spot total과 User·Instance Spot stable type의 active·reserved·limit을 유지하고 limit 0을 unlimited로 표현한다. Store row를 조회할 수 없으면 registration의 configured limit으로 fallback한다. Spring monitor는 100 ms 간격으로 local descriptor를 비교해 `zlink.runtime.object.placement_changed`를 발행하며, exact Java event가 허용하는 descriptor revision과 `updated` reason으로 변화 시점을 알리고 값은 같은 runtime의 snapshot에서 읽는다. Exact snapshot constructor·accessor와 Java·Kotlin 사용 표면을 검증했고 Java core 565/565, Spring starter 32/32, Kotlin 49/49가 통과했다. Node observer도 관찰자가 있을 때만 100 ms 간격으로 local descriptor의 typed population·activation capacity를 비교하고, 값이 바뀌면 `zlink.runtime.object.placement_changed`와 `updated` reason, 변경된 두 snapshot을 함께 발행한다. 마지막 관찰자가 종료되면 polling을 중단한다. Node typecheck·production/browser build와 `drain-control` focused 16/16이 통과했다. .NET focused 2건과 public contract snapshot도 통과했다. C++ blocker는 후속 shared tree에서 해소됐다. `cmake --build framework/languages/cpp/build --target test_cpp_framework_contract_headers test_cpp_framework_m6c_runtime zlink_cpp_framework_mesh_node_vertical_test -j2`로 `zlink_framework` 전체와 세 target을 빌드한 뒤 세 binary를 실행해 모두 exit 0을 확인했다. Vertical snapshot은 Actor·Spot·stable type의 active·reserved·limit, activation active·limit과 limit 0의 unlimited 표현을 검증한다. Fresh candidate의 `ROW-GATE`도 files 3·commands 4로 통과했다. 증거: `.artifacts/v11/evidence/V11-M6C-CAPACITY-MONITORING/result.json` |
+| `V11-M6B-ENTRY-IDENTITY-CPP` | C++ global SpotId와 Framework-issued lifecycle identity | C++ runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 완료 | 모든 Spot path가 UTF-8 string SpotId를 사용하고 Entry·User UUID v4, exact descriptor mapping·v3 provider·cleanup contract test 통과 | C++ runtime은 User Spot create reply의 UTF-8 SpotId를 보존한다. InMemory·Redis Location Store는 descriptor `NewClaim`에서 Entry SpotId claim, User·Instance authority 충돌 검사와 descriptor 저장을 한 transaction으로 처리한다. Exact owner lease·lifecycle이 일치하는 descriptor remove·owner cleanup만 claim을 해제하며 stale cleanup은 replacement claim을 변경하지 않는다. UUID v4 version·variant, 첫 conflict의 추가 UUID·reservation 0, descriptor mapping과 provider lifecycle 회귀가 통과했다. Fresh candidate `candidate-20260729T115926Z.json`의 C++ `M6-RUNTIME` required command 10/10과 exact `ROW-GATE` files 5·commands 10이 통과했다. Public contract 3/3, internal runtime 4/4, resource 3/3, protocol 3/3이며 sample·E2E project와 task 실행·skip은 모두 0이다. M6 result는 `.artifacts/v11/evidence/V11-M6B-ENTRY-IDENTITY-CPP/m6-result-20260729T115926Z.json`(SHA-256 `881ca4f7a324ab633729902ed21e6a0487cbb97ae8a4c4063e6c9a9e01129073`), row result는 같은 디렉터리의 `result-20260729T115926Z.json`(SHA-256 `e8561af2409b94e7420966c3b99722d3866f4f49d19d77197abc29ab38410052`)이다. |
 | `V11-M6B-ENTRY-IDENTITY-DN` | .NET global SpotId와 Framework-issued lifecycle identity | .NET runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 완료 | 모든 Spot path가 string SpotId를 사용하고 Entry·User UUID v4, exact descriptor mapping·v3 provider·cleanup contract test 통과 | Entry Spot은 bind 전에 `<prefix>-entry-<lowercase UUID v4>` SpotId를 발급하고 reserved caller ID를 거부한다. Descriptor publish와 Spot authority claim을 같은 owner·lifecycle fence로 연결했으며 InMemory·Redis provider가 duplicate claim, stale owner cleanup과 renew idempotence를 동일하게 처리한다. Instance activation의 public fluent surface와 production source에서 `InstanceSpotAddress`·`CloseLegacyAsync` 잔여를 제거했다. Entry identity·topology·auto-connect·ClientServer focused 묶음 48/48, Instance·wire·metrics·Actor manager focused 묶음 50/50과 relocation·capacity focused 24/24가 통과했다. 2026-07-26 완료 감사에서 전체 Unit 940/940과 Contract 65/65를 다시 통과해 이전 fixture·snapshot 대기를 닫았다. |
 | `V11-M6B-ENTRY-IDENTITY-JVM` | JVM global SpotId와 Framework-issued lifecycle identity | JVM runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 완료 | Java·Kotlin 모든 Spot path가 String SpotId를 사용하고 Entry·User UUID v4·v3 provider parity test 통과 | Root가 Core 497/497, Kotlin 46/46과 실제 Redis module 35건 실패 0을 `--rerun-tasks`로 재실행했다. Public `joinEntrySpot(Object)`는 target RID를 받지 않고 Actor stable type·capacity·weight로 eligible descriptor를 선택한 뒤 exact `entrySpotId`를 사용한다. Entry·User Spot UUID v4, 첫 충돌 즉시 실패, descriptor kind·Mesh·owner mapping과 v3 identity claim을 검증했다. 비활성 integration source의 이전 public 호출은 `V11-R5D` 뒤 E2E 활성화 단계에서 current contract로 함께 갱신하며 이 runtime sub-ID gate에는 포함하지 않는다. |
 | `V11-M6B-ENTRY-IDENTITY-NODE` | Node.js global SpotId와 Framework-issued lifecycle identity | Node.js runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 완료 | 모든 Spot path가 string SpotId를 사용하고 Entry·User UUID v4, exact descriptor mapping·v3 provider·cleanup contract test 통과 | Root가 typecheck, production/browser build, M6B 39/39, M6C 36/36과 Unicode Redis SpotId·public contract focused 2/2를 재실행했다. Public/runtime/Location/wire의 Spot identity는 UTF-8 string이고 hex side field·NodeRid==SpotId fallback은 0이다. Entry descriptor exact match, UUID v4 첫 충돌의 즉시 SpotIdConflict와 추가 UUID·reservation 0을 검증했다. |
@@ -3639,8 +3639,8 @@ Framework build warning·error 0, relocation focused 104/104, 전체 Unit 993/99
 | `V11-M6C-DN` | .NET maintenance·monitoring·ASP.NET | .NET lane, `P-DEEP` | `V11-R5B` | 진행 | CAS·lease·Task race·terminal observation·ASP.NET shutdown contract 통과 | `IZLinkFrameworkRuntime`의 host-wide state·snapshot·bounded observer·`RetireAsync`·`ShutdownAsync`와 ASP.NET hosting stop 연결을 유지한다. Retire preflight blocker는 admission seal 전에 `Serving`을 유지하고, Shutdown과 Retire는 first effective intent의 shared operation에 합류하며 waiter cancellation은 shared operation을 취소하지 않는다. Target .NET 계약의 `IZLinkAuthorityStore`, `IZLinkRelocationStore`, Actor·Spot relocation adapter와 policy, 분리된 `AddRelocationStore`를 추가했다. User·Instance Spot과 Actor participant를 함께 담는 deterministic root는 application state, accepted queue sequence·payload와 logical timer cursor·payload를 보존한다. Root를 24시간 retention으로 먼저 저장하고 CRC32C·immutable read를 검증한 뒤 single authority CAS 또는 aggregate prepare·commit으로 publish한다. CAS conflict와 prepare reject는 orphan을 정리하고, commit outcome exception은 authority reference를 읽어 reconcile하며 published root missing·checksum·inventory mismatch는 rollback하지 않는 data-loss로 분류한다. Managed Spot·Actor outbound frame은 object generation이나 상수 `1`을 authority fence로 쓰지 않고 Location row에서 관찰한 `AuthorityOwnerGeneration`만 사용하며 inbound는 local actual generation과 일치할 때만 dispatch한다. In-memory와 Redis Location row는 owner claim generation을 이 field로 materialize한다. 이번 slice에서 `IZLinkLocationStore`가 `IZLinkAuthorityStore`를 직접 상속하도록 연결하고 in-memory provider에 exact read·CAS·snapshot scan·reservation·aggregate state를 추가했다. 공식 Redis package에는 Location과 별도 options·connection lifecycle을 가진 `ZLinkRedisRelocationStore`를 추가했다. Relocation payload는 SHA-256 reference와 CRC32C를 사용하고 Redis `TIME` 기준 retention으로 저장·renew·read·delete한다. `ZLinkRedisLocationStore`는 같은 namespace에서 authority Preserve/Delete CAS, 1분 snapshot scan, reservation과 bounded aggregate prepare·commit·abort를 server-side script로 실행한다. Spot serial queue는 application closure를 accepted sequence·immutable payload·local executor로 분리했다. Turn boundary seal은 pending application record를 capture하고 이후 record를 hold하며 infrastructure continuation은 계속 실행한다. Abort는 infrastructure 뒤 captured→held 순서로 복원하고 commit은 source resource를 해제한 뒤 held record를 relay 입력으로 반환한다. 실제 Spot route ingress는 source RID·Spot ID·request sequence·metadata·message parts를 bounded accepted-journal record로 저장한다. Timer pump는 native handle 대신 registration, delivery·scheduled cursor, next due와 pending tick을 소유한다. Source freeze·abort resume와 target의 새 pump restore를 deterministic logical timer payload로 연결했고 freeze 뒤 timer handler가 실행되지 않도록 admission을 막는다. 정식 `IZLinkMeshObjectServerBuilder`의 stable type·placement·relocation policy 등록을 현재 MeshNode builder가 직접 구현하고 Snapshot adapter type 검증, DI 등록과 typed Capture·Restore invoker를 같은 registration record에 연결했다. User Spot capture는 같은 serial boundary에서 Spot과 canonical member Actor state를 adapter policy에 따라 수집한다. Serial focused 21/21, timer lifecycle 7/7, relocation runtime 12/12, ASP.NET·Framework build warning·error 0이 통과했다. 전체 unit은 709건 중 runtime 702건이 통과했고 실패 7건은 이동 안내 문서와 비활성 E2E fixture를 기대하는 기존 documentation regression이다. Redis 기존 회귀 8건 중 `IReadOnlySet<string>` codec 원인 6건을 수정했고 34/36이 통과했다. 남은 2건은 target fixture의 새 descriptor·authority HASH와 이전 test codec 비교가 충돌하는 contract migration gap이다. `ZLinkAuthorityMutation.Put`의 `NewOwner`·`NewObject`에는 opaque payload와 별도로 target owner token이 필요하다. 이 token을 정식 계약과 provider에 반영하고 in-memory payload decode 우회를 제거하는 작업이 진행 중이다. 실제 Retire scheduler의 target reservation·factory·Restore-before-commit·accepted reply relay ACK·STREAM fence와 aggregate completion이 아직 기존 network Actor drain을 대체하지 않았으므로 `M6-RUNTIME` 또는 `V11-R5C` 시작 증거로 사용하지 않는다. Core·bindings와 Sample·E2E source 변경·test 실행은 0이다. 검증 중 solution 전체 build를 한 번 잘못 호출해 Sample·E2E project compile graph가 시작됐으나 package downgrade에서 중단됐고, 이후 검증은 Framework·ASP.NET과 UnitTests project로 한정했다. |
 | `V11-M6C-JVM` | JVM maintenance·monitoring·Spring | JVM lane, `P-DEEP` | `V11-R5B` | 진행 | Java·Kotlin lifecycle·coroutine·Spring metadata와 shutdown contract 통과 | Host-wide `retire`·`shutdown`, runtime state·termination result·observer, 기본 64 unit·256 MiB scheduler, accepted journal queue, logical timer freeze/restore, immutable Relocation Store와 authority publication coordinator를 유지한다. `ZLinkLocationStore`가 `ZLinkAuthorityStore`를 직접 상속하며 runtime은 같은 provider를 별도 fake나 internal port 없이 authority service로 노출한다. In-memory provider도 read·`PRESERVE`/delete CAS·scan·reservation·aggregate 상태를 구현했고 공식 Redis provider의 중복 authority 선언은 제거했다. Exact object role builder와 stable type·placement·explicit relocation policy 등록 표면을 추가했다. Snapshot policy는 Actor와 Spot adapter의 generic 대상 type을 socket 생성 전 검증하며 runtime adapter registry가 stable type을 실제 adapter instance와 capture/restore 호출에 연결한다. Client·Server object role은 Location Store가 필수이고 Recreate·Snapshot policy는 Relocation Store가 필수다. Shutdown은 기존 Actor network handoff를 실행하지 않는다. Actor를 먼저 정리한 뒤 User Spot과 Entry Spot의 `onClosing`에 `HOST_SHUTDOWN`과 deadline을 전달한다. Retire에 active Actor·User Spot이 있으나 새 owner token을 publish할 수 없는 현재 계약에서는 admission seal 전에 `RELOCATION_FAILED` 또는 `RELOCATION_DISABLED`로 종료해 기존 handoff나 payload parse로 우회하지 않는다. Java core 417/417, Spring starter 33/33, Kotlin compile, Redis provider 18건 중 환경 의존 7건 skip·실패 0이 통과했다. 남은 계약 공백은 `ZLinkAuthorityPut`의 `NEW_OWNER`·`NEW_OBJECT`가 target owner token을 전달하지 못하는 점과 aggregate exact owner lease claim/read·capacity fence다. 최소 수정안은 Put에 transition별로 검증하는 optional target owner를 추가하고 Actor 단위 `NEW_OWNER` CAS에 사용하며, 이미 target owner가 있는 aggregate·reservation은 그대로 유지하는 것이다. 이 계약이 확정되기 전에는 User Spot aggregate capture/restore, target replay-before-commit과 실제 Retire relocation을 연결하지 않는다. Spring construction/start 분리도 남아 있다. 2026-07-26 checkpoint에서 `18-object-routing.ko.md`를 direct·Session binding·reply route 분리 기준으로 적용했다. Process-wide relocation permit pool은 outbound·inbound 기본 64, Capture·Restore 기본 8과 payload 256 MiB를 하나의 accounting domain에서 all-or-none으로 예약한다. 예상 payload는 Capture 뒤 실제 크기로 줄일 수 있고, 256 MiB를 넘는 unit은 pool이 비어 있으며 caller가 oversized를 명시한 경우에만 단독으로 admit한다. Target-side aggregate coordinator는 immutable root의 CRC32C와 read-back bytes를 검증한 뒤 canonical UTF-8 participant inventory의 SHA-256 digest와 ZLAR authority reference를 구성하고 `prepareAggregate`까지만 실행한다. 따라서 target factory·Restore staging이 끝나기 전에는 authority가 공개되지 않으며, staging 성공 뒤 `commitAggregate` 한 번으로 participant 전체를 publish할 수 있다. Prepare conflict는 unlinked root를 삭제하고 explicit abort는 aggregate abort 성공 뒤 root를 삭제한다. Commit 전 root retention을 renew하며 commit 응답이 불명확하면 participant authority의 root·checksum·aggregate fence·inventory digest를 exact read로 확인한다. Focused permit·aggregate·ZLAR interop test 7/7과 core `compileJava`가 통과했다. Scheduler는 아직 이 bridge에 연결하지 않았다. Aggregate root tree/chunk codec, target factory·Restore staging owner와 source queue·timer handoff가 production Retire 경로에 연결되기 전까지 기존 fail-closed preflight를 유지한다. 아직 `M6-RUNTIME` 또는 `V11-R5C` 시작 증거가 아니며 Sample·E2E·Core·bindings 변경·실행은 0이다. 관련 blocked issue: `BLK-036`. |
 | `V11-M6C-NODE` | Node maintenance·monitoring·NestJS | Node lane, `P-DEEP` | `V11-R5B` | 진행 | Promise·event-loop recovery·terminal observation·NestJS cleanup contract 통과 | first-intent-wins Retire·Shutdown barrier, mutation 전 preflight, ready-first bounded relocation scheduler(기본 outbound 64·in-flight 256 MiB), deadline 뒤 force-stop, terminal observer와 published root data-loss recovery 분류를 Framework-owned runtime에 구현했다. Relocation payload는 application state·accepted journal·미실행 queue·logical timer를 deterministic envelope로 만들고 immutable Store에 먼저 기록한 뒤 checksum·inventory digest를 검증하여 Location authority의 단일 preserve CAS로 공개한다. CAS conflict가 발생하면 proven orphan만 삭제한다. CAS 응답이 유실되면 authority exact read로 publication 성공을 reconcile하고, expected version이 유지된 것이 확인될 때만 orphan을 삭제한다. 결과가 불명확하면 retention이 정리하도록 root를 보존한다. Authority reference 해제 뒤 payload 삭제, published payload missing·checksum·inventory mismatch의 non-rollback `RelocationDataLost`를 구현했다. Owner queue는 active claim이 끝난 turn boundary에서 seal하며 기존 미실행 record를 capture하고 이후 ingress를 별도 hold한다. Abort는 captured→held 순서로 admission을 복원하고 commit은 held record만 relay 대상으로 반환하며 infrastructure queue는 계속 진행한다. Spot timer는 native timeout handle을 저장하지 않고 registration option, schedule cursor와 delivery cursor를 freeze하며 target의 동일 registration에 logical schedule을 복원한다. 기존 NestJS host는 application shutdown에서 30초 bounded RouteMesh drain 뒤 idempotent stop을 수행한다. Public `ZLinkLocationStore`와 `ZLinkRelocationStore` 및 Framework·NestJS의 `addLocationStore`·`addRelocationStore` 등록 표면을 각각 분리했다. Redis 전용 또는 두 Store를 묶는 등록 API는 추가하지 않았다. `ZLinkChannelClient`는 global channel name과 classic channel transport를 사용하고 `ZLinkRouteClient`는 globally unique Mesh channel의 MeshName을 내부에서 결정하도록 exact contract에 맞췄다. Raw-only bindings에서 제거된 `createMeshNode`를 요구하던 stale parity test를 제거했고, M6 runtime protocol graph에서 Bingo sample generator를 실행하던 test를 제외했다. Connector protocol test는 각 instance를 명시적으로 close한다. 2026-07-26 현재 candidate 24 files의 정식 `M6-RUNTIME` 7 commands가 모두 통과했으며 public declaration 38/38, M6A 9/9, M6B 39/39, M6C 54/54, resource 14/14, protocol 14/14와 Framework compile이 통과했다. 이 gate에서 sample·E2E project/task 실행과 skip은 모두 0이다. local manual RouteMesh·ClientServer client·fanout subscriber·storeless publisher가 하나라도 있으면 state와 admission을 바꾸기 전에 `Blocked/ManualTopologyUnsupported`를 반환하고, automatic topology에서는 complete live descriptor set의 exact RID·lifecycle generation peer가 Core에서 `Admitted`·`Ready`가 될 때까지 기다린다. 증거: `.artifacts/v11/evidence/V11-M6C-NODE/result-current.json`. 다만 durable coordinator가 아직 production host의 Spot·Actor restore owner, session route replacement와 aggregate drain에서 생성되지 않으므로 component contract 통과만으로 완료 판정하지 않는다. 해당 production wiring과 host-level active workload regression을 계속한다. Sample·E2E 실행은 0이다. 관련 blocked issue: `BLK-042`. |
-| `V11-M6-DN-DESIGN-REVIEW` | .NET 전체 회귀 뒤 POSD·DDD 정식 review | .NET 독립 review lane, `P-DEEP` | `V11-M6A-DN`, `V11-M6B-DN`, `V11-M6C-DN`, `V11-M6-ONE-WAY-DN`, `V11-M6-DEFERRED-JOIN-DN`, `V11-M6-OBJECT-CONTEXT-DN`, `V11-M6-MESSAGE-CONTEXT-DN`, `V11-M6-SESSION-BINDING-DN`, `V11-M6B-EXEC-DN`, `V11-M6C-BARRIER-DN`, `V11-M6C-CAPACITY-DN`, `V11-M6B-ENTRY-IDENTITY-DN`, `V11-M6A-WEIGHT-DN`, `V11-M6-STORE-POSD-DN-REVIEW` | 수정 진행 | 최초 전체 `.NET M6-RUNTIME` 통과 revision에서 red flag·DDD boundary leak 목록, 원칙 연결과 각 finding의 두 대안 비교 완료 | Final delta review의 High·Medium 네 건은 수정했다. Abort는 `Staged→Aborting→Aborted`와 cleanup 성공 뒤 ACK·permit once를 보장하고, `GenerationExhausted`는 non-retriable terminal로 분류하며 conflict·stale만 8회 retry한다. Completed stage는 1,024개·5분 bounded tombstone으로 교체했고 Actor drain은 target-local retriable만 다음 후보로 진행한다. `BLK-044`의 .NET command 33·46 bounded slice도 managed raw infrastructure dispatch로 전환했다. Pending relay는 ACK target RID·operation·relocation·coordinator fence로 분리하고 expected request-source owner·lease·node·generation과 admitted peer lifecycle을 exact 검증한다. ACK-loss 뒤 duplicate는 `AlreadyTerminal`로 닫으며 non-Ok terminal payload는 송수신에서 거부한다. Private `.reply.v1` Route packet symbol은 제거했다. command 30·31·32·34·35·40·41 exact codec과 공통 golden 7개, relocation phase 0~9 closed enum, full frozen-record kind 1~14의 byte-preserving validation을 추가했다. Application frozen record와 unknown kind fail-closed도 검증했다. 추가 조사에서 User Spot `stableType`은 exact Spot authority snapshot의 allocation에 있고 Actor identity·`stableType`·authority payload는 `zla1:a:` authority scan과 steady payload에 있으므로 command 40 field 누락은 아니다. canonical root의 participant count·ID와 exact authority inventory를 대조해 staging 입력을 복원할 수 있다. 그러나 정식 sequence는 command `40→30 offer→30 accept→41`인데 현재 private stage 호출은 이 state machine을 구현하지 않으며, schema의 target offer participant vector `empty` 규칙과 공통 command 30 golden의 non-empty vector도 일치하지 않는다. 이 계약을 먼저 정리하지 않고 command 40에서 command 41로 직결하지 않는다. stage·publish·abort·held relay raw dispatch와 독립 review 재실행이 남아 있으므로 상태는 수정 진행으로 유지한다. |
-| `V11-M6-DN-REFERENCE` | review finding refactoring·재회귀와 .NET reference revision 고정 | .NET integration lane, `P-DEEP` | `V11-M6-DN-DESIGN-REVIEW` | 수정 진행 | finding 0, focused test와 전체 `.NET M6-RUNTIME` 재통과, compatibility·placeholder·unused 0, immutable reference manifest와 `ROW-GATE` 통과 | High·Medium finding과 command 33·46 production raw dispatch bounded slice 수정 뒤 Unit·Contract, focused reply relay 6/6, codec golden 2/2가 통과했다. `.reply.v1` private Route packet은 제거했고 exact source collision·ACK-loss·duplicate terminal·non-Ok payload negative를 검증했다. 후속 codec checkpoint에서 command 30·31·32·34·35·40·41 공통 golden 7/7과 full frozen-record application relay, phase 0~9, unknown kind negative가 통과했다. 이 checkpoint는 codec과 durable record validation만 완료했으며 production packet 전환 완료 증거가 아니다. command 40 target staging에 필요한 `stableType`과 Actor authority는 새 wire field 없이 Location Store의 exact Spot row와 Actor prefix scan에서 얻을 수 있다. 남은 선행 조건은 command `40→30→30→41` reservation state machine과 command 30 offer participant 규칙의 schema·golden 불일치를 해소하는 일이다. private stage·publish·abort·held relay 제거, post-wire 전체 gate, 새 immutable manifest와 독립 finding 0 review 전에는 reference revision을 고정하지 않는다. 2026-07-28 solution contract migration에서 sample·E2E·Stream Connector 호출부와 regression assertion을 현행 public contract로 전환했다. Fresh solution `Rebuild`는 warning 0·error 0, Stream Connector regression은 141/141이 통과했다. Sample regression은 117/119이며 남은 2건은 SpotActorTransfer lane 소유 source이므로 이 행의 완료 조건으로 계산하지 않는다. |
+| `V11-M6-DN-DESIGN-REVIEW` | .NET 전체 회귀 뒤 POSD·DDD 정식 review | .NET 독립 review lane, `P-HIGH` | `V11-M6A-DN`, `V11-M6B-DN`, `V11-M6C-DN`, `V11-M6-ONE-WAY-DN`, `V11-M6-DEFERRED-JOIN-DN`, `V11-M6-OBJECT-CONTEXT-DN`, `V11-M6-MESSAGE-CONTEXT-DN`, `V11-M6-SESSION-BINDING-DN`, `V11-M6B-EXEC-DN`, `V11-M6C-BARRIER-DN`, `V11-M6C-CAPACITY-DN`, `V11-M6B-ENTRY-IDENTITY-DN`, `V11-M6A-WEIGHT-DN`, `V11-M6-STORE-POSD-DN-REVIEW` | 재검토 준비 완료 | 최초 전체 `.NET M6-RUNTIME` 통과 revision에서 red flag·DDD boundary leak 목록, 원칙 연결과 각 finding의 두 대안 비교 완료 | Formal review의 H1~H3와 M4를 수정했다. Generation cleanup을 단계별 조기 반환으로 나누는 안 대신 Actor barrier·handoff admission·bound session 정리를 한 owner가 끝까지 실행하고 오류를 정해진 순서로 모으는 안을 적용했다. Deadline에 scope를 즉시 dispose하는 안 대신 이전 generation의 operation·Actor context를 즉시 fence하고 DI disposal만 handler 종료 뒤 계속하는 안을 적용했다. Cleanup 오류를 공통 teardown 오류로 바꾸는 안 대신 deadline cancellation을 public `DeadlineExceeded`로 유지했다. 지연 cleanup 오류를 현재 sink에 보내는 안 대신 시작 generation의 reporter와 process-level `Trace` channel에 귀속했다. Focused 11/11과 post-fix `M6-RUNTIME` 5/5가 통과했다. Formal Codex `gpt-5.6-sol high` fresh review는 아직 실행하지 않았으므로 finding 0 또는 완료로 판정하지 않는다. |
+| `V11-M6-DN-REFERENCE` | review finding refactoring·재회귀와 .NET reference revision 고정 | .NET integration lane, `P-DEEP` | `V11-M6-DN-DESIGN-REVIEW` | 대기 | finding 0, focused test와 전체 `.NET M6-RUNTIME` 재통과, compatibility·placeholder·unused 0, immutable reference manifest와 `ROW-GATE` 통과 | Production reservation state machine과 private relocation packet 제거는 유지됐다. Re-review candidate에서 build warning·error 0, Contract 70/70, internal runtime 1,286/1,286, resource 88/88, protocol 103/103, `REMOVE`와 `ROW-GATE`가 통과했다. Candidate는 `.artifacts/v11/evidence/V11-M6-DN-REFERENCE/candidate-formal-rereview-20260729.json`이며 SHA-256은 `aeb05ccb…`다. Mixed-language process E2E는 상위 합류 gate가 소유하므로 이 .NET reference 완료 조건에 포함하지 않는다. 직접 선행인 fresh formal high review가 남아 있어 reference 상태는 대기다. |
 2026-07-28 .NET canonical reservation 재검증에서 command `40→30 offer→30 accept→41`의 production
 경로를 다시 확인했다. Target owner는 command 40 fingerprint와 authenticated source를 bounded slot에
 저장하고, target offer에서는 participant vector를 비운 채 실제 replay budget만 반환한다. Exact source
@@ -7447,6 +7447,67 @@ activation context에서 공유한다. Relocation abort·source completion은 ha
 review에서 기존 P1 네 건과 P2 한 건이 모두 해소됐고 추가 P1·P2가 없음을 확인했다.
 이 보강 작업은 완료했다.
 
+## 2026-07-29 Handler filter 적용 범위 보강
+
+`framework/doc/plan/spec-issue-handler-instance-lifetime.ko.md`의 두 번째 설계 결정을
+공통 정식 spec과 .NET 기준 구현에 반영하기 시작했다. Filter는 Framework root에
+등록한 process-level handler에만 적용한다.
+
+| dispatch | filter |
+|---|---|
+| RouteMesh·ClientServer Channel send/request | 적용 |
+| Node direct send/request | 적용 |
+| classic fanout 구독 handler | 적용 |
+| Spot·Actor·Logical Multicast·STREAM handler | 제외 |
+
+Filter 전용 context는 Node direct send/request, Channel send/request와 classic fanout의
+다섯 종류를 직접 제공한다. ClientServer와 classic fanout의 MeshName은 `null`이며
+내부 구분 문자열을 넣지 않는다. Request filter가 `next`를 호출하지 않으면 `Rejected`
+reply를 보내고, 두 번째 `next`는 handler를 다시 실행하지 않고
+`InvalidOperation`으로 거부한다. Handler와 filter는 dispatch마다 새 scope에서 한 번씩
+만들고 같은 scoped dependency를 사용한다.
+
+.NET 기준 구현은 Channel·classic fanout의 기존 dispatcher를 확장하고 Node direct도
+같은 dispatcher에 연결했다. Route handler를 application DI에서 직접 resolve하던
+경로를 제거했으며 filter와 handler type의 등록 lifetime이 Framework 수명을 바꾸지
+않는다. Classic fanout의 가짜 `"fanout"` MeshName도 제거했다.
+
+- Framework build: warning 0, error 0
+- `MessageContextContractTests`: 9/9
+- `RouteCodecTests`: 14/14
+- `UnhandledDispatchPolicyTests`: 12/12
+- handler public contract focused regression: 2/2
+- filter·route focused regression 합계: 37/37
+- `.NET ContractTests`: 70/70
+- `.NET UnitTests`: 1305/1305
+- packaged source·NuGet public contract 비교: 통과
+- RegistrationCodec filter를 사용하는 server project 3개 build: warning 0, error 0
+- v11 public-contract trace: member 4,472개, unclassified·ambiguous·
+  unknown-or-unowned 0개
+- Framework document contract gate: 다섯 언어 exact 문서 51개,
+  declaration owner 1,251개, `FRAMEWORK DOC CONTRACTS CLEAN`
+
+독립 code review에서 production correctness blocker는 없었다. Review가 추가한
+동시 `next` 호출 거부, request 중단과 cancellation 뒤 scope 정리 regression도 포함해
+위 37/37이 통과했다. Java/Kotlin, Node와 C++ exact interface·runtime·contract test
+미러링, guide와 implementation gap 갱신이 남아 있으므로 이 보강을 완료로 판정하지
+않는다.
+
+Node.js는 같은 계약을 public interface, channel runtime과 Nest provider scope에
+반영했다. RouteMesh의 Node direct와 Channel은 실제 peer process ingress를 각각
+실행해 dispatch 종류를 검증했다. Classic fanout filter context에는 MeshName, topic과
+source를 넣지 않으며, 각 handler 실행마다 별도 context를 만든다. Spot·Actor·Logical
+Multicast·STREAM runtime은 filter pipeline을 호출하지 않는다.
+
+- Node workspace build와 typecheck: 통과
+- handler filter 순서·short circuit·동시 중복 `next`: 4/4
+- public contract surface: 33/33
+- Node direct·RouteMesh Channel actual-process와 classic fanout isolation: 3/3
+- Nest request scope에서 filter와 handler scope 공유: 1/1
+
+Node.js mirror는 완료했다. Java/Kotlin과 C++ mirror, guide와 implementation gap 갱신이
+남아 있으므로 Handler filter 보강 전체 상태는 계속 진행으로 유지한다.
+
 ## 2026-07-29 Node M6A runtime 완료
 
 Node topology·dispatch·Location·liveness candidate를 2026-07-26의 M6A 전 기준
@@ -7865,3 +7926,386 @@ CAS만 재시도한다.
 recovery 완료 증거는 아니다. Actor application state, 일반 backlog와 target Spot을
 새 process에서 복원하는 manifest·startup coordinator는 `V11-M6-DEFERRED-JOIN-NODE`와
 `V11-M6C-NODE`에서 계속 구현한다.
+
+## 2026-07-29 JVM SpotActorTransfer ST-E1 wire·queue checkpoint
+
+Java remote Actor request의 service wire payload를 다시 검사했다. 두 frame으로 받은
+Actor request는 첫 frame의 `ZLinkStreamHeader`를 해석해 packet name과 request sequence를
+복원한다. Spot request는 기존 두 application frame 계약을 유지한다. 두 경로를 섞어
+Spot packet name을 binary header로 전달하던 변경은 남기지 않았다.
+
+같은 Actor handler에서 deferred Join을 등록할 때 handler terminal이 Join 결과를
+기다리고, Join 작업이 다시 같은 Actor queue를 기다리던 순환 대기도 제거했다. Join은
+Actor queue barrier 뒤에서 시작하지만 handler terminal은 등록이 끝나면 반환한다.
+Target Actor packet도 Actor queue를 두 번 중첩하지 않고 하나의 packet turn만 사용한다.
+
+다음 focused regression이 통과했다.
+
+- `ZLinkJavaRawMeshNodeApplicationPayloadTest`
+- `EntrySpotActorDispatchTests`
+- `ZLinkActorDispatchSerialsTest`
+- `ZLinkDeferredActorJoinScopeTest`
+- `ZLinkActorBoundSessionSenderTest`
+- Gradle 결과: `BUILD SUCCESSFUL`, 3 tasks, 6초
+
+Actual `ST-E1`은 target admission과 Spot reply까지 진행하지만 아직 완료되지 않았다.
+증거는
+`framework/languages/java/e2e/SpotActorTransfer/log/20260729-174017-552589`이다.
+Source는 admission 직후 `prepareDeferredJoinAccepted`를 호출한다. 그러나 이 시점에는
+direct Actor Join의 application state, accepted backlog와 completion을 포함한 canonical
+relocation root를 Location authority가 아직 가리키지 않는다. 이 때문에
+`Actor authority has no canonical relocation root`로 끝난다.
+
+Legacy completion blob이나 Location authority와 연결되지 않은 root로 우회하지 않는다.
+남은 구현 순서는 Actor state와 backlog를 capture한 뒤 Accepted completion을 같은 immutable
+root에 넣고, Location Store의 single-participant aggregate commit으로 target owner와
+reference를 publish한 다음 target restore와 callback을 시작하는 것이다. 이 실제 process
+경로가 통과하기 전에는 `V11-M6-DEFERRED-JOIN-JVM`과 `ST-E1`을 완료로 올리지 않는다.
+
+## 2026-07-29 .NET formal review candidate 준비
+
+Handler lifetime, Message Follow와 placement delta를 현재 `.NET` reference 구현에
+대조했다. Reservation 재감사에서 확인한 command
+`40→30 offer→30 accept→41`과 private relocation packet 제거는 그대로 유지된다.
+
+Candidate audit에서는 force-stop이 Actor handler cleanup을 Actor별로 직렬 대기하고
+deadline token을 사용하지 않는 P1 한 건을 확인했다. 두 대안을 비교했다.
+
+| 대안 | 판단 |
+|---|---|
+| Deadline에 실행 중인 handler와 DI scope를 즉시 정리한다. | 종료는 빠르지만 실행 중인 handler가 이미 정리된 dependency를 사용할 수 있어 수명 계약을 위반한다. |
+| 모든 Actor terminal barrier를 동시에 시작하고 deadline에는 caller만 반환한다. | 실행 중인 handler가 끝난 뒤 scope를 정리하며 host 종료 deadline도 지킨다. |
+
+두 번째 대안을 적용했다. Deadline 뒤 cleanup task도 계속 관찰한다. Disposal failure는
+runtime generation error sink가 열려 있으면 그 sink에 보고한다. Generation이 이미
+종료됐으면 process debug log에 기록한다. Failure를 무시하지 않는 focused regression을
+추가했다.
+
+- Actor handler lifetime focused: 7/7
+- Build: warning 0, error 0
+- Contract: 70/70
+- Internal runtime: 1,282/1,282
+- Resource: 87/87
+- Protocol: 103/103
+- `REMOVE --scope framework:dotnet`: 통과
+- `ROW-GATE`: 522 files, 5 commands 통과
+- Candidate:
+  `.artifacts/v11/evidence/V11-M6-DN-REFERENCE/candidate-formal-review-20260729.json`
+- Candidate SHA-256:
+  `d4ae948ece96aa237656966414da9e5f012511b4bea18f9734856a20540043fc`
+- Result SHA-256:
+  `6ecabcb9d4a683b1b15b1cc3c904f7cf299733ca4c498009809c67ee276decf0`
+
+이 증거는 formal Codex `gpt-5.6-sol high` review의 입력이다. Fresh reviewer의 finding
+0 판정 전에는 `V11-M6-DN-DESIGN-REVIEW`를 완료로 바꾸지 않는다.
+`V11-M6-DN-REFERENCE`도 직접 선행 review가 끝날 때까지 대기한다.
+Mixed-language process E2E는 상위 합류 gate가 소유하며 `.NET` reference 자체의 완료
+조건으로 사용하지 않는다.
+
+## 2026-07-29 .NET formal review finding 수정과 재검증
+
+Formal review에서 확인한 H1~H3와 M4를 다음과 같이 수정했다.
+
+| finding | 검토한 대안 | 적용한 방식 |
+|---|---|---|
+| H1: Actor cleanup 대기가 취소되면 나머지 generation cleanup이 실행되지 않을 수 있다. | 각 cleanup 단계가 실패하면 즉시 반환하거나, 하나의 generation cleanup owner가 모든 단계를 실행하고 오류를 모은다. | Actor terminal barrier, handoff admission, bound session manager와 coordinator 정리를 모두 실행한다. 오류는 실행 순서대로 모아 마지막에 반환한다. |
+| H2: deadline 반환 뒤 이전 handler·context·ambient operation이 successor generation에 접근할 수 있다. | 실행 중 scope를 즉시 dispose하거나, 사용 진입을 즉시 fence하고 scope disposal은 handler 종료까지 기다린다. | Runtime operation과 Actor context를 동기식으로 fence한다. 실행 중 handler의 DI resource는 handler가 끝난 뒤 정리한다. |
+| H3: deadline cancellation이 cleanup 오류와 합쳐져 `TeardownFailed`가 될 수 있다. | 모든 cleanup 오류를 하나의 teardown 오류로 바꾸거나, 호출자가 지정한 deadline cancellation을 public 종료 이유로 보존한다. | force-stop cancellation은 `DeadlineExceeded`로 보존한다. 다른 cleanup 오류는 inner failure로 유지한다. |
+| M4: deadline 뒤 disposal 실패가 successor sink에 잘못 기록되거나 debug 설정이 없으면 사라질 수 있다. | 완료 시점의 현재 sink를 조회하거나, cleanup 시작 generation의 reporter를 캡처한다. | 원래 generation callback과 항상 사용할 수 있는 process-level `Trace` channel을 캡처한다. Runtime restart 뒤에도 successor sink에는 기록하지 않는다. |
+
+다음 host-level regression을 추가했다.
+
+- 이전 ambient operation은 force-stop 직후와 restart 뒤 모두 새 작업을 시작할 수 없다.
+- 지연 cleanup 오류는 restart 뒤에도 원래 generation에 기록되고 successor generation에는 기록되지 않는다.
+- force-stop cancellation이 발생해도 public shutdown 결과는 `DeadlineExceeded`다.
+- 모든 Actor terminal barrier는 동시에 시작한다. Deadline이 끝나도 실행 중 handler가 반환하면 각 DI scope를 한 번씩 정리한다.
+
+재검증 결과는 다음과 같다.
+
+- focused regression: 11/11
+- build: warning 0, error 0
+- public contract: 70/70
+- internal runtime: 1,286/1,286
+- resource regression: 88/88
+- protocol regression: 103/103
+- `REMOVE --scope framework:dotnet`: 통과
+- `ROW-GATE`: 523 files, 5 commands 통과
+- Candidate:
+  `.artifacts/v11/evidence/V11-M6-DN-REFERENCE/candidate-formal-rereview-20260729.json`
+- Candidate SHA-256:
+  `aeb05ccb69f79730f454a5b965bc14f92174945aad6724c04136f1f6e6eaff0d`
+- Result:
+  `.artifacts/v11/evidence/V11-M6-DN-REFERENCE/result-formal-rereview-20260729.json`
+- Result SHA-256:
+  `ec540a7ba644f081aabdbae9dd6c21d5ea6a58c18ef80a5ec04601210bf49c3e`
+- Removal evidence:
+  `.artifacts/v11/evidence/V11-M6-DN-REFERENCE/removal-formal-rereview-20260729.json`
+- Removal evidence SHA-256:
+  `2605491f1966e237636cbc983ade209d21992374aec62585b5933658de787bc4`
+
+이 checkpoint는 fresh formal review 입력이다. Reviewer가 finding 0을 확인하기 전에는
+`V11-M6-DN-DESIGN-REVIEW`와 `V11-M6-DN-REFERENCE`를 완료로 바꾸지 않는다.
+
+## 2026-07-29 Node deferred Join cold restart recovery
+
+이 절은 `V11-M6-DEFERRED-JOIN-NODE`와 `V11-M6C-NODE`에 기록된
+"Actor startup scanner와 새 process용 recovery manifest가 없다"는 이전 gap 설명을
+대체한다.
+
+Production host의 authority startup scanner가 Actor authority도 읽는다. Deferred Join
+root가 연결된 Actor만 복구 대상으로 삼으며 process-local `formalRemoteTransfers`는
+복구 근거로 사용하지 않는다.
+
+Application state와 handoff backlog를 completion root JSON에 중복 저장하던 WIP를
+제거했다. 최대 256 MiB인 formal transfer request는 최대 64 MiB인 data chunk로 나누어
+Relocation Store에 저장한다. Completion root에는 chunk 목록을 가리키는 reference,
+전체 CRC32C와 encoded size만 기록한다. Startup은 chunk별 크기·CRC32C와 합친 payload의
+크기·CRC32C를 모두 확인한 뒤 factory와 relocation adapter를 실행한다.
+
+Cold restart는 PerActor·Recreate User Spot만 자동 재구성한다. SpotWide Spot이나 Snapshot
+state를 authority metadata만으로 추측해 만들지 않는다. 이전 Spot과 Actor owner lease가
+만료된 경우 다음 순서로 재개한다.
+
+1. Published root와 별도 relocation payload를 exact read하고 checksum을 확인한다.
+2. User Spot과 Actor를 외부에 보이지 않는 staging 상태로 materialize한다.
+3. Spot·Actor authority, membership metadata와 target owner를 하나의 aggregate commit으로
+   새 Node lifecycle에 게시한다. Spot·Actor object generation은 유지한다.
+4. Spot initialize와 Actor membership을 적용한다.
+5. Accepted backlog를 durable replay cursor부터 순서대로 처리한다.
+6. Joined completion callback을 실행한다.
+7. Session admission을 연 뒤 Delivered root와 relocation payload를 해제한다.
+
+Callback 뒤 backlog replay 전에 process가 종료되면 Delivered root와 payload가 남는다.
+Replacement runtime은 callback을 다시 실행하지 않고 저장된 replay cursor부터 계속한다.
+Admission이 열리기 전에는 root를 해제하지 않는다. Aggregate commit 뒤 legacy Actor
+Location claim으로 owner generation을 다시 증가시키지 않고, committed authority
+generation을 local runtime state에 적용한다.
+
+검증 결과는 다음과 같다.
+
+- Node build: 통과
+- Deferred Join restart·crash focused: 8/8
+- Node M6C internal: 66/66
+- Node `M6-RUNTIME`: required command 7/7
+- Public declaration: 39/39
+- M6A: 12/12
+- Resource regression: 21/21
+- Protocol regression: 14/14
+- Sample·E2E project와 task 실행·skip: 모두 0
+- `git diff --check -- framework/languages/node`: 통과
+- Candidate:
+  `.artifacts/v11/evidence/V11-M6C-NODE/candidate-current.json`
+- Candidate content SHA-256:
+  `78649747bf1d22fee89685d8efa23d2cde46f8474616f90b483bf4f0aaa874dd`
+- Candidate aggregate SHA-256:
+  `030ee258eb0256017061b9dd924265cc7ebc6c8461c71dd0a4ea67e7826e14d3`
+- Result:
+  `.artifacts/v11/evidence/V11-M6C-NODE/result-current.json`
+- Result SHA-256:
+  `a63a91923dd92c52dbbf81cffebe24c013aa769ff6a568f0d437e1e7af0e3d05`
+
+이 checkpoint는 production startup wiring과 deterministic cold lifecycle takeover를
+닫는다. 실제 여러 process를 종료하고 다시 실행하는 E2E는 `V11-M6C-E2E`가 소유한다.
+`V11-M6C-NODE`의 전체 상태는 active workload Retire와 Session route replacement의
+나머지 production gap이 닫힐 때까지 계속 진행이다.
+
+## 2026-07-29 C++ deferred Join ST-A1 최종 재검증
+
+이 절은 `V11-M6-DEFERRED-JOIN-CPP` 행의 최신 증거다.
+
+- Same-node accepted Join 순서를 `OnActorJoin → Location commit → target OnJoinedActor →
+  source OnLeaveActor → Actor OnJoinCompleted(Accepted)`로 교정했다.
+- Commit 이후 callback 실패는 이전 authority로 rollback하지 않는다.
+- SpotWide Actor handler는 Actor별 queue를 바깥 claim으로 유지한 채 Spot queue를 실행한다.
+  같은 Actor의 다음 packet은 deferred Join completion 뒤에 시작하며 다른 Actor는 Spot turn 뒤 진행한다.
+- ST-A1은 Framework가 선택한 same-node owner에서 Actor `ObjectGeneration` 유지, Relocation Store 0건과
+  Message Follow 0건을 확인한다.
+- Focused execution과 target contract가 통과했다.
+- Actual-process 로그:
+  `framework/languages/cpp/e2e/SpotActorTransfer/logs/20260729-195936-3628877`
+- 실제 관찰 순서:
+  `admission → location_committed → joined → leave → join_completion_accepted → packet_handler`
+
+## 2026-07-29 Java·Kotlin Handler filter 계약 미러링
+
+이 절은 `Handler filter 적용 범위 보강`의 Java·Kotlin 증거다.
+
+Java public contract에 filter 전용 `ZLinkHandlerFilterContext`와 다섯
+`ZLinkHandlerDispatchKind` 값을 추가했다. Runtime 구현 context는 package-private으로
+유지한다. RouteMesh·ClientServer Channel send/request, Node direct send/request와
+classic fanout에만 filter를 적용하며 Spot·Actor·Logical Multicast·STREAM 경로에는
+연결하지 않았다.
+
+RouteMesh와 Node direct filter context는 실제 MeshName을 제공한다. ClientServer와
+classic fanout은 MeshName을 제공하지 않는다. Request filter가 `next`를 호출하지
+않으면 `REQUEST_REJECTED`를 error reply와 caller의 `ZLinkFrameworkException`까지
+보존한다. Filter가 반환한 임의 값은 handler reply를 대체하지 않는다.
+
+각 filter가 받는 `next`는 독립적인 atomic single-use gate를 사용한다. 따라서 inner
+filter가 handler를 실행하지 않고 끝난 경우에도 outer filter의 두 번째 `next` 호출을
+거부한다. Classic fanout은 handler dispatch마다 별도 handler/filter owner를 만들고
+각각 정리한다. Kotlin은 별도 enum이나 context wrapper를 만들지 않고 Java public
+contract와 runtime을 그대로 사용한다.
+
+검증 결과는 다음과 같다.
+
+- `:zlink-framework-core:test`: 통과
+- Filter public contract·pipeline·typed error focused regression: 26/26
+- `:zlink-framework-spring-boot-starter:test`: 통과
+- `:zlink-framework-kotlin:test`: 통과
+- `:zlink-framework-kotlin:compileKotlin`
+  `:zlink-framework-kotlin:compileTestKotlin`: 통과
+- Java·Kotlin scoped `git diff --check`: 통과
+
+`zlink-framework-core:compileIntegrationTestJava`는 이 변경과 무관한 기존 fixture
+불일치로 통과하지 못했다. 이전 `ZLinkActorJoinResult`, RoutingId 기반 Spot API와
+이전 ClientServer builder를 사용하는 integration source가 현재 public contract와
+맞지 않는다. Filter production source와 unit·Spring·Kotlin test의 실패는 0건이다.
+
+## 2026-07-29 .NET Deferred Join generation 경합 재검증
+
+Actor handler가 만든 Join call은 해당 handler를 실행한 Actor instance와 runtime
+state를 함께 보관한다. `Defer()`에서 ActorId로 state를 다시 조회하지 않는다.
+Registry generation reset이 이전 context 검증 직후 successor state를 게시해도 이전
+Actor의 Join이 successor의 barrier나 handoff 상태를 변경하지 않기 위해서다.
+
+Deterministic regression은 이전 state를 registry에서 제거하고 fence하기 전 같은
+ActorId의 successor generation을 게시한다. 이 상태에서 `Defer()`가 이전 state에만
+deferred Join capture를 설정하고 successor state를 변경하지 않는지 확인한다.
+
+- `DeferredJoin_UsesTheCapturedActorGeneration_WhenRegistryPublishesASuccessor`: 1/1
+- .NET build: warning 0, error 0
+
+Production 변경에서 추가 correctness 문제는 발견하지 않았다.
+
+Node `send-ready` focused regression은 filter pipeline의 비동기 경계가 늘어난 뒤 첫
+submit 시점을 한 번의 microtask 대기로 가정해 실패했다. Production submitter는
+정상적으로 queue를 등록하고 ready notification 뒤 재시도했다. Test를 첫 submit
+시도 관찰까지 기다리도록 바꿔 scheduler timing 가정을 제거했다.
+
+- Node `send-ready` focused regression: 1/1
+- Node direct·RouteMesh Channel·classic fanout filter regression: 3/3
+- Node typecheck: 통과
+
+## 2026-07-29 C++ Handler filter 계약 미러링
+
+C++ public filter는 `handler_filter_context_t`와 결과가 없는
+`handler_next_t`를 사용한다. Filter가 request reply를 만들거나 바꾸던 이전 C++
+계약과 구현을 제거했다.
+
+Runtime은 다음 다섯 dispatch 종류를 전달한다.
+
+- `node_direct_send`
+- `node_direct_request`
+- `channel_send`
+- `channel_request`
+- `classic_fanout`
+
+Node direct와 RouteMesh Channel은 record kind로 구분한다. ClientServer와 classic
+fanout은 공통 Channel registry가 각각 Channel과 Fanout 종류를 선택한다. Spot,
+Actor, Logical Multicast와 STREAM registry는 root filter pipeline을 호출하지 않는다.
+
+Filter가 `next()`를 호출하지 않은 request는 `request_rejected`로 완료한다. Send와
+classic fanout의 현재 handler는 실행하지 않고 정상 완료한다. 두 번째 `next()`는
+첫 handler 결과와 관계없이 `already_submitted`로 거부하며 handler를 다시 실행하지
+않는다. Classic fanout의 각 inbound handler는 별도 handler invocation scope를
+사용한다. Filter와 handler는 같은 scope에서 resolve하고 scoped dependency는
+dispatch 종료 때 한 번 정리한다.
+
+독립 review에서 automatic ClientServer 경로의 누락 두 건을 확인해 함께 수정했다.
+Server dispatch는 request와 send마다 handler invocation scope를 만든다. Request
+filter가 `next()`를 호출하지 않거나 handler가 실패하면 server는 typed error
+reply header를 보낸다. Client는 `terminal_result`와 `failure_code`를 기존 request
+error kind로 복원하므로 timeout으로 바뀌지 않는다.
+
+검증 결과는 다음과 같다.
+
+- `test_cpp_framework_handler_registry`: 통과
+- `test_cpp_framework_channel_messaging`: 통과
+- `test_cpp_framework_contract_headers`: 통과
+- `test_cpp_framework_execution`: 통과
+- `test_cpp_framework_target_contract`: 통과
+- `zlink_cpp_framework_mesh_node_vertical_test`: 통과
+- automatic ClientServer 동일 scope·정리: 1/1
+- automatic ClientServer `request_rejected` typed reply·정리: 1/1
+- production classic fanout 중단 격리·동일 scope·정리: 1/1
+- C++ exact interface의 reply 대체 계약 검색 결과: 0건
+
+독립 review에서 확인한 ClientServer P1도 수정했다. Application payload sentinel과
+private error packet을 제거했다. Raw server의 두 `reply` overload는 성공 payload 또는
+실패 terminal을 기존 reply header로 기록한다. Raw client completion은 decode한
+`terminal_result`와 `failure_code`를 보존하고, location runtime은 기존
+`request_failure_mapper`로 public error를 복원한다.
+
+추가 회귀 검증은 다음과 같다.
+
+- 정상 request packet name `$zlink.client-server.error`: 성공
+- filter 중단 reply header `terminal_result=106`,
+  `failure_code=requestRejected`: client completion까지 동일
+- ClientServer error mapping 7개 pair의 service-wire encode/decode: 통과
+- reply header encode/decode는 공통 `valid_terminal_failure()`로 exact pair를
+  검증한다. `(102, requestRejected)`와 `(106, handlerNotFound)`의 encode/decode
+  거부 회귀가 통과했다.
+- 관련 focused build 3개 target과 실행: 통과
+- 기존 Handler filter 완료 gate 7개 target 재빌드·실행: 통과
+
+따라서 다른 언어의 wire consumer가 error를 정상 application payload로 해석하거나
+application packet name과 Framework 내부 표식이 충돌하는 경로는 남아 있지 않다.
+최종 독립 review는 reply header encode/decode의 exact pair 검증, timeout·reply
+terminal-once, sentinel 제거, typed rejection과 dispatch scope를 다시 대조했으며
+blocker·P1·P2 finding은 0건이다.
+
+## 2026-07-29 Handler filter .NET·Java/Kotlin·Node 교차 검토
+
+공통 spec 06 §8.1을 기준으로 세 runtime의 production 경로와 exact interface를
+교차 검토했다. C++는 별도 lane이 소유하므로 이 검토에서 변경하지 않았다.
+
+| 검토 항목 | .NET | Java·Kotlin | Node.js |
+|---|---|---|---|
+| 다섯 dispatch kind | 일치 | 일치 | 일치 |
+| RouteMesh·Node direct `MeshName` | 제공 | 제공 | 제공 |
+| ClientServer·classic fanout `MeshName` | 미제공 | 미제공 | 미제공 |
+| request filter 중단 | `Rejected` | `REQUEST_REJECTED` | `RequestRejected` |
+| filter reply 대체 금지 | 일치 | 일치 | 반환값 없는 filter |
+| 두 번째 `next` 거부 | atomic single-use | atomic single-use | single-use |
+| dispatch scope와 정리 | dispatch별 1회 | dispatch별 1회 | dispatch별 1회 |
+| classic fanout 격리 | handler별 scope | handler별 scope | handler별 scope |
+| Spot·Actor·Logical Multicast·STREAM 제외 | 일치 | 일치 | 일치 |
+
+Node production wiring은 classic fanout에 `MeshName`을 넣지 않았다. 추가로 내부
+dispatcher option에 오래된 값이 남아도 public filter context에는 노출되지 않도록
+`ClassicFanout`에서 `meshName`을 무조건 비우고 regression test를 추가했다.
+
+검토 뒤 남은 finding은 0건이다.
+
+- .NET `MessageContextContractTests`: 9/9
+- .NET `UnhandledDispatchPolicyTests`: 12/12
+- Java filter public contract·pipeline·typed error focused regression: 26/26
+- Node build: 통과
+- Node filter pipeline: 4/4
+- Node direct·RouteMesh Channel·request `Rejected`: 3/3
+- Node classic fanout context·격리: 1/1
+- Node Nest dispatch scope 공유: 1/1
+
+## 2026-07-29 C++ Entry identity row 재검증 대기
+
+Root가 layout contract를 의미 기반 검사로 교정한 뒤
+`V11-M6B-ENTRY-IDENTITY-CPP`의 fresh candidate
+`m6-candidate-20260729T114931Z.json`으로 C++ `M6-RUNTIME`을 다시 실행했다.
+Public contract 3/3, internal runtime 4/4, resource 3/3은 통과했다.
+
+Protocol build에서는 filter lane이 `client_server_request_callback_t`를 단일
+completion 객체 callback으로 바꾸는 동안
+`client_server_location_runtime.cpp:710`이 이전
+`(operation_terminal_t, vector<uint8_t>)` lambda를 넘겨 compile에 실패했다.
+이 파일은 identity row의 owned path가 아니고 같은 시점에 수정 중인 concurrent
+WIP이므로 permanent blocker로 판정하지 않는다. Candidate owned file drift는 0이다.
+
+stdout·stderr는
+`.artifacts/v11/evidence/V11-M6B-ENTRY-IDENTITY-CPP/m6-runtime-20260729T114931Z.stdout.log`
+(SHA-256 `c10f3a8cf5dfaab7022f7fb0449d14b7a8d7d8236cdf33a589ab828535440dbb`)와
+같은 디렉터리의 `.stderr.log`
+(SHA-256 `69b137a29f227f18af59bf0a2df19c60f0a84086249fda2cc6223d4269013235`)에
+보존했다. 이후 filter lane이 build-green으로 수렴했고, fresh candidate
+`candidate-20260729T115926Z.json`의 전체 `M6-RUNTIME`과 exact `ROW-GATE`가
+통과했다. 최종 결과와 SHA-256은 `V11-M6B-ENTRY-IDENTITY-CPP` 행에 기록했다.

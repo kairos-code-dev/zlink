@@ -4159,6 +4159,50 @@ public sealed partial class EntrySpotActorDispatchTests
         }
     }
 
+    [Fact]
+    public async Task DeferredJoin_UsesTheCapturedActorGeneration_WhenRegistryPublishesASuccessor()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(node);
+        try
+        {
+            var actor = RegisterProbeActor(runtime, actorRef);
+            var sourceState = runtime.GetOrCreateActorState(actor.ActorId);
+            var join = actor.Context.JoinSpot(
+                "successor-race-target",
+                ZLinkMessage.Empty);
+            var actorSessions = GetPrivateField<ZLinkActorSessionManager>(
+                runtime,
+                "_actorSessionManager");
+            var registry = GetPrivateField<ZLinkActorSessionRegistry>(
+                actorSessions,
+                "_actorSessions");
+
+            // Reproduce the reset window after the old context validation:
+            // the registry can publish a successor before the old state is fenced.
+            registry.RemoveIfCurrent(actor.ActorId, sourceState);
+            var successor = runtime.GetOrCreateActorState(actor.ActorId);
+            successor.BindNativeActorRef(
+                actorRef with { Generation = actorRef.Generation + 1 });
+            Assert.NotSame(sourceState, successor);
+
+            using (var handler = ZLinkDeferredActorJoinHandlerScope.Open())
+            {
+                join.Defer();
+
+                Assert.True(sourceState.Handoff.CapturesSourceIngress);
+                Assert.False(successor.Handoff.CapturesSourceIngress);
+            }
+
+            Assert.False(sourceState.Handoff.CapturesSourceIngress);
+            Assert.False(successor.Handoff.CapturesSourceIngress);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
     private static T GetPrivateField<T>(object instance, string name)
     {
         var field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)

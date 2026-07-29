@@ -370,6 +370,33 @@ final class ZLinkJavaRawSpotNode
     }
 
     @Override
+    public void registerTransferredActor(
+        ZLinkBackendActorRef actor,
+        String spotId,
+        long membershipEpoch) {
+        java.util.Objects.requireNonNull(actor, "actor");
+        if (!routingId().equals(actor.nodeRid())
+            || actor.generation() <= 0
+            || spotId == null
+            || spotId.isBlank()
+            || membershipEpoch <= 0) {
+            throw new IllegalArgumentException(
+                "transferred Actor route requires the local node, exact "
+                    + "generation, SpotId, and positive membership epoch");
+        }
+        ZLinkBackendActorRef current = actors.putIfAbsent(
+            actor.actorId(),
+            actor);
+        if (current != null && !current.equals(actor)) {
+            throw new IllegalStateException(
+                "actor generation already exists on target: "
+                    + actor.actorId());
+        }
+        actorSpots.put(actor.actorId(), spotId);
+        actorMembershipEpochs.put(actor.actorId(), membershipEpoch);
+    }
+
+    @Override
     public CompletionStage<ZLinkBackendActorJoinResult> joinActor(
         ZLinkBackendActorRef actor,
         RoutingId targetNodeRid,
@@ -543,14 +570,32 @@ final class ZLinkJavaRawSpotNode
         SendFlags flags) {
         StreamBinding binding = streamBindings.get(actor.actorId());
         if (binding != null && binding.actor().equals(actor)) {
-            return binding.stream().send(
+            boolean sent = binding.stream().send(
                 binding.sessionRid(), parts, flags);
+            if ("1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"))) {
+                java.util.logging.Logger.getLogger(
+                        ZLinkJavaRawSpotNode.class.getName())
+                    .warning("[zlink-java-stream-trace] local bound-session send"
+                        + " actor=" + actor
+                        + " binding=" + binding
+                        + " sent=" + sent);
+            }
+            return sent;
         }
         RemoteStreamBinding remote =
             remoteStreamBindings.get(actor.actorId());
-        return remote != null
+        boolean sent = remote != null
             && remote.actor().equals(actor)
             && owner.sendBoundSession(remote, parts);
+        if ("1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"))) {
+            java.util.logging.Logger.getLogger(
+                    ZLinkJavaRawSpotNode.class.getName())
+                .warning("[zlink-java-stream-trace] bound-session send"
+                    + " actor=" + actor
+                    + " remote=" + remote
+                    + " sent=" + sent);
+        }
+        return sent;
     }
 
     @Override

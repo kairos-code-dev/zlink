@@ -163,6 +163,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
 | [guide/13-interface-catalog.ko.md](guide/13-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
 | [guide/14-alternative.ko.md](guide/14-alternative.ko.md) | **ZLink를 어디에 쓰나** — 사용처, 문제 신호, 기술 선택 경계 |
 | [guide/15-samples.ko.md](guide/15-samples.ko.md) | 어떤 샘플을 먼저 볼지 고르고 실행하는 방법 |
+| [guide/16-options.ko.md](guide/16-options.ko.md) | 설정 — 옵션 목록, 기본값과 변경 시점 |
 
 ### 2.1 기준 문서 (interface catalog)
 

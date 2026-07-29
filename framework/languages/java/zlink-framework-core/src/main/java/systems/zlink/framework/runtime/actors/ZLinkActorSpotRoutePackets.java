@@ -113,6 +113,42 @@ public final class ZLinkActorSpotRoutePackets {
         List<ZLinkActorHandoffPacket> backlog,
         CoreTransfer coreTransfer,
         ZLinkDeferredJoinAcceptedRecovery.Manifest completionManifest) {
+        return createCommitRequestParts(
+            transferId,
+            timeout,
+            actorId,
+            actorType,
+            actorRef,
+            sourceEntrySpotNodeRid,
+            sourceEntrySpotId,
+            sourceEntryRouterChannelId,
+            sourceNodeRid,
+            sourceSessionRid,
+            adapterKey,
+            transferState,
+            backlog,
+            coreTransfer,
+            completionManifest,
+            new byte[0]);
+    }
+
+    public static List<Message> createCommitRequestParts(
+        String transferId,
+        Duration timeout,
+        String actorId,
+        String actorType,
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceEntrySpotNodeRid,
+        String sourceEntrySpotId,
+        String sourceEntryRouterChannelId,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        String adapterKey,
+        Message transferState,
+        List<ZLinkActorHandoffPacket> backlog,
+        CoreTransfer coreTransfer,
+        ZLinkDeferredJoinAcceptedRecovery.Manifest completionManifest,
+        byte[] sessionRouteCommand44) {
         List<Message> parts = new ArrayList<>();
         parts.add(Message.from(JOIN_SPOT_PACKET_NAME.getBytes(StandardCharsets.UTF_8)));
         parts.add(
@@ -131,7 +167,8 @@ public final class ZLinkActorSpotRoutePackets {
                 adapterKey == null ? "" : adapterKey,
                 backlog.size(),
                 coreTransfer,
-                completionManifest));
+                completionManifest,
+                sessionRouteCommand44));
         parts.add(Message.from(transferState));
         for (ZLinkActorHandoffPacket packet : backlog) {
             parts.add(Message.from(Long.toString(packet.arrivalIndex()).getBytes(StandardCharsets.UTF_8)));
@@ -179,7 +216,8 @@ public final class ZLinkActorSpotRoutePackets {
         return encodeTransferRequest(
             phase, transferId, timeout, actorId, actorType, actorRef,
             sourceEntrySpotNodeRid, sourceEntrySpotId, sourceEntryRouterChannelId,
-            sourceNodeRid, sourceSessionRid, adapterKey, backlogCount, coreTransfer, null);
+            sourceNodeRid, sourceSessionRid, adapterKey, backlogCount, coreTransfer,
+            null, new byte[0]);
     }
 
     private static Message encodeTransferRequest(
@@ -198,6 +236,42 @@ public final class ZLinkActorSpotRoutePackets {
         int backlogCount,
         CoreTransfer coreTransfer,
         ZLinkDeferredJoinAcceptedRecovery.Manifest completionManifest) {
+        return encodeTransferRequest(
+            phase,
+            transferId,
+            timeout,
+            actorId,
+            actorType,
+            actorRef,
+            sourceEntrySpotNodeRid,
+            sourceEntrySpotId,
+            sourceEntryRouterChannelId,
+            sourceNodeRid,
+            sourceSessionRid,
+            adapterKey,
+            backlogCount,
+            coreTransfer,
+            completionManifest,
+            new byte[0]);
+    }
+
+    private static Message encodeTransferRequest(
+        String phase,
+        String transferId,
+        Duration timeout,
+        String actorId,
+        String actorType,
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceEntrySpotNodeRid,
+        String sourceEntrySpotId,
+        String sourceEntryRouterChannelId,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        String adapterKey,
+        int backlogCount,
+        CoreTransfer coreTransfer,
+        ZLinkDeferredJoinAcceptedRecovery.Manifest completionManifest,
+        byte[] sessionRouteCommand44) {
         long timeoutMillis = timeout == null ? 30_000L : Math.max(1L, timeout.toMillis());
         CoreTransfer core = coreTransfer == null
             ? new CoreTransfer(false, 0L, 0L, 0L, 0L, 0L, 0L)
@@ -237,14 +311,24 @@ public final class ZLinkActorSpotRoutePackets {
             completionManifest == null ? ""
                 : completionManifest.actorId(),
             completionManifest == null ? "0"
-                : Long.toUnsignedString(completionManifest.objectGeneration()))
+                : Long.toUnsignedString(completionManifest.objectGeneration()),
+            completionManifest == null ? "0"
+                : Long.toUnsignedString(completionManifest.aggregateIdHigh()),
+            completionManifest == null ? "0"
+                : Long.toUnsignedString(completionManifest.aggregateIdLow()),
+            completionManifest == null ? "0"
+                : Long.toUnsignedString(completionManifest.aggregateGeneration()),
+            sessionRouteCommand44 == null || sessionRouteCommand44.length == 0
+                ? ""
+                : Base64.getEncoder().encodeToString(sessionRouteCommand44))
             .getBytes(StandardCharsets.UTF_8));
     }
 
     public static TransferRequest decodeTransferRequest(Message message) {
         String[] fields = message.toUtf8String().split("\n", -1);
         if ((fields.length != 14 && fields.length != 21
-                && fields.length != 24 && fields.length != 28)
+                && fields.length != 24 && fields.length != 28
+                && fields.length != 31 && fields.length != 32)
             || (!ADMISSION_PHASE.equals(fields[0]) && !COMMIT_PHASE.equals(fields[0]))
             || fields[1].isBlank()
             || fields[3].isBlank()
@@ -283,14 +367,23 @@ public final class ZLinkActorSpotRoutePackets {
                     fields[21],
                     Long.parseUnsignedLong(fields[22]),
                     Integer.parseInt(fields[23]),
-                    fields.length == 28
+                    fields.length >= 28
                         ? Long.parseUnsignedLong(fields[24]) : 0L,
-                    fields.length == 28
+                    fields.length >= 28
                         ? Long.parseUnsignedLong(fields[25]) : 0L,
-                    fields.length == 28 ? fields[26] : "",
-                    fields.length == 28
-                        ? Long.parseUnsignedLong(fields[27]) : 0L)
-                : null);
+                    fields.length >= 28 ? fields[26] : "",
+                    fields.length >= 28
+                        ? Long.parseUnsignedLong(fields[27]) : 0L,
+                    fields.length >= 31
+                        ? Long.parseUnsignedLong(fields[28]) : 0L,
+                    fields.length >= 31
+                        ? Long.parseUnsignedLong(fields[29]) : 0L,
+                    fields.length >= 31
+                        ? Long.parseUnsignedLong(fields[30]) : 0L)
+                : null,
+            fields.length == 32 && !fields[31].isBlank()
+                ? Base64.getDecoder().decode(fields[31])
+                : new byte[0]);
     }
 
     public static List<WireHandoffPacket> decodeHandoffPackets(
@@ -515,7 +608,67 @@ public final class ZLinkActorSpotRoutePackets {
         long coreFinalSequence,
         long coreReserveMessageCount,
         long coreReserveByteCount,
-        ZLinkDeferredJoinAcceptedRecovery.Manifest completionManifest) {
+        ZLinkDeferredJoinAcceptedRecovery.Manifest completionManifest,
+        byte[] sessionRouteCommand44) {
+        public TransferRequest(
+            String phase,
+            String transferId,
+            long timeoutMillis,
+            String actorId,
+            String actorType,
+            RoutingId actorNodeRid,
+            long actorGeneration,
+            RoutingId sourceEntrySpotNodeRid,
+            String sourceEntrySpotId,
+            String sourceEntryRouterChannelId,
+            RoutingId sourceNodeRid,
+            RoutingId sourceSessionRid,
+            String adapterKey,
+            int backlogCount,
+            boolean coreTransfer,
+            long coreTransferIdHigh,
+            long coreTransferIdLow,
+            long coreMembershipEpoch,
+            long coreFinalSequence,
+            long coreReserveMessageCount,
+            long coreReserveByteCount,
+            ZLinkDeferredJoinAcceptedRecovery.Manifest completionManifest) {
+            this(
+                phase,
+                transferId,
+                timeoutMillis,
+                actorId,
+                actorType,
+                actorNodeRid,
+                actorGeneration,
+                sourceEntrySpotNodeRid,
+                sourceEntrySpotId,
+                sourceEntryRouterChannelId,
+                sourceNodeRid,
+                sourceSessionRid,
+                adapterKey,
+                backlogCount,
+                coreTransfer,
+                coreTransferIdHigh,
+                coreTransferIdLow,
+                coreMembershipEpoch,
+                coreFinalSequence,
+                coreReserveMessageCount,
+                coreReserveByteCount,
+                completionManifest,
+                new byte[0]);
+        }
+
+        public TransferRequest {
+            sessionRouteCommand44 = sessionRouteCommand44 == null
+                ? new byte[0]
+                : sessionRouteCommand44.clone();
+        }
+
+        @Override public byte[] sessionRouteCommand44() {
+            return sessionRouteCommand44.clone();
+        }
+
         public ZLinkBackendActorRef actorRef() {
             return new ZLinkBackendActorRef(actorNodeRid, actorId, actorGeneration);
         }

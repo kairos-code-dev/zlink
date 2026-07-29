@@ -1,6 +1,7 @@
 import type {
   Type,
   ZLinkHandlerFilter,
+  ZLinkHandlerFilterContext,
   ZLinkMessageContext,
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
@@ -138,29 +139,32 @@ export class ZLinkChannelDispatchServices {
   }
 
   private async invokeHandlerFilters(
-    context: ZLinkMessageContext,
-    next: () => Promise<unknown>,
+    context: ZLinkHandlerFilterContext,
+    next: () => Promise<void>,
     signal?: AbortSignal
-  ): Promise<unknown> {
+  ): Promise<void> {
     const scoped = handlerFilterScope(this.providerResolver);
     if (scoped !== undefined) {
-      return scoped(context, async (resolver) => invokeZLinkHandlerFilters(
-        await Promise.all(
-          this.registration.filterTypes.map((filterType) => resolver.resolve(filterType))
-        ),
-        context,
-        next,
-        signal
-      ));
+      await scoped(context, async (resolver) => {
+        await invokeZLinkHandlerFilters(
+          await Promise.all(
+            this.registration.filterTypes.map((filterType) => resolver.resolve(filterType))
+          ),
+          context,
+          next,
+          signal
+        );
+      });
+      return;
     }
-    return this.withHandlerScope(context, async (scope) =>
-      invokeZLinkHandlerFilters(
+    await this.withHandlerScope(context, async (scope) => {
+      await invokeZLinkHandlerFilters(
         await Promise.all(this.registration.filterTypes.map((filterType) => scope.resolve(filterType))),
         context,
         next,
         signal
-      )
-    );
+      );
+    });
   }
 
   private withHandlerScope<T>(

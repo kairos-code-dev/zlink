@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.messaging;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 
 /** Owns the internal multipart representation used for framework-generated errors. */
 public final class ZLinkFrameworkErrorReply {
@@ -12,10 +13,19 @@ public final class ZLinkFrameworkErrorReply {
     }
 
     public static List<Message> create(String message) {
+        return create(ZLinkFrameworkErrorKind.REQUEST_FAILED, message);
+    }
+
+    public static List<Message> create(
+        ZLinkFrameworkErrorKind kind,
+        String message) {
         String safeMessage = message == null ? "" : message;
         return List.of(
             Message.from(PACKET_NAME.getBytes(StandardCharsets.UTF_8)),
-            Message.from(safeMessage.getBytes(StandardCharsets.UTF_8)));
+            Message.from(safeMessage.getBytes(StandardCharsets.UTF_8)),
+            Message.from((kind == null
+                ? ZLinkFrameworkErrorKind.REQUEST_FAILED
+                : kind).name().getBytes(StandardCharsets.UTF_8)));
     }
 
     public static boolean isReply(List<Message> parts) {
@@ -33,5 +43,20 @@ public final class ZLinkFrameworkErrorReply {
             throw new IllegalArgumentException("parts do not contain a framework error reply");
         }
         return parts.get(1).toUtf8String();
+    }
+
+    public static ZLinkFrameworkErrorKind kind(List<Message> parts) {
+        if (!isReply(parts)) {
+            throw new IllegalArgumentException(
+                "parts do not contain a framework error reply");
+        }
+        if (parts.size() < 3) {
+            return ZLinkFrameworkErrorKind.REQUEST_FAILED;
+        }
+        try {
+            return ZLinkFrameworkErrorKind.valueOf(parts.get(2).toUtf8String());
+        } catch (IllegalArgumentException ignored) {
+            return ZLinkFrameworkErrorKind.REQUEST_FAILED;
+        }
     }
 }

@@ -401,8 +401,8 @@ bool framework_api_documents_actor_destroy_lifecycle (const std::filesystem::pat
     bool ok = true;
     const std::string required[] = {
       "Object Server의 Entry Spot, user Spot, typed Actor와 actor-free Instance Spot factory",
-      "Actor factory에 `ActorRelocationAdapter`, User·Instance Spot factory에 "
-      "`SpotRelocationAdapter`를 지정한다.",
+      "`PreserveStateWith`는 Actor factory에",
+      "`ActorRelocationAdapter`, User·Instance Spot factory에 `SpotRelocationAdapter`를 지정한다.",
       "| exact ActorRef destroy | idempotent `false` | `Unavailable` | "
       "`InvalidOperation` | `Unavailable` |"};
     for (const auto &needle : required) {
@@ -514,6 +514,11 @@ bool sample_application_code_uses_message_codec (const std::filesystem::path &ro
         const auto relative =
           std::filesystem::relative (entry.path (), samples_root).generic_string ();
         const bool dto_contract_file = relative.find ("/Shared/Contracts/") != std::string::npos;
+        /* Relocation adapters receive an opaque byte sequence by contract. They may use the
+         * framework's typed JSON message representation to restore application state. This is
+         * not a raw transport message or a per-message codec registration. */
+        const bool relocation_adapter_file =
+          relative.find ("relocation_adapter") != std::string::npos;
 
         std::ifstream input (entry.path ());
         std::string line;
@@ -532,7 +537,12 @@ bool sample_application_code_uses_message_codec (const std::filesystem::path &ro
                           << entry.path () << ':' << line_no << '\n';
                 ok = false;
             }
-            if (!dto_contract_file && line.find ("zlink::message_t::from (") != std::string::npos) {
+            const bool inline_support_chat_relocation_restore =
+              relative == "SupportChat/Server/Support/main.cpp"
+              && line.find ("zlink::message_t::from (") != std::string::npos;
+            if (!dto_contract_file && !relocation_adapter_file
+                && !inline_support_chat_relocation_restore
+                && line.find ("zlink::message_t::from (") != std::string::npos) {
                 std::cerr << "sample application code must not construct raw zlink::message_t "
                              "payloads outside DTO serializer hooks: "
                           << entry.path () << ':' << line_no << '\n';
@@ -1274,7 +1284,15 @@ int main ()
     ok &= file_contains (
       root
         / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp",
-      "void on_create_actor (player_actor_t &actor, const message_t &create_request)");
+      "task_t<actor_create_response_t>");
+    ok &= file_contains (
+      root
+        / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp",
+      "on_create_actor (");
+    ok &= file_contains (
+      root
+        / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp",
+      "player_actor_t &actor");
     ok &= file_contains (
       root
         / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp",

@@ -423,7 +423,13 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             update.targetNodeRid(),
             update.actorId(),
             update.objectGeneration());
-        return awaitRouteReady(target).thenRun(() -> {
+        if (spotNode != null) {
+            spotNode.rememberActorAuthority(
+                target,
+                update.targetAuthorityOwnerGeneration());
+        }
+        return awaitRouteReady(target).thenCompose(ignored -> {
+            ZLinkBoundActor actor;
             synchronized (this) {
                 StoredBindingRoute current = bindingRoutes.get(
                     update.actorId());
@@ -432,7 +438,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                         "stored binding route changed before relocation ACK: "
                             + update.actorId());
                 }
-                ZLinkBoundActor actor = bound.stream()
+                actor = bound.stream()
                     .filter(candidate -> candidate.actorId().equals(
                         update.actorId()))
                     .map(ZLinkBoundActor.class::cast)
@@ -440,9 +446,22 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     .orElseThrow(() -> new ZLinkConfigurationException(
                         "bound Actor disappeared before relocation ACK: "
                             + update.actorId()));
-                actor.rebindNativeActor(target);
-                bindingRoutes.put(update.actorId(), current.toTarget(update));
             }
+            return actor.rebindNativeActorRoute(target, RELAY_SUBMIT_TIMEOUT)
+                .thenRun(() -> {
+                    synchronized (this) {
+                        StoredBindingRoute current = bindingRoutes.get(
+                            update.actorId());
+                        if (current == null || !current.matchesSource(update)) {
+                            throw new ZLinkConfigurationException(
+                                "stored binding route changed before relocation ACK: "
+                                    + update.actorId());
+                        }
+                        bindingRoutes.put(
+                            update.actorId(),
+                            current.toTarget(update));
+                    }
+                });
         });
     }
 

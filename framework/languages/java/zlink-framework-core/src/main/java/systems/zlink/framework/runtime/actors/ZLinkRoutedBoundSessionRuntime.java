@@ -110,29 +110,34 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         ZLinkBackendActorRef actorRef,
         Message frame) {
         List<Message> parts = ZLinkActorSpotRoutePackets.createBoundSessionSendParts(actorRef, frame);
-        try {
-            if (routedTransport != null && routeChannelName != null && !routeChannelName.isBlank()) {
+        Message packetName = Message.from(parts.getFirst());
+        Message envelope =
+            ZLinkActorEntryTransferEnvelope.encode(parts);
+        List<Message> wireParts = List.of(packetName, envelope);
+        if (routedTransport != null
+            && routeChannelName != null
+            && !routeChannelName.isBlank()) {
+            try {
                 return routedTransport.sendToSpotViaRouterChannel(
-                    routeChannelName,
-                    targetNodeRid,
-                    targetEntrySpotId,
-                    parts);
+                        routeChannelName,
+                        targetNodeRid,
+                        targetEntrySpotId,
+                        wireParts)
+                    .whenComplete((ignored, error) -> {
+                        wireParts.forEach(Message::close);
+                        parts.forEach(Message::close);
+                    });
+            } catch (RuntimeException error) {
+                wireParts.forEach(Message::close);
+                parts.forEach(Message::close);
+                throw error;
             }
-            boolean submitted = sourceEntrySpot.sendToSpot(
-                    targetNodeRid,
-                    targetEntrySpotId,
-                    0L,
-                    parts,
-                    SendFlags.NONE);
-            if (!submitted) {
-                return java.util.concurrent.CompletableFuture.failedFuture(
-                    new ZLinkConfigurationException(
-                        "routed actor bound session target is not ready"));
-            }
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        } finally {
-            parts.forEach(Message::close);
         }
+        wireParts.forEach(Message::close);
+        parts.forEach(Message::close);
+        return java.util.concurrent.CompletableFuture.failedFuture(
+            new ZLinkConfigurationException(
+                "routed actor bound session requires an exact RouteMesh channel"));
     }
 
     private record SendCall(

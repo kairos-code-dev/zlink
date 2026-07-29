@@ -865,7 +865,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     runtime::mesh_node_host_service_t *mesh_node_service = nullptr;
     if (!mesh_node_registrations.empty ()) {
         auto mesh_service = std::make_unique<runtime::mesh_node_host_service_t> (
-          std::move (mesh_node_registrations), _state->serializers,
+          std::move (mesh_node_registrations), _state->serializers, _state->handlers,
           options.dispatch_options ());
         mesh_node_service = mesh_service.get ();
         mesh_nodes = mesh_service->nodes ();

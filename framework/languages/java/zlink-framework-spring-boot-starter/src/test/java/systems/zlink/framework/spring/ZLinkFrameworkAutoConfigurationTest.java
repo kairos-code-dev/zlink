@@ -51,6 +51,7 @@ import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.ZLinkHandlerFilter;
+import systems.zlink.framework.ZLinkHandlerFilterContext;
 import systems.zlink.framework.ZLinkHandlerFilterNext;
 import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -559,7 +560,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 .toCompletableFuture()
                 .join();
 
-            assertEquals(new ProfileReply("filter:profile:42"), reply);
+            assertEquals(new ProfileReply("profile:42"), reply);
             assertSame(
                 ActivationScopedDependency.HANDLER.get(),
                 ActivationScopedDependency.FILTER.get());
@@ -1420,14 +1421,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @Override
         public <T> CompletionStage<T> invoke(
-            ZLinkMessageContext context,
+            ZLinkHandlerFilterContext context,
             ZLinkHandlerFilterNext<T> next) {
             ActivationScopedDependency.FILTER.set(activationDependency);
-            return next.invoke().thenApply(reply -> {
-                @SuppressWarnings("unchecked")
-                T decorated = (T) new ProfileReply(dependency.decorate((ProfileReply) reply));
-                return decorated;
-            });
+            return next.invoke();
         }
     }
 
@@ -1526,7 +1523,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @Override
         public <T> CompletionStage<T> invoke(
-            ZLinkMessageContext context,
+            ZLinkHandlerFilterContext context,
             ZLinkHandlerFilterNext<T> next) {
             return next.invoke();
         }

@@ -238,7 +238,7 @@ Handler key는 owner와 message kind를 포함한다.
 등록할 수 있다. Packet name은 registration descriptor가 한 번 결정하며 codec은 packet name에 관여하지
 않는다.
 
-모든 handler가 공유하는 base context는 MeshName을 요구하지 않는다. Channel handler와 filter context는
+모든 handler가 공유하는 base context는 MeshName을 요구하지 않는다. Channel handler context는
 ChannelName, [message kind](01-glossary.ko.md#message-kind), packet name, metadata와 correlation 정보를 제공한다. Node direct handler
 context는 물리 RID namespace가 실제 대상 계약이므로 MeshName과 source·target RID를 별도 context에
 유지한다. 선택된 RouteMesh 또는 ClientServer 종류와 endpoint는 application handler가 아니라 monitoring과
@@ -250,17 +250,54 @@ Runtime reflection을 제공하는 언어는 명시한 assembly, module 또는 p
 
 ### 8.1 Handler filter
 
-Handler filter는 ChannelName의 send/request dispatch에만 적용한다. Node direct, Spot, Actor, [STREAM session](01-glossary.ko.md#stream-session),
-Logical Multicast와 classic fanout dispatch에는 적용하지 않는다. Filter는 root에 등록한 순서대로 handler
-앞에서 실행되며, 각 filter는 `next`를 최대 한 번 호출할 수 있다. `next`를 호출하면 남은 filter와 handler를
-실행하고, 호출하지 않으면 해당 dispatch를 종료한다. Filter 또는 handler에서 발생한 예외는 같은 dispatch
-실패 처리 규칙을 따른다. Channel handler와 각 filter는 해당 dispatch의 DI scope에서 resolve하며 같은
-scoped dependency를 사용한다. Root singleton이나 object activation scope에서 여러 dispatch가 공유하지
-않는다.
+Handler filter는 Framework root에 등록한 process-level handler에 적용한다.
 
-언어별 exact interface는 filter context와 `next`의 구체적인 타입, 비동기 반환 타입과 short-circuit 결과
-표현을 소유한다. 적용 범위와 실행 순서는 이 절이 소유하므로 언어별 구현이 다른 dispatch owner까지 filter를
-임의로 확장하면 안 된다.
+| dispatch | filter |
+|---|---|
+| RouteMesh·ClientServer Channel send/request | 적용한다 |
+| Node direct send/request | 적용한다 |
+| classic fanout 구독 handler | 적용한다 |
+| Spot·Actor handler | 적용하지 않는다 |
+| Spot이 등록한 Logical Multicast 구독 handler | 적용하지 않는다 |
+| [STREAM session](01-glossary.ko.md#stream-session) handler | 적용하지 않는다 |
+
+Filter context는 current message 정보와 dispatch 종류를 함께 제공한다. Dispatch 종류는 Node direct
+send/request, Channel send/request와 classic fanout의 다섯 값이다. Channel 값은 RouteMesh와 ClientServer를
+함께 나타낸다. RouteMesh와 Node direct는 MeshName을 제공하고 ClientServer와 classic fanout은 제공하지
+않는다. Classic fanout을 구분하려고 등록되지 않은 가짜 MeshName을 넣지 않는다. Socket 종류, endpoint와
+내부 dispatch table은 공개하지 않는다.
+
+Filter는 root에 등록한 순서대로 handler 앞에서 실행한다. 각 filter가 `next`를 호출하면 다음 filter가
+실행되고 마지막 filter가 `next`를 호출하면 handler가 실행된다. `next`가 완료된 뒤에는 등록의 반대
+순서로 각 filter의 나머지 코드를 실행한다. Filter는 `next`를 최대 한 번 호출할 수 있다. 두 번째 호출은
+handler를 다시 실행하지 않고 application 코드 오류로 거부하며 자동 재시도하지 않는다.
+
+Filter가 `next`를 호출하지 않으면 그 handler를 실행하지 않는다.
+
+| dispatch | 결과 |
+|---|---|
+| Node direct·Channel send | 현재 dispatch를 끝낸다. 송신자에게 추가 결과를 보내지 않는다 |
+| classic fanout | 현재 구독 handler만 끝낸다. 다른 구독 handler는 계속 실행한다 |
+| Node direct·Channel request | `Rejected` 오류 reply를 보낸다. `null`을 정상 업무 reply로 직렬화하지 않는다 |
+
+Filter는 request 업무 reply를 직접 만들거나 대체하지 않는다. 값을 반환하는 언어에서도 filter 반환값은
+`next`가 만든 handler 결과를 전달하는 데만 사용한다. `next`를 호출하지 않은 request는 filter가 값을
+반환해도 `Rejected`다.
+
+Handler 하나를 실행하는 dispatch마다 scope를 새로 만든다. Handler와 각 filter instance를 그 scope에서
+한 번씩 만들고 같은 scoped dependency를 제공한다. Application이 handler나 filter type에 지정한 DI
+lifetime은 이 수명을 바꾸지 않는다. Framework가 filter 호출에 전달한 cancellation 신호는 같은 dispatch의
+handler에도 전달한다. 정상 완료, `next`를 호출하지 않은 종료, 예외와 cancellation 모두 instance와 scope를
+정확히 한 번 정리한다.
+
+Classic fanout message가 여러 구독 handler와 일치하면 handler마다 별도 dispatch와 scope를 만든다. 한
+handler의 filter 중단이나 실패는 다른 handler를 취소하지 않는다. 이미 시작한 다른 fanout dispatch도
+현재 dispatch의 cancellation로 취소하지 않는다.
+
+Filter 또는 handler에서 발생한 예외는 해당 dispatch의 기존 실패 처리 규칙을 따른다. 언어별 exact
+interface는 filter context와 `next`의 구체적인 타입, 비동기 반환 타입과 오류 type 이름을 소유한다. 적용
+범위와 실행 순서는 이 절이 소유하므로 언어별 구현이 다른 dispatch owner까지 filter를 임의로 확장하면
+안 된다.
 
 ### 8.2 Handler 실행 객체와 dependency 수명
 

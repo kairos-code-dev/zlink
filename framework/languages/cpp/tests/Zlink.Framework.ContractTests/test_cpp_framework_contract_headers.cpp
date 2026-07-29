@@ -1771,14 +1771,21 @@ class alias_registered_handler_t
 class named_filter_t
 {
   public:
-    zlink::framework::task_t<zlink::message_t>
-    invoke (const zlink::framework::message_context_t &,
+    zlink::framework::task_t<void>
+    invoke (const zlink::framework::handler_filter_context_t &,
             zlink::framework::handler_next_t next)
     {
         return next ();
     }
 };
 
+static_assert (
+  std::is_same_v<zlink::framework::handler_next_t,
+                 std::function<zlink::framework::task_t<void> ()>>);
+static_assert (
+  static_cast<int> (
+    zlink::framework::handler_dispatch_kind_t::classic_fanout)
+  == 4);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::handler_registry_t &> ()
                                           .use_filter<named_filter_t> ()),
                               zlink::framework::handler_registry_t &>);

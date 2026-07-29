@@ -1339,7 +1339,8 @@ public final class ZLinkAggregateRelocationCoordinator {
         private final Object result;
 
         public AuthorityConflictException(Object result) {
-            super("aggregate relocation authority operation was rejected");
+            super("aggregate relocation authority operation was rejected: "
+                + (result == null ? "null" : result.getClass().getSimpleName()));
             this.result = result;
         }
 

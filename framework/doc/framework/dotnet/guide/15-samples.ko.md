@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink를 어디에 쓰나](14-alternative.ko.md) | [공통 샘플](../../common/sample/README.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink를 어디에 쓰나](14-alternative.ko.md) | [다음: 설정 — 옵션 목록 · 기본값 · 변경 시점](16-options.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 15. 샘플 고르기 — 내 문제에 가까운 예제부터
@@ -382,5 +382,5 @@ framework/languages/dotnet/samples/run_samples.sh TicTacToe Bingo
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink를 어디에 쓰나](14-alternative.ko.md) | [공통 샘플](../../common/sample/README.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink를 어디에 쓰나](14-alternative.ko.md) | [다음: 설정 — 옵션 목록 · 기본값 · 변경 시점](16-options.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

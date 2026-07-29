@@ -570,14 +570,15 @@ test('framework error kind values and retriable defaults match the shared table'
     ['RuntimeShutdown', 'runtimeShutdown', 36, false],
     ['RelocationDisabled', 'relocationDisabled', 37, false],
     ['RelocationTargetUnavailable', 'relocationTargetUnavailable', 38, true],
-    ['RelocationFailed', 'relocationFailed', 39, true]
+    ['RelocationFailed', 'relocationFailed', 39, true],
+    ['InvalidOperation', 'invalidOperation', 40, false]
   ];
 
   // Pinned to the spec's own count. Comparing against expected.length only proved
   // the table was self-consistent, so when the enum stopped at 36 the check stayed
   // green at 37 === 37 and the three v11 kinds went unverified.
-  assert.equal(expected.length, 40);
-  assert.equal(Object.keys(framework.ZLinkFrameworkErrorKind).length, 40);
+  assert.equal(expected.length, 41);
+  assert.equal(Object.keys(framework.ZLinkFrameworkErrorKind).length, 41);
   // Bidirectional: an enum member absent from the table must fail here rather than
   // simply never being visited by the loop below.
   assert.deepEqual(
@@ -590,6 +591,32 @@ test('framework error kind values and retriable defaults match the shared table'
     assert.equal(framework.ZLINK_FRAMEWORK_ERROR_KIND_VALUES[kind], numericValue, name);
     assert.equal(framework.isZLinkFrameworkErrorRetriableByDefault(kind), retriable, name);
   }
+});
+
+test('handler filter public contract exposes only the five supported dispatch kinds', () => {
+  const declarations = readTree(declarationsRoot);
+  const filter = declarationBody(declarations, 'ZLinkHandlerFilter');
+  const context = declarationBody(declarations, 'ZLinkHandlerFilterContext');
+
+  assert.match(filter, /context: ZLinkHandlerFilterContext/);
+  assert.match(filter, /next: ZLinkHandlerDelegate/);
+  assert.match(filter, /\): Promise<void>/);
+  assert.match(context, /dispatchKind: ZLinkHandlerDispatchKind/);
+  assert.match(
+    declarations,
+    /type ZLinkHandlerDelegate\s*=\s*\(\) => Promise<void>/
+  );
+  assert.deepEqual(
+    Object.values(require('../../packages/framework/dist').ZLinkHandlerDispatchKind),
+    [
+      'nodeDirectSend',
+      'nodeDirectRequest',
+      'channelSend',
+      'channelRequest',
+      'classicFanout'
+    ]
+  );
+  assert.doesNotMatch(filter + context, /ownerKind|descriptor|endpoint|socket/i);
 });
 
 test('location contract exposes only opaque provider primitives and aggregate operational queries', () => {

@@ -235,6 +235,79 @@ int main ()
     assert (reply.correlation == correlation);
     assert (reply.terminal_result == 0);
     assert (reply.failure_code == 0);
+
+    // Every ClientServer framework error mapping must be a canonical reply
+    // header pair accepted by every language's service-wire decoder.
+    const std::vector<std::pair<
+      std::uint32_t, protocol::framework_error_code>>
+      client_server_failure_pairs{
+        {102, protocol::framework_error_code::handlerNotFound},
+        {104, protocol::framework_error_code::payloadDecodeFailed},
+        {105, protocol::framework_error_code::routeNotConnected},
+        {102, protocol::framework_error_code::requestTargetNotFound},
+        {106, protocol::framework_error_code::requestRejected},
+        {104, protocol::framework_error_code::requestProtocolError},
+        {105, protocol::framework_error_code::requestFailed}};
+    for (const auto &[terminal_result, failure_code] :
+         client_server_failure_pairs) {
+        const auto mapped = protocol::decode_reply_header (
+          protocol::encode_reply_header (
+            correlation, terminal_result,
+            static_cast<std::uint32_t> (failure_code)));
+        assert (mapped.terminal_result == terminal_result);
+        assert (
+          mapped.failure_code
+          == static_cast<std::uint32_t> (failure_code));
+    }
+
+    const std::vector<std::pair<
+      std::uint32_t, protocol::framework_error_code>>
+      mismatched_reply_pairs{
+        {102, protocol::framework_error_code::requestRejected},
+        {106, protocol::framework_error_code::handlerNotFound}};
+    for (const auto &[terminal_result, failure_code] :
+         mismatched_reply_pairs) {
+        bool encode_rejected = false;
+        try {
+            static_cast<void> (protocol::encode_reply_header (
+              correlation, terminal_result,
+              static_cast<std::uint32_t> (failure_code)));
+        }
+        catch (const protocol::service_wire_error_t &) {
+            encode_rejected = true;
+        }
+        assert (encode_rejected);
+    }
+
+    const auto overwrite_u32 = [] (
+      std::vector<std::uint8_t> &bytes,
+      std::size_t offset,
+      std::uint32_t value) {
+        for (int shift = 24; shift >= 0; shift -= 8)
+            bytes[offset++] =
+              static_cast<std::uint8_t> (value >> shift);
+    };
+    for (const auto &[terminal_result, failure_code] :
+         mismatched_reply_pairs) {
+        auto malformed = protocol::encode_reply_header (
+          correlation, 106,
+          static_cast<std::uint32_t> (
+            protocol::framework_error_code::requestRejected));
+        overwrite_u32 (
+          malformed, malformed.size () - 8, terminal_result);
+        overwrite_u32 (
+          malformed, malformed.size () - 4,
+          static_cast<std::uint32_t> (failure_code));
+        bool decode_rejected = false;
+        try {
+            static_cast<void> (
+              protocol::decode_reply_header (malformed));
+        }
+        catch (const protocol::service_wire_error_t &) {
+            decode_rejected = true;
+        }
+        assert (decode_rejected);
+    }
     const protocol::spot_route_fence_t spot_fence{
       {'s', 'p', 'o', 't'},
       3,

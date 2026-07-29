@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelRequestDispatchPipeline(
-    string meshName,
+    string? meshName,
     ZLinkHandlerRegistry handlerRegistry,
     ZLinkHandlerDispatcher dispatcher,
     Func<string, IReadOnlySet<string>> resolveMappedGroups,
@@ -78,11 +78,21 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
 
         try
         {
-            var response = await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)
+            var dispatch = await dispatcher.DispatchAsync(
+                    endpoint,
+                    message,
+                    context,
+                    ZLinkHandlerDispatchKind.ChannelRequest,
+                    cancellationToken)
                 .ConfigureAwait(false);
+            if (!dispatch.HandlerInvoked)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.Rejected,
+                    $"A handler filter rejected '{channelName}:{header.MessageName}'.");
+
             reply(
                 ZLinkChannelReplyWriter.CreateReplyHeader(ZLinkMessageKind.Response, channelName, header),
-                response,
+                dispatch.Value,
                 endpoint.ReplyType);
 
             scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Replied);

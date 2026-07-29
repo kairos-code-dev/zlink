@@ -175,7 +175,6 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
             runtime);
 
         var routeHandlers = new ZLinkRouteHandlerRegistry(routeDescriptors);
-        var routeInvoker = new ZLinkRouteHandlerInvoker(services, registration.Codecs);
 
         // The channel pipelines are always built (registry may be empty) so a
         // channel record addressed to a channel with no matching handler yields a
@@ -184,6 +183,9 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
         var handlerDispatcher = new ZLinkHandlerDispatcher(
             services.GetRequiredService<IServiceScopeFactory>(),
             registration);
+        var routeInvoker = new ZLinkRouteHandlerInvoker(
+            handlerDispatcher,
+            registration.Codecs);
         var commandPipeline = new ZLinkChannelCommandDispatchPipeline(
             spotNode.SpotNodeName,
             handlerRegistry,

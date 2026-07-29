@@ -139,12 +139,11 @@ internal sealed class ZLinkActorJoinCall :
                 "Actor Join was already deferred.");
 
         var snapshot = _request.Snapshot(_runtime.Registration.Codecs);
-        var actorState = _runtime.GetOrCreateActorState(_actor.Context.ActorId);
         var join = new ZLinkDeferredActorJoin(
             _runtime,
-            actorState,
+            _actorState,
             _actor,
-            actorState.NativeActorRef?.Generation
+            _actorState.NativeActorRef?.Generation
             ?? throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.NotFound,
                 $"Actor '{_actor.Context.ActorId}' does not have a current object generation."),

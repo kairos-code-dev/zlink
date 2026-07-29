@@ -206,6 +206,11 @@ final class ZLinkActorSessionCoordinator {
         return requireActors().captureMovingPacket(actor, header, payload, replyRoute);
     }
 
+    Optional<ZLinkBackendActorRef> messageFollowTargetActorRef(
+        ZLinkActor actor) {
+        return requireActors().messageFollowTargetActorRef(actor);
+    }
+
     boolean isMoving(ZLinkActor actor) {
         return requireActors().isMoving(actor);
     }
@@ -321,30 +326,30 @@ final class ZLinkActorSessionCoordinator {
                 headerPart.sourceNodeRid(),
                 headerPart.sourceSessionRid());
         }
-        Supplier<CompletionStage<Optional<Message>>> turn = () ->
-            runtime.runActorDispatchTurn(
-                actor.context().actorId(), operation);
-        byte[] acceptedRecord = headerPart.acceptedJournalRecord();
-        if (acceptedRecord.length == 0) {
-            return turn.get();
-        }
+        String actorId = actor.context().actorId();
         CompletableFuture<Optional<Message>> result =
             new CompletableFuture<>();
-        return runtime.submitActorDispatch(
-                actor.context().actorId(),
+        Supplier<CompletionStage<Void>> turn = () ->
+            operation.get().handle((reply, failure) -> {
+                if (failure == null) {
+                    result.complete(reply);
+                } else {
+                    result.completeExceptionally(failure);
+                }
+                return null;
+            });
+        byte[] acceptedRecord = headerPart.acceptedJournalRecord();
+        CompletionStage<Void> submitted = acceptedRecord.length == 0
+            ? runtime.submitActorDispatch(actorId, turn)
+            : runtime.submitActorDispatch(
+                actorId,
                 acceptedRecord,
-                () -> turn.get().handle((reply, failure) -> {
-                    if (failure == null) {
-                        result.complete(reply);
-                    } else {
-                        result.completeExceptionally(failure);
-                    }
-                    return null;
-                }),
+                turn,
                 () -> {
                     relocationRelease.run();
                     result.complete(Optional.empty());
-                })
+                });
+        return submitted
             .thenCompose(ignored -> result);
     }
 

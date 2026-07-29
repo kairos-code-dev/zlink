@@ -251,9 +251,13 @@ SPOT과 STREAM의 backpressure는 public **call object, timeout, result error ki
 
 ### 6.2 Handler filter
 
-**filter는 `message_context_t`로 현재 dispatch의 공개 metadata를 읽는다.** descriptor와 raw
-message storage는 Framework 내부에 유지한다. **reply를 바꾸려면 `next()` 결과 대신 새
-`message_t`를 반환한다.**
+filter는 `handler_filter_context_t`로 현재 dispatch 종류와 공개 metadata를 읽는다. descriptor와 raw
+message storage는 Framework 내부에 유지한다. filter는 result를 반환하지 않으며 request reply를 만들거나
+바꿀 수 없다.
+
+`next()`를 호출하지 않으면 send와 Classic Fanout의 현재 handler만 종료한다. request는
+`request_rejected`로 완료한다. `next()`는 한 번만 호출할 수 있으며 두 번째 호출은
+`already_submitted` 오류다.
 
 filter의 등록 순서·`next` 의미·scope는 [framework API §8.1](../../../../06-framework-api.ko.md)이
 소유한다.

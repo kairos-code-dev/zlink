@@ -35,6 +35,7 @@ namespace detail
 {
 class actor_gateway_runtime_t;
 class channel_runtime_t;
+class mesh_node_runtime_t;
 class spot_node_runtime_t;
 class stream_runtime_t;
 zlink::message_t message_to_raw (const message_t &message,
@@ -91,6 +92,7 @@ class message_t
   private:
     friend class detail::actor_gateway_runtime_t;
     friend class detail::channel_runtime_t;
+    friend class detail::mesh_node_runtime_t;
     friend class detail::spot_node_runtime_t;
     friend class detail::stream_runtime_t;
     friend class runtime::actor_client_impl_t;

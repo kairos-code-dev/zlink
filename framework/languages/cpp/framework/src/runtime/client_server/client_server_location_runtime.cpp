@@ -2,6 +2,8 @@
 
 #include "runtime/client_server/client_server_location_runtime.hpp"
 #include "runtime/client_server/weighted_selector.hpp"
+#include "runtime/configuration/service_scope.hpp"
+#include "runtime/messaging/request_failure_mapper.hpp"
 
 #include <zlink.hpp>
 
@@ -32,6 +34,40 @@ std::string connection_key (
 {
     return descriptor.server_rid.to_hex () + "|"
            + std::to_string (descriptor.lifecycle_generation);
+}
+
+struct client_server_wire_failure_t
+{
+    std::uint32_t terminal_result;
+    protocol::framework_error_code failure_code;
+};
+
+client_server_wire_failure_t
+wire_failure (const framework_exception_t &error)
+{
+    switch (error.kind ()) {
+        case framework_error_kind_t::handler_not_found:
+            return {102, protocol::framework_error_code::handlerNotFound};
+        case framework_error_kind_t::payload_decode_failed:
+            return {
+              104, protocol::framework_error_code::payloadDecodeFailed};
+        case framework_error_kind_t::route_not_connected:
+            return {
+              105, protocol::framework_error_code::routeNotConnected};
+        case framework_error_kind_t::request_target_not_found:
+            return {
+              102,
+              protocol::framework_error_code::requestTargetNotFound};
+        case framework_error_kind_t::request_rejected:
+            return {
+              106, protocol::framework_error_code::requestRejected};
+        case framework_error_kind_t::request_protocol_error:
+            return {
+              104,
+              protocol::framework_error_code::requestProtocolError};
+        default:
+            return {105, protocol::framework_error_code::requestFailed};
+    }
 }
 
 std::string stable_key (
@@ -536,10 +572,15 @@ void client_server_location_runtime_t::dispatch_server (
                 if (record.correlation)
                     inbound.message.correlation_id =
                       std::to_string (*record.correlation);
+                auto scope =
+                  zlink::framework::detail::service_scope_t::create (
+                    *_services,
+                    zlink::framework::detail::service_scope_kind_t::
+                      handler_invocation);
                 if (record.request_sequence && record.correlation) {
                     auto reply = _channel_runtime.dispatch_request (
                       record.owner, {}, payload.packet_name,
-                      *_services, *_serializers, *_handlers,
+                      scope.provider (), *_serializers, *_handlers,
                       message, inbound);
                     if (reply) {
                         (void) server.owner->reply (
@@ -550,15 +591,58 @@ void client_server_location_runtime_t::dispatch_server (
                               runtime::messaging::envelope_codec_t::
                                 default_content_type),
                             reply.value ().to_bytes ()});
+                    } else {
+                        const framework_exception_t error (
+                          reply.error_kind (),
+                          reply.error () != nullptr
+                            ? reply.error ()->what ()
+                            : "ClientServer request handler failed",
+                          reply.error () != nullptr
+                            && reply.error ()->is_retriable ());
+                        const auto failure = wire_failure (error);
+                        (void) server.owner->reply (
+                          record, failure.terminal_result,
+                          failure.failure_code);
                     }
                 } else {
                     (void) _channel_runtime.dispatch_send (
                       record.owner, {}, payload.packet_name,
-                      *_services, *_serializers, *_handlers,
+                      scope.provider (), *_serializers, *_handlers,
                       message, inbound);
                 }
             }
+            catch (const framework_exception_t &error) {
+                if (record.request_sequence
+                    && record.correlation) {
+                    const auto failure = wire_failure (error);
+                    (void) server.owner->reply (
+                      record, failure.terminal_result,
+                      failure.failure_code);
+                }
+            }
+            catch (const std::exception &error) {
+                if (record.request_sequence
+                    && record.correlation) {
+                    const auto failure = wire_failure (
+                      framework_exception_t (
+                        framework_error_kind_t::request_failed,
+                        error.what ()));
+                    (void) server.owner->reply (
+                      record, failure.terminal_result,
+                      failure.failure_code);
+                }
+            }
             catch (...) {
+                if (record.request_sequence
+                    && record.correlation) {
+                    const auto failure = wire_failure (
+                      framework_exception_t (
+                        framework_error_kind_t::request_failed,
+                        "ClientServer dispatch failed"));
+                    (void) server.owner->reply (
+                      record, failure.terminal_result,
+                      failure.failure_code);
+                }
             }
         }
         (void) mailbox.release (*claim);
@@ -635,9 +719,8 @@ client_server_location_runtime_t::request (
         std::move (content_type),
         message.to_bytes ()},
       effective,
-      [promise] (foundation::operation_terminal_t terminal,
-                 std::vector<std::uint8_t> payload) {
-          if (terminal
+      [promise] (client_server_request_completion_t completion) {
+          if (completion.terminal
               != foundation::operation_terminal_t::completed) {
               promise->set_value (
                 result_t<zlink::message_t>::failure (
@@ -645,9 +728,22 @@ client_server_location_runtime_t::request (
                   "ClientServer request did not complete"));
               return;
           }
+          if (completion.reply_header.terminal_result != 0) {
+              const auto error =
+                runtime::messaging::request_failure_mapper_t{}
+                  .reply_header_exception (
+                    completion.reply_header.terminal_result,
+                    completion.reply_header.failure_code,
+                    "ClientServer request");
+              promise->set_value (
+                zlink::framework::detail::result_access_t::failure<
+                  zlink::message_t> (error));
+              return;
+          }
           try {
               const auto decoded =
-                protocol::decode_application_payload (payload);
+                protocol::decode_application_payload (
+                  completion.payload);
               promise->set_value (
                 result_t<zlink::message_t>::success (
                   zlink::message_t::from (decoded.payload)));

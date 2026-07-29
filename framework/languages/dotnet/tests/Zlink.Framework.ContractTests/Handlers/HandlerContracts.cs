@@ -7,6 +7,7 @@ public sealed class HandlerContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkMessageContext),
+        typeof(IZLinkHandlerFilterContext),
         typeof(IZLinkRequestHandler<,>),
         typeof(IZLinkSendHandler<>),
         typeof(IZLinkFanoutHandler<>),
@@ -57,6 +58,23 @@ public sealed class HandlerContracts
         Assert.DoesNotContain(
             typeof(IZLinkHandlerFilter).Assembly.GetTypes(),
             static type => type.Name == "ZLinkHandlerInvocation");
+
+        Assert.Equal(
+            new[]
+            {
+                ZLinkHandlerDispatchKind.NodeDirectSend,
+                ZLinkHandlerDispatchKind.NodeDirectRequest,
+                ZLinkHandlerDispatchKind.ChannelSend,
+                ZLinkHandlerDispatchKind.ChannelRequest,
+                ZLinkHandlerDispatchKind.ClassicFanout
+            },
+            Enum.GetValues<ZLinkHandlerDispatchKind>());
+        Assert.Equal(
+            typeof(IZLinkHandlerFilterContext),
+            typeof(IZLinkHandlerFilter)
+                .GetMethod(nameof(IZLinkHandlerFilter.InvokeAsync))!
+                .GetParameters()[0]
+                .ParameterType);
     }
 
     private sealed record Authenticate(string PlayerId);
@@ -108,7 +126,7 @@ public sealed class HandlerContracts
     private sealed class AuditingFilter : IZLinkHandlerFilter
     {
         public ValueTask InvokeAsync(
-            IZLinkMessageContext context,
+            IZLinkHandlerFilterContext context,
             ZLinkHandlerFilterNext next,
             CancellationToken cancellationToken)
         {

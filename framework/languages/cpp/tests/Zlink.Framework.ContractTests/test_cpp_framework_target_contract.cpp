@@ -832,24 +832,33 @@ int main ()
     /* CPP-G0-E2E-004 — ST-A1 verifies lifecycle evidence in contract order. */
     gate.require (transfer_client.find ("assert_evidence_sequence") != std::string::npos,
                   "CPP-G0-E2E-004", "ST-A1 has no cross-kind evidence order assertion");
-    gate.require (transfer_server.find ("authority_committed") != std::string::npos,
-                  "CPP-G0-E2E-004", "SpotActorTransfer emits no authority_committed evidence");
+    gate.require (
+      spot_runtime.find ("\"location_committed\"") != std::string::npos
+        && transfer_server.find ("join_completion_accepted") != std::string::npos,
+      "CPP-G0-E2E-004",
+      "SpotActorTransfer lacks committed Location or accepted completion evidence");
     const auto st_a1 =
       read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_a1_scenario.hpp");
     const auto st_a1_admission = st_a1.find ("|admission|");
-    const auto st_a1_commit = st_a1.find ("|authority_committed|");
+    const auto st_a1_commit = st_a1.find ("|location_committed|");
+    const auto st_a1_completion = st_a1.find ("|join_completion_accepted|");
     const auto st_a1_leave = st_a1.find ("|leave|");
     const auto st_a1_joined = st_a1.find ("|joined|");
-    const auto st_a1_reply = st_a1.find ("|success_reply|");
     gate.require (
-      st_a1.find ("spot.node_rid == \"actor-a\"") != std::string::npos
-        && st_a1.find ("actor.node_rid == \"actor-a\"") != std::string::npos,
-      "CPP-G0-E2E-004", "ST-A1 does not require a same-node Actor and Spot");
-    gate.require (
-      st_a1_admission < st_a1_commit && st_a1_commit < st_a1_leave
-        && st_a1_leave < st_a1_joined && st_a1_joined < st_a1_reply,
+      st_a1.find ("actor.node_rid == spot.node_rid") != std::string::npos,
       "CPP-G0-E2E-004",
-      "ST-A1 lifecycle order is not admission, authority commit, leave, joined, reply");
+      "ST-A1 does not require a Framework-selected same-node Actor and Spot");
+    gate.require (
+      st_a1.find ("committed_ref.generation == source_ref.generation")
+        != std::string::npos,
+      "CPP-G0-E2E-004",
+      "ST-A1 does not prove that Actor ObjectGeneration is preserved");
+    gate.require (
+      st_a1_admission < st_a1_commit && st_a1_commit < st_a1_joined
+        && st_a1_joined < st_a1_leave
+        && st_a1_leave < st_a1_completion,
+      "CPP-G0-E2E-004",
+      "ST-A1 lifecycle order is not admission, location commit, joined, leave, accepted completion");
     gate.require (
       st_a1.find ("get_relocation_store_activity") != std::string::npos
         && st_a1.find ("message_follow") != std::string::npos,

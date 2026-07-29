@@ -244,17 +244,18 @@ struct dispatch_spot_t : public zlink::framework::spot_t<spot_actor_t>
 class auditing_filter_t
 {
   public:
-    zlink::framework::task_t<zlink::message_t>
-    invoke (const zlink::framework::message_context_t &context,
+    zlink::framework::task_t<void>
+    invoke (const zlink::framework::handler_filter_context_t &context,
             zlink::framework::handler_next_t next)
     {
         ++before_count;
         last_packet_name = context.packet_name;
         last_context_channel = context.channel_name.value_or ("<none>");
         last_context_packet = context.packet_name;
-        auto message = co_await next ();
+        last_dispatch_kind = context.dispatch_kind;
+        co_await next ();
         ++after_count;
-        co_return message;
+        co_return;
     }
 
     int before_count = 0;
@@ -262,24 +263,52 @@ class auditing_filter_t
     std::string last_packet_name;
     std::string last_context_channel;
     std::string last_context_packet;
+    zlink::framework::handler_dispatch_kind_t last_dispatch_kind =
+      zlink::framework::handler_dispatch_kind_t::channel_send;
 };
 
 class short_circuit_filter_t
 {
   public:
-    zlink::framework::task_t<zlink::message_t>
-    invoke (const zlink::framework::message_context_t &context,
+    zlink::framework::task_t<void>
+    invoke (const zlink::framework::handler_filter_context_t &context,
             zlink::framework::handler_next_t next)
     {
-        if (context.packet_name == "blocked") {
+        if (context.packet_name == "blocked"
+            || context.packet_name == "blocked-send"
+            || context.packet_name == "blocked-event") {
             ++short_circuit_count;
-            co_return zlink::message_t::from (std::string ("99"));
+            co_return;
         }
-        auto message = co_await next ();
-        co_return message;
+        co_await next ();
+        co_return;
     }
 
     int short_circuit_count = 0;
+};
+
+class duplicate_next_filter_t
+{
+  public:
+    zlink::framework::task_t<void>
+    invoke (const zlink::framework::handler_filter_context_t &context,
+            zlink::framework::handler_next_t next)
+    {
+        if (context.packet_name != "duplicate") {
+            co_await next ();
+            co_return;
+        }
+        co_await next ();
+        try {
+            co_await next ();
+        }
+        catch (const zlink::framework::framework_exception_t &) {
+            ++duplicate_rejections;
+        }
+        co_return;
+    }
+
+    int duplicate_rejections = 0;
 };
 
 template <typename T> void add_int_serializer (zlink::framework::serializer_registry_t &serializers)
@@ -337,6 +366,7 @@ int main ()
     services.add_singleton<handler_t> ();
     services.add_singleton<auditing_filter_t> ();
     services.add_singleton<short_circuit_filter_t> ();
+    services.add_singleton<duplicate_next_filter_t> ();
     auto provider = services.build_provider ();
 
     zlink::framework::serializer_registry_t serializers;
@@ -378,7 +408,17 @@ int main ()
                                                         {.packet_name = "throw"});
     handlers.on_request<handler_t, request_t, reply_t> ("game", "blocked", &handler_t::get_reply,
                                                         {.packet_name = "blocked"});
-    handlers.use_filter<auditing_filter_t> ().use_filter<short_circuit_filter_t> ();
+    handlers.on_request<handler_t, request_t, reply_t> (
+      "game", "duplicate", &handler_t::get_reply, {.packet_name = "duplicate"});
+    handlers.on_send<handler_t, command_t> (
+      "game", "blocked-send", &handler_t::on_command,
+      {.packet_name = "blocked-send"});
+    handlers.on_event<handler_t, event_t> (
+      "game", "blocked-event", &handler_t::on_event,
+      {.packet_name = "blocked-event"});
+    handlers.use_filter<auditing_filter_t> ()
+      .use_filter<short_circuit_filter_t> ()
+      .use_filter<duplicate_next_filter_t> ();
 
     const auto *descriptor = handlers.find ("game", "move", "request");
     if (descriptor == nullptr || descriptor->topic != "move") {
@@ -404,27 +444,61 @@ int main ()
     auto &audit_filter = provider.get_required<auditing_filter_t> ();
     if (audit_filter.before_count != 1 || audit_filter.after_count != 1
         || audit_filter.last_packet_name != "request" || audit_filter.last_context_channel != "game"
-        || audit_filter.last_context_packet != "request") {
+        || audit_filter.last_context_packet != "request"
+        || audit_filter.last_dispatch_kind
+             != zlink::framework::handler_dispatch_kind_t::channel_request) {
         return 35;
     }
 
     auto blocked_result = handlers.invoke ("game", "blocked", "blocked", provider, serializers,
                                            zlink::message_t::from (std::string ("123")));
-    if (!blocked_result
-        || serializers.get<reply_t> ()
-               .deserialize (
-                 zlink::framework::detail::encoded_payload_from_raw (blocked_result.value ()))
-               .value
-             != 99) {
+    if (blocked_result
+        || blocked_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_rejected) {
         return 36;
     }
     if (provider.get_required<handler_t> ().last_request == 123
         || provider.get_required<short_circuit_filter_t> ().short_circuit_count != 1) {
         return 37;
     }
-    if (audit_filter.before_count != 2 || audit_filter.after_count != 2
+    if (audit_filter.before_count != 2 || audit_filter.after_count != 1
         || audit_filter.last_packet_name != "blocked") {
         return 38;
+    }
+
+    auto duplicate_result =
+      handlers.invoke ("game", "duplicate", "duplicate", provider, serializers,
+                       zlink::message_t::from (std::string ("321")));
+    if (duplicate_result
+        || duplicate_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::already_submitted
+        || provider.get_required<duplicate_next_filter_t> ().duplicate_rejections != 1
+        || provider.get_required<handler_t> ().last_request != 321) {
+        return 39;
+    }
+
+    provider.get_required<handler_t> ().last_command = 0;
+    auto blocked_send =
+      handlers.invoke ("game", "blocked-send", "blocked-send", provider,
+                       serializers, zlink::message_t::from (std::string ("41")));
+    if (!blocked_send || provider.get_required<handler_t> ().last_command != 0) {
+        return 40;
+    }
+
+    provider.get_required<handler_t> ().last_event = 0;
+    auto blocked_event =
+      handlers.invoke ("game", "blocked-event", "blocked-event", provider,
+                       serializers, zlink::message_t::from (std::string ("51")));
+    if (!blocked_event || provider.get_required<handler_t> ().last_event != 0) {
+        return 41;
+    }
+    auto isolated_event =
+      handlers.invoke ("game", "event", "event", provider, serializers,
+                       zlink::message_t::from (std::string ("52")));
+    if (!isolated_event || provider.get_required<handler_t> ().last_event != 52
+        || audit_filter.last_dispatch_kind
+             != zlink::framework::handler_dispatch_kind_t::classic_fanout) {
+        return 42;
     }
 
     zlink::framework::detail::inbound_message_context_t inbound;
@@ -574,7 +648,7 @@ int main ()
              != zlink::framework::framework_error_kind_t::payload_decode_failed) {
         return 9;
     }
-    if (failure_events != 1
+    if (failure_events != 3
         || last_failure_kind != zlink::framework::framework_error_kind_t::payload_decode_failed) {
         return 10;
     }
@@ -586,7 +660,7 @@ int main ()
              != zlink::framework::framework_error_kind_t::request_failed) {
         return 11;
     }
-    if (failure_events != 2
+    if (failure_events != 4
         || last_failure_kind != zlink::framework::framework_error_kind_t::request_failed) {
         return 12;
     }
@@ -600,7 +674,7 @@ int main ()
              != zlink::framework::framework_error_kind_t::request_target_not_found) {
         return 13;
     }
-    if (failure_events != 3
+    if (failure_events != 5
         || last_failure_kind
              != zlink::framework::framework_error_kind_t::request_target_not_found) {
         return 14;

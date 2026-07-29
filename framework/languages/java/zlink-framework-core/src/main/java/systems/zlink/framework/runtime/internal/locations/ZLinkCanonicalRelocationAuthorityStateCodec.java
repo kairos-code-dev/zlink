@@ -11,11 +11,18 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkRelocationStored;
 
 /** Reads and replaces the canonical relocation slot in authority-payload-v1. */
-final class ZLinkCanonicalRelocationAuthorityStateCodec {
+public final class ZLinkCanonicalRelocationAuthorityStateCodec {
     private static final byte[] MAGIC = {0x5a, 0x4c, 0x41, 0x55};
     private static final byte[] EMPTY = {0, 0, 0, 0, 0};
 
     private ZLinkCanonicalRelocationAuthorityStateCodec() {
+    }
+
+    public static byte[] applicationPayloadOrOriginal(byte[] payload) {
+        Published publication = decode(payload);
+        return publication == null
+            ? Objects.requireNonNull(payload, "payload").clone()
+            : publication.applicationPayload();
     }
 
     static byte[] publish(

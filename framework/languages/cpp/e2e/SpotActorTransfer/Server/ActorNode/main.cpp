@@ -357,17 +357,12 @@ class transfer_actor_t final : public fw::actor_t
               std::get_if<fw::actor_join_accepted_t> (
                 &completion)) {
             std::string scenario = "deferred-join";
-            std::string target_spot;
             if (accepted->reply) {
                 const auto reply =
                   accepted->reply
                     ->decode<e2e::join_target_res_t> ();
                 scenario = reply.scenario;
-                target_spot = reply.target_spot_id;
             }
-            g_evidence->add (
-              scenario, actor_id, "authority_committed",
-              target_spot);
             g_evidence->add (
               scenario, actor_id, "join_completion_accepted",
               std::to_string (
@@ -574,11 +569,11 @@ class transfer_entry_spot_t : public fw::entry_spot_t<transfer_actor_t>
         co_return;
     }
 
-    fw::task_t<e2e::join_target_res_t> join_target (const transfer_actor_t &actor,
-                                                    fw::spot_actor_request_context_t &,
+    fw::task_t<e2e::join_target_res_t> join_target (transfer_actor_t &actor,
+                                                    fw::message_context_t &,
                                                     const e2e::join_target_req_t &request)
     {
-        auto context = actor.context ();
+        auto &context = actor.context ();
         context
           .join_spot (request.target_spot_id, request)
           .timeout (std::chrono::seconds (10))
@@ -593,7 +588,7 @@ class transfer_entry_spot_t : public fw::entry_spot_t<transfer_actor_t>
     }
 
     e2e::bound_push_res_t bound_push (const transfer_actor_t &actor,
-                                      fw::spot_actor_request_context_t &,
+                                      fw::message_context_t &,
                                       const e2e::bound_push_req_t &request)
     {
         actor.context ().bound_session ()
@@ -610,7 +605,7 @@ class transfer_entry_spot_t : public fw::entry_spot_t<transfer_actor_t>
     }
 
     e2e::probe_res_t probe (const transfer_actor_t &actor,
-                            fw::spot_actor_request_context_t &,
+                            fw::message_context_t &,
                             const e2e::probe_req_t &request)
     {
         g_evidence->add (request.scenario, actor.actor_id, "packet_handler", request.marker);
@@ -720,11 +715,11 @@ class transfer_user_spot_t : public fw::spot_t<transfer_actor_t>
         co_return;
     }
 
-    fw::task_t<e2e::join_target_res_t> join_target (const transfer_actor_t &actor,
-                                                    fw::spot_actor_request_context_t &,
+    fw::task_t<e2e::join_target_res_t> join_target (transfer_actor_t &actor,
+                                                    fw::message_context_t &,
                                                     const e2e::join_target_req_t &request)
     {
-        auto context = actor.context ();
+        auto &context = actor.context ();
         context
           .join_spot (request.target_spot_id, request)
           .timeout (std::chrono::seconds (10))
@@ -739,7 +734,7 @@ class transfer_user_spot_t : public fw::spot_t<transfer_actor_t>
     }
 
     e2e::probe_res_t probe (const transfer_actor_t &actor,
-                            fw::spot_actor_request_context_t &,
+                            fw::message_context_t &,
                             const e2e::probe_req_t &request)
     {
         g_evidence->add (request.scenario, actor.actor_id, "packet_handler", request.marker);
@@ -757,14 +752,14 @@ class transfer_user_spot_t : public fw::spot_t<transfer_actor_t>
     }
 
     void handoff_packet (const transfer_actor_t &actor,
-                         fw::spot_actor_send_context_t &,
+                         fw::message_context_t &,
                          const e2e::handoff_packet_msg_t &message)
     {
         g_evidence->add (message.scenario, actor.actor_id, "handoff_packet", message.marker);
     }
 
     e2e::bound_push_res_t bound_push (const transfer_actor_t &actor,
-                                      fw::spot_actor_request_context_t &,
+                                      fw::message_context_t &,
                                       const e2e::bound_push_req_t &request)
     {
         actor.context ().bound_session ()
@@ -1385,7 +1380,7 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
           .set_message_flow_observer (
             [] (const fw::message_flow_event_t &event) { g_evidence->add_flow (event); });
 
-        framework.set_message_follow_duration (std::chrono::seconds (3));
+        framework.set_message_follow_duration (std::chrono::seconds (5));
         framework.add_location_store (
           std::make_shared<fw::locations::redis::redis_location_store_t> (
             fw::locations::redis::redis_location_options_t{.connection_string = redis_endpoint,
@@ -1399,13 +1394,24 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
                 .key_prefix = key_prefix + ":relocation"}),
             *relocation_activity_ptr));
         auto &locations = framework.configure_locations ();
-        locations.heartbeat_interval = std::chrono::seconds (1);
+        locations.owner_lease_renew_interval = std::chrono::seconds (1);
         locations.owner_lease_ttl = std::chrono::seconds (3);
+        locations.owner_lease_fencing_margin =
+          std::chrono::milliseconds (500);
+        locations.owner_lease_renew_timeout =
+          std::chrono::milliseconds (500);
         locations.polling_interval = std::chrono::milliseconds (500);
+        locations.route_cache_max_age = std::chrono::milliseconds::zero ();
 
         auto mesh = framework.add_route_mesh (e2e::mesh_name);
         mesh.listen (router_endpoint).set_routing_id (zlink::routing_id_t::from (rid));
-        mesh.channel_name (e2e::mesh_name);
+        auto channel = mesh.channel_name (e2e::mesh_name);
+        if (host_role == transfer_host_role_t::actor_node) {
+            channel.server ();
+        } else {
+            mesh.set_object_role (fw::object_role_t::client);
+            channel.client ();
+        }
         if (host_role == transfer_host_role_t::actor_node) {
             mesh.add_entry_spot<transfer_entry_spot_t> (
               [] (fw::entry_spot_context_t context) {

@@ -437,6 +437,33 @@ bool raw_client_server_server_t::reply (
               protocol::encode_application_payload (payload)});
 }
 
+bool raw_client_server_server_t::reply (
+  const mesh::service_mailbox_record_t &request,
+  std::uint32_t terminal_result,
+  protocol::framework_error_code failure_code)
+{
+    if (request.source_routing_id.empty () || !request.request_sequence
+        || !request.correlation) {
+        throw std::invalid_argument (
+          "ClientServer reply requires request context");
+    }
+    if (terminal_result == 0) {
+        throw std::invalid_argument (
+          "ClientServer failure reply requires terminal fields");
+    }
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    {
+        std::lock_guard lock (_mutex);
+        port = _port;
+    }
+    return port
+           && port->reply (
+             {request.source_routing_id, request.request_sequence, {}},
+             {protocol::encode_reply_header (
+               *request.correlation, terminal_result,
+               static_cast<std::uint32_t> (failure_code))});
+}
+
 bool raw_client_server_server_t::byte_vector_less_t::operator() (
   const std::vector<std::uint8_t> &left,
   const std::vector<std::uint8_t> &right) const noexcept
@@ -736,7 +763,7 @@ bool raw_client_server_client_t::send (
 bool raw_client_server_client_t::request (
   const protocol::application_payload_t &payload,
   std::chrono::milliseconds timeout,
-  foundation::operation_registry_t::callback_t callback)
+  client_server_request_callback_t callback)
 {
     if (timeout <= std::chrono::milliseconds::zero ()) {
         throw std::invalid_argument (
@@ -762,9 +789,25 @@ bool raw_client_server_client_t::request (
         }
     }
     const auto id = operation_id (lifecycle, correlation);
+    struct reply_state_t
+    {
+        std::mutex mutex;
+        protocol::reply_header_t header{};
+    };
+    auto reply_state = std::make_shared<reply_state_t> ();
     if (!_operations->register_operation (
           id, foundation::operation_registry_t::clock_t::now () + timeout,
-          std::move (callback))) {
+          [callback = std::move (callback), reply_state] (
+            foundation::operation_terminal_t terminal,
+            std::vector<std::uint8_t> reply_payload) mutable {
+              protocol::reply_header_t reply_header{};
+              {
+                  std::lock_guard lock (reply_state->mutex);
+                  reply_header = reply_state->header;
+              }
+              callback (client_server_request_completion_t{
+                terminal, reply_header, std::move (reply_payload)});
+          })) {
         return false;
     }
     const auto operations = _operations;
@@ -773,7 +816,7 @@ bool raw_client_server_client_t::request (
          correlation, channel),
        protocol::encode_application_payload (payload)},
       timeout,
-      [operations, id, correlation] (
+      [operations, id, correlation, reply_state] (
         detail::backend::raw_request_result_t result,
         detail::backend::raw_message_t parts) {
           if (result != detail::backend::raw_request_result_t::ok) {
@@ -791,13 +834,16 @@ bool raw_client_server_client_t::request (
                   throw protocol::service_wire_error_t (
                     "ClientServer reply correlation does not match");
               }
+              {
+                  std::lock_guard lock (reply_state->mutex);
+                  reply_state->header = reply;
+              }
               if (reply.terminal_result != 0) {
                   if (parts.size () != 1) {
                       throw protocol::service_wire_error_t (
                         "failed ClientServer reply cannot carry payload");
                   }
-                  (void) operations->fail (
-                    id, foundation::operation_terminal_t::transport_failed);
+                  (void) operations->complete (id, {});
                   return;
               }
               if (parts.size () != 2) {

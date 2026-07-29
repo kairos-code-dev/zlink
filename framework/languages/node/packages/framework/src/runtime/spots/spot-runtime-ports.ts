@@ -9,7 +9,8 @@ import type { Message } from '../../contracts/Common/Message';
 import type {
   ZLinkRemoteActorPacketTarget,
   ZLinkRemoteBoundSessionTarget,
-  ZLinkDeferredJoinAcceptedRoot
+  ZLinkDeferredJoinAcceptedRoot,
+  ZLinkDeferredJoinRecoveryInput
 } from '../actors';
 import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
 import type {
@@ -42,7 +43,8 @@ export interface ZLinkSpotActorTransferRuntime {
     operationId: ZLinkActorJoinOperationId,
     actorRef: ActorRef,
     rawReply: Uint8Array,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    recovery?: ZLinkDeferredJoinRecoveryInput
   ): Promise<ZLinkDeferredJoinAcceptedRoot>;
   recoverDeferredJoinAccepted(
     actorId: string,
@@ -52,11 +54,53 @@ export interface ZLinkSpotActorTransferRuntime {
     root: ZLinkDeferredJoinAcceptedRoot,
     signal?: AbortSignal
   ): Promise<void>;
+  markDeferredJoinRecoveryMessageReplayed(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    nextReplayCursor: number,
+    signal?: AbortSignal
+  ): Promise<ZLinkDeferredJoinAcceptedRoot>;
+  markDeferredJoinAcceptedCommitted(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    actorRef: ActorRef,
+    signal?: AbortSignal
+  ): Promise<ZLinkDeferredJoinAcceptedRoot>;
+  readDeferredJoinRecoveryPayload(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    signal?: AbortSignal
+  ): Promise<Buffer>;
+  takeOverDeferredJoinRecoveryAuthority(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    targetActorRef: ActorRef,
+    target: {
+      readonly meshName: string;
+      readonly nodeRid: RoutingId;
+      readonly nodeGeneration: bigint;
+      readonly owner: {
+        readonly ownerId: string;
+        readonly leaseGeneration: bigint;
+      };
+      readonly spotId: string;
+      readonly spotGeneration: bigint;
+      readonly membershipEpoch: bigint;
+      readonly spotAuthority: import('../../contracts').ZLinkAuthoritySnapshot;
+      readonly spotAuthorityPayload: Uint8Array;
+    },
+    signal?: AbortSignal
+  ): Promise<{
+    readonly root: ZLinkDeferredJoinAcceptedRoot;
+    readonly actorAuthority: import('../../contracts').ZLinkAuthoritySnapshot;
+    readonly spotAuthority: import('../../contracts').ZLinkAuthoritySnapshot;
+  } | undefined>;
   commitAndDeliverDeferredJoinAccepted(
     root: ZLinkDeferredJoinAcceptedRoot,
     actor: ZLinkActor,
     actorRef: ActorRef,
     submitMailbox: <T>(operation: () => Promise<T>) => Promise<T>,
+    signal?: AbortSignal,
+    retainRecoveryRoot?: boolean
+  ): Promise<ZLinkDeferredJoinAcceptedRoot>;
+  releaseDeferredJoinRecovery(
+    root: ZLinkDeferredJoinAcceptedRoot,
     signal?: AbortSignal
   ): Promise<void>;
   getOrCreateRoutedActor(
@@ -68,6 +112,20 @@ export interface ZLinkSpotActorTransferRuntime {
     signal?: AbortSignal
   ): Promise<ZLinkRemoteActorJoinActor>;
   materializeRoutedActor: ZLinkRoutedActorTransferProvider;
+  prepareRecoveryRoutedActor(
+    actorId: string,
+    actorType: string,
+    actorRef: ActorRef,
+    authorityOwnerGeneration: bigint,
+    spotId: RoutingId,
+    spotGeneration: bigint,
+    membershipEpoch: bigint,
+    adapterKey: string | undefined,
+    transferState: Message,
+    actorEntryNodeRid: RoutingId | undefined,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    signal?: AbortSignal
+  ): Promise<ZLinkActor>;
   claimNativeActorLocation(
     actor: ZLinkActor,
     spotId: RoutingId,
@@ -85,6 +143,14 @@ export interface ZLinkSpotActorTransferRuntime {
   publishRoutedActorOwnership(actor: ZLinkActor): Promise<void>;
   openRoutedActorSession(actor: ZLinkActor): Promise<void>;
   bindRoutedActorRef(actor: ZLinkActor, actorRef: ActorRef): void;
+  currentRoutedActorRef(actor: ZLinkActor): ActorRef | undefined;
+  adoptRoutedActorAuthority(
+    actor: ZLinkActor,
+    authority: import('../../contracts').ZLinkAuthoritySnapshot,
+    spotId: RoutingId,
+    spot: ZLinkSpot,
+    membershipEpoch: bigint
+  ): void;
   commitRoutedActor(actor: ZLinkActor, spotId: RoutingId, spot: ZLinkSpot): void;
   clearRoutedActor(actor: ZLinkActor): void;
   rollbackNativeActorJoin(

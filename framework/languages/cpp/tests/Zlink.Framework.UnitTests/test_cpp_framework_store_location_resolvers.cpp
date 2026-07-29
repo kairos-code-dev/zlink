@@ -744,6 +744,10 @@ struct options_fixture_t
 
 struct auto_connect_request_t
 {
+    // This is an ordinary application packet name. The ClientServer reply
+    // header, not a reserved packet-name sentinel, determines success.
+    static constexpr const char *packet_name =
+      "$zlink.client-server.error";
     int value{};
 };
 
@@ -754,6 +758,13 @@ struct auto_connect_reply_t
 
 struct auto_connect_event_t
 {
+    int value{};
+};
+
+struct blocked_auto_connect_event_t
+{
+    static constexpr const char *packet_name =
+      "blocked-auto-connect-event";
     int value{};
 };
 
@@ -787,6 +798,20 @@ void from_json (const nlohmann::json &json, auto_connect_event_t &value)
     value.value = json.at ("value").get<int> ();
 }
 
+void to_json (
+  nlohmann::json &json,
+  const blocked_auto_connect_event_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+void from_json (
+  const nlohmann::json &json,
+  blocked_auto_connect_event_t &value)
+{
+    value.value = json.at ("value").get<int> ();
+}
+
 class auto_connect_request_handler_t
 {
   public:
@@ -799,20 +824,141 @@ class auto_connect_request_handler_t
     }
 };
 
+struct automatic_handler_scope_dependency_t
+{
+    automatic_handler_scope_dependency_t () { ++created; }
+    ~automatic_handler_scope_dependency_t () { ++destroyed; }
+
+    inline static std::atomic_int created{0};
+    inline static std::atomic_int destroyed{0};
+};
+
+class automatic_handler_scope_filter_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<
+        automatic_handler_scope_dependency_t>;
+
+    explicit automatic_handler_scope_filter_t (
+      automatic_handler_scope_dependency_t &dependency) :
+        _dependency (dependency)
+    {
+    }
+
+    zlink::framework::task_t<void>
+    invoke (
+      const zlink::framework::handler_filter_context_t &context,
+      zlink::framework::handler_next_t next)
+    {
+        last_filter_dependency.store (
+          &_dependency, std::memory_order_release);
+        if (context.packet_name
+            == blocked_auto_connect_event_t::packet_name) {
+            ++blocked_fanout_dispatches;
+            co_return;
+        }
+        if (reject_requests.load (std::memory_order_acquire))
+            co_return;
+        co_await next ();
+        co_return;
+    }
+
+    inline static std::atomic_bool reject_requests{false};
+    inline static std::atomic<void *> last_filter_dependency{nullptr};
+    inline static std::atomic_int blocked_fanout_dispatches{0};
+
+  private:
+    automatic_handler_scope_dependency_t &_dependency;
+};
+
+class automatic_scoped_request_handler_t
+{
+  public:
+    using request_type = auto_connect_request_t;
+    using reply_type = auto_connect_reply_t;
+    using dependency_types =
+      zlink::framework::dependency_list_t<
+        automatic_handler_scope_dependency_t>;
+
+    explicit automatic_scoped_request_handler_t (
+      automatic_handler_scope_dependency_t &dependency) :
+        _dependency (dependency)
+    {
+    }
+
+    auto_connect_reply_t handle (
+      const auto_connect_request_t &request)
+    {
+        same_scope.store (
+          automatic_handler_scope_filter_t::last_filter_dependency.load (
+            std::memory_order_acquire)
+            == &_dependency,
+          std::memory_order_release);
+        ++invocations;
+        return auto_connect_reply_t{request.value + 1000};
+    }
+
+    inline static std::atomic_bool same_scope{false};
+    inline static std::atomic_int invocations{0};
+
+  private:
+    automatic_handler_scope_dependency_t &_dependency;
+};
+
 class auto_connect_event_handler_t
 {
   public:
     using event_type = auto_connect_event_t;
     static constexpr const char *topic_name = "profile.changed";
+    using dependency_types =
+      zlink::framework::dependency_list_t<
+        automatic_handler_scope_dependency_t>;
+
+    explicit auto_connect_event_handler_t (
+      automatic_handler_scope_dependency_t &dependency) :
+        _dependency (dependency)
+    {
+    }
 
     static inline std::atomic<int> observed_count{0};
     static inline std::atomic<int> observed_value{0};
 
     void handle (const auto_connect_event_t &event)
     {
+        same_scope.store (
+          automatic_handler_scope_filter_t::last_filter_dependency.load (
+            std::memory_order_acquire)
+            == &_dependency,
+          std::memory_order_release);
         observed_value.store (event.value, std::memory_order_release);
         observed_count.fetch_add (1, std::memory_order_acq_rel);
     }
+
+    static inline std::atomic_bool same_scope{false};
+
+  private:
+    automatic_handler_scope_dependency_t &_dependency;
+};
+
+class blocked_auto_connect_event_handler_t
+{
+  public:
+    using event_type = blocked_auto_connect_event_t;
+    static constexpr const char *topic_name = "profile.changed";
+    using dependency_types =
+      zlink::framework::dependency_list_t<
+        automatic_handler_scope_dependency_t>;
+
+    explicit blocked_auto_connect_event_handler_t (
+      automatic_handler_scope_dependency_t &) {}
+
+    void handle (const blocked_auto_connect_event_t &)
+    {
+        ++observed_count;
+    }
+
+    static inline std::atomic_int observed_count{0};
 };
 
 class auto_connect_request_client_t final : public zlink::framework::hosted_service_t
@@ -874,6 +1020,47 @@ class missing_auto_connect_request_client_t final
     void stop () noexcept override {}
 
     std::optional<zlink::framework::framework_error_kind_t> observed_error;
+
+  private:
+    zlink::framework::app_t *_app;
+};
+
+class rejected_auto_connect_request_client_t final
+    : public zlink::framework::hosted_service_t
+{
+  public:
+    explicit rejected_auto_connect_request_client_t (
+      zlink::framework::app_t &app) :
+        _app (&app)
+    {
+    }
+
+    void start (zlink::framework::service_provider_t &) override
+    {
+        auto client =
+          _app->advanced ().zlink ().request_client ("orders");
+        for (int attempt = 0; attempt < 40; ++attempt) {
+            auto reply =
+              client.request (auto_connect_request_t{17})
+                .timeout (std::chrono::milliseconds (500))
+                .submit<auto_connect_reply_t> ()
+                .result ();
+            if (!reply
+                && reply.error_kind ()
+                     == zlink::framework::framework_error_kind_t::
+                       request_rejected) {
+                observed_rejected = true;
+                break;
+            }
+            std::this_thread::sleep_for (
+              std::chrono::milliseconds (25));
+        }
+        _app->stop ();
+    }
+
+    void stop () noexcept override {}
+
+    bool observed_rejected = false;
 
   private:
     zlink::framework::app_t *_app;
@@ -1213,6 +1400,25 @@ class auto_connect_publish_client_t final : public zlink::framework::hosted_serv
     void start (zlink::framework::service_provider_t &) override
     {
         auto publisher = _app->advanced ().zlink ().publisher ();
+        for (int attempt = 0; attempt < 80; ++attempt) {
+            try {
+                publisher
+                  .publish (
+                    "events", "profile.changed",
+                    blocked_auto_connect_event_t{attempt + 1})
+                  .submit ();
+            }
+            catch (const std::exception &error) {
+                last_error = error.what ();
+            }
+            if (automatic_handler_scope_filter_t::
+                  blocked_fanout_dispatches.load (
+                    std::memory_order_acquire)
+                > 0)
+                break;
+            std::this_thread::sleep_for (
+              std::chrono::milliseconds (25));
+        }
         for (int attempt = 0; attempt < 80; ++attempt) {
             try {
                 publisher.publish ("events", "profile.changed", auto_connect_event_t{attempt + 1})
@@ -1884,6 +2090,12 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
 TEST (ZLinkFrameworkStoreLocationResolvers,
       SameProcessClientServerUsesLocalReadyServerWithoutExternalStoreOrManualEndpoint)
 {
+    automatic_handler_scope_dependency_t::created.store (0);
+    automatic_handler_scope_dependency_t::destroyed.store (0);
+    automatic_handler_scope_filter_t::reject_requests.store (false);
+    automatic_handler_scope_filter_t::last_filter_dependency.store (nullptr);
+    automatic_scoped_request_handler_t::same_scope.store (false);
+    automatic_scoped_request_handler_t::invocations.store (0);
     auto app = zlink::framework::app_t::create ();
     auto_connect_request_client_t *client = nullptr;
 
@@ -1891,7 +2103,10 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
                                zlink::framework::zlink_framework_options_t &options) {
         options.handlers ()
           .group ("orders")
-          .add<auto_connect_request_handler_t> ();
+          .add<automatic_scoped_request_handler_t> ();
+        options.services ()
+          .add_scoped<automatic_handler_scope_dependency_t> ();
+        options.use_filter<automatic_handler_scope_filter_t> ();
         auto channel =
           options.add_client_server_channel ("orders");
         channel.server ()
@@ -1910,6 +2125,55 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     EXPECT_EQ (0, app.run (0, nullptr));
     ASSERT_NE (nullptr, client);
     EXPECT_TRUE (client->observed) << client->last_error;
+    EXPECT_TRUE (automatic_scoped_request_handler_t::same_scope.load ());
+    EXPECT_EQ (1, automatic_scoped_request_handler_t::invocations.load ());
+    EXPECT_EQ (
+      automatic_handler_scope_dependency_t::created.load (),
+      automatic_handler_scope_dependency_t::destroyed.load ());
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
+      SameProcessClientServerFilterRejectionReturnsTypedErrorAndDisposesScope)
+{
+    automatic_handler_scope_dependency_t::created.store (0);
+    automatic_handler_scope_dependency_t::destroyed.store (0);
+    automatic_handler_scope_filter_t::reject_requests.store (true);
+    automatic_handler_scope_filter_t::last_filter_dependency.store (nullptr);
+    automatic_scoped_request_handler_t::same_scope.store (false);
+    automatic_scoped_request_handler_t::invocations.store (0);
+    auto app = zlink::framework::app_t::create ();
+    rejected_auto_connect_request_client_t *client = nullptr;
+
+    app.add_zlink_framework ([&] (
+                               zlink::framework::zlink_framework_options_t &options) {
+        options.handlers ()
+          .group ("orders")
+          .add<automatic_scoped_request_handler_t> ();
+        options.services ()
+          .add_scoped<automatic_handler_scope_dependency_t> ();
+        options.use_filter<automatic_handler_scope_filter_t> ();
+        auto channel = options.add_client_server_channel ("orders");
+        channel.server ()
+          .set_bind_host ("127.0.0.1")
+          .set_advertise_host ("127.0.0.1")
+          .listen ()
+          .add_handler_group ("orders");
+        channel.client ();
+    });
+    auto service =
+      std::make_unique<rejected_auto_connect_request_client_t> (app);
+    client = service.get ();
+    app.add_hosted_service (std::move (service));
+
+    EXPECT_EQ (0, app.run (0, nullptr));
+    ASSERT_NE (nullptr, client);
+    EXPECT_TRUE (client->observed_rejected);
+    EXPECT_EQ (0, automatic_scoped_request_handler_t::invocations.load ());
+    EXPECT_GT (automatic_handler_scope_dependency_t::created.load (), 0);
+    EXPECT_EQ (
+      automatic_handler_scope_dependency_t::created.load (),
+      automatic_handler_scope_dependency_t::destroyed.load ());
+    automatic_handler_scope_filter_t::reject_requests.store (false);
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers,
@@ -2312,6 +2576,13 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AppFanoutPublishUsesLocationAutoConn
     auto_connect_publish_client_t *client = nullptr;
     auto_connect_event_handler_t::observed_count.store (0, std::memory_order_release);
     auto_connect_event_handler_t::observed_value.store (0, std::memory_order_release);
+    auto_connect_event_handler_t::same_scope.store (false);
+    blocked_auto_connect_event_handler_t::observed_count.store (0);
+    automatic_handler_scope_dependency_t::created.store (0);
+    automatic_handler_scope_dependency_t::destroyed.store (0);
+    automatic_handler_scope_filter_t::reject_requests.store (false);
+    automatic_handler_scope_filter_t::last_filter_dependency.store (nullptr);
+    automatic_handler_scope_filter_t::blocked_fanout_dispatches.store (0);
     const auto endpoint =
       std::string ("tcp://127.0.0.1:") + std::to_string (bindable_loopback_port (29800));
 
@@ -2319,7 +2590,11 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AppFanoutPublishUsesLocationAutoConn
         options.add_location_store (store);
         options.handlers ()
           .group ("events")
-          .add_publish<auto_connect_event_handler_t> ();
+          .add_publish<auto_connect_event_handler_t> ()
+          .add_publish<blocked_auto_connect_event_handler_t> ();
+        options.services ()
+          .add_scoped<automatic_handler_scope_dependency_t> ();
+        options.use_filter<automatic_handler_scope_filter_t> ();
         options.add_fanout_channel ("events")
           .set_routing_id (zlink::routing_id_t::from ("events-publisher"))
           .enable_publisher (endpoint)
@@ -2334,6 +2609,14 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AppFanoutPublishUsesLocationAutoConn
     ASSERT_NE (nullptr, client);
     EXPECT_TRUE (client->observed) << client->last_error;
     EXPECT_GT (auto_connect_event_handler_t::observed_value.load (std::memory_order_acquire), 0);
+    EXPECT_TRUE (auto_connect_event_handler_t::same_scope.load ());
+    EXPECT_EQ (0, blocked_auto_connect_event_handler_t::observed_count.load ());
+    EXPECT_GT (
+      automatic_handler_scope_filter_t::blocked_fanout_dispatches.load (),
+      0);
+    EXPECT_EQ (
+      automatic_handler_scope_dependency_t::created.load (),
+      automatic_handler_scope_dependency_t::destroyed.load ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshConnections)

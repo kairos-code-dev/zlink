@@ -182,7 +182,7 @@ final class ZLinkChannelCallRuntime {
         }
         if (ZLinkChannelRuntime.isFrameworkErrorReply(reply.parts())) {
             result.completeExceptionally(new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                ZLinkChannelRuntime.frameworkErrorReplyKind(reply.parts()),
                 ZLinkChannelRuntime.frameworkErrorReplyMessage(reply.parts())));
             return;
         }

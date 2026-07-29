@@ -7,6 +7,8 @@ const {
   ZLinkSend,
   exposeZLinkHandlers,
   invokeZLinkHandlerFilters,
+  ZLinkFrameworkErrorKind,
+  ZLinkHandlerDispatchKind,
   scanZLinkHandlerTypes
 } = require('../../packages/framework/dist/internal');
 
@@ -32,43 +34,84 @@ test('handler scan does not expose handlers unless policy selects them', () => {
 
 test('handler filters run before and after in registration order', async () => {
   const events = [];
-  const invocation = {
-    ownerKind: 'channel',
-    messageContext: {
-      channelName: 'api',
-      packetName: 'Ping',
-      metadata: new Map()
-    }
+  const context = {
+    channelName: 'api',
+    packetName: 'Ping',
+    metadata: new Map(),
+    dispatchKind: ZLinkHandlerDispatchKind.ChannelRequest
   };
   const filters = [
     {
       async invoke(actual, next) {
-        assert.equal(actual, invocation);
+        assert.equal(actual, context);
         events.push('a:before');
-        const result = await next();
+        await next();
         events.push('a:after');
-        return result;
       }
     },
     {
       async invoke(actual, next) {
-        assert.equal(actual, invocation);
+        assert.equal(actual, context);
         events.push('b:before');
-        const result = await next();
+        await next();
         events.push('b:after');
-        return result;
       }
     }
   ];
 
-  const result = await invokeZLinkHandlerFilters(filters, invocation, async () => {
+  const handlerInvoked = await invokeZLinkHandlerFilters(filters, context, async () => {
     events.push('handler');
-    return 42;
   });
 
-  assert.equal(result, 42);
+  assert.equal(handlerInvoked, true);
   assert.deepEqual(events, ['a:before', 'b:before', 'handler', 'b:after', 'a:after']);
 });
+
+test('handler filter short circuit cannot substitute a request result', async () => {
+  let handlerCalls = 0;
+  const handlerInvoked = await invokeZLinkHandlerFilters(
+    [{
+      async invoke() {
+        return 42;
+      }
+    }],
+    filterContext(),
+    async () => {
+      handlerCalls += 1;
+    }
+  );
+
+  assert.equal(handlerInvoked, false);
+  assert.equal(handlerCalls, 0);
+});
+
+test('handler filter atomically rejects concurrent duplicate next', async () => {
+  let handlerCalls = 0;
+  await assert.rejects(
+    () => invokeZLinkHandlerFilters(
+      [{
+        async invoke(_context, next) {
+          await Promise.all([next(), next()]);
+        }
+      }],
+      filterContext(),
+      async () => {
+        handlerCalls += 1;
+      }
+    ),
+    error => error.kind === ZLinkFrameworkErrorKind.InvalidOperation
+  );
+  assert.equal(handlerCalls, 1);
+});
+
+function filterContext() {
+  return {
+    channelName: 'api',
+    packetName: 'Ping',
+    metadata: new Map(),
+    dispatchKind: ZLinkHandlerDispatchKind.ChannelRequest
+  };
+}
 
 function descriptor() {
   return {

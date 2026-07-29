@@ -51,9 +51,12 @@ Node direct는 `RouteMessageContext`, Logical Multicast는
 `PublishMessageContext`, STREAM dispatch는 `SessionMessageContext`로 각 경로의 추가 정보를 제공한다.
 
 Send·Request·SpotActor별 marker context는 제공하지 않는다. Actor request의 context에 reply metadata·compression
-option을 두지 않으며 별도 reply call도 만들지 않는다. Handler filter는 handler와 같은 current
-`MessageContext`를 직접 받는다. Framework 내부 owner 분류나 dispatch descriptor를 filter에 노출하지 않는다.
-Object lifecycle Context와 현재 message의 MessageContext는 서로 다른 계약이다.
+option을 두지 않으며 별도 reply call도 만들지 않는다. Handler filter는 current `MessageContext` 정보와
+공개 dispatch 종류를 함께 제공하는 filter 전용 context를 받는다. 이 값은 Node direct send/request, Channel
+send/request와 classic fanout만 구분한다. Socket 종류, endpoint, Framework 내부 owner 분류와 dispatch
+descriptor는 노출하지 않는다. Filter가 적용되지 않는 Spot·Actor·Logical Multicast·STREAM context에는
+dispatch 종류를 추가하지 않는다. Object lifecycle Context와 현재 message의 MessageContext는 서로 다른
+계약이다.
 
 ### 2.2 Global object reference JSON
 

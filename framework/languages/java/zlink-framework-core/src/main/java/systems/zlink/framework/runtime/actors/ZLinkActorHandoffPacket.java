@@ -41,11 +41,13 @@ final class ZLinkActorHandoffPacket implements AutoCloseable {
     }
 
     CompletionStage<Optional<Message>> reply() {
+        trace("reply-observed");
         return reply;
     }
 
     void complete(Optional<Message> response) {
-        reply.complete(response);
+        trace("reply-complete present=" + response.isPresent()
+            + " completed=" + reply.complete(response));
     }
 
     boolean fail(Throwable error) {
@@ -55,5 +57,14 @@ final class ZLinkActorHandoffPacket implements AutoCloseable {
     @Override
     public void close() {
         payload.close();
+    }
+
+    private void trace(String detail) {
+        if ("1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"))) {
+            java.util.logging.Logger.getLogger(
+                    ZLinkActorHandoffPacket.class.getName())
+                .warning("[zlink-java-stream-trace] handoff packet "
+                    + arrivalIndex + " " + detail);
+        }
     }
 }

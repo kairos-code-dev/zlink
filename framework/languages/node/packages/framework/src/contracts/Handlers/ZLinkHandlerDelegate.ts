@@ -1,1 +1,1 @@
-export type ZLinkHandlerDelegate = () => Promise<unknown>;
+export type ZLinkHandlerDelegate = () => Promise<void>;

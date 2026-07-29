@@ -13,10 +13,12 @@ mesh_record_dispatcher_t::mesh_record_dispatcher_t (
   service_provider_t &services,
   serializer_registry_t &serializers,
   const route_handler_registry_t &handlers,
+  const handler_registry_t &filters,
   dispatch_options_t dispatch_options) :
     _services (&services),
     _serializers (&serializers),
     _handlers (&handlers),
+    _filters (&filters),
     _dispatch_options (std::move (dispatch_options))
 {
 }
@@ -43,8 +45,16 @@ mesh_record_dispatcher_t::dispatch (
     }
     const std::string dispatch_channel =
       record.channel_name.empty () ? header.value ().channel_name : record.channel_name;
-    route_packet_dispatcher_t dispatcher (dispatch_channel, *_services, *_serializers, *_handlers,
-                                          _no_internal_packets, _dispatch_options);
+    const auto channel_dispatch =
+      record.kind == record_kind_t::channel_send
+      || record.kind == record_kind_t::channel_request;
+    route_packet_dispatcher_t dispatcher (
+      dispatch_channel, *_services, *_serializers, *_handlers,
+      _no_internal_packets, _dispatch_options, _filters,
+      channel_dispatch ? handler_dispatch_kind_t::channel_send
+                       : handler_dispatch_kind_t::node_direct_send,
+      channel_dispatch ? handler_dispatch_kind_t::channel_request
+                       : handler_dispatch_kind_t::node_direct_request);
     auto dispatched = dispatcher.dispatch (
       route_received_packet_t{record.source_node_rid, {}, std::move (message_parts), {}});
     if (!dispatched) {

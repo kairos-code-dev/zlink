@@ -194,8 +194,10 @@ echo "log_dir=$LOG_DIR"
 
 start_role actor actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM" "$NODE_A_PUB"
 wait_health "$NODE_A_URL" actor-a
-start_role actor actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_STREAM" "$NODE_B_PUB"
-wait_health "$NODE_B_URL" actor-b
+if [[ "$SCENARIO" != "ST-A1" && "$SCENARIO" != "all" ]]; then
+  start_role actor actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_STREAM" "$NODE_B_PUB"
+  wait_health "$NODE_B_URL" actor-b
+fi
 
 start_role session session-a "$SESSION_A_URL" "$SESSION_A_ROUTER" "$SESSION_A_STREAM" "$SESSION_A_PUB"
 wait_health "$SESSION_A_URL" session-a
@@ -223,6 +225,9 @@ if [[ "$SCENARIO" == "all" ]]; then
   # ST-A1 measures an exact zero Relocation Store delta. Run it before any
   # remote relocation can leave asynchronous cleanup activity behind.
   run_client "ST-A1"
+  start_role actor actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_STREAM" "$NODE_B_PUB"
+  wait_health "$NODE_B_URL" actor-b
+  sleep "$ROUTE_SETTLE_SECONDS"
   # Callback-failure cases intentionally hold transfer boundaries until their
   # caller deadline, so run them before other transfer work occupies the nodes.
   run_client "ST-C3"

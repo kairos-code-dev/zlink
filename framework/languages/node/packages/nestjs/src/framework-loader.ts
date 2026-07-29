@@ -13,7 +13,7 @@ import type {
   ZLinkLocationOptions,
   ZLinkEntrySpot,
   ZLinkFanoutClient,
-  ZLinkMessageContext,
+  ZLinkHandlerFilterContext,
   ZLinkRouteClient,
   ZLinkSpot,
   ZLinkSpotManager,
@@ -96,7 +96,7 @@ interface FrameworkIntegrationModule {
   registerIntegrationHandlerFilterScope(
     resolver: ZLinkProviderResolver,
     runner: (
-      context: ZLinkMessageContext,
+      context: ZLinkHandlerFilterContext,
       callback: (scope: { resolve<T>(type: Type<T>): Promise<T> }) => Promise<unknown>
     ) => Promise<unknown>
   ): void;

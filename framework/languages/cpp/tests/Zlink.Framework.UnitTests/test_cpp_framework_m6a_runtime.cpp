@@ -631,17 +631,14 @@ void verify_client_server_independent_raw_path ()
     assert (server.mailbox ().release (*send_claim));
 
     using request_result_t =
-      std::pair<foundation::operation_terminal_t,
-                std::vector<std::uint8_t>>;
+      client_server::client_server_request_completion_t;
     std::promise<request_result_t> promise;
     auto future = promise.get_future ();
     assert (client.request (
       {"ClientServerRequest", "application/json", bytes ("request")},
       2s,
-      [&promise] (
-        foundation::operation_terminal_t terminal,
-        std::vector<std::uint8_t> payload) {
-          promise.set_value ({terminal, std::move (payload)});
+      [&promise] (request_result_t completion) {
+          promise.set_value (std::move (completion));
       }));
     client_server::client_server_pump_result_t request_pump =
       client_server::client_server_pump_result_t::no_data;
@@ -670,12 +667,60 @@ void verify_client_server_independent_raw_path ()
     }
     assert (future.wait_for (0ms) == std::future_status::ready);
     const auto result = future.get ();
-    assert (result.first == foundation::operation_terminal_t::completed);
+    assert (result.terminal
+            == foundation::operation_terminal_t::completed);
+    assert (result.reply_header.terminal_result == 0);
+    assert (result.reply_header.failure_code == 0);
     const protocol::application_payload_t expected_reply{
       "ClientServerReply", "application/json", bytes ("reply")};
-    assert (protocol::decode_application_payload (result.second)
+    assert (protocol::decode_application_payload (result.payload)
             == expected_reply);
 
+    std::promise<request_result_t> rejected_promise;
+    auto rejected_future = rejected_promise.get_future ();
+    assert (client.request (
+      {"RejectedRequest", "application/json", bytes ("request")},
+      2s,
+      [&rejected_promise] (request_result_t completion) {
+          rejected_promise.set_value (std::move (completion));
+      }));
+    request_pump =
+      client_server::client_server_pump_result_t::no_data;
+    while (request_pump
+             != client_server::client_server_pump_result_t::application
+           && std::chrono::steady_clock::now () < deadline) {
+        request_pump = server.pump_one (
+          std::chrono::steady_clock::now ());
+    }
+    assert (request_pump
+            == client_server::client_server_pump_result_t::application);
+    request_claim = server.mailbox ().try_claim (
+      mesh::service_mailbox_domain_t::application, 1, 1024);
+    assert (request_claim && request_claim->records.size () == 1);
+    assert (server.reply (
+      request_claim->records.front (), 106,
+      protocol::framework_error_code::requestRejected));
+    assert (server.mailbox ().release (*request_claim));
+    while (rejected_future.wait_for (0ms)
+             != std::future_status::ready
+           && std::chrono::steady_clock::now () < deadline) {
+        const auto pump = client.pump_one (
+          std::chrono::steady_clock::now ());
+        assert (
+          pump != client_server::client_server_pump_result_t::protocol_error);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (rejected_future.wait_for (0ms)
+            == std::future_status::ready);
+    const auto rejected = rejected_future.get ();
+    assert (rejected.terminal
+            == foundation::operation_terminal_t::completed);
+    assert (rejected.reply_header.terminal_result == 106);
+    assert (
+      rejected.reply_header.failure_code
+      == static_cast<std::uint32_t> (
+        protocol::framework_error_code::requestRejected));
+    assert (rejected.payload.empty ());
 }
 
 void verify_client_server_weighted_selection ()

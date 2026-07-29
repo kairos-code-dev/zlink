@@ -4,6 +4,7 @@ using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Channels;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Configuration;
+using Zlink.Framework.Runtime.Handlers;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
@@ -128,8 +129,10 @@ public sealed class RouteCodecTests
     {
         var codecs = new ZLinkCodecRegistryBuilder();
         codecs.AddSerializer("application/route-test", new RouteProbeSerializer());
+        var filterProbe = new RouteFilterProbe();
         var services = new ServiceCollection()
             .AddSingleton<RouteProbeHandler>()
+            .AddSingleton(filterProbe)
             .BuildServiceProvider();
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Request,
@@ -152,7 +155,12 @@ public sealed class RouteCodecTests
             ZLinkHandlerMethodInvokerFactory.Create(
                 typeof(RouteProbeHandler).GetMethod(nameof(RouteProbeHandler.HandleAsync))!));
 
-        var invoker = new ZLinkRouteHandlerInvoker(services, codecs);
+        var registration = new ZLinkFrameworkRegistration();
+        registration.Filters.Add(typeof(RouteProbeFilter));
+        var dispatcher = new ZLinkHandlerDispatcher(
+            services.GetRequiredService<IServiceScopeFactory>(),
+            registration);
+        var invoker = new ZLinkRouteHandlerInvoker(dispatcher, codecs);
 
         var reply = await invoker.InvokeRequestAsync(
             descriptor,
@@ -165,6 +173,10 @@ public sealed class RouteCodecTests
         Assert.Equal("hello", RouteProbeHandler.LastRequest?.Text);
         Assert.Equal("application/route-test", ZLinkEnvelopeCodec.DecodeHeader(parts).ContentType);
         Assert.Equal(new RouteProbeReply("HELLO"), reply.Message);
+        Assert.Equal(
+            ZLinkHandlerDispatchKind.NodeDirectRequest,
+            filterProbe.DispatchKind);
+        Assert.Equal("play", filterProbe.MeshName);
     }
 
     [Fact]
@@ -280,6 +292,28 @@ public sealed class RouteCodecTests
             _ = cancellationToken;
             LastRequest = request;
             return ValueTask.FromResult(new RouteProbeReply(request.Text.ToUpperInvariant()));
+        }
+    }
+
+    private sealed class RouteFilterProbe
+    {
+        public ZLinkHandlerDispatchKind? DispatchKind { get; set; }
+
+        public string? MeshName { get; set; }
+    }
+
+    private sealed class RouteProbeFilter(RouteFilterProbe probe)
+        : IZLinkHandlerFilter
+    {
+        public async ValueTask InvokeAsync(
+            IZLinkHandlerFilterContext context,
+            ZLinkHandlerFilterNext next,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            probe.DispatchKind = context.DispatchKind;
+            probe.MeshName = context.MeshName;
+            await next();
         }
     }
 

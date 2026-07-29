@@ -1634,7 +1634,15 @@ public final class ZLinkSpotRuntime
             this::notifySourceActorLeftForRemoteMove,
             this::spotFor,
             this::meshNameForSpot);
-        actorAdmissions.attach(actorRuntime, this::isDraining);
+        ZLinkInternalMeshNode relocationMesh =
+            routeMeshNodesByName.get(primaryNodeSourceName);
+        actorAdmissions.attach(
+            actorRuntime,
+            this::isDraining,
+            relocationMesh == null
+                ? null
+                : new systems.zlink.framework.runtime.actors
+                    .ZLinkSessionRelocationPeerClient(relocationMesh));
         actorRuntime.setLocalJoinCompleter(new ZLinkActorRuntime.LocalJoinCompleter() {
             @Override
             public CompletionStage<Void> complete(ZLinkActor actor) {
@@ -2873,12 +2881,17 @@ public final class ZLinkSpotRuntime
             : Message.from(bodyPart.message());
         CompletionStage<Optional<Message>> captured = null;
         if (actorSessions.isMoving(actor)) {
-            ZLinkActorReplyRoute replyRoute = isNoBindActorRequest(packetHeader, headerCopy)
+            ZLinkActorReplyRoute replyRoute =
+                packetHeader.requestSeq().isPresent()
+                    && headerCopy.sourceNodeRid() != null
+                    && headerCopy.sourceSessionRid() != null
                 ? new ZLinkActorReplyRoute(
                     headerCopy.actor(),
                     headerCopy.sourceNodeRid(),
                     headerCopy.sourceSessionRid(),
-                    headerCopy.requestId(),
+                    headerCopy.requestId() == 0
+                        ? packetHeader.requestSeq().orElseThrow()
+                        : headerCopy.requestId(),
                     headerCopy.flags())
                 : null;
             captured = actorSessions.captureMoving(
@@ -2893,9 +2906,7 @@ public final class ZLinkSpotRuntime
                 });
             return;
         }
-        actorSessions.dispatch(
-            actor,
-            () -> dispatchLine.enqueueActorDispatch(actor.context().actorId(), () -> {
+        dispatchLine.enqueueActorDispatch(actor.context().actorId(), () -> {
                 if (packetHeader.flowId().isEmpty()) {
                     return dispatchActorPacketToHandler(
                         dispatchLine.dispatchOutbound(), handler, spotSurface, actor,
@@ -2910,7 +2921,7 @@ public final class ZLinkSpotRuntime
                         packetHeader, headerCopy, payloadCopy,
                         "actor bound session reply failed");
                 }
-            }));
+            });
     }
 
     private CompletionStage<Void> replyCapturedActorPacket(
@@ -2918,6 +2929,13 @@ public final class ZLinkSpotRuntime
         ActorPacketFrames.Header packetHeader,
         ZLinkBackendActorReceived headerPart,
         Optional<Message> reply) {
+        if ("1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"))) {
+            java.util.logging.Logger.getLogger(
+                    ZLinkSpotRuntime.class.getName())
+                .warning("[zlink-java-stream-trace] captured reply"
+                    + " present=" + reply.isPresent()
+                    + " actor=" + actor.context().actorId());
+        }
         if (reply.isEmpty()) {
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
@@ -2940,7 +2958,8 @@ public final class ZLinkSpotRuntime
         }
         return sendActorBoundSessionWithRetry(
             primaryNode,
-            headerPart.actor(),
+            actorSessions.messageFollowTargetActorRef(actor)
+                .orElse(headerPart.actor()),
             actor.context().actorId(),
             frameBytes,
             "actor handoff reply failed");

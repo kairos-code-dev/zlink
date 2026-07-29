@@ -30,7 +30,7 @@ internal sealed class ZLinkFanoutPacketDispatcher
                     logger),
             runtime);
         _publishPipeline = new ZLinkChannelPublishDispatchPipeline(
-            "fanout",
+            null,
             handlerRegistry,
             dispatcher,
             channelName => ResolveMappedGroups(registration, channelName),

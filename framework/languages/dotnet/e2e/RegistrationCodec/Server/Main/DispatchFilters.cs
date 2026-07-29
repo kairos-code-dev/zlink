@@ -6,7 +6,7 @@ namespace RegistrationCodec.Server.Main;
 internal sealed class FirstFilter(EvidenceStore evidence) : IZLinkHandlerFilter
 {
     public async ValueTask InvokeAsync(
-        IZLinkMessageContext context,
+        IZLinkHandlerFilterContext context,
         ZLinkHandlerFilterNext next,
         CancellationToken cancellationToken)
     {
@@ -19,7 +19,7 @@ internal sealed class FirstFilter(EvidenceStore evidence) : IZLinkHandlerFilter
 internal sealed class SecondFilter(EvidenceStore evidence) : IZLinkHandlerFilter
 {
     public async ValueTask InvokeAsync(
-        IZLinkMessageContext context,
+        IZLinkHandlerFilterContext context,
         ZLinkHandlerFilterNext next,
         CancellationToken cancellationToken)
     {

@@ -41,7 +41,10 @@ interface ZLinkChannelRequestDispatchLoop {
 }
 
 interface ZLinkChannelPublishDispatchLoop {
-  dispatch(topicMessage: { readonly topic: string; readonly parts: readonly Message[] }): Promise<void>;
+  dispatch(
+    topicMessage: { readonly topic: string; readonly parts: readonly Message[] },
+    signal?: AbortSignal
+  ): Promise<void>;
 }
 
 interface ZLinkRoutePacketDispatchLoop {
@@ -54,7 +57,8 @@ interface ZLinkRoutePacketDispatchLoop {
     },
     router: {
       reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
-    }
+    },
+    signal?: AbortSignal
   ): Promise<boolean | void>;
 }
 
@@ -196,7 +200,7 @@ export class ZLinkSubscriberReceiveLoop {
       }
       const topicMessage = this.adapter.createTopicMessage();
       this.subscriber.subscribe(topicMessage);
-      const task = this.dispatchAndClose(topicMessage);
+      const task = this.dispatchAndClose(topicMessage, signal);
       this.inFlight.add(task);
       void task.finally(() => this.inFlight.delete(task));
       await task;
@@ -213,12 +217,15 @@ export class ZLinkSubscriberReceiveLoop {
     }
   }
 
-  private async dispatchAndClose(topicMessage: ReturnType<ZLinkChannelBackendAdapter['createTopicMessage']>): Promise<void> {
+  private async dispatchAndClose(
+    topicMessage: ReturnType<ZLinkChannelBackendAdapter['createTopicMessage']>,
+    signal?: AbortSignal
+  ): Promise<void> {
     try {
       if (this.infrastructureHandler?.(topicMessage) === true) {
         return;
       }
-      await this.dispatcher.dispatch(topicMessage);
+      await this.dispatcher.dispatch(topicMessage, signal);
     } finally {
       closeMessages(topicMessage.parts as readonly Message[]);
     }
@@ -259,7 +266,7 @@ export class ZLinkRouteReceiveLoop {
         await waitReceiveLoopIdle();
         continue;
       }
-      const task = this.dispatchAndClose(received);
+      const task = this.dispatchAndClose(received, signal);
       this.inFlight.add(task);
       void task.finally(() => this.inFlight.delete(task));
       await task;
@@ -278,10 +285,10 @@ export class ZLinkRouteReceiveLoop {
     spotId?: unknown;
     requestSeq: bigint | null;
     close(): void;
-  }): Promise<void> {
+  }, signal?: AbortSignal): Promise<void> {
     let closeReceived = true;
     try {
-      const consumed = await this.dispatcher.dispatch(received, this.router);
+      const consumed = await this.dispatcher.dispatch(received, this.router, signal);
       if (consumed === true) {
         closeReceived = false;
       }

@@ -3,6 +3,8 @@ package systems.zlink.framework.runtime.spots;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.List;
 import systems.zlink.contracts.core.RoutingId;
@@ -17,6 +19,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
+import systems.zlink.framework.runtime.actors.ZLinkSessionRelocationPeerClient;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinRequest;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
@@ -31,6 +34,7 @@ final class ZLinkActorSpotAdmission {
     }
 
     private ZLinkActorRuntime actors;
+    private ZLinkSessionRelocationPeerClient sessionRoutes;
     private java.util.function.BooleanSupplier draining = () -> false;
     private final ZLinkPendingActorTransfers pendingTransfers =
         new ZLinkPendingActorTransfers();
@@ -50,9 +54,11 @@ final class ZLinkActorSpotAdmission {
 
     void attach(
         ZLinkActorRuntime actors,
-        java.util.function.BooleanSupplier draining) {
+        java.util.function.BooleanSupplier draining,
+        ZLinkSessionRelocationPeerClient sessionRoutes) {
         this.actors = actors;
         this.draining = draining == null ? () -> false : draining;
+        this.sessionRoutes = sessionRoutes;
     }
 
     void traceTransferMarker(String marker, String actorId, long arrivalIndex) {
@@ -361,29 +367,51 @@ final class ZLinkActorSpotAdmission {
                 Long.toUnsignedString(corePrepared.result().transferId().high())
                     + ":" + Long.toUnsignedString(corePrepared.result().transferId().low())
                     + ":" + Long.toUnsignedString(corePrepared.result().finalSequence()));
-            primaryNode.commitActorTransfer(
-                corePrepared.token(), request.coreMembershipEpoch() + 1);
         }
         PrepareActorTransferResult preparedFence = corePrepared;
-        return runtime.materializeTransferredActor(
-                request.actorId(),
-                request.actorType(),
-                request.adapterKey(),
+        AtomicReference<ZLinkActorRuntime.PreparedTransferredActor> staged =
+            new AtomicReference<>();
+        AtomicBoolean aggregateCommitted = new AtomicBoolean();
+        CompletionStage<RoutedJoin> attempt =
+            runtime.loadDeferredJoinRelocation(request)
+            .thenCompose(root -> runtime.prepareDeferredJoinTarget(
+                request,
                 transferState,
-                preparedFence == null
-                    ? null
-                    : new ZLinkBackendActorRef(
-                        primaryNode.routingId(),
-                        request.actorId(),
-                        request.actorGeneration()))
-            .thenCompose(actor -> {
+                root))
+            .thenCompose(prepared -> {
+                staged.set(prepared);
+                if (preparedFence != null) {
+                    primaryNode.commitActorTransfer(
+                        preparedFence.token(),
+                        request.coreMembershipEpoch() + 1);
+                }
+                return runtime.commitDeferredJoinRelocation(request)
+                    .thenCompose(ignored -> {
+                        aggregateCommitted.set(true);
+                        runtime.traceActorTransferMarker(
+                            "location_committed",
+                            request.actorId(),
+                            request.transferId());
+                        primaryNode.registerTransferredActor(
+                            prepared.actorRef(),
+                            spotId,
+                            request.coreMembershipEpoch() + 1);
+                        return switchBoundSessionRoute(
+                                request,
+                                primaryNode)
+                            .thenApply(routed -> prepared);
+                    });
+            })
+            .thenCompose(prepared -> {
+                ZLinkActor actor =
+                    runtime.publishPreparedTransferredActor(prepared);
                 runtime.setEntrySpotNodeRid(actor, request.sourceEntrySpotNodeRid());
                 runtime.setEntrySpotId(actor, request.sourceEntrySpotId());
                 runtime.setEntryRouterChannelId(actor, request.sourceEntryRouterChannelId());
                 runtime.traceActorTransferMarker(
                     "target_materialized", actor.context().actorId(), request.transferId());
                 ZLinkBackendActorRef actorRef = runtime.actorRef(actor);
-                long bindingToken = bindRoutedTransfer(
+                bindRoutedTransfer(
                     runtime,
                     actor,
                     actorRef,
@@ -398,24 +426,23 @@ final class ZLinkActorSpotAdmission {
                         actorRef,
                         spotId,
                         (ZLinkSpot<?>) spotSurface);
+                } else {
+                    runtime.markJoinedEntrySpot(
+                        actor,
+                        actorRef,
+                        primaryNode.routingId());
                 }
                 return joinedCallback.apply(actor)
                     .thenRun(() -> runtime.traceActorTransferMarker(
                         "target_joined_callback", actor.context().actorId(), request.transferId()))
-                    .thenCompose(ignored -> (entryTarget
-                        ? runtime.commitEntryLocation(actor, primaryNode.routingId())
-                        : runtime.commitJoinedLocation(actor, spotId))
-                        .thenCompose(committed -> {
-                            runtime.traceActorTransferMarker(
-                                "location_committed", actor.context().actorId(), request.transferId());
-                            if (preparedFence != null) {
-                                long nextEpoch = request.coreMembershipEpoch() + 1;
-                                primaryNode.registerTransferredActor(
-                                    actorRef, spotId, nextEpoch);
-                                primaryNode.activateActorTransfer(preparedFence.token());
-                            }
-                            return runtime.deliverDeferredJoinAccepted(request, actorRef);
-                        }))
+                    .thenCompose(ignored -> {
+                        if (preparedFence != null) {
+                            primaryNode.activateActorTransfer(preparedFence.token());
+                        }
+                        return runtime.deliverDeferredJoinAccepted(
+                            request,
+                            actorRef);
+                    })
                     .thenCompose(ignored -> backlogReplay.apply(actorRef))
                     .thenApply(replies -> {
                         runtime.traceActorTransferMarker(
@@ -423,29 +450,90 @@ final class ZLinkActorSpotAdmission {
                         return replies;
                     })
                     .thenApply(replies -> new RoutedJoin(
-                        completeRemoteMove(runtime, actor),
-                        ZLinkSpotActorJoinResponse.accept(), replies))
-                    .whenComplete((ignored, error) -> {
-                        if (error != null) {
-                            if (preparedFence != null) {
-                                try {
-                                    primaryNode.abortActorTransfer(preparedFence.token());
-                                } catch (RuntimeException ignoredAbort) {
-                                    // Terminal activation is reconciled by transfer authority.
-                                }
-                            }
-                            clearBinding(runtime, actor, bindingToken);
-                            runtime.rollbackTransferredActor(actor);
-                        }
-                    });
+                        completeRemoteMove(runtime, prepared),
+                        ZLinkSpotActorJoinResponse.accept(), replies));
             });
+        return attempt.exceptionallyCompose(error -> {
+            if (aggregateCommitted.get()) {
+                // Location authority is already terminal. The target Actor
+                // remains published with admission sealed so durable recovery
+                // can resume callback, replay, and ACK without recreating it.
+                return CompletableFuture.failedFuture(error);
+            }
+            if (preparedFence != null) {
+                try {
+                    primaryNode.abortActorTransfer(preparedFence.token());
+                } catch (RuntimeException ignoredAbort) {
+                    // The precommit authority abort below remains decisive.
+                }
+            }
+            ZLinkActorRuntime.PreparedTransferredActor prepared = staged.get();
+            CompletionStage<Void> discard = prepared == null
+                ? CompletableFuture.completedFuture(null)
+                : runtime.discardPreparedTransferredActor(prepared);
+            return discard
+                .exceptionally(ignored -> null)
+                .thenCompose(ignored ->
+                    runtime.abortDeferredJoinRelocation(request))
+                .handle((ignored, abortError) -> {
+                    if (abortError != null) {
+                        error.addSuppressed(abortError);
+                    }
+                    throw new java.util.concurrent.CompletionException(error);
+                });
+        });
+    }
+
+    private CompletionStage<Void> switchBoundSessionRoute(
+        ZLinkActorSpotRoutePackets.TransferRequest request,
+        ZLinkInternalSpotNode primaryNode) {
+        byte[] command44 = request.sessionRouteCommand44();
+        if (command44.length == 0) {
+            return CompletableFuture.completedFuture(null);
+        }
+        if (sessionRoutes == null) {
+            return CompletableFuture.failedFuture(
+                new ZLinkConfigurationException(
+                    "bound Session relocation route runtime is unavailable"));
+        }
+        var codec =
+            new systems.zlink.framework.runtime.internal.service
+                .ZLinkServiceM6BWireCodec();
+        var command = codec.decodeSessionRelocationRoute(command44);
+        java.util.UUID relocationId =
+            java.util.UUID.fromString(request.transferId());
+        if (command.relocation().high()
+                != relocationId.getMostSignificantBits()
+            || command.relocation().low()
+                != relocationId.getLeastSignificantBits()
+            || !command.actor().actorId().equals(request.actorId())
+            || command.actor().generation()
+                != request.actorGeneration()
+            || !command.targetNodeRid().equals(primaryNode.routingId())) {
+            return CompletableFuture.failedFuture(
+                new ZLinkConfigurationException(
+                    "bound Session route command does not match direct Join"));
+        }
+        primaryNode.rememberActorAuthority(
+            new ZLinkBackendActorRef(
+                primaryNode.routingId(),
+                request.actorId(),
+                request.actorGeneration()),
+            command.currentAuthorityOwnerGeneration());
+        return sessionRoutes.switchRoute(
+                command,
+                Duration.ofMillis(Math.max(1L, request.timeoutMillis())))
+            .thenRun(() -> requireActors().traceActorTransferMarker(
+                "session_route_switched",
+                request.actorId(),
+                request.transferId()));
     }
 
     private static ZLinkBackendActorRef completeRemoteMove(
         ZLinkActorRuntime runtime,
-        ZLinkActor actor) {
-        runtime.completeRemoteMove(actor);
-        return runtime.actorRef(actor);
+        ZLinkActorRuntime.PreparedTransferredActor prepared) {
+        runtime.completePreparedTransferredActor(prepared);
+        return prepared.actorRef();
     }
 
     private static long bindRoutedTransfer(
@@ -455,6 +543,14 @@ final class ZLinkActorSpotAdmission {
         ZLinkPendingActorTransfers.Admission pending,
         ZLinkInternalSpotNode primaryNode) {
         ZLinkActorSpotRoutePackets.TransferRequest request = pending.request();
+        if (request.hasSourceSessionRoute()) {
+            return runtime.bindNativeSession(
+                actor,
+                primaryNode,
+                actorRef,
+                request.sourceNodeRid(),
+                request.sourceSessionRid());
+        }
         if (pending.routeChannelName() != null || pending.sourcePeerRid() != null) {
             return runtime.bindRoutedSession(
                 actor,
@@ -464,14 +560,6 @@ final class ZLinkActorSpotAdmission {
                     : pending.sourcePeerRid(),
                 request.sourceEntrySpotId(),
                 request.actorRef());
-        }
-        if (request.hasSourceSessionRoute()) {
-            return runtime.bindNativeSession(
-                actor,
-                primaryNode,
-                actorRef,
-                request.sourceNodeRid(),
-                request.sourceSessionRid());
         }
         return runtime.bindNativeSession(actor, primaryNode, actorRef);
     }

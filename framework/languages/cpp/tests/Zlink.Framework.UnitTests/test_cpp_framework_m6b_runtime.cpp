@@ -2623,7 +2623,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
     assert (source->connect_peer (
       target->status ().local_endpoint (),
       target->status ().routing_id ()));
-    const auto deadline =
+    auto deadline =
       std::chrono::steady_clock::now () + 5s;
     auto dispatch = [] (const host::ready_record_t &,
                         const host::receive_record_t &,
@@ -2667,6 +2667,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
           instance_reply_header = header;
           instance_reply_payload = std::move (reply_payload);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!instance_reply_header
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);
@@ -2696,6 +2697,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
           instance_reply_header = header;
           instance_reply_payload = std::move (reply_payload);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!instance_reply_header
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);
@@ -2724,6 +2726,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
           instance_reply_header = header;
           instance_reply_payload = std::move (reply_payload);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!instance_reply_header
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);
@@ -2731,7 +2734,11 @@ void verify_remote_user_spot_create_close_terminal_once ()
         std::this_thread::sleep_for (1ms);
     }
     assert (instance_reply_header
-            && instance_reply_header->terminal_result == 107);
+            && instance_reply_header->terminal_result == 104);
+    assert (
+      instance_reply_header->failure_code
+      == static_cast<std::uint32_t> (
+        protocol::framework_error_code::requestProtocolError));
     assert (!instance_reply_payload);
     assert (instance_prepare_count == 1);
     assert (instance_activation_count == 1);
@@ -2760,6 +2767,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
           instance_reply_header = header;
           instance_reply_payload = std::move (reply_payload);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!instance_reply_header
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);
@@ -2792,6 +2800,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
           instance_reply_header = header;
           instance_reply_payload = std::move (reply_payload);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!instance_reply_header
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);
@@ -2861,6 +2870,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
             == foundation::operation_terminal_t::completed);
           invalid_reply = std::move (reply);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!invalid_reply
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);
@@ -2892,6 +2902,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
             == foundation::operation_terminal_t::completed);
           mismatch_reply = std::move (reply);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!mismatch_reply
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);
@@ -2916,6 +2927,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
             == foundation::operation_terminal_t::completed);
           replayed_mismatch_reply = std::move (reply);
       }));
+    deadline = std::chrono::steady_clock::now () + 5s;
     while (!replayed_mismatch_reply
            && std::chrono::steady_clock::now () < deadline) {
         (void) target->dispatch_ready (dispatch);

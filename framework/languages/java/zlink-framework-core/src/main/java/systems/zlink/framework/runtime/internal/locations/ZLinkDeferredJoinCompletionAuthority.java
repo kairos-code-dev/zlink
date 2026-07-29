@@ -5,12 +5,18 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.actors.ZLinkActorJoinOperationId;
 import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.locations.ZLinkActorAuthorityPayloadCodec;
 import systems.zlink.framework.runtime.locations.ZLinkAuthorityKeyCodec;
+import systems.zlink.framework.runtime.locations.ZLinkServiceAuthorityPayloadCodec;
+import systems.zlink.framework.runtime.spots.ZLinkCanonicalActorRelocationEnvelope;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 
@@ -24,6 +30,10 @@ public final class ZLinkDeferredJoinCompletionAuthority {
     private static final ZLinkStoreCancellation NEVER = () -> false;
     private static final String PACKET = "ZLinkActorJoinAccepted";
     private static final String CONTENT_TYPE = "application/octet-stream";
+    private static final String RELOCATION_CONTENT_TYPE =
+        "application/vnd.zlink.deferred-join-relocation-v1";
+    private static final int RELOCATION_COMPLETION_MAGIC = 0x5A4C444A;
+    private static final int RELOCATION_COMPLETION_VERSION = 1;
 
     private final ZLinkLocationStore authority;
     private final ZLinkRelocationStore relocation;
@@ -81,6 +91,272 @@ public final class ZLinkDeferredJoinCompletionAuthority {
                     current.root(), completion);
             return publish(current, successor)
                 .thenApply(next -> published(next, completion));
+        });
+    }
+
+    /**
+     * Prepares a direct Actor Join as one canonical relocation aggregate.
+     * The returned fence is committed by the target before it exposes the
+     * restored Actor or invokes the application callback.
+     */
+    public CompletionStage<PreparedPublication> prepareRelocation(
+        UUID relocationId,
+        ZLinkActorJoinOperationId operationId,
+        ZLinkBackendActorRef actor,
+        String actorType,
+        String targetSpotId,
+        RoutingId targetNodeRid,
+        boolean restoreSnapshot,
+        byte[] applicationState,
+        List<ZLinkAsyncSerialQueue.QueuedRecord> acceptedJournal,
+        byte[] rawReply,
+        byte[] sessionRouteCommand44) {
+        String actorKey = ZLinkAuthorityKeyCodec.actor(actor.actorId());
+        String spotKey = ZLinkAuthorityKeyCodec.spot(targetSpotId);
+        return authority.read(actorKey, NEVER).thenCompose(actorRead -> {
+            if (!(actorRead instanceof ZLinkAuthoritySnapshot actorSnapshot)) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "Actor authority is missing for direct Join relocation"));
+            }
+            var source = new ZLinkActorAuthorityPayloadCodec()
+                .decode(actorSnapshot.payload())
+                .orElseThrow(() -> new IllegalStateException(
+                    "Actor authority payload is invalid"));
+            if (!source.actorId().equals(actor.actorId())
+                || !source.stableType().equals(actorType)
+                || actorSnapshot.objectGeneration() != actor.generation()) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "Actor authority changed before direct Join relocation"));
+            }
+            return authority.read(spotKey, NEVER).thenCompose(spotRead -> {
+                if (!(spotRead instanceof ZLinkAuthoritySnapshot spotSnapshot)) {
+                    return CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "target Spot authority is missing"));
+                }
+                var target = new ZLinkServiceAuthorityPayloadCodec()
+                    .decode(spotSnapshot.payload())
+                    .orElseThrow(() -> new IllegalStateException(
+                        "target Spot authority payload is invalid"));
+                if (target.state()
+                        != ZLinkServiceAuthorityPayloadCodec.State.READY
+                    || target.kind()
+                        != ZLinkServiceAuthorityPayloadCodec.Kind.USER
+                    || !target.spotId().equals(targetSpotId)
+                    || !target.nodeRid().equals(targetNodeRid)) {
+                    return CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "target Spot authority changed before relocation"));
+                }
+                List<ZLinkAsyncSerialQueue.QueuedRecord> journal =
+                    List.copyOf(acceptedJournal);
+                byte[] initial =
+                    ZLinkCanonicalActorRelocationEnvelope.encode(
+                        relocationId,
+                        actor.actorId(),
+                        actor.generation(),
+                        actorSnapshot.authorityOwnerGeneration(),
+                        restoreSnapshot,
+                        applicationState,
+                        journal);
+                var envelope =
+                    ZLinkServiceRelocationEnvelopeCodec.decode(initial);
+                long sequence = journal.isEmpty()
+                    ? 1L
+                    : journal.getLast().sequence() + 1L;
+                var completion =
+                    new ZLinkServiceRelocationEnvelopeCodec.Completion(
+                        operationId.high(),
+                        operationId.low(),
+                        actorSnapshot.ownerId(),
+                        actorSnapshot.ownerLeaseGeneration(),
+                        source.nodeRid().toString(),
+                        source.nodeGeneration(),
+                        1,
+                        sequence,
+                        0,
+                        0,
+                        1,
+                        new ZLinkServiceRelocationEnvelopeCodec.Payload(
+                            PACKET,
+                            RELOCATION_CONTENT_TYPE,
+                            encodeRelocationCompletion(
+                                rawReply,
+                                sessionRouteCommand44)));
+                byte[] root =
+                    ZLinkServiceRelocationEnvelopeCodec.encodeSuccessor(
+                        envelope,
+                        envelope.participantProgress(),
+                        List.of(completion));
+                byte[] targetAuthority =
+                    new ZLinkActorAuthorityPayloadCodec().encode(
+                        ZLinkActorAuthorityPayloadCodec.State.READY,
+                        actorType,
+                        actor.actorId(),
+                        targetSpotId,
+                        spotSnapshot.objectGeneration(),
+                        2,
+                        spotSnapshot.ownerId(),
+                        spotSnapshot.ownerLeaseGeneration(),
+                        target.meshName(),
+                        target.nodeRid(),
+                        target.nodeGeneration());
+                var participant =
+                    new ZLinkAggregateRelocationCoordinator.Participant(
+                        actorKey,
+                        ZLinkPlacementObjectKind.ACTOR,
+                        actorSnapshot.objectGeneration(),
+                        actorSnapshot.authorityOwnerGeneration(),
+                        actorSnapshot.storeVersion(),
+                        ZLinkAuthorityGenerationTransition.NEW_OWNER,
+                        targetAuthority,
+                        new byte[0]);
+                var coordinator = new ZLinkAggregateRelocationCoordinator(
+                    authority, relocation);
+                return authority.listMeshNodes(
+                        target.meshName(),
+                        new ZLinkPageRequest(1_000, null))
+                    .thenCompose(page -> {
+                        var descriptor = page.items().stream()
+                            .filter(candidate ->
+                                candidate.rid().equals(targetNodeRid))
+                            .findFirst()
+                            .orElseThrow(() -> new IllegalStateException(
+                                "target MeshNode descriptor is missing"));
+                        if (!descriptor.ownerId().equals(
+                                spotSnapshot.ownerId())
+                            || descriptor.leaseGeneration()
+                                != spotSnapshot.ownerLeaseGeneration()
+                            || descriptor.lifecycleGeneration()
+                                != spotSnapshot.allocation()
+                                    .descriptorLifecycleGeneration()) {
+                            return CompletableFuture.failedFuture(
+                                new IllegalStateException(
+                                    "target Spot and MeshNode owner fences differ"));
+                        }
+                        var request =
+                            new ZLinkAggregateRelocationCoordinator.Request(
+                                relocationId,
+                                1,
+                                List.of(participant),
+                                root,
+                                new ZLinkMeshNodeDescriptorKey(
+                                    descriptor.meshName(),
+                                    descriptor.rid()),
+                                descriptor.lifecycleGeneration(),
+                                ZLinkPlacementCapacityBundle.actor(1),
+                                new ZLinkLocationOwnerToken(
+                                    descriptor.ownerId(),
+                                    descriptor.leaseGeneration()));
+                        return coordinator.prepare(request, NEVER)
+                            .thenApply(prepared -> new PreparedPublication(
+                                new Published(
+                                    prepared.stored().reference(),
+                                    prepared.stored().checksumCrc32c(),
+                                    1,
+                                    operationId,
+                                    actor.actorId(),
+                                    actor.generation(),
+                                    rawReply == null
+                                        ? new byte[0] : rawReply),
+                                prepared.fence()));
+                    });
+            });
+        });
+    }
+
+    public CompletionStage<Void> commitPrepared(
+        UUID aggregateId,
+        long aggregateGeneration) {
+        return authority.commitAggregate(
+                new ZLinkAggregateFence(
+                    aggregateId,
+                    aggregateGeneration),
+                NEVER)
+            .thenCompose(result ->
+                result == ZLinkAggregateCommitResult.COMMITTED
+                    || result == ZLinkAggregateCommitResult.ALREADY_COMMITTED
+                    ? CompletableFuture.completedFuture(null)
+                    : CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "direct Join relocation aggregate commit failed: "
+                                + result)));
+    }
+
+    public CompletionStage<Void> abortPrepared(
+        UUID aggregateId,
+        long aggregateGeneration,
+        String reference) {
+        return authority.abortAggregate(
+                new ZLinkAggregateFence(
+                    aggregateId,
+                    aggregateGeneration),
+                NEVER)
+            .thenCompose(result -> {
+                if (result != ZLinkAggregateAbortResult.ABORTED
+                    && result != ZLinkAggregateAbortResult.ALREADY_ABORTED) {
+                    return CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "direct Join relocation aggregate abort failed: "
+                                + result));
+                }
+                return ZLinkRelocationTreeStore.delete(
+                    relocation,
+                    reference,
+                    NEVER);
+            });
+    }
+
+    public CompletionStage<PreparedRoot> loadPrepared(
+        String reference,
+        long checksumCrc32c,
+        ZLinkActorJoinOperationId operationId,
+        ZLinkBackendActorRef actor,
+        UUID relocationId,
+        boolean restoreSnapshot) {
+        return load(reference, checksumCrc32c).thenApply(loaded -> {
+            var root = loaded.root();
+            validateActor(root, actor);
+            if (root.relocationHigh()
+                    != relocationId.getMostSignificantBits()
+                || root.relocationLow()
+                    != relocationId.getLeastSignificantBits()
+                || root.applicationStates().size() != 1
+                || root.participantProgress().size() != 1
+                || !root.timerRegistrations().isEmpty()
+                || !root.pendingTimerTicks().isEmpty()) {
+                throw new IllegalStateException(
+                    "direct Join canonical relocation root is invalid");
+            }
+            var state = root.applicationStates().getFirst();
+            if (state.participantId() != 1
+                || state.hasState() != restoreSnapshot) {
+                throw new IllegalStateException(
+                    "direct Join relocation state policy differs");
+            }
+            var completion = find(root.terminalCompletions(), operationId);
+            if (completion == null) {
+                throw new IllegalStateException(
+                    "direct Join relocation root has no completion record");
+            }
+            List<ZLinkAsyncSerialQueue.QueuedRecord> journal =
+                root.journal().stream()
+                    .map(value -> {
+                        if (value.participantId() != 1) {
+                            throw new IllegalStateException(
+                                "direct Join journal references another participant");
+                        }
+                        return new ZLinkAsyncSerialQueue.QueuedRecord(
+                            value.sequence(),
+                            value.rawEntry());
+                    })
+                    .toList();
+            return new PreparedRoot(
+                state.payload(),
+                journal,
+                decodeRelocationCompletion(completion).sessionRouteCommand44());
         });
     }
 
@@ -283,7 +559,10 @@ public final class ZLinkDeferredJoinCompletionAuthority {
                 root.object().objectGeneration(),
                 completion.payload() == null
                     ? new byte[0]
-                    : completion.payload().bytes());
+                    : RELOCATION_CONTENT_TYPE.equals(
+                        completion.payload().contentType())
+                        ? decodeRelocationCompletion(completion).rawReply()
+                        : completion.payload().bytes());
         });
     }
 
@@ -429,6 +708,12 @@ public final class ZLinkDeferredJoinCompletionAuthority {
     private static Published published(
         Current current,
         ZLinkServiceRelocationEnvelopeCodec.Completion completion) {
+        byte[] rawReply = completion.payload() == null
+            ? new byte[0]
+            : RELOCATION_CONTENT_TYPE.equals(
+                completion.payload().contentType())
+                ? decodeRelocationCompletion(completion).rawReply()
+                : completion.payload().bytes();
         return new Published(
             current.publication().reference(),
             current.publication().checksumCrc32c(),
@@ -438,9 +723,7 @@ public final class ZLinkDeferredJoinCompletionAuthority {
                 completion.operationLow()),
             current.root().object().objectId(),
             current.root().object().objectGeneration(),
-            completion.payload() == null
-                ? new byte[0]
-                : completion.payload().bytes());
+            rawReply);
     }
 
     private static void validateActor(
@@ -483,13 +766,91 @@ public final class ZLinkDeferredJoinCompletionAuthority {
         ZLinkBackendActorRef actor,
         byte[] rawReply) {
         if (completion.payload() == null
-            || !PACKET.equals(completion.payload().packetName())
-            || !CONTENT_TYPE.equals(completion.payload().contentType())
-            || !Arrays.equals(
-                completion.payload().bytes(),
+            || !PACKET.equals(completion.payload().packetName())) {
+            throw new IllegalStateException(
+                "deferred Join completion conflicts with the published operation");
+        }
+        byte[] storedReply;
+        if (CONTENT_TYPE.equals(completion.payload().contentType())) {
+            storedReply = completion.payload().bytes();
+        } else if (RELOCATION_CONTENT_TYPE.equals(
+                completion.payload().contentType())) {
+            storedReply = decodeRelocationCompletion(completion).rawReply();
+        } else {
+            throw new IllegalStateException(
+                "deferred Join completion has an unsupported payload type");
+        }
+        if (!Arrays.equals(
+                storedReply,
                 rawReply == null ? new byte[0] : rawReply)) {
             throw new IllegalStateException(
                 "deferred Join completion conflicts with the published operation");
+        }
+    }
+
+    private static byte[] encodeRelocationCompletion(
+        byte[] rawReply,
+        byte[] sessionRouteCommand44) {
+        byte[] reply = rawReply == null ? new byte[0] : rawReply.clone();
+        byte[] route = sessionRouteCommand44 == null
+            ? new byte[0]
+            : sessionRouteCommand44.clone();
+        try {
+            var bytes = new java.io.ByteArrayOutputStream();
+            try (var output = new java.io.DataOutputStream(bytes)) {
+                output.writeInt(RELOCATION_COMPLETION_MAGIC);
+                output.writeInt(RELOCATION_COMPLETION_VERSION);
+                output.writeInt(reply.length);
+                output.write(reply);
+                output.writeInt(route.length);
+                output.write(route);
+            }
+            return bytes.toByteArray();
+        } catch (java.io.IOException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
+    private static RelocationCompletion decodeRelocationCompletion(
+        ZLinkServiceRelocationEnvelopeCodec.Completion completion) {
+        if (completion.payload() == null
+            || !PACKET.equals(completion.payload().packetName())
+            || !RELOCATION_CONTENT_TYPE.equals(
+                completion.payload().contentType())) {
+            throw new IllegalStateException(
+                "direct Join relocation completion payload is invalid");
+        }
+        byte[] payload = completion.payload().bytes();
+        try (var input = new java.io.DataInputStream(
+                 new java.io.ByteArrayInputStream(payload))) {
+            if (input.readInt() != RELOCATION_COMPLETION_MAGIC
+                || input.readInt() != RELOCATION_COMPLETION_VERSION) {
+                throw new IllegalStateException(
+                    "direct Join relocation completion format is unsupported");
+            }
+            int replyLength = input.readInt();
+            if (replyLength < 0 || replyLength > payload.length) {
+                throw new IllegalStateException(
+                    "direct Join relocation reply length is invalid");
+            }
+            byte[] reply = input.readNBytes(replyLength);
+            int routeLength = input.readInt();
+            if (routeLength < 0 || routeLength > payload.length) {
+                throw new IllegalStateException(
+                    "direct Join Session route length is invalid");
+            }
+            byte[] route = input.readNBytes(routeLength);
+            if (reply.length != replyLength
+                || route.length != routeLength
+                || input.available() != 0) {
+                throw new IllegalStateException(
+                    "direct Join relocation completion is truncated");
+            }
+            return new RelocationCompletion(reply, route);
+        } catch (java.io.IOException error) {
+            throw new IllegalStateException(
+                "direct Join relocation completion is invalid",
+                error);
         }
     }
 
@@ -511,6 +872,59 @@ public final class ZLinkDeferredJoinCompletionAuthority {
             rawReply = Objects.requireNonNull(rawReply, "rawReply").clone();
         }
         @Override public byte[] rawReply() { return rawReply.clone(); }
+    }
+
+    public record PreparedPublication(
+        Published published,
+        ZLinkAggregateFence fence) {
+        public PreparedPublication {
+            Objects.requireNonNull(published, "published");
+            Objects.requireNonNull(fence, "fence");
+        }
+    }
+
+    public record PreparedRoot(
+        byte[] applicationState,
+        List<ZLinkAsyncSerialQueue.QueuedRecord> acceptedJournal,
+        byte[] sessionRouteCommand44) {
+        public PreparedRoot {
+            applicationState =
+                Objects.requireNonNull(applicationState, "applicationState")
+                    .clone();
+            acceptedJournal =
+                List.copyOf(Objects.requireNonNull(
+                    acceptedJournal,
+                    "acceptedJournal"));
+            sessionRouteCommand44 =
+                Objects.requireNonNull(
+                    sessionRouteCommand44,
+                    "sessionRouteCommand44").clone();
+        }
+
+        @Override public byte[] applicationState() {
+            return applicationState.clone();
+        }
+
+        @Override public byte[] sessionRouteCommand44() {
+            return sessionRouteCommand44.clone();
+        }
+    }
+
+    private record RelocationCompletion(
+        byte[] rawReply,
+        byte[] sessionRouteCommand44) {
+        private RelocationCompletion {
+            rawReply = rawReply.clone();
+            sessionRouteCommand44 = sessionRouteCommand44.clone();
+        }
+
+        @Override public byte[] rawReply() {
+            return rawReply.clone();
+        }
+
+        @Override public byte[] sessionRouteCommand44() {
+            return sessionRouteCommand44.clone();
+        }
     }
 
     private record Current(

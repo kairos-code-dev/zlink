@@ -27,6 +27,7 @@ import {
   type ServiceInstanceActivationRecoveryEnvelope
 } from '../foundation/service-instance-activation-recovery-codec';
 import { decodePreparingAuthorityEnvelope } from '../foundation/service-relocation-runtime';
+import { decodeActorAuthorityIdentity } from '../actors';
 
 interface StatefulAuthorityRouteSink {
   status(): ReturnType<ZLinkBackendMeshNode['status']>;
@@ -77,6 +78,7 @@ interface PendingInstanceActivationRecovery {
 interface CompleteAuthoritySnapshot {
   readonly routes: Map<string, AppliedAuthorityRoute>;
   readonly pending: readonly PendingInstanceActivationRecovery[];
+  readonly actors: readonly ZLinkAuthoritySnapshot[];
 }
 
 export interface ZLinkStatefulAuthorityRouteRuntimeOptions {
@@ -87,6 +89,10 @@ export interface ZLinkStatefulAuthorityRouteRuntimeOptions {
   readonly pollingIntervalMs: number;
   readonly pageSize: number;
   readonly reportError: (error: unknown) => void;
+  readonly recoverActor?: (
+    authority: ZLinkAuthoritySnapshot,
+    signal?: AbortSignal
+  ) => Promise<void>;
 }
 
 /**
@@ -209,6 +215,10 @@ export class ZLinkStatefulAuthorityRouteRuntime {
           }
         }
       }
+    }
+
+    for (const actor of snapshot.actors) {
+      await this.options.recoverActor?.(actor, signal);
     }
 
     // Publish every successor before cleaning old entries. Conditional cleanup
@@ -384,6 +394,7 @@ export class ZLinkStatefulAuthorityRouteRuntime {
 
     const result = new Map<string, AppliedAuthorityRoute>();
     const pending: PendingInstanceActivationRecovery[] = [];
+    const actors: ZLinkAuthoritySnapshot[] = [];
     for (const key of candidates.values()) {
       let current = await this.options.store.readAuthority(key, signal);
       if (current.kind !== 'snapshot') continue;
@@ -414,10 +425,17 @@ export class ZLinkStatefulAuthorityRouteRuntime {
       }
       const route = authorityRoute(current);
       if (route !== undefined) result.set(authorityRouteKey(route), route);
+      if (
+        current.allocation.state === 'active'
+        && current.allocation.objectKind === 'actor'
+        && decodeActorAuthorityIdentity(current.payload) !== undefined
+      ) {
+        actors.push(current);
+      }
       const pendingRecovery = pendingInstanceActivation(current);
       if (pendingRecovery !== undefined) pending.push(pendingRecovery);
     }
-    return { routes: result, pending };
+    return { routes: result, pending, actors };
   }
 }
 

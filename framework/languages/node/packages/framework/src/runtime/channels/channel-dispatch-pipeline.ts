@@ -1,12 +1,14 @@
 import type {
   ZLinkMessageContext,
   ZLinkHandlerFilter,
+  ZLinkHandlerFilterContext,
   ZLinkUnhandledDispatchOptions,
   ZLinkFlowOrigin
 } from '../../contracts';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
+  ZLinkHandlerDispatchKind,
   ZLinkUnhandledDispatchAction
 } from '../../contracts';
 import {
@@ -14,7 +16,7 @@ import {
   ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
   ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
   ZLinkDispatchMessageKind,
-  type ZLinkDispatchErrorSurface
+  ZLinkDispatchErrorSurface
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import { invokeZLinkHandlerFilters } from '../handlers';
 import {
@@ -53,6 +55,7 @@ interface ZLinkOneWayDispatch<TContext extends ZLinkMessageContext> {
   readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
   readonly handler?: ZLinkChannelDispatchHandler<TContext, void>;
   readonly context: TContext;
+  readonly signal?: AbortSignal;
 }
 
 interface ZLinkRequestDispatch<TContext extends ZLinkMessageContext> {
@@ -61,6 +64,7 @@ interface ZLinkRequestDispatch<TContext extends ZLinkMessageContext> {
   readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
   readonly handler?: ZLinkChannelDispatchHandler<TContext, unknown>;
   readonly context: TContext;
+  readonly signal?: AbortSignal;
   readonly missingHandlerMessage: string;
   readonly writeReply: (reply: unknown) => Promise<void>;
   readonly writeError: (error: unknown) => Promise<void>;
@@ -100,7 +104,9 @@ export class ZLinkChannelDispatchPipeline {
           dispatch.envelope,
           dispatch.codecs,
           dispatch.handler!,
-          dispatch.context
+          dispatch.context,
+          dispatch.fields,
+          dispatch.signal
         ));
       this.trace(ZLinkMessageFlowOutcome.Dispatched, dispatch.fields);
     } catch (error) {
@@ -143,12 +149,21 @@ export class ZLinkChannelDispatchPipeline {
         dispatch.fields.flowOrigin,
         this.options.dispatchErrors.flow.flowCreationEnabled()
       );
-      reply = await runWithFlow(flow, () => this.invoke(
+      const invocation = await runWithFlow(flow, () => this.invoke(
           dispatch.envelope,
           dispatch.codecs,
           dispatch.handler!,
-          dispatch.context
+          dispatch.context,
+          dispatch.fields,
+          dispatch.signal
         ));
+      if (!invocation.handlerInvoked) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.RequestRejected,
+          `A handler filter rejected '${this.options.channelName}:${dispatch.fields.packetName}'.`
+        );
+      }
+      reply = invocation.value;
     } catch (error) {
       try {
         await dispatch.writeError(error);
@@ -191,18 +206,63 @@ export class ZLinkChannelDispatchPipeline {
     );
   }
 
-  private invoke<TContext extends ZLinkMessageContext, TResult>(
+  private async invoke<TContext extends ZLinkMessageContext, TResult>(
     envelope: ZLinkChannelEnvelope,
     codecs: ZLinkChannelEnvelopeCodecRegistry | undefined,
     handler: ZLinkChannelDispatchHandler<TContext, TResult>,
-    context: TContext
-  ): Promise<TResult> {
+    context: TContext,
+    fields: ZLinkChannelDispatchFields,
+    signal?: AbortSignal
+  ): Promise<{ readonly handlerInvoked: boolean; readonly value?: TResult }> {
     const payload = decodeChannelPayload(envelope, codecs);
-    return invokeZLinkHandlerFilters(
+    let value: TResult | undefined;
+    const handlerInvoked = await invokeZLinkHandlerFilters(
       this.filters,
-      context,
-      () => Promise.resolve(handler.handle(payload, context))
-    ) as Promise<TResult>;
+      this.createFilterContext(context, fields),
+      async () => {
+        value = await handler.handle(payload, context);
+      },
+      signal
+    );
+    return { handlerInvoked, value };
+  }
+
+  private createFilterContext(
+    context: ZLinkMessageContext,
+    fields: ZLinkChannelDispatchFields
+  ): ZLinkHandlerFilterContext {
+    const dispatchKind = this.dispatchKind(context, fields);
+    return {
+      meshName: dispatchKind === ZLinkHandlerDispatchKind.ClassicFanout
+        ? undefined
+        : context.meshName,
+      channelName: context.channelName,
+      packetName: context.packetName,
+      contentType: context.contentType,
+      metadata: context.metadata,
+      correlationId: context.correlationId,
+      dispatchKind
+    };
+  }
+
+  private dispatchKind(
+    context: ZLinkMessageContext,
+    fields: ZLinkChannelDispatchFields
+  ): ZLinkHandlerDispatchKind {
+    if (fields.messageKind === ZLinkDispatchMessageKind.Publish) {
+      return ZLinkHandlerDispatchKind.ClassicFanout;
+    }
+    const nodeDirect =
+      this.options.surface === ZLinkDispatchErrorSurface.RouteMeshChannel
+      && context.channelName === undefined;
+    if (fields.messageKind === ZLinkDispatchMessageKind.Request) {
+      return nodeDirect
+        ? ZLinkHandlerDispatchKind.NodeDirectRequest
+        : ZLinkHandlerDispatchKind.ChannelRequest;
+    }
+    return nodeDirect
+      ? ZLinkHandlerDispatchKind.NodeDirectSend
+      : ZLinkHandlerDispatchKind.ChannelSend;
   }
 
   private report(

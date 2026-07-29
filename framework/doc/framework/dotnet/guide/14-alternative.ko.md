@@ -246,6 +246,13 @@ sequenceDiagram
 | 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [11-monitoring](11-monitoring.ko.md) |
 | 양방향 streaming | STREAM session | 외부 client 수용. HTTP edge 정책은 별도 |
 
+이 비교는 우열을 일반화하려는 것이 아니다. gRPC는 외부 공개 API, 표준 RPC 계약, 조직
+표준 tooling이 중요할 때 여전히 좋은 선택이다. 성능도 payload 크기·codec·네트워크·peer
+수·배포 방식에 따라 달라지므로 수치로 단정하지 않는다. 여기서 말하는 이득은 **호출 경로와
+운영 컴포넌트가 줄어든다**는 것이다 — HTTP/2 프록시·stub·별도 broker를 지나던 구성이
+framework와 location store 한 겹으로 접힌다. 조직 보안 정책이나 외부 ingress가 필요하면
+기존 mesh·LB를 그대로 함께 둔다.
+
 ## 7. 참고 — 분산 actor 프레임워크(Orleans/Akka)와의 비교
 
 [01-overview §2](01-overview.ko.md)의 ④ stateful actor 패턴에 실제로 쓰이는 대표

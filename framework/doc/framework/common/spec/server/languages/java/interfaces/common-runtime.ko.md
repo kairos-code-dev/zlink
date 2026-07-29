@@ -243,8 +243,18 @@ public interface systems.zlink.framework.ZLinkMessageContext {
   public abstract java.util.Map<java.lang.String, java.lang.String> metadata();
   public abstract java.util.Optional<java.lang.String> correlationId();
 }
+public final class systems.zlink.framework.ZLinkHandlerDispatchKind extends java.lang.Enum<systems.zlink.framework.ZLinkHandlerDispatchKind> {
+  public static final systems.zlink.framework.ZLinkHandlerDispatchKind NODE_DIRECT_SEND;
+  public static final systems.zlink.framework.ZLinkHandlerDispatchKind NODE_DIRECT_REQUEST;
+  public static final systems.zlink.framework.ZLinkHandlerDispatchKind CHANNEL_SEND;
+  public static final systems.zlink.framework.ZLinkHandlerDispatchKind CHANNEL_REQUEST;
+  public static final systems.zlink.framework.ZLinkHandlerDispatchKind CLASSIC_FANOUT;
+}
+public interface systems.zlink.framework.ZLinkHandlerFilterContext extends systems.zlink.framework.ZLinkMessageContext {
+  public abstract systems.zlink.framework.ZLinkHandlerDispatchKind dispatchKind();
+}
 public interface systems.zlink.framework.ZLinkHandlerFilter {
-  public abstract <T> java.util.concurrent.CompletionStage<T> invoke(systems.zlink.framework.ZLinkMessageContext, systems.zlink.framework.ZLinkHandlerFilterNext<T>);
+  public abstract <T> java.util.concurrent.CompletionStage<T> invoke(systems.zlink.framework.ZLinkHandlerFilterContext, systems.zlink.framework.ZLinkHandlerFilterNext<T>);
 }
 public interface systems.zlink.framework.ZLinkMessageSerializer {
   public abstract <T> systems.zlink.framework.ZLinkEncodedPayload serialize(T);

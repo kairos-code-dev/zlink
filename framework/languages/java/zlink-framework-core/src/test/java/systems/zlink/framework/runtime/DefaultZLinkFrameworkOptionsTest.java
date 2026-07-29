@@ -29,6 +29,7 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.ZLinkHandlerFilter;
+import systems.zlink.framework.ZLinkHandlerFilterContext;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
@@ -1158,7 +1159,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     public static final class TestFilter implements ZLinkHandlerFilter {
         @Override
         public <T> CompletionStage<T> invoke(
-            ZLinkMessageContext context,
+            ZLinkHandlerFilterContext context,
             ZLinkHandlerFilterNext<T> next) {
             return next.invoke();
         }

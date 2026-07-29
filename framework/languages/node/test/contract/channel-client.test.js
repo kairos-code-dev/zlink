@@ -584,13 +584,17 @@ test('route packet dispatcher sends channel envelopes to route handlers before S
     assert.deepEqual(filterInvocations.map((context) => ({
       meshName: context.meshName,
       packetName: context.packetName,
+      dispatchKind: context.dispatchKind,
       hasLegacyContext: 'context' in context,
-      hasMessage: 'message' in context
+      hasMessage: 'message' in context,
+      hasSourceNodeRid: 'sourceNodeRid' in context
     })), [{
       meshName: 'bingo.play',
       packetName: 'AllocateBingoRoomReq',
+      dispatchKind: framework.ZLinkHandlerDispatchKind.NodeDirectRequest,
       hasLegacyContext: false,
-      hasMessage: false
+      hasMessage: false,
+      hasSourceNodeRid: false
     }]);
     assert.equal(replyParts.length, 2);
   } finally {
@@ -3131,6 +3135,13 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const remoteEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const events = [];
+  const filterContexts = [];
+  class NodeDirectFilter {
+    async invoke(context, next) {
+      filterContexts.push(context);
+      return next();
+    }
+  }
   class RouteNoticeHandler {
     async handle(payload, context) {
       events.push(`send:${context.meshName}:${context.packetName}:${payload.value}`);
@@ -3143,7 +3154,8 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
     }
   }
   class HandlerModule {}
-  const builder = nestjs.zlinkFramework();
+  const builder = nestjs.zlinkFramework()
+    .options({ filters: [NodeDirectFilter] });
   const mesh = builder
     .addRouteMesh('mesh')
       .listen(endpoint)
@@ -3153,7 +3165,7 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
   mesh.addRequestHandler('RoutePing', RoutePingHandler);
   Module({
     imports: [nestjs.ZLinkModule.forRoot(builder.build())],
-    providers: [RouteNoticeHandler, RoutePingHandler]
+    providers: [NodeDirectFilter, RouteNoticeHandler, RoutePingHandler]
   })(HandlerModule);
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
   const runtime = app.get(nestjs.ZLINK_FRAMEWORK_RUNTIME, { strict: false });
@@ -3167,6 +3179,13 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
     assert.deepEqual(reply, { value: 'pong' });
     assert.equal(events.includes('send:mesh:RouteNotice:one-way'), true);
     assert.equal(events.includes('request:mesh:RoutePing:ping'), true);
+    const dispatchKinds = filterContexts.map((context) => context.dispatchKind);
+    assert.equal(dispatchKinds.includes(framework.ZLinkHandlerDispatchKind.NodeDirectRequest), true);
+    assert.equal(dispatchKinds.includes(framework.ZLinkHandlerDispatchKind.NodeDirectSend), true);
+    assert.equal(dispatchKinds.every((kind) =>
+      kind === framework.ZLinkHandlerDispatchKind.NodeDirectRequest ||
+      kind === framework.ZLinkHandlerDispatchKind.NodeDirectSend), true);
+    assert.equal(filterContexts.every((context) => context.channelName === undefined), true);
   } finally {
     await remote?.stop();
     await runtime.stop();
@@ -3178,10 +3197,10 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const remoteEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const events = [];
-  let filterInvocations = 0;
+  const filterContexts = [];
   class ChannelOnlyFilter {
-    async invoke(_invocation, next) {
-      filterInvocations += 1;
+    async invoke(context, next) {
+      filterContexts.push(context);
       return next();
     }
   }
@@ -3215,7 +3234,13 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
     const reply = (await remote.next('result')).result;
     assert.deepEqual(reply, { value: 'pong' });
     assert.equal(events[0], 'request:mesh:RoutePing:ping');
-    assert.equal(filterInvocations, 1);
+    assert.equal(filterContexts.length, 1);
+    assert.equal(
+      filterContexts[0].dispatchKind,
+      framework.ZLinkHandlerDispatchKind.ChannelRequest
+    );
+    assert.equal(filterContexts[0].meshName, 'mesh');
+    assert.equal(filterContexts[0].channelName, 'mesh');
   } finally {
     await remote?.stop();
     await runtime.stop();
@@ -3263,6 +3288,74 @@ test('PUB-001 partial ZLinkFanoutClient publishes through public pub/sub binding
     sub.close();
     pub.close();
     ctx.close();
+  }
+});
+
+test('classic fanout filters receive a minimal context and isolate each handler invocation', async () => {
+  const filterContexts = [];
+  const handled = [];
+  const dispatcher = new framework.ZLinkChannelPublishDispatcher({
+    // Classic fanout is not a MeshNode member. Even a stale internal value
+    // must not leak through the public filter context.
+    meshName: 'internal-fanout-placeholder',
+    channelName: 'events',
+    dispatchErrors: noDispatchErrorReporter(),
+    handlers: new Map([
+      ['Event', {
+        async handle(payload) {
+          handled.push(payload.value);
+        }
+      }]
+    ]),
+    filters: [{
+      async invoke(context, next) {
+        filterContexts.push(context);
+        await next();
+      }
+    }]
+  });
+  const parts = encodeDotnetEnvelope({
+    kind: 4,
+    channelName: 'events',
+    messageName: 'Event',
+    contentType: 'application/json',
+    correlationId: 'fanout-corr',
+    deadline: null,
+    topic: 'room',
+    source: 'publisher-a',
+    errorCode: null,
+    errorMessage: null
+  }, { value: 'first' }).map(fakeMessagePart);
+  const nextParts = encodeDotnetEnvelope({
+    kind: 4,
+    channelName: 'events',
+    messageName: 'Event',
+    contentType: 'application/json',
+    correlationId: 'fanout-corr-next',
+    deadline: null,
+    topic: 'room',
+    source: 'publisher-a',
+    errorCode: null,
+    errorMessage: null
+  }, { value: 'second' }).map(fakeMessagePart);
+
+  try {
+    await dispatcher.dispatch({ topic: 'room', parts });
+    await dispatcher.dispatch({ topic: 'room', parts: nextParts });
+    assert.deepEqual(handled, ['first', 'second']);
+    assert.equal(filterContexts.length, 2);
+    assert.notEqual(filterContexts[0], filterContexts[1]);
+    assert.equal(
+      filterContexts[0].dispatchKind,
+      framework.ZLinkHandlerDispatchKind.ClassicFanout
+    );
+    assert.equal(filterContexts[0].meshName, undefined);
+    assert.equal(filterContexts[0].channelName, 'events');
+    assert.equal('topic' in filterContexts[0], false);
+    assert.equal('source' in filterContexts[0], false);
+  } finally {
+    parts.forEach((part) => part.close?.());
+    nextParts.forEach((part) => part.close?.());
   }
 });
 
@@ -3380,6 +3473,68 @@ test('ZLinkChannelRequestDispatcher replies error and reports observer for missi
   assert.equal(events[0].packetName, 'MissingReq');
   assert.equal(events[0].channelName, 'api');
   assert.equal(events[0].correlationId, 'corr-1');
+});
+
+test('ZLinkChannelRequestDispatcher rejects filter short circuit without serializing its return value', async () => {
+  let handlerInvocations = 0;
+  const filterContexts = [];
+  const replies = [];
+  const dispatcher = new framework.ZLinkChannelRequestDispatcher({
+    meshName: 'mesh-a',
+    channelName: 'api',
+    dispatchErrors: noDispatchErrorReporter(),
+    handlers: new Map([
+      ['Ping', {
+        handle() {
+          handlerInvocations += 1;
+          return 'handler-reply';
+        }
+      }]
+    ]),
+    filters: [{
+      async invoke(context) {
+        filterContexts.push(context);
+        return 'filter-reply';
+      }
+    }]
+  });
+  const parts = encodeDotnetEnvelope({
+    kind: 1,
+    channelName: 'api',
+    messageName: 'Ping',
+    contentType: 'application/json',
+    correlationId: 'corr-filter-stop',
+    deadline: null,
+    topic: null,
+    errorCode: null,
+    errorMessage: null
+  }, { value: 'request' }).map(fakeMessagePart);
+
+  await dispatcher.dispatch({
+    parts,
+    routingId: 'client-1',
+    requestSeq: 8n
+  }, {
+    reply() {
+      return captureMultipart(replies);
+    }
+  });
+
+  assert.equal(handlerInvocations, 0);
+  assert.equal(filterContexts.length, 1);
+  assert.equal(
+    filterContexts[0].dispatchKind,
+    framework.ZLinkHandlerDispatchKind.ChannelRequest
+  );
+  assert.equal(filterContexts[0].meshName, 'mesh-a');
+  assert.equal('sourceNodeRid' in filterContexts[0], false);
+  const replyEnvelope = decodeDotnetEnvelope(replies);
+  assert.equal(replyEnvelope.header.kind, 5);
+  assert.equal(
+    replyEnvelope.header.errorCode,
+    framework.ZLinkFrameworkErrorKind.RequestRejected
+  );
+  assert.notEqual(replyEnvelope.body, 'filter-reply');
 });
 
 test('ZLinkChannelRequestDispatcher drops requests without reply sequence without invoking handlers', async () => {
@@ -3592,7 +3747,7 @@ test('ZLinkChannelRequestDispatcher waits for send-ready before completing backp
     requestSeq: 17n
   }, router);
 
-  await Promise.resolve();
+  await waitUntil(() => router.attempts === 1);
   assert.equal(router.attempts, 1);
   assert.equal(replies.length, 0);
 

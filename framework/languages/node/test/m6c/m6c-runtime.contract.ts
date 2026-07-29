@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
@@ -48,6 +49,9 @@ import {
   ZLinkStatefulAuthorityRouteRuntime
 } from '../../packages/framework/src/runtime/host/stateful-authority-route-runtime';
 import { encodeAuthorityKey } from '../../packages/framework/src/runtime/locations/authority-key-codec';
+import { encodeActorAuthorityIdentity } from '../../packages/framework/src/runtime/actors';
+import { ZLinkDeferredJoinAcceptedJournal } from '../../packages/framework/src/runtime/actors/deferred-join-accepted-journal';
+import { ZLinkActorTransferRuntime } from '../../packages/framework/src/runtime/host/actor-transfer-runtime';
 import {
   ZLinkTimerOverrunPolicy
 } from '../../packages/framework/src/contracts';
@@ -676,6 +680,156 @@ test('startup recovery removes a rootless Preparing marker before route admissio
   if (recovered.kind !== 'snapshot') return;
   assert.equal(codec.readPreparing(recovered.payload), undefined);
   assert.equal(Buffer.from(recovered.payload).toString(), 'owner-state');
+});
+
+test('startup authority scan submits published Actor roots before admission', async () => {
+  const authority = new ZLinkInMemoryAuthorityStore({
+    isTargetLive: () => true
+  });
+  const actor = await createActorAuthority(authority, 'actor-restart');
+  const recovered: ZLinkAuthoritySnapshot[] = [];
+  const runtime = new ZLinkStatefulAuthorityRouteRuntime({
+    store: authority,
+    meshNodes: new Map(),
+    pollingIntervalMs: 60_000,
+    pageSize: 32,
+    reportError: error => { throw error; },
+    recoverActor: async snapshot => {
+      recovered.push(snapshot);
+    }
+  });
+
+  await runtime.start();
+  await runtime.stop();
+
+  assert.equal(recovered.length, 1);
+  assert.equal(recovered[0]?.storeVersion.value, actor.storeVersion.value);
+  assert.equal(recovered[0]?.allocation.objectKind, 'actor');
+});
+
+test('restart recovery atomically takes over expired PerActor Spot and Actor authorities', async () => {
+  let oldLifecycleLive = true;
+  const authority = new ZLinkInMemoryAuthorityStore({
+    isTargetLive: (descriptor, generation, ownerToken) =>
+      oldLifecycleLive
+        ? String(descriptor.rid) === 'node-a'
+          && generation === 1n
+          && ownerToken.ownerId === 'owner-a'
+        : String(descriptor.rid) === 'node-new'
+          && generation === 2n
+          && ownerToken.ownerId === 'owner-new'
+  });
+  const store = new Proxy(authority as object, {
+    get(target, property, receiver) {
+      if (property === 'readOwnerLease') {
+        return async (ownerId: string) => ownerId === 'owner-a'
+          ? oldLifecycleLive
+            ? {
+                kind: 'found' as const,
+                token: { ownerId: 'owner-a', leaseGeneration: 1n },
+                leaseExpiresAt: new Date(10_000),
+                storeNow: new Date(100)
+              }
+            : { kind: 'missing' as const }
+          : {
+              kind: 'found' as const,
+              token: { ownerId: 'owner-new', leaseGeneration: 2n },
+              leaseExpiresAt: new Date(10_000),
+              storeNow: new Date(100)
+            };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    }
+  }) as ZLinkInMemoryAuthorityStore & {
+    readOwnerLease(ownerId: string): Promise<unknown>;
+  };
+  const actor = await createActorAuthority(authority, 'actor-replacement');
+  const spot = await createUserSpotAuthority(authority, 'room-replacement');
+  const relocation = createJournalRelocationStore();
+  const journal = new ZLinkDeferredJoinAcceptedJournal(store as never, relocation as never);
+  const root = await journal.prepare(
+    'actor-replacement',
+    { high: 71n, low: 81n },
+    {
+      actorId: 'actor-replacement',
+      objectGeneration: actor.objectGeneration,
+      meshName: 'mesh',
+      nodeRid: 'node-a'
+    },
+    Buffer.from('"accepted"'),
+    undefined,
+    {
+      targetMeshName: 'mesh',
+      targetSpotId: 'room-replacement',
+      targetSpotGeneration: spot.objectGeneration,
+      membershipEpoch: 5n,
+      request: Buffer.from('durable-transfer-payload')
+    }
+  );
+
+  const runtime = new ZLinkActorTransferRuntime({
+    authorityStore: () => store,
+    relocationStore: () => relocation
+  } as never);
+  const takeoverTarget = {
+    meshName: 'mesh',
+    nodeRid: 'node-new',
+    nodeGeneration: 2n,
+    owner: { ownerId: 'owner-new', leaseGeneration: 2n },
+    spotId: 'room-replacement',
+    spotGeneration: spot.objectGeneration,
+    membershipEpoch: 5n,
+    spotAuthority: spot,
+    spotAuthorityPayload: encodeServiceUserSpotAuthorityPayload({
+      state: 'ready',
+      stableType: 'room',
+      spotId: 'room-replacement',
+      ownerId: 'owner-new',
+      ownerLeaseGeneration: 2n,
+      ownerMeshName: 'mesh',
+      ownerNodeRid: 'node-new',
+      ownerNodeGeneration: 2n
+    })
+  };
+  assert.equal(
+    await runtime.takeOverDeferredJoinRecoveryAuthority(
+      root,
+      {
+        actorId: 'actor-replacement',
+        objectGeneration: actor.objectGeneration,
+        meshName: 'mesh',
+        nodeRid: 'node-new'
+      },
+      takeoverTarget
+    ),
+    undefined
+  );
+
+  oldLifecycleLive = false;
+  const result = await runtime.takeOverDeferredJoinRecoveryAuthority(
+    root,
+    {
+      actorId: 'actor-replacement',
+      objectGeneration: actor.objectGeneration,
+      meshName: 'mesh',
+      nodeRid: 'node-new'
+    },
+    takeoverTarget
+  );
+  assert.ok(result);
+
+  assert.equal(String(result.actorAuthority.allocation.descriptor.rid), 'node-new');
+  assert.equal(result.actorAuthority.allocation.descriptorLifecycleGeneration, 2n);
+  assert.equal(result.actorAuthority.objectGeneration, actor.objectGeneration);
+  assert.equal(String(result.spotAuthority.allocation.descriptor.rid), 'node-new');
+  assert.equal(result.spotAuthority.allocation.descriptorLifecycleGeneration, 2n);
+  assert.equal(result.spotAuthority.objectGeneration, spot.objectGeneration);
+  assert.deepEqual(result.root.operationId, { high: 71n, low: 81n });
+  assert.equal(
+    (await journal.readRecoveryPayload(result.root)).toString(),
+    'durable-transfer-payload'
+  );
 });
 
 test('Retire preflight precedes publication and ready units use bounded permits', async () => {
@@ -1937,6 +2091,152 @@ async function createAuthority(
   assert.equal(committed.kind, 'committed');
   if (committed.kind !== 'committed') throw new Error('Authority commit failed.');
   return committed.ready;
+}
+
+async function createActorAuthority(
+  authority: ZLinkInMemoryAuthorityStore,
+  actorId: string
+): Promise<ZLinkAuthoritySnapshot> {
+  const target: ZLinkObjectCreationTarget = {
+    meshName: 'mesh',
+    nodeRid: 'node-a',
+    nodeLifecycleGeneration: 1n,
+    owner: owner('owner-a', 1n)
+  };
+  const payload = encodeActorAuthorityIdentity({
+    actorType: 'player',
+    actor: {
+      actorId,
+      objectGeneration: 1n,
+      meshName: 'mesh',
+      nodeRid: 'node-a'
+    },
+    meshName: 'mesh',
+    ownerNodeGeneration: 1n,
+    owner: target.owner,
+    spotId: 'room-a',
+    spotGeneration: 1n
+  });
+  const reserved = await authority.reserve({
+    key: { kind: 'actor', globalId: actorId },
+    intent: {
+      stableType: 'player',
+      requestContentReference: `request:${actorId}`,
+      requestSha256: Buffer.alloc(32, 2),
+      requestEncodedSize: BigInt(payload.byteLength)
+    },
+    target,
+    creatingPayload: payload,
+    capacity: { actors: 1, spots: 0 }
+  });
+  assert.equal(reserved.kind, 'reserved');
+  if (reserved.kind !== 'reserved') throw new Error('Actor authority reservation failed.');
+  const terminalEnvelope = Buffer.from(`created:${actorId}`, 'utf8');
+  const committed = await authority.completeCreation({
+    key: { kind: 'actor', globalId: actorId },
+    reservationId: reserved.reservationId,
+    expectedStoreVersion: reserved.creating.storeVersion.value,
+    target,
+    completion: {
+      kind: 'created',
+      readyPayload: payload,
+      terminal: {
+        operation: {
+          sourceNodeRid: 'node-a',
+          sourceNodeGeneration: 1n,
+          operationId: { high: 1n, low: 2n }
+        },
+        terminalEnvelope,
+        terminalEnvelopeSha256: createHash('sha256').update(terminalEnvelope).digest(),
+        operationDeadline: new Date(Date.now() + 60_000)
+      }
+    }
+  });
+  assert.equal(committed.kind, 'created');
+  if (committed.kind !== 'created') throw new Error('Actor authority completion failed.');
+  return committed.ready;
+}
+
+async function createUserSpotAuthority(
+  authority: ZLinkInMemoryAuthorityStore,
+  spotId: string
+): Promise<ZLinkAuthoritySnapshot> {
+  const target: ZLinkObjectCreationTarget = {
+    meshName: 'mesh',
+    nodeRid: 'node-a',
+    nodeLifecycleGeneration: 1n,
+    owner: owner('owner-a', 1n)
+  };
+  const payload = encodeServiceUserSpotAuthorityPayload({
+    state: 'ready',
+    stableType: 'room',
+    spotId,
+    ownerId: 'owner-a',
+    ownerLeaseGeneration: 1n,
+    ownerMeshName: 'mesh',
+    ownerNodeRid: 'node-a',
+    ownerNodeGeneration: 1n
+  });
+  const reserved = await authority.reserve({
+    key: { kind: 'user_spot', globalId: spotId },
+    intent: {
+      stableType: 'room',
+      requestContentReference: `request:${spotId}`,
+      requestSha256: Buffer.alloc(32, 3),
+      requestEncodedSize: BigInt(payload.byteLength)
+    },
+    target,
+    creatingPayload: payload,
+    capacity: {
+      actors: 0,
+      spots: 1,
+      spotType: {
+        objectKind: 'user_spot',
+        stableType: 'room',
+        count: 1
+      }
+    }
+  });
+  assert.equal(reserved.kind, 'reserved');
+  if (reserved.kind !== 'reserved') throw new Error('Spot authority reservation failed.');
+  const committed = await authority.commit({
+    key: { kind: 'user_spot', globalId: spotId },
+    reservationId: reserved.reservationId,
+    expectedStoreVersion: reserved.creating.storeVersion.value,
+    target,
+    readyPayload: payload
+  });
+  assert.equal(committed.kind, 'committed');
+  if (committed.kind !== 'committed') throw new Error('Spot authority commit failed.');
+  return committed.ready;
+}
+
+function createJournalRelocationStore() {
+  const values = new Map<string, Buffer>();
+  return {
+    async put(reference: { readonly value: string }, payload: Uint8Array, retentionMs: number) {
+      values.set(reference.value, Buffer.from(payload));
+      return {
+        kind: 'stored' as const,
+        expiresAt: new Date(100 + retentionMs),
+        storeNow: new Date(100)
+      };
+    },
+    async read(reference: { readonly value: string }) {
+      const value = values.get(reference.value);
+      return value === undefined
+        ? { kind: 'missing' as const, storeNow: new Date(100) }
+        : {
+            kind: 'found' as const,
+            bytes: Buffer.from(value),
+            expiresAt: new Date(86_400_100),
+            storeNow: new Date(100)
+          };
+    },
+    async delete(reference: { readonly value: string }) {
+      return values.delete(reference.value) ? 'deleted' as const : 'missing' as const;
+    }
+  };
 }
 
 function authorityKey(value: string): ZLinkAuthorityKey {

@@ -2,7 +2,9 @@ import {
   type Type,
   type ZLinkHandlerDelegate,
   type ZLinkHandlerFilter,
-  type ZLinkMessageContext
+  type ZLinkHandlerFilterContext,
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException
 } from '../../contracts';
 import {
   readZLinkDecoratorMetadata,
@@ -49,17 +51,38 @@ export function exposeZLinkHandlers(
 
 export async function invokeZLinkHandlerFilters(
   filters: readonly ZLinkHandlerFilter[],
-  context: ZLinkMessageContext,
+  context: ZLinkHandlerFilterContext,
   terminal: ZLinkHandlerDelegate,
   signal?: AbortSignal
-): Promise<unknown> {
-  let next: ZLinkHandlerDelegate = terminal;
+): Promise<boolean> {
+  let handlerInvoked = false;
+  let next: ZLinkHandlerDelegate = async () => {
+    handlerInvoked = true;
+    await terminal();
+  };
 
   for (let index = filters.length - 1; index >= 0; index -= 1) {
     const filter = filters[index];
-    const previous = next;
-    next = () => filter.invoke(context, previous, signal);
+    const previous = invokeAtMostOnce(next);
+    next = async () => {
+      await filter.invoke(context, previous, signal);
+    };
   }
 
-  return next();
+  await next();
+  return handlerInvoked;
+}
+
+function invokeAtMostOnce(next: ZLinkHandlerDelegate): ZLinkHandlerDelegate {
+  let invoked = false;
+  return () => {
+    if (invoked) {
+      return Promise.reject(new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.InvalidOperation,
+        'A handler filter cannot invoke next more than once.'
+      ));
+    }
+    invoked = true;
+    return next();
+  };
 }

@@ -1,9 +1,7 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkRouteHandlerInvoker(
-    IServiceProvider services,
+    ZLinkHandlerDispatcher dispatcher,
     ZLinkCodecRegistryBuilder codecs)
 {
     public async ValueTask InvokeSendAsync(
@@ -17,7 +15,6 @@ internal sealed class ZLinkRouteHandlerInvoker(
     {
         var message = ZLinkEnvelopeCodec.DecodeBody(parts, descriptor.MessageType, codecs);
 
-        await using var scope = services.CreateAsyncScope();
         var context = new ZLinkRouteMessageContext(
             routerChannelId,
             null,
@@ -26,17 +23,12 @@ internal sealed class ZLinkRouteHandlerInvoker(
             header.ContentType,
             metadata,
             header.CorrelationId);
-        var handler = scope.ServiceProvider.GetRequiredService(descriptor.HandlerType);
-        await ZLinkHandlerInvocationEngine.InvokeAsync(
-                handler,
-                descriptor.Invoker,
-                3,
-                arguments =>
-                {
-                    arguments[0] = message;
-                    arguments[1] = context;
-                    arguments[2] = cancellationToken;
-                })
+        await dispatcher.DispatchRouteAsync(
+                descriptor,
+                message,
+                context,
+                ZLinkHandlerDispatchKind.NodeDirectSend,
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -51,7 +43,6 @@ internal sealed class ZLinkRouteHandlerInvoker(
     {
         var message = ZLinkEnvelopeCodec.DecodeBody(parts, descriptor.MessageType, codecs);
 
-        await using var scope = services.CreateAsyncScope();
         var context = new ZLinkRouteMessageContext(
             routerChannelId,
             null,
@@ -60,19 +51,19 @@ internal sealed class ZLinkRouteHandlerInvoker(
             header.ContentType,
             metadata,
             header.CorrelationId);
-        var handler = scope.ServiceProvider.GetRequiredService(descriptor.HandlerType);
-        var reply = await ZLinkHandlerInvocationEngine.InvokeAsync(
-                handler,
-                descriptor.Invoker,
-                3,
-                arguments =>
-                {
-                    arguments[0] = message;
-                    arguments[1] = context;
-                    arguments[2] = cancellationToken;
-                })
+        var dispatch = await dispatcher.DispatchRouteAsync(
+                descriptor,
+                message,
+                context,
+                ZLinkHandlerDispatchKind.NodeDirectRequest,
+                cancellationToken)
             .ConfigureAwait(false);
-        return new ZLinkRouteHandlerReply(reply, descriptor.ReplyType);
+        if (!dispatch.HandlerInvoked)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.Rejected,
+                $"A handler filter rejected '{header.MessageName}'.");
+
+        return new ZLinkRouteHandlerReply(dispatch.Value, descriptor.ReplyType);
     }
 }
 

@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.actors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -399,5 +400,48 @@ final class ZLinkDeferredActorJoinScopeTest {
             .join();
 
         assertEquals(List.of("actor-b-next-turn"), followUp);
+    }
+
+    @Test
+    void sameActorJoinRunsInReservedBarrierWithoutHoldingHandlerTerminal()
+        throws Exception {
+        ZLinkActorDispatchSerials serials = new ZLinkActorDispatchSerials();
+        CompletableFuture<Void> joinStarted = new CompletableFuture<>();
+        CompletableFuture<Void> joinCompletion = new CompletableFuture<>();
+        List<String> order = new ArrayList<>();
+
+        CompletionStage<Void> handler = serials.enqueue(
+            serials.prepare("actor-a"),
+            () -> {
+                ZLinkDeferredActorJoinScope.registerWithActorBarrier(
+                    "actor-a",
+                    0,
+                    Long.MAX_VALUE,
+                    () -> {
+                        order.add("join");
+                        joinStarted.complete(null);
+                        return joinCompletion;
+                    },
+                    operation -> serials.enqueueBarrier("actor-a", operation));
+                order.add("handler-terminal");
+                return CompletableFuture.completedFuture(null);
+            });
+        CompletionStage<Void> queuedApplication = serials.enqueue(
+            serials.prepare("actor-a"),
+            () -> {
+                order.add("queued-application");
+                return CompletableFuture.completedFuture(null);
+            });
+
+        handler.toCompletableFuture().join();
+        joinStarted.get(2, java.util.concurrent.TimeUnit.SECONDS);
+        assertFalse(queuedApplication.toCompletableFuture().isDone());
+        assertEquals(List.of("handler-terminal", "join"), order);
+
+        joinCompletion.complete(null);
+        queuedApplication.toCompletableFuture().join();
+        assertEquals(
+            List.of("handler-terminal", "join", "queued-application"),
+            order);
     }
 }

@@ -120,6 +120,52 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
         nativeRebound = true;
     }
 
+    CompletionStage<Void> rebindNativeActorRoute(
+        ZLinkBackendActorRef targetActor,
+        java.time.Duration timeout) {
+        if (!ref.actorId().equals(targetActor.actorId())
+            || ref.generation() != targetActor.generation()) {
+            return CompletableFuture.failedFuture(
+                new ZLinkConfigurationException(
+                    "relocation route switch requires the same Actor "
+                        + "identity and generation"));
+        }
+        return ZLinkBoundSessionRuntime.ignoreMissingBinding(
+                stream.unbindActor(
+                    sessionRid,
+                    ref.actorId()).submit(timeout))
+            .thenRun(() -> relocationTrace("unbind-complete", targetActor))
+            .thenCompose(ignored -> ZLinkActorRetryScheduler.waitUntilRelay(
+                timeout,
+                () -> routeReady.test(targetActor.nodeRid()),
+                () -> {},
+                () -> new TimeoutException(
+                    "remote bound session route was not ready before timeout: "
+                        + targetActor.actorId())))
+            .thenRun(() -> relocationTrace("route-ready", targetActor))
+            .thenCompose(ignored ->
+                ZLinkBoundSessionRuntime.bindActorWithRetry(
+                    stream,
+                    sessionRid,
+                    targetActor,
+                    timeout))
+            .thenRun(() -> relocationTrace("bind-complete", targetActor))
+            .thenRun(() -> rebindNativeActor(targetActor));
+    }
+
+    private static void relocationTrace(
+        String stage,
+        ZLinkBackendActorRef targetActor) {
+        if ("1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"))) {
+            java.util.logging.Logger.getLogger(
+                    ZLinkBoundActor.class.getName())
+                .warning("[zlink-java-stream-trace] relocation " + stage
+                    + " actor=" + targetActor.actorId()
+                    + " target=" + targetActor.nodeRid()
+                    + " generation=" + targetActor.generation());
+        }
+    }
+
     void setUnbindListener(Runnable unbindListener) {
         this.unbindListener = unbindListener == null ? () -> {} : unbindListener;
     }

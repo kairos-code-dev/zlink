@@ -26,6 +26,7 @@ import type { ZLinkFrameworkRegistration } from '../configuration';
 import type {
   ActorRef,
   RoutingId,
+  ZLinkAuthoritySnapshot,
   ZLinkMeshNodeDescriptor,
   ZLinkClientServerRuntime,
   ZLinkFanoutRuntime,
@@ -35,7 +36,8 @@ import type {
   ZLinkFrameworkRelocationResult,
   ZLinkFrameworkRuntimeStatus,
   ZLinkFrameworkTerminationResult,
-  ZLinkRouteMeshRuntime
+  ZLinkRouteMeshRuntime,
+  ZLinkSpot
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type { Type } from '../../contracts/Common/CoreTypes';
@@ -52,7 +54,8 @@ import {
   ZLinkFrameworkTerminationReason,
   ZLinkMessageFlowLogMode,
   zlinkMessageMetadata,
-  ZLinkSpotCreateState
+  ZLinkSpotCreateState,
+  ZLinkUserSpotExecutionMode
 } from '../../contracts';
 import { ZLinkSubmitStatus } from '../messaging/submission-result';
 import {
@@ -108,6 +111,7 @@ import {
   type ZLinkDetachedTaskRunner,
   type ZLinkSpotManagerOptions
 } from '../spots';
+import type { ZLinkSpotActivation } from '../spots/spot-activation-state';
 import type {
   DefaultZLinkActorManager,
   ZLinkActorManagerOptions
@@ -119,7 +123,9 @@ import {
   ZLinkActorTransferRegistry,
   ZLINK_ACTOR_JOIN_ENTRY_SPOT_RUNTIME,
   decodeRemoteActorSourceLeaveTerminal,
-  publishInitialActorAuthority
+  decodeActorAuthorityIdentity,
+  publishInitialActorAuthority,
+  type ZLinkDeferredJoinAcceptedRoot
 } from '../actors';
 import {
   DefaultZLinkBoundSessionFactory,
@@ -147,6 +153,11 @@ import { ZLinkLocationRuntimeOwner } from './location-runtime-owner';
 import { MeshRouterResolver } from './mesh-router-resolver';
 import { ZLinkBoundSessionRelay } from './bound-session-relay';
 import { routingIdsEqual } from '../routing-id';
+import { encodeAuthorityKey } from '../locations/authority-key-codec';
+import {
+  decodeServiceReadySpotAuthority,
+  encodeServiceUserSpotAuthorityPayload
+} from '../foundation/service-authority-payload-codec';
 import { ZLinkSpotRuntimeOptionsFactory } from './spot-runtime-options-factory';
 import { ZLinkChannelRuntimeOptionsFactory } from './channel-runtime-options-factory';
 import { ZLinkSpotNodeRuntimeOptionsFactory } from './spot-node-runtime-options-factory';
@@ -760,6 +771,161 @@ export class ZLinkFrameworkRuntimeHost implements
     return this.executionState?.errorSink;
   }
 
+  private async recoverPublishedActorAuthority(
+    authority: ZLinkAuthoritySnapshot,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const identity = decodeActorAuthorityIdentity(authority.payload);
+    if (identity === undefined) return;
+    const root = await this.actorTransferRuntime.recoverDeferredJoinAccepted(
+      identity.actor.actorId,
+      signal
+    );
+    if (root?.recovery === undefined) return;
+    if (
+      root.actor.actorId !== identity.actor.actorId
+      || root.actor.objectGeneration !== identity.actor.objectGeneration
+      || authority.objectGeneration !== identity.actor.objectGeneration
+      || authority.allocation.objectKind !== 'actor'
+      || authority.allocation.stableType !== identity.actorType
+    ) {
+      throw new Error(
+        `Actor '${identity.actor.actorId}' recovery root does not match its published authority.`
+      );
+    }
+    const spotManager = this.spotManager;
+    if (spotManager === undefined) {
+      throw new Error(
+        `Actor '${identity.actor.actorId}' startup recovery requires the Spot runtime.`
+      );
+    }
+    const target = await this.prepareDeferredJoinRecoveryTarget(root, signal);
+    if (target === undefined) return;
+    await spotManager.recoverPublishedActorTransfer(
+      root,
+      target,
+      signal
+    );
+  }
+
+  private async prepareDeferredJoinRecoveryTarget(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    signal?: AbortSignal
+  ): Promise<{
+    readonly meshName: string;
+    readonly nodeRid: RoutingId;
+    readonly nodeGeneration: bigint;
+    readonly owner: {
+      readonly ownerId: string;
+      readonly leaseGeneration: bigint;
+    };
+    readonly spotId: string;
+    readonly spotGeneration: bigint;
+    readonly membershipEpoch: bigint;
+    readonly spotAuthority: ZLinkAuthoritySnapshot;
+    readonly spotAuthorityPayload: Uint8Array;
+    readonly activation?: ZLinkSpotActivation;
+    readonly implementation: Type<ZLinkSpot>;
+  } | undefined> {
+    const recovery = root.recovery!;
+    const store = this.locationOwner.locationStore();
+    if (store === undefined) {
+      throw new Error(
+        `Actor '${root.actor.actorId}' recovery requires the Location Store.`
+      );
+    }
+    const spotRead = await store.readAuthority(
+      encodeAuthorityKey('user_spot', recovery.targetSpotId),
+      signal
+    );
+    if (spotRead.kind !== 'snapshot') {
+      throw new Error(
+        `Actor '${root.actor.actorId}' recovery target Spot authority is missing.`
+      );
+    }
+    let spotAuthority: ZLinkAuthoritySnapshot = spotRead;
+    let ready = decodeServiceReadySpotAuthority(spotAuthority.payload);
+    const node = this.spotNodeRuntime?.meshNode(recovery.targetMeshName);
+    const status = node?.status();
+    const owner = this.locationOwner.currentRuntime?.currentOwnerToken;
+    if (
+      ready === undefined
+      || ready.kind !== 'user_spot'
+      || ready.spotId !== recovery.targetSpotId
+      || ready.ownerMeshName !== recovery.targetMeshName
+      || spotAuthority.objectGeneration !== recovery.targetSpotGeneration
+      || spotAuthority.allocation.objectKind !== 'user_spot'
+      || spotAuthority.allocation.stableType !== ready.stableType
+      || status === undefined
+      || owner === undefined
+    ) {
+      throw new Error(
+        `Actor '${root.actor.actorId}' recovery target Spot authority is invalid.`
+      );
+    }
+    const registration = this.options.registration.spotNodes
+      .get(recovery.targetMeshName)
+      ?.spotFactoryRegistrations?.[ready.stableType];
+    if (
+      registration === undefined
+      || registration.options?.executionMode !== ZLinkUserSpotExecutionMode.PerActor
+      || registration.relocation.kind !== 'recreate'
+    ) {
+      throw new Error(
+        `Actor '${root.actor.actorId}' cold recovery requires a PerActor Recreate User Spot.`
+      );
+    }
+    const exactLocalOwner =
+      ready.ownerNodeRid === String(status.routingId)
+      && ready.ownerNodeGeneration === status.lifecycleGeneration
+      && ready.ownerId === owner.ownerId
+      && ready.ownerLeaseGeneration === owner.leaseGeneration
+      && String(spotAuthority.allocation.descriptor.rid) === String(status.routingId)
+      && spotAuthority.allocation.descriptorLifecycleGeneration
+        === status.lifecycleGeneration
+      && spotAuthority.ownerId === owner.ownerId
+      && spotAuthority.ownerLeaseGeneration === owner.leaseGeneration;
+    if (!exactLocalOwner) {
+      const sourceLease = await store.readOwnerLease(spotAuthority.ownerId, signal);
+      if (
+        sourceLease.kind === 'found'
+        && sourceLease.token.leaseGeneration === spotAuthority.ownerLeaseGeneration
+        && sourceLease.leaseExpiresAt.getTime() > sourceLease.storeNow.getTime()
+      ) {
+        return undefined;
+      }
+    }
+    const spotId = recovery.targetSpotId as RoutingId;
+    const activation = this.spotManager?.resolveRelocationActivation(
+      recovery.targetMeshName,
+      spotId
+    );
+    return {
+      meshName: recovery.targetMeshName,
+      nodeRid: status!.routingId,
+      nodeGeneration: status!.lifecycleGeneration,
+      owner,
+      spotId: recovery.targetSpotId,
+      spotGeneration: recovery.targetSpotGeneration,
+      membershipEpoch: recovery.membershipEpoch,
+      spotAuthority,
+      spotAuthorityPayload: exactLocalOwner
+        ? spotAuthority.payload
+        : encodeServiceUserSpotAuthorityPayload({
+            state: 'ready',
+            stableType: ready.stableType,
+            spotId: recovery.targetSpotId,
+            ownerId: owner.ownerId,
+            ownerLeaseGeneration: owner.leaseGeneration,
+            ownerMeshName: recovery.targetMeshName,
+            ownerNodeRid: String(status.routingId),
+            ownerNodeGeneration: status.lifecycleGeneration
+          }),
+      activation,
+      implementation: registration.implementation
+    };
+  }
+
   async start(): Promise<void> {
     await this.runLifecycle(() => this.startCore());
   }
@@ -798,6 +964,7 @@ export class ZLinkFrameworkRuntimeHost implements
         this.createSpotNodeRuntimeOptions(context, dispatchErrors)
       );
       await spotNodeRuntime.start();
+      this.spotNodeRuntime = spotNodeRuntime;
       this.registerUserSpotHandlers?.(spotNodeRuntime);
       channelRuntime.bindRouteMeshRouters();
       // Start bound receivers before publishing Serving descriptors. A
@@ -864,12 +1031,13 @@ export class ZLinkFrameworkRuntimeHost implements
             this.runtimeOrPreStartErrorSink.reportRuntimeTaskException(
               'stateful authority route reconciliation',
               error
-            )
+            ),
+          recoverActor: (authority, signal) =>
+            this.recoverPublishedActorAuthority(authority, signal)
         });
         await statefulAuthorityRoutes.start(this.executionState.abortController.signal);
         this.statefulAuthorityRoutes = statefulAuthorityRoutes;
       }
-      this.spotNodeRuntime = spotNodeRuntime;
       streamRuntime = new ZLinkStreamRuntimeManager({
         registration: this.options.registration,
         backendAdapterFactory: this.backendAdapterFactory,
@@ -1766,7 +1934,7 @@ export class ZLinkFrameworkRuntimeHost implements
           throw new ZLinkConfigurationException('MeshNode node-direct dispatch requires the channel runtime.');
         }
         return this.admission.run(meshName, 'RouteMesh node dispatch', () =>
-          channelRuntime.dispatchMeshRoute(meshName, record));
+          channelRuntime.dispatchMeshRoute(meshName, record, signal));
       }
       case ReceiveKind.SpotSend:
       case ReceiveKind.SpotRequest:

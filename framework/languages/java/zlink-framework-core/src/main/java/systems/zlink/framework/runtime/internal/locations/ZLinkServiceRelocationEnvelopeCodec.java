@@ -252,7 +252,7 @@ public final class ZLinkServiceRelocationEnvelopeCodec {
             envelope, envelope.participantProgress(), completions));
     }
 
-    static Envelope putTerminalCompletion(
+    public static Envelope putTerminalCompletion(
         Envelope envelope,
         Completion completion) {
         Objects.requireNonNull(envelope, "envelope");

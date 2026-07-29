@@ -4,7 +4,8 @@
 
 ## 1. Handler filter
 
-Filter는 message context와 다음 delegate를 직접 받는다. owner 종류나 decoded message를 별도 wrapper로 공개하지 않는다. `AbortSignal`은 dispatch가 취소될 때 전달된다.
+Filter는 message 정보와 공개 dispatch 종류만 포함하는 전용 context를 받는다. Socket, endpoint,
+내부 owner 종류와 decoded message는 공개하지 않는다. `AbortSignal`은 dispatch가 취소될 때 전달된다.
 
 ```ts
 export interface ZLinkMessageContext {
@@ -16,18 +17,40 @@ export interface ZLinkMessageContext {
   readonly correlationId?: string;
 }
 
-export type ZLinkHandlerDelegate = () => Promise<unknown>;
+export enum ZLinkHandlerDispatchKind {
+  NodeDirectSend = 'nodeDirectSend',
+  NodeDirectRequest = 'nodeDirectRequest',
+  ChannelSend = 'channelSend',
+  ChannelRequest = 'channelRequest',
+  ClassicFanout = 'classicFanout'
+}
+
+export interface ZLinkHandlerFilterContext extends ZLinkMessageContext {
+  readonly dispatchKind: ZLinkHandlerDispatchKind;
+}
+
+export type ZLinkHandlerDelegate = () => Promise<void>;
 
 export interface ZLinkHandlerFilter {
   invoke(
-    context: ZLinkMessageContext,
+    context: ZLinkHandlerFilterContext,
     next: ZLinkHandlerDelegate,
     signal?: AbortSignal
-  ): Promise<unknown>;
+  ): Promise<void>;
 }
 ```
 
-`ZLinkHandlerInvocation`은 public contract가 아니다. Filter는 `context`를 검사하고 필요하면 `next()`를 한 번 호출한다.
+`ChannelSend`와 `ChannelRequest`는 RouteMesh와 ClientServer Channel을 함께 나타낸다. RouteMesh와
+Node direct는 MeshName을 제공한다. ClientServer와 classic fanout은 MeshName을 제공하지 않는다.
+
+Filter는 `next()`를 최대 한 번 호출한다. 두 번째 호출은
+`ZLinkFrameworkErrorKind.InvalidOperation`으로 실패하며 handler를 다시 실행하지 않는다. Request에서
+`next()`를 호출하지 않으면 `ZLinkFrameworkErrorKind.RequestRejected` reply를 보낸다. Filter의 반환값으로
+업무 reply를 만들거나 바꾸지 않는다.
+
+`ZLinkHandlerInvocation`은 public contract가 아니다. Filter는 Node direct send/request, Channel
+send/request와 classic fanout 구독 handler에만 적용한다. Spot·Actor·Logical Multicast·STREAM
+handler에는 적용하지 않는다.
 
 ## 2. Location 운영 조회
 

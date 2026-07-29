@@ -627,6 +627,11 @@ zlink::submit_result_t actor_handle_t::request_to (
 
 public_host_runtime_t::public_host_runtime_t (host_options_t options) :
     _options (std::move (options)),
+    _entry_spot_id (
+      zlink::framework::detail::new_entry_spot_id (
+        zlink::routing_id_t::from (
+          _options.mesh.descriptor.node_routing_id)
+          .to_string ())),
     _transport (
       std::make_shared<mesh::raw_mesh_node_owner_t> (_options.mesh)),
     _relocation_wire (
@@ -1338,8 +1343,7 @@ bool public_host_runtime_t::close_user_spot_remote (
 
 spot_handle_t public_host_runtime_t::entry_spot ()
 {
-    return get_or_create_spot (
-      status ().routing_id ().to_string () + "-entry-" + _options.entry_spot_name);
+    return get_or_create_spot (_entry_spot_id);
 }
 
 spot_handle_t public_host_runtime_t::get_or_create_spot (
@@ -1992,9 +1996,10 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                             && ready_state->completed) {
                             if (ready_state->request_sha256
                                 != request_sha256) {
-                                reply_terminal ({107,
+                                reply_terminal ({104,
                                   static_cast<std::uint32_t> (
-                                    protocol::framework_error_code::requestFailed),
+                                    protocol::framework_error_code::
+                                      requestProtocolError),
                                   std::nullopt});
                                 continue;
                             }

@@ -13,11 +13,11 @@ import systems.zlink.framework.runtime.internal.locations
     .ZLinkServiceRelocationEnvelopeCodec;
 
 /** Projects one independent Actor onto relocation-envelope-v1. */
-final class ZLinkCanonicalActorRelocationEnvelope {
+public final class ZLinkCanonicalActorRelocationEnvelope {
     private ZLinkCanonicalActorRelocationEnvelope() {
     }
 
-    static byte[] encode(
+    public static byte[] encode(
         UUID relocationId,
         String actorId,
         long objectGeneration,

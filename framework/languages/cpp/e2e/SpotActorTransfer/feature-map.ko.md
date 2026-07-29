@@ -12,7 +12,7 @@ context는 HTTP·connector 연결과 반복되는 evidence 조회만 제공한�
 
 | 시나리오 | 상태 | 현재 검증 |
 |----------|------|----------------------|
-| ST-A1 | `implemented` | Actor와 Spot이 모두 `actor-a`에 있는 same-node join으로 고정한다. `admission -> authority_committed -> leave -> joined -> success_reply` 순서와 Relocation Store read/write·Message Follow 0건을 검사한다. |
+| ST-A1 | `implemented` | Framework가 같은 node에 배치한 Actor와 Spot으로 same-node join을 실행한다. `admission -> location_committed -> joined -> leave -> join_completion_accepted` 순서와 Relocation Store read/write·Message Follow 0건을 검사한다. |
 | ST-A2 | `implemented` | local admission 거절과 joined side effect 부재를 검사한다. |
 | ST-A3 | `implemented` | joined gate가 유지되는 동안 actor packet이 완료되지 않는지 검사한다. |
 | ST-B1 | `implemented` | stateful remote transfer와 target state를 검사한다. Target authority commit이 `joined`보다 먼저 완료되는지 확인하고, source·target 역할 evidence의 `commit_request`, `location_committed`, `commit_ack`, `source_cleanup`이 같은 transfer id와 message-flow correlation을 공유하는지 확인한다. |

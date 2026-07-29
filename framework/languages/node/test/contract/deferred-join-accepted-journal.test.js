@@ -246,12 +246,22 @@ test('a replacement runtime replays backlog before Accepted callback and does no
     nodeRid: 'node-b'
   };
   const operationId = { high: 91n, low: 37n };
-  const committed = await journal.markCommitted(await journal.prepare(
+  let prepared = await journal.prepare(
     sourceActorRef.actorId,
     operationId,
     sourceActorRef,
-    Buffer.from('"accepted"')
-  ), targetActorRef);
+    Buffer.from('"accepted"'),
+    undefined,
+    {
+      targetMeshName: 'game',
+      targetSpotId: 'room-a',
+      targetSpotGeneration: 5n,
+      membershipEpoch: 9n,
+      request: Buffer.from('immutable-transfer-request')
+    }
+  );
+  prepared = await journal.markRecoveryMessageReplayed(prepared, 1);
+  const committed = await journal.markCommitted(prepared, targetActorRef);
 
   // Recreate every process-local coordinator while retaining only the two
   // provider-backed stores.
@@ -260,6 +270,14 @@ test('a replacement runtime replays backlog before Accepted callback and does no
   assert.equal(recovered.cursor, 'committed');
   assert.deepEqual(recovered.operationId, operationId);
   assert.equal(recovered.actor.objectGeneration, 17n);
+  assert.equal(recovered.replayCursor, 1);
+  assert.equal(recovered.recovery.targetSpotId, 'room-a');
+  assert.equal(recovered.recovery.targetSpotGeneration, 5n);
+  assert.equal(recovered.recovery.membershipEpoch, 9n);
+  assert.equal(
+    (await recoveredRuntime.readRecoveryPayload(recovered)).toString(),
+    'immutable-transfer-request'
+  );
 
   const mailbox = new ZLinkActorDispatchMailbox();
   const events = [];
@@ -391,6 +409,63 @@ test('Delivered reference release CAS conflict is retried without invoking the c
   );
 
   assert.equal(await journal.recover(targetActorRef.actorId), undefined);
+  assert.equal(callbacks, 1);
+});
+
+test('callback completion retains recovery payload until backlog replay and admission release', async () => {
+  const { journal, restartJournal } = harness();
+  const sourceActorRef = {
+    nodeRid: 'node-a',
+    actorId: 'actor-a',
+    objectGeneration: 17n,
+    meshName: 'game'
+  };
+  const targetActorRef = { ...sourceActorRef, nodeRid: 'node-b' };
+  const operationId = { high: 101n, low: 202n };
+  const prepared = await journal.prepare(
+    sourceActorRef.actorId,
+    operationId,
+    sourceActorRef,
+    Buffer.from('"accepted"'),
+    undefined,
+    {
+      targetMeshName: 'game',
+      targetSpotId: 'room-a',
+      targetSpotGeneration: 5n,
+      membershipEpoch: 9n,
+      request: Buffer.from('state-and-backlog')
+    }
+  );
+  const committed = await journal.markCommitted(prepared, targetActorRef);
+  let callbacks = 0;
+  const delivered = await journal.deliver(
+    committed,
+    {
+      actorId: targetActorRef.actorId,
+      async onJoinCompleted() {
+        callbacks++;
+      }
+    },
+    targetActorRef,
+    operation => operation(),
+    undefined,
+    true
+  );
+  assert.equal(delivered.cursor, 'delivered');
+
+  // Simulate a process crash after the callback but before backlog replay.
+  const replacement = restartJournal();
+  const recovered = await replacement.recover(targetActorRef.actorId);
+  assert.equal(recovered.cursor, 'delivered');
+  assert.equal(callbacks, 1);
+  assert.equal(
+    (await replacement.readRecoveryPayload(recovered)).toString(),
+    'state-and-backlog'
+  );
+
+  const replayed = await replacement.markRecoveryMessageReplayed(recovered, 1);
+  await replacement.releaseRecovery(replayed);
+  assert.equal(await restartJournal().recover(targetActorRef.actorId), undefined);
   assert.equal(callbacks, 1);
 });
 

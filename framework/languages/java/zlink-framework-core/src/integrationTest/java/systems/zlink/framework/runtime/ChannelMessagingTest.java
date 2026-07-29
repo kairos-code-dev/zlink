@@ -40,6 +40,8 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkHandlerFilter;
+import systems.zlink.framework.ZLinkHandlerDispatchKind;
+import systems.zlink.framework.ZLinkHandlerFilterContext;
 import systems.zlink.framework.ZLinkHandlerFilterNext;
 import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
@@ -101,6 +103,9 @@ final class ChannelMessagingTest {
     private static final AtomicReference<String> ROUTE_REQUEST_CHANNEL = new AtomicReference<>();
     private static final AtomicReference<String> FILTER_PACKET = new AtomicReference<>();
     private static final AtomicReference<String> FILTER_CHANNEL = new AtomicReference<>();
+    private static final AtomicReference<String> FILTER_MESH = new AtomicReference<>();
+    private static final AtomicReference<ZLinkHandlerDispatchKind> FILTER_KIND =
+        new AtomicReference<>();
     private static final RoutingId SPOT_EGRESS_TARGET_NODE_RID =
         RoutingId.from("spot-egress-target-spot");
     private static final RoutingId SPOT_EGRESS_TARGET_ROUTE_RID =
@@ -178,6 +183,8 @@ final class ChannelMessagingTest {
         String endpoint = "inproc://zlink-java-filtered-profile-" + UUID.randomUUID();
         FILTER_PACKET.set(null);
         FILTER_CHANNEL.set(null);
+        FILTER_MESH.set(null);
+        FILTER_KIND.set(null);
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.useFilter(ReplyDecoratingFilter.class);
@@ -193,12 +200,18 @@ final class ChannelMessagingTest {
                 .toCompletableFuture()
                 .join();
 
-            assertEquals("filtered:hello", reply);
+            assertEquals("hello", reply);
             assertEquals("Echo", FILTER_PACKET.get());
             assertEquals("profile", FILTER_CHANNEL.get());
+            assertEquals("", FILTER_MESH.get());
+            assertEquals(
+                ZLinkHandlerDispatchKind.CHANNEL_REQUEST,
+                FILTER_KIND.get());
         } finally {
             FILTER_PACKET.set(null);
             FILTER_CHANNEL.set(null);
+            FILTER_MESH.set(null);
+            FILTER_KIND.set(null);
         }
     }
 
@@ -1226,12 +1239,14 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     }
 
     @Test
-    void handlerFiltersDoNotWrapRouteMeshRequestDispatch() {
+    void handlerFiltersWrapNodeDirectRequestDispatch() {
         String sourceEndpoint = tcpEndpoint();
         String targetEndpoint = tcpEndpoint();
         RoutingId sourceRid = RoutingId.from("route-filter-source");
         RoutingId targetRid = RoutingId.from("route-filter-target");
         FILTER_PACKET.set(null);
+        FILTER_MESH.set(null);
+        FILTER_KIND.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
         { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(sourceOptions, "route"); channel.enableServer(sourceEndpoint);
@@ -1250,9 +1265,15 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
             ZLinkFrameworkRuntime ignoredTarget =
                  RuntimeTestSupport.startFramework(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals("route:hello", awaitRouteReply(source, targetRid));
-            assertNull(FILTER_PACKET.get());
+            assertEquals("Echo", FILTER_PACKET.get());
+            assertEquals("route", FILTER_MESH.get());
+            assertEquals(
+                ZLinkHandlerDispatchKind.NODE_DIRECT_REQUEST,
+                FILTER_KIND.get());
         } finally {
             FILTER_PACKET.set(null);
+            FILTER_MESH.set(null);
+            FILTER_KIND.set(null);
         }
     }
 
@@ -1888,15 +1909,13 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     public static final class ReplyDecoratingFilter implements ZLinkHandlerFilter {
         @Override
         public <T> CompletionStage<T> invoke(
-            ZLinkMessageContext context,
+            ZLinkHandlerFilterContext context,
             ZLinkHandlerFilterNext<T> next) {
             FILTER_PACKET.set(context.packetName());
             FILTER_CHANNEL.set(context.channelName().orElse(""));
-            return next.invoke().thenApply(reply -> {
-                @SuppressWarnings("unchecked")
-                T decorated = (T) ("filtered:" + reply);
-                return decorated;
-            });
+            FILTER_MESH.set(context.meshName().orElse(""));
+            FILTER_KIND.set(context.dispatchKind());
+            return next.invoke();
         }
     }
 

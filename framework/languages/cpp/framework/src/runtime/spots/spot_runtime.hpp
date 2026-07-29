@@ -688,8 +688,8 @@ class spot_node_runtime_t
       const actor_ref_t &actor_ref,
       node_rid_t spot_node_rid,
       const zlink::message_t &request,
-      const std::optional<zlink::message_t> &actor_snapshot = std::nullopt,
-      actor_context_t actor_context = {});
+      const std::optional<zlink::message_t> &actor_snapshot,
+      actor_context_t actor_context);
     result_t<std::optional<zlink::message_t>>
     relay_actor_packet (const actor_ref_t &actor_ref,
                         actor_context_t actor_context,
@@ -1212,7 +1212,8 @@ class spot_node_runtime_t
                                               const spot_actor_admission_callbacks_t &admission,
                                               bool create_entry_actor,
                                               const zlink::message_t &create_request,
-                                              bool &source_left);
+                                              std::string operation_id,
+                                              bool &authority_committed);
 
     std::shared_ptr<spot_node_builder_state_t> _state;
 };

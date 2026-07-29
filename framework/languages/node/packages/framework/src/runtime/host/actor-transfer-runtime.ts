@@ -1,7 +1,8 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type {
   ActorRef,
   RoutingId,
+  ZLinkAggregateId,
   ZLinkActor,
   ZLinkAuthoritySnapshot,
   ZLinkActorJoinOperationId,
@@ -9,10 +10,13 @@ import type {
   ZLinkMessageSerializer,
   ZLinkRelocationStore,
   ZLinkRelocationCapacityFence,
+  ZLinkLocationOwnerToken,
   ZLinkSpot
 } from '../../contracts';
 import type {
   ZLinkAuthorityStore,
+  ZLinkObjectCreationStore,
+  ZLinkOwnerLeaseStore,
   ZLinkRelocationCapacityStore
 } from '../locations/internal-store-contracts';
 import { encodeAuthorityKey } from '../locations/authority-key-codec';
@@ -30,6 +34,7 @@ import {
   ZLinkBoundSessionAcceptedJournal,
   type ZLinkBoundSessionAcceptedJournalRoot,
   type ZLinkDeferredJoinAcceptedRoot,
+  type ZLinkDeferredJoinRecoveryInput,
   type ZLinkRemoteActorPacketTarget,
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
@@ -78,6 +83,20 @@ export interface ZLinkActorTransferRuntimeActorManager {
     transferState: ZLinkMessage,
     signal?: AbortSignal
   ): Promise<{ readonly actor: ZLinkActor; readonly actorRef: ActorRef }>;
+  prepareRelocationActor(
+    actorId: string,
+    actorType: string,
+    objectGeneration: bigint,
+    authorityOwnerGeneration: bigint,
+    spotId: RoutingId,
+    spotGeneration: bigint,
+    membershipEpoch: bigint,
+    signal?: AbortSignal,
+    transfer?: {
+      readonly adapterKey: string;
+      readonly state: ZLinkMessage;
+    }
+  ): Promise<ZLinkActor>;
   rollbackTransferredActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   completeCoreRelocationSource(actorId: string): Promise<void>;
 }
@@ -94,7 +113,10 @@ export interface ZLinkActorTransferRuntimeOptions {
   readonly actorHandoff: ZLinkActorHandoffCoordinator;
   readonly actorTransferRegistry: ZLinkActorTransferRegistry;
   readonly authorityStore: () => (
-    ZLinkAuthorityStore & ZLinkRelocationCapacityStore
+    ZLinkAuthorityStore
+    & ZLinkObjectCreationStore
+    & ZLinkOwnerLeaseStore
+    & ZLinkRelocationCapacityStore
   ) | undefined;
   readonly relocationStore: () => ZLinkRelocationStore | undefined;
   readonly clearRemoteActorPacketTarget: (actorId: string) => void;
@@ -119,14 +141,16 @@ export class ZLinkActorTransferRuntime {
     operationId: ZLinkActorJoinOperationId,
     actorRef: ActorRef,
     rawReply: Uint8Array,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    recovery?: ZLinkDeferredJoinRecoveryInput
   ): Promise<ZLinkDeferredJoinAcceptedRoot> {
     return await this.requireDeferredJoinJournal().prepare(
       actorId,
       operationId,
       actorRef,
       rawReply,
-      signal
+      signal,
+      recovery
     );
   }
 
@@ -148,13 +172,216 @@ export class ZLinkActorTransferRuntime {
     await this.requireDeferredJoinJournal().discardPrepared(root, signal);
   }
 
+  async markDeferredJoinRecoveryMessageReplayed(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    nextReplayCursor: number,
+    signal?: AbortSignal
+  ): Promise<ZLinkDeferredJoinAcceptedRoot> {
+    return await this.requireDeferredJoinJournal().markRecoveryMessageReplayed(
+      root,
+      nextReplayCursor,
+      signal
+    );
+  }
+
+  markDeferredJoinAcceptedCommitted(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    actorRef: ActorRef,
+    signal?: AbortSignal
+  ): Promise<ZLinkDeferredJoinAcceptedRoot> {
+    return this.requireDeferredJoinJournal().markCommitted(root, actorRef, signal);
+  }
+
+  async readDeferredJoinRecoveryPayload(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    signal?: AbortSignal
+  ): Promise<Buffer> {
+    return await this.requireDeferredJoinJournal().readRecoveryPayload(root, signal);
+  }
+
+  async takeOverDeferredJoinRecoveryAuthority(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    targetActorRef: ActorRef,
+    target: {
+      readonly meshName: string;
+      readonly nodeRid: RoutingId;
+      readonly nodeGeneration: bigint;
+      readonly owner: ZLinkLocationOwnerToken;
+      readonly spotId: string;
+      readonly spotGeneration: bigint;
+      readonly membershipEpoch: bigint;
+      readonly spotAuthority: ZLinkAuthoritySnapshot;
+      readonly spotAuthorityPayload: Uint8Array;
+    },
+    signal?: AbortSignal
+  ): Promise<{
+    readonly root: ZLinkDeferredJoinAcceptedRoot;
+    readonly actorAuthority: ZLinkAuthoritySnapshot;
+    readonly spotAuthority: ZLinkAuthoritySnapshot;
+  } | undefined> {
+    const authority = this.options.authorityStore();
+    if (authority === undefined) {
+      throw new Error(
+        `Actor '${root.actor.actorId}' recovery authority store is unavailable.`
+      );
+    }
+    const key = encodeAuthorityKey('actor', root.actor.actorId);
+    const [current, currentSpot] = await Promise.all([
+      authority.readAuthority(key, signal),
+      authority.readAuthority(encodeAuthorityKey('user_spot', target.spotId), signal)
+    ]);
+    if (current.kind !== 'snapshot' || currentSpot.kind !== 'snapshot') {
+      throw new Error(`Actor '${root.actor.actorId}' recovery authority is missing.`);
+    }
+    const published = await this.requireDeferredJoinJournal().recover(
+      root.actor.actorId,
+      signal
+    );
+    if (
+      published === undefined
+      || published.operationId.high !== root.operationId.high
+      || published.operationId.low !== root.operationId.low
+      || published.actor.objectGeneration !== root.actor.objectGeneration
+    ) {
+      throw new Error(
+        `Actor '${root.actor.actorId}' recovery authority references another operation.`
+      );
+    }
+    const actorIsLocal =
+      String(current.allocation.descriptor.rid) === String(target.nodeRid)
+      && current.allocation.descriptorLifecycleGeneration === target.nodeGeneration
+      && current.ownerId === target.owner.ownerId
+      && current.ownerLeaseGeneration === target.owner.leaseGeneration;
+    const spotIsLocal =
+      String(currentSpot.allocation.descriptor.rid) === String(target.nodeRid)
+      && currentSpot.allocation.descriptorLifecycleGeneration === target.nodeGeneration
+      && currentSpot.ownerId === target.owner.ownerId
+      && currentSpot.ownerLeaseGeneration === target.owner.leaseGeneration;
+    if (actorIsLocal && spotIsLocal) {
+      return {
+        root: published,
+        actorAuthority: current,
+        spotAuthority: currentSpot
+      };
+    }
+
+    for (const candidate of [
+      ...(actorIsLocal ? [] : [current]),
+      ...(spotIsLocal ? [] : [currentSpot])
+    ]) {
+      const sourceLease = await authority.readOwnerLease(candidate.ownerId, signal);
+      if (
+        sourceLease.kind === 'found'
+        && sourceLease.token.leaseGeneration === candidate.ownerLeaseGeneration
+        && sourceLease.leaseExpiresAt.getTime() > sourceLease.storeNow.getTime()
+      ) {
+        return undefined;
+      }
+    }
+
+    const membershipMutation = Buffer.from(JSON.stringify({
+      actorId: root.actor.actorId,
+      actorGeneration: root.actor.objectGeneration.toString(),
+      spotId: target.spotId,
+      spotGeneration: target.spotGeneration.toString(),
+      membershipEpoch: target.membershipEpoch.toString()
+    }), 'utf8');
+    const aggregateId = {
+      value: `deferred-join:${root.operationId.high.toString(16)}:${root.operationId.low.toString(16)}`
+    } as ZLinkAggregateId;
+    const capacity = {
+      actors: actorIsLocal ? 0 : current.allocation.capacity.actors,
+      spots: spotIsLocal ? 0 : currentSpot.allocation.capacity.spots,
+      ...(spotIsLocal || currentSpot.allocation.capacity.spotType === undefined
+        ? {}
+        : { spotType: currentSpot.allocation.capacity.spotType })
+    };
+    const prepared = await authority.prepareAggregate({
+      aggregateId,
+      aggregateGeneration: target.nodeGeneration,
+      participants: [
+        {
+          authorityKey: key,
+          expectedStoreVersion: current.storeVersion,
+          ownerTransition: actorIsLocal ? 'preserve' : 'newOwner',
+          authorityPayload: rewriteActorAuthorityRoute(
+            current.payload,
+            targetActorRef,
+            target.spotId,
+            target.spotGeneration,
+            target.nodeGeneration,
+            target.owner
+          ),
+          membershipMutation
+        },
+        {
+          authorityKey: encodeAuthorityKey('user_spot', target.spotId),
+          expectedStoreVersion: currentSpot.storeVersion,
+          ownerTransition: spotIsLocal ? 'preserve' : 'newOwner',
+          authorityPayload: spotIsLocal
+            ? currentSpot.payload
+            : target.spotAuthorityPayload,
+          membershipMutation
+        }
+      ],
+      inventoryDigest: createHash('sha256').update(membershipMutation).digest(),
+      targetDescriptor: {
+        meshName: target.meshName,
+        rid: target.nodeRid
+      },
+      targetDescriptorLifecycleGeneration: target.nodeGeneration,
+      capacity,
+      targetOwner: target.owner
+    }, signal);
+    if (prepared.kind !== 'prepared' && prepared.kind !== 'alreadyPrepared') {
+      throw new Error(
+        `Actor '${root.actor.actorId}' recovery aggregate prepare failed with '${prepared.kind}'.`
+      );
+    }
+    let committed = false;
+    try {
+      const result = await authority.commitAggregate(prepared.fence, signal);
+      if (result.kind !== 'committed' && result.kind !== 'alreadyCommitted') {
+        throw new Error(
+          `Actor '${root.actor.actorId}' recovery authority takeover was rejected.`
+        );
+      }
+      committed = true;
+      const [actorAuthority, spotAuthority, recovered] = await Promise.all([
+        authority.readAuthority(key, signal),
+        authority.readAuthority(encodeAuthorityKey('user_spot', target.spotId), signal),
+        this.requireDeferredJoinJournal().recover(root.actor.actorId, signal)
+      ]);
+      if (
+        actorAuthority.kind !== 'snapshot'
+        || spotAuthority.kind !== 'snapshot'
+        || recovered === undefined
+        || String(actorAuthority.allocation.descriptor.rid) !== String(target.nodeRid)
+        || actorAuthority.allocation.descriptorLifecycleGeneration !== target.nodeGeneration
+        || String(spotAuthority.allocation.descriptor.rid) !== String(target.nodeRid)
+        || spotAuthority.allocation.descriptorLifecycleGeneration !== target.nodeGeneration
+      ) {
+        throw new Error(
+          `Actor '${root.actor.actorId}' recovery aggregate did not converge.`
+        );
+      }
+      return { root: recovered, actorAuthority, spotAuthority };
+    } finally {
+      if (!committed) {
+        await authority.abortAggregate(prepared.fence, signal)
+          .catch(() => undefined);
+      }
+    }
+  }
+
   async commitAndDeliverDeferredJoinAccepted(
     root: ZLinkDeferredJoinAcceptedRoot,
     actor: ZLinkActor,
     actorRef: ActorRef,
     submitMailbox: <T>(operation: () => Promise<T>) => Promise<T>,
-    signal?: AbortSignal
-  ): Promise<void> {
+    signal?: AbortSignal,
+    retainRecoveryRoot = false
+  ): Promise<ZLinkDeferredJoinAcceptedRoot> {
     const targetActorRef = this.options.actorManager()
       ?.getState(actor.context.actorId)
       ?.nativeActorRef;
@@ -172,9 +399,10 @@ export class ZLinkActorTransferRuntime {
           actor,
           currentActorRef,
           submitMailbox,
-          signal
+          signal,
+          retainRecoveryRoot
         );
-        return;
+        return current;
       } catch (error) {
         lastError = error;
         if (attempt < 2) {
@@ -194,6 +422,13 @@ export class ZLinkActorTransferRuntime {
       }
     }
     throw lastError;
+  }
+
+  releaseDeferredJoinRecovery(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    signal?: AbortSignal
+  ): Promise<void> {
+    return this.requireDeferredJoinJournal().releaseRecovery(root, signal);
   }
 
   private requireDeferredJoinJournal(): ZLinkDeferredJoinAcceptedJournal {
@@ -409,7 +644,12 @@ export class ZLinkActorTransferRuntime {
                 latest.payload,
                 targetActorRef,
                 String(target.spotId),
-                target.targetSpotGeneration
+                target.targetSpotGeneration,
+                target.targetNodeGeneration,
+                {
+                  ownerId: target.targetOwnerId!,
+                  leaseGeneration: target.ownerLeaseGeneration!
+                }
               )
             },
             commitSignal
@@ -893,6 +1133,54 @@ export class ZLinkActorTransferRuntime {
     };
   }
 
+  async prepareRecoveryRoutedActor(
+    actorId: string,
+    actorType: string,
+    actorRef: ActorRef,
+    authorityOwnerGeneration: bigint,
+    spotId: RoutingId,
+    spotGeneration: bigint,
+    membershipEpoch: bigint,
+    adapterKey: string | undefined,
+    transferState: Message,
+    actorEntryNodeRid: RoutingId | undefined,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    signal?: AbortSignal
+  ): Promise<ZLinkActor> {
+    const actorManager = this.requireActorManager(
+      'Routed Actor recovery requires ZLINK_ACTOR_MANAGER.'
+    );
+    const actor = await actorManager.prepareRelocationActor(
+      actorId,
+      actorType,
+      actorRef.objectGeneration,
+      authorityOwnerGeneration,
+      spotId,
+      spotGeneration,
+      membershipEpoch,
+      signal,
+      adapterKey === undefined
+        ? undefined
+        : {
+            adapterKey,
+            state: wrapFrameworkPayloadMessage(
+              transferState,
+              this.options.messageSerializers
+            )
+          }
+    );
+    const state = actorManager.getState(actorId);
+    if (state === undefined) {
+      throw new Error(`Actor '${actorId}' recovery state was not created.`);
+    }
+    if (actorEntryNodeRid !== undefined) state.setEntryNodeRid(actorEntryNodeRid);
+    state.setBoundSessionTransferTarget(remoteBoundSessionTarget);
+    if (remoteBoundSessionTarget?.bindingGeneration !== undefined) {
+      state.setBoundSessionBindingGeneration(remoteBoundSessionTarget.bindingGeneration);
+    }
+    return actor;
+  }
+
   commitRoutedActor(actor: ZLinkActor, spotId: RoutingId, spot: ZLinkSpot): void {
     const state = this.options.actorManager()?.getState(actor.context.actorId);
     state?.setJoinedSpot(spotId, spot);
@@ -926,6 +1214,34 @@ export class ZLinkActorTransferRuntime {
     this.options.actorManager()?.getState(actor.context.actorId)?.setNativeActorRef(
       targetActorRef as unknown as ZLinkBackendActorRef
     );
+  }
+
+  currentRoutedActorRef(actor: ZLinkActor): ActorRef | undefined {
+    const native = this.options.actorManager()
+      ?.getState(actor.context.actorId)
+      ?.nativeActorRef;
+    return native === undefined
+      ? undefined
+      : toFrameworkActorRef(native, actor.context.meshName);
+  }
+
+  adoptRoutedActorAuthority(
+    actor: ZLinkActor,
+    authority: ZLinkAuthoritySnapshot,
+    spotId: RoutingId,
+    spot: ZLinkSpot,
+    membershipEpoch: bigint
+  ): void {
+    const state = this.options.actorManager()?.getState(actor.context.actorId);
+    if (state === undefined) {
+      throw new Error(
+        `Actor '${actor.context.actorId}' recovery state is unavailable.`
+      );
+    }
+    state.setLocationGeneration(authority.authorityOwnerGeneration);
+    state.setOwnerLeaseGeneration(authority.ownerLeaseGeneration);
+    state.setJoinedSpot(spotId, spot, membershipEpoch);
+    state.markLocationOwned();
   }
 
   async claimRoutedActorLocation(

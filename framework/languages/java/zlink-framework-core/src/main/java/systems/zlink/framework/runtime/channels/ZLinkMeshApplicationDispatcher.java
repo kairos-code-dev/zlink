@@ -96,7 +96,8 @@ public final class ZLinkMeshApplicationDispatcher
             Objects.requireNonNull(handlerFactory, "handlerFactory"),
             framework.handlerExecutor(),
             framework.suspendHandlerInvokers(),
-            framework.filters());
+            framework.filters(),
+            meshName);
         ZLinkScannedHandlerCatalog scannedHandlers =
             ZLinkHandlerScanner.scan(framework.handlerPackageMarkers());
         int localPendingCapacity =
@@ -282,7 +283,7 @@ public final class ZLinkMeshApplicationDispatcher
                 if (error == null) {
                     replyAndClose(record, token, List.of(reply));
                 } else {
-                    replyError(record, token, error.getMessage());
+                    replyError(record, token, error);
                 }
                 return null;
             }).whenComplete((ignored, error) -> closeRecord(record, claim));
@@ -328,6 +329,28 @@ public final class ZLinkMeshApplicationDispatcher
         ReplyToken token,
         String message) {
         replyAndClose(record, token, ZLinkFrameworkErrorReply.create(message));
+    }
+
+    private void replyError(
+        ZLinkMeshDispatchRecord record,
+        ReplyToken token,
+        Throwable error) {
+        Throwable cause = error;
+        while ((cause instanceof java.util.concurrent.CompletionException
+            || cause instanceof java.util.concurrent.ExecutionException)
+            && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        systems.zlink.framework.errors.ZLinkFrameworkErrorKind kind =
+            cause instanceof systems.zlink.framework.errors.ZLinkFrameworkException
+                frameworkError
+                ? frameworkError.kind()
+                : systems.zlink.framework.errors.ZLinkFrameworkErrorKind
+                    .REQUEST_FAILED;
+        replyAndClose(
+            record,
+            token,
+            ZLinkFrameworkErrorReply.create(kind, cause.getMessage()));
     }
 
     private void replyAndClose(ReplyToken token, List<Message> parts) {

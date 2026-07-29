@@ -489,7 +489,8 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                 entry_actor_ref, runtime.node_rid (), zlink::message_t::from (request.payload),
                 request.actor_snapshot_present
                   ? std::make_optional (zlink::message_t::from (request.actor_snapshot))
-                  : std::nullopt)
+                  : std::nullopt,
+                actor_gateway.actor_context (entry_actor_ref))
             : runtime.join_remote_actor_to_spot_erased (
                 actor_ref, spot_id_t (request.spot_id),
                 zlink::message_t::from (request.payload), actor_gateway.actor_context (actor_ref));

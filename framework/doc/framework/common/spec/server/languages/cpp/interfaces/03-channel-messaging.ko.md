@@ -829,7 +829,19 @@ struct publish_message_context_t : message_context_t {
     std::optional<std::string> source;
 };
 
-using handler_next_t = std::function<task_t<zlink::message_t>()>;
+enum class handler_dispatch_kind_t {
+    node_direct_send = 0,
+    node_direct_request = 1,
+    channel_send = 2,
+    channel_request = 3,
+    classic_fanout = 4
+};
+
+struct handler_filter_context_t : message_context_t {
+    handler_dispatch_kind_t dispatch_kind;
+};
+
+using handler_next_t = std::function<task_t<void>()>;
 
 } // namespace zlink::framework
 ```
@@ -864,10 +876,22 @@ type, immutable metadata와 correlation ID를 제공한다. Node direct context�
 
 handler filter는 `.NET`의 handler filter처럼 handler 호출 앞뒤의 공통 처리를 맡는다.
 일반 application 설정에서는 `options.use_filter<TFilter>()`로 등록한다. filter 타입은
-`invoke(const message_context_t &, handler_next_t)`를 제공하며, 계속 처리하려면
-`co_await next()`를 호출하고 요청을 가로채야 하면 reply message를 직접 반환한다. filter는
-현재 dispatch의 typed context만 받으며 descriptor와 raw message storage는 받지 않는다. descriptor
-lookup, serializer 선택, DI resolve 순서와 filter chain 저장 방식은 public API로 노출하지 않는다.
+`task_t<void> invoke(const handler_filter_context_t &, handler_next_t)`를 제공한다. 계속 처리하려면
+`co_await next()`를 호출한다. filter는 request reply를 만들거나 교체하지 않는다.
+
+적용 범위는 Node direct send/request, RouteMesh·ClientServer Channel send/request와 Classic Fanout
+subscription handler다. Spot·Actor handler, Logical Multicast subscription과 STREAM session에는
+적용하지 않는다.
+
+`next()`를 호출하지 않은 send는 정상 완료하며 현재 handler를 실행하지 않는다. Classic Fanout은 현재
+handler만 종료하고 다른 matching handler를 계속 처리한다. request는 정상 reply 대신
+`request_rejected`로 완료한다. `next()`는 한 번만 호출할 수 있으며 두 번째 호출은
+`already_submitted` 오류다.
+
+handler와 filter는 dispatch마다 만든 같은 handler invocation scope에서 resolve한다. Classic Fanout의
+matching handler마다 scope를 따로 만들며 한 handler의 filter 중단이나 실패가 다른 handler를 취소하지
+않는다. descriptor lookup, serializer 선택, DI resolve 순서와 filter chain 저장 방식은 public API로
+노출하지 않는다.
 
 STREAM handler는 일반 request/send/event handler와 분리한다. Framework runtime은 typed packet
 방식만 지원하며 사용자 정의 header framing은 Framework public 표면에 넣지 않는다.

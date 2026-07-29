@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -27,6 +28,17 @@ class socket_monitor_t;
 
 namespace zlink::framework::runtime::client_server
 {
+
+struct client_server_request_completion_t
+{
+    foundation::operation_terminal_t terminal =
+      foundation::operation_terminal_t::transport_failed;
+    protocol::reply_header_t reply_header{};
+    std::vector<std::uint8_t> payload;
+};
+
+using client_server_request_callback_t =
+  std::function<void (client_server_request_completion_t)>;
 
 enum class client_server_pump_result_t
 {
@@ -69,6 +81,10 @@ class raw_client_server_server_t
     bool reply (
       const mesh::service_mailbox_record_t &request,
       const protocol::application_payload_t &payload);
+    bool reply (
+      const mesh::service_mailbox_record_t &request,
+      std::uint32_t terminal_result,
+      protocol::framework_error_code failure_code);
 
   private:
     struct byte_vector_less_t
@@ -121,7 +137,7 @@ class raw_client_server_client_t
     bool request (
       const protocol::application_payload_t &payload,
       std::chrono::milliseconds timeout,
-      foundation::operation_registry_t::callback_t callback);
+      client_server_request_callback_t callback);
     std::size_t expire_requests (
       foundation::operation_registry_t::clock_t::time_point now);
 

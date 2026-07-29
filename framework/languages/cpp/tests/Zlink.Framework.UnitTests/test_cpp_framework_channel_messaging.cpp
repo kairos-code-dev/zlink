@@ -273,6 +273,37 @@ class local_handler_t
     std::string last_route_source;
 };
 
+class route_filter_t
+{
+  public:
+    zlink::framework::task_t<void>
+    invoke (const zlink::framework::handler_filter_context_t &context,
+            zlink::framework::handler_next_t next)
+    {
+        seen_kinds.push_back (context.dispatch_kind);
+        last_mesh = context.mesh_name.value_or ("<none>");
+        last_channel = context.channel_name.value_or ("<none>");
+        if ((reject_request
+             && context.dispatch_kind
+                  == zlink::framework::handler_dispatch_kind_t::
+                    node_direct_request)
+            || (suppress_send
+                && context.dispatch_kind
+                     == zlink::framework::handler_dispatch_kind_t::
+                       node_direct_send)) {
+            co_return;
+        }
+        co_await next ();
+        co_return;
+    }
+
+    bool reject_request = false;
+    bool suppress_send = false;
+    std::vector<zlink::framework::handler_dispatch_kind_t> seen_kinds;
+    std::string last_mesh;
+    std::string last_channel;
+};
+
 class throwing_handler_t
 {
   public:
@@ -536,7 +567,37 @@ class nested_request_handler_t
 
 struct scoped_channel_dependency_t
 {
+    scoped_channel_dependency_t () { ++created; }
+    ~scoped_channel_dependency_t () { ++destroyed; }
+
+    inline static std::atomic_int created{0};
+    inline static std::atomic_int destroyed{0};
     int offset = 300;
+};
+
+class scoped_channel_filter_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<scoped_channel_dependency_t>;
+
+    explicit scoped_channel_filter_t (
+      scoped_channel_dependency_t &dependency) :
+        _dependency (dependency)
+    {
+    }
+
+    zlink::framework::task_t<void>
+    invoke (const zlink::framework::handler_filter_context_t &,
+            zlink::framework::handler_next_t next)
+    {
+        _dependency.offset = 400;
+        co_await next ();
+        co_return;
+    }
+
+  private:
+    scoped_channel_dependency_t &_dependency;
 };
 
 class scoped_channel_handler_t
@@ -1037,6 +1098,7 @@ int main ()
     zlink::framework::service_collection_t services;
     services.add_singleton<local_handler_t> ();
     services.add_singleton<throwing_handler_t> ();
+    services.add_singleton<route_filter_t> ();
     auto provider = services.build_provider ();
 
     zlink::framework::serializer_registry_t serializers;
@@ -1811,9 +1873,13 @@ int main ()
       .bind_serializers (serializers);
     zlink::framework::service_collection_t scoped_services;
     scoped_services.add_scoped<scoped_channel_dependency_t> ();
+    scoped_services
+      .add_transient<scoped_channel_filter_t,
+                     scoped_channel_dependency_t> ();
     scoped_services.add_transient<scoped_channel_handler_t, scoped_channel_dependency_t> ();
     auto scoped_provider = scoped_services.build_provider ();
     zlink::framework::handler_registry_t scoped_handlers;
+    scoped_handlers.use_filter<scoped_channel_filter_t> ();
     scoped_handlers.on_request<scoped_channel_handler_t, request_t, reply_t> (
       "hosted-scoped", "request", &scoped_channel_handler_t::handle_request,
       {.packet_name = request_t::packet_name});
@@ -1828,8 +1894,17 @@ int main ()
                                  .timeout (std::chrono::milliseconds (2000))
                                  .submit<reply_t> ()
                                  .result ();
+    auto second_scoped_reply =
+      scoped_hosted_builder.request_client ("hosted-scoped")
+        .request (request_t{41})
+        .timeout (std::chrono::milliseconds (2000))
+        .submit<reply_t> ()
+        .result ();
     scoped_hosted_service.stop ();
-    if (!scoped_hosted_reply || scoped_hosted_reply.value ().value != 340) {
+    if (!scoped_hosted_reply || scoped_hosted_reply.value ().value != 440
+        || !second_scoped_reply || second_scoped_reply.value ().value != 441
+        || scoped_channel_dependency_t::created.load () != 2
+        || scoped_channel_dependency_t::destroyed.load () != 2) {
         return 85;
     }
 
@@ -2316,6 +2391,77 @@ int main ()
         || provider.get_required<local_handler_t> ().last_route_event != 78) {
         return 50;
     }
+
+    zlink::framework::handler_registry_t route_filters;
+    route_filters.use_filter<route_filter_t> ();
+    auto &route_filter = provider.get_required<route_filter_t> ();
+    route_filter.reject_request = true;
+    provider.get_required<local_handler_t> ().last_route_request = 0;
+    test_route_receive_pump_t filtered_route_pump{
+      zlink::framework::detail::route_packet_dispatcher_t (
+        "game.route", provider, serializers, route_handlers, no_internal,
+        local_dispatch, &route_filters)};
+    filtered_route_pump.enqueue (
+      zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("source-node")), 79,
+        route_request_parts});
+    const auto filtered_request = filtered_route_pump.drain ();
+    if (!filtered_request || filtered_request.value ().replies.size () != 1
+        || provider.get_required<local_handler_t> ().last_route_request != 0
+        || route_filter.seen_kinds.empty ()
+        || route_filter.seen_kinds.back ()
+             != zlink::framework::handler_dispatch_kind_t::
+               node_direct_request
+        || route_filter.last_mesh != "game.route"
+        || route_filter.last_channel != "<none>") {
+        return 409;
+    }
+    const auto filtered_error = envelope_codec.decode_header (
+      filtered_request.value ().replies.front ().parts);
+    if (!filtered_error
+        || filtered_error.value ().kind
+             != zlink::framework::runtime::messaging::message_kind_t::error
+        || filtered_error.value ().error_code.value_or ("")
+             != "request_rejected") {
+        return 410;
+    }
+
+    route_filter.reject_request = false;
+    route_filter.suppress_send = true;
+    provider.get_required<local_handler_t> ().last_route_event = 0;
+    filtered_route_pump.enqueue (
+      zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("source-node")),
+        std::nullopt, route_runtime.outbound_packets ()[0].parts});
+    const auto filtered_send = filtered_route_pump.drain ();
+    if (!filtered_send || !filtered_send.value ().replies.empty ()
+        || provider.get_required<local_handler_t> ().last_route_event != 0
+        || route_filter.seen_kinds.back ()
+             != zlink::framework::handler_dispatch_kind_t::
+               node_direct_send) {
+        return 411;
+    }
+
+    route_filter.suppress_send = false;
+    test_route_receive_pump_t filtered_channel_pump{
+      zlink::framework::detail::route_packet_dispatcher_t (
+        "game.route", provider, serializers, route_handlers, no_internal,
+        local_dispatch, &route_filters,
+        zlink::framework::handler_dispatch_kind_t::channel_send,
+        zlink::framework::handler_dispatch_kind_t::channel_request)};
+    filtered_channel_pump.enqueue (
+      zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("source-node")), 80,
+        route_request_parts});
+    const auto filtered_channel_request = filtered_channel_pump.drain ();
+    if (!filtered_channel_request
+        || filtered_channel_request.value ().replies.size () != 1
+        || route_filter.seen_kinds.back ()
+             != zlink::framework::handler_dispatch_kind_t::
+               channel_request) {
+        return 412;
+    }
+
     auto malformed_route_dispatch =
       zlink::framework::detail::route_packet_dispatcher_t ("game.route")
         .dispatch (zlink::framework::detail::route_received_packet_t{

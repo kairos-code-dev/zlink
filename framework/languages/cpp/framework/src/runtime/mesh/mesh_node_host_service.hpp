@@ -6,6 +6,7 @@
 
 #include <zlink/framework/contracts/configuration/module.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
+#include <zlink/framework/contracts/handlers/handler_registry.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -29,6 +30,11 @@ class mesh_node_host_service_t final : public hosted_service_t
     mesh_node_host_service_t (
       std::vector<std::shared_ptr<detail::mesh_node_builder_state_t>> registrations,
       serializer_registry_t &serializers,
+      dispatch_options_t dispatch_options = {});
+    mesh_node_host_service_t (
+      std::vector<std::shared_ptr<detail::mesh_node_builder_state_t>> registrations,
+      serializer_registry_t &serializers,
+      handler_registry_t &filters,
       dispatch_options_t dispatch_options = {});
     ~mesh_node_host_service_t () override;
 
@@ -76,6 +82,7 @@ class mesh_node_host_service_t final : public hosted_service_t
 
     std::vector<std::shared_ptr<detail::mesh_node_builder_state_t>> _registrations;
     serializer_registry_t *_serializers;
+    handler_registry_t *_filters;
     dispatch_options_t _dispatch_options;
     service_provider_t *_services = nullptr;
     std::shared_ptr<location_store_t> _location_store;

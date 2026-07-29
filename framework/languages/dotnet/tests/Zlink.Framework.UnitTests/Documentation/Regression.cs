@@ -38,7 +38,8 @@ public sealed class RegressionTests
         "12-operations.ko.md",
         "13-interface-catalog.ko.md",
         "14-alternative.ko.md",
-        "15-samples.ko.md"
+        "15-samples.ko.md",
+        "16-options.ko.md"
     ];
 
     [Fact]

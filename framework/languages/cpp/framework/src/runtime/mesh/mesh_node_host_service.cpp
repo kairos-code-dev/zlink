@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/mesh/mesh_node_host_service.hpp"
+#include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/actors/actor_manager_access.hpp"
 #include "runtime/locations/sha256.hpp"
 #include "runtime/locations/actor_authority_payload.hpp"
@@ -219,14 +220,32 @@ void reject_application_request (
     (void) host::reply (record.reply_token, reply.items ());
 }
 
+handler_registry_t &empty_handler_filters ()
+{
+    static handler_registry_t filters;
+    return filters;
+}
+
 } // namespace
 
 mesh_node_host_service_t::mesh_node_host_service_t (
   std::vector<std::shared_ptr<detail::mesh_node_builder_state_t>> registrations,
   serializer_registry_t &serializers,
   dispatch_options_t dispatch_options) :
+    mesh_node_host_service_t (
+      std::move (registrations), serializers, empty_handler_filters (),
+      std::move (dispatch_options))
+{
+}
+
+mesh_node_host_service_t::mesh_node_host_service_t (
+  std::vector<std::shared_ptr<detail::mesh_node_builder_state_t>> registrations,
+  serializer_registry_t &serializers,
+  handler_registry_t &filters,
+  dispatch_options_t dispatch_options) :
     _registrations (std::move (registrations)),
     _serializers (&serializers),
+    _filters (&filters),
     _dispatch_options (std::move (dispatch_options)),
     _application_dispatch (std::make_unique<offload_executor_t> (
       0, std::max<std::size_t> (2, std::thread::hardware_concurrency ()), 4096,
@@ -1219,6 +1238,10 @@ task_t<bool> mesh_node_host_service_t::close_user_spot (
 void mesh_node_host_service_t::start (service_provider_t &services)
 {
     _services = &services;
+    if (auto actor_gateway =
+          services.get<detail::actor_gateway_runtime_t> ()) {
+        actor_gateway->get ().bind_serializers (*_serializers);
+    }
     _stop.store (false, std::memory_order_release);
     _accept_application_dispatch.store (true, std::memory_order_release);
     auto store = std::shared_ptr<location_store_t> (
@@ -1652,6 +1675,15 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                             || record.kind == host::record_kind_t::actor_request)
                         && spot_runtime.actor_transfer_in_progress (
                           owner.actor.actor_id ());
+                      const bool framework_object_dispatch =
+                        (owner.owner_kind == host::owner_kind_t::actor
+                         && (record.kind == host::record_kind_t::actor_send
+                             || record.kind == host::record_kind_t::actor_request))
+                        || (owner.owner_kind == host::owner_kind_t::spot
+                            && (record.kind == host::record_kind_t::spot_send
+                                || record.kind == host::record_kind_t::spot_request
+                                || record.kind == host::record_kind_t::spot_multicast
+                                || record.kind == host::record_kind_t::spot_control));
                       auto run_direct = [this] (auto &&work) {
                           {
                               std::lock_guard lock (_dispatch_gate_mutex);
@@ -1674,12 +1706,14 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                           }
                           _dispatch_gate_changed.notify_all ();
                       };
-                      if (transfer_dispatch) {
+                      if (framework_object_dispatch) {
+                          bool handled = false;
                           run_direct ([&] {
-                              (void) spot_runtime.dispatch_mesh_record (
+                              handled = spot_runtime.dispatch_mesh_record (
                                 owner, record, parts, *_services, *_serializers);
                           });
-                          return;
+                          if (handled || transfer_dispatch)
+                              return;
                       }
                       if (owner.domain == host::ready_domain_t::application) {
                           bool accepted = false;
@@ -1723,7 +1757,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                                                  *_services, *_serializers)) {
                                             detail::mesh_record_dispatcher_t dispatcher (
                                               *_services, *_serializers,
-                                              registration->handlers,
+                                              registration->handlers, *_filters,
                                               _dispatch_options);
                                             (void) dispatcher.dispatch (
                                               record, std::move (owned_parts));
@@ -1752,7 +1786,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                               return;
                           }
                           detail::mesh_record_dispatcher_t dispatcher (
-                            *_services, *_serializers, registration->handlers,
+                            *_services, *_serializers, registration->handlers, *_filters,
                             _dispatch_options);
                           (void) dispatcher.dispatch (record, std::move (parts));
                       });
@@ -1984,7 +2018,8 @@ zlink::submit_result_t mesh_node_host_service_t::submit_local_node_send (
                   record.domain = host::ready_domain_t::application;
                   record.source_node_rid = *source_rid;
                   detail::mesh_record_dispatcher_t dispatcher (
-                    *_services, *_serializers, registration->handlers, _dispatch_options);
+                    *_services, *_serializers, registration->handlers, *_filters,
+                    _dispatch_options);
                   (void) dispatcher.dispatch (record, std::move (owned_parts));
               }
               catch (...) {

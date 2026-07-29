@@ -220,20 +220,10 @@ export class ZLinkChannelRuntimeLifecycle {
     return dispatcher.dispatchMesh(record, signal);
   }
 
-  dispatchMeshRoute(meshName: string, record: ReceiveRecord): Promise<void> {
-    const dispatcher = this.meshRouteDispatchers.get(meshName);
-    if (dispatcher === undefined) {
-      throw new ZLinkConfigurationException(
-        `RouteMesh '${meshName}' has no registered node-direct handlers.`
-      );
-    }
-    return dispatcher.dispatchMesh(record);
-  }
-
-  dispatchLocalMeshRoute(
+  dispatchMeshRoute(
     meshName: string,
-    sourceNodeRid: RoutingId,
-    parts: readonly Message[]
+    record: ReceiveRecord,
+    signal?: AbortSignal
   ): Promise<void> {
     const dispatcher = this.meshRouteDispatchers.get(meshName);
     if (dispatcher === undefined) {
@@ -241,7 +231,22 @@ export class ZLinkChannelRuntimeLifecycle {
         `RouteMesh '${meshName}' has no registered node-direct handlers.`
       );
     }
-    return dispatcher.dispatchLocalCommand(parts, sourceNodeRid);
+    return dispatcher.dispatchMesh(record, signal);
+  }
+
+  dispatchLocalMeshRoute(
+    meshName: string,
+    sourceNodeRid: RoutingId,
+    parts: readonly Message[],
+    signal?: AbortSignal
+  ): Promise<void> {
+    const dispatcher = this.meshRouteDispatchers.get(meshName);
+    if (dispatcher === undefined) {
+      throw new ZLinkConfigurationException(
+        `RouteMesh '${meshName}' has no registered node-direct handlers.`
+      );
+    }
+    return dispatcher.dispatchLocalCommand(parts, sourceNodeRid, signal);
   }
 
   canDispatchLocalMeshRoute(meshName: string): boolean {

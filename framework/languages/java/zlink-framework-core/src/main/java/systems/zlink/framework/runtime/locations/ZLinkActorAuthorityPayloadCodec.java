@@ -78,7 +78,11 @@ public final class ZLinkActorAuthorityPayloadCodec {
 
     public Optional<ActorAuthority> decode(byte[] payload) {
         try {
-            Reader reader = new Reader(payload);
+            byte[] authorityPayload =
+                systems.zlink.framework.runtime.internal.locations
+                    .ZLinkCanonicalRelocationAuthorityStateCodec
+                    .applicationPayloadOrOriginal(payload);
+            Reader reader = new Reader(authorityPayload);
             reader.expect(MAGIC);
             if (reader.u8() != 1 || reader.u16() != 0) {
                 return Optional.empty();
@@ -87,7 +91,7 @@ public final class ZLinkActorAuthorityPayloadCodec {
             int checksumOffset = reader.position();
             long checksum = reader.u32();
             if (!reader.end()
-                || checksum != crc32c(payload, checksumOffset)) {
+                || checksum != crc32c(authorityPayload, checksumOffset)) {
                 return Optional.empty();
             }
             int operationKind = body.u8();

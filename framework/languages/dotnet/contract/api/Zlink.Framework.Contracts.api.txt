@@ -285,7 +285,9 @@ assembly Zlink.Framework.Contracts
     generic TEvent variance=in nullable=nullable
     method abstract System.Threading.Tasks.ValueTask HandleAsync(TEvent? message [nullability=read:nullable,write:nullable], System.Threading.CancellationToken cancellationToken [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Handlers.IZLinkHandlerFilter
-    method abstract System.Threading.Tasks.ValueTask InvokeAsync(Zlink.Framework.Contracts.Handlers.IZLinkMessageContext context [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Handlers.ZLinkHandlerFilterNext next [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask InvokeAsync(Zlink.Framework.Contracts.Handlers.IZLinkHandlerFilterContext context [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Handlers.ZLinkHandlerFilterNext next [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Handlers.IZLinkHandlerFilterContext : Zlink.Framework.Contracts.Handlers.IZLinkMessageContext
+    property Zlink.Framework.Contracts.Handlers.ZLinkHandlerDispatchKind DispatchKind { get; } [nullability=read:not-null,write:unknown]
   type interface Zlink.Framework.Contracts.Handlers.IZLinkMessageContext
     property System.String? ChannelName { get; } [nullability=read:nullable,write:unknown]
     property System.String? ContentType { get; } [nullability=read:nullable,write:unknown]
@@ -300,6 +302,12 @@ assembly Zlink.Framework.Contracts
   type interface Zlink.Framework.Contracts.Handlers.IZLinkSendHandler<TMessage>
     generic TMessage variance=in nullable=nullable
     method abstract System.Threading.Tasks.ValueTask HandleAsync(TMessage? message [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Handlers.IZLinkMessageContext context [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type enum Zlink.Framework.Contracts.Handlers.ZLinkHandlerDispatchKind : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+    field const Zlink.Framework.Contracts.Handlers.ZLinkHandlerDispatchKind ChannelRequest = 3 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Handlers.ZLinkHandlerDispatchKind ChannelSend = 2 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Handlers.ZLinkHandlerDispatchKind ClassicFanout = 4 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Handlers.ZLinkHandlerDispatchKind NodeDirectRequest = 1 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Handlers.ZLinkHandlerDispatchKind NodeDirectSend = 0 [nullability=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Handlers.ZLinkHandlerFilterNext : System.MulticastDelegate, System.ICloneable, System.Runtime.Serialization.ISerializable
     ctor ZLinkHandlerFilterNext(System.Object object [nullability=read:unknown,write:unknown], System.IntPtr method [nullability=read:not-null,write:not-null])
     method virtual System.IAsyncResult BeginInvoke(System.AsyncCallback callback [nullability=read:unknown,write:unknown], System.Object object [nullability=read:unknown,write:unknown]) [return=read:unknown,write:unknown]

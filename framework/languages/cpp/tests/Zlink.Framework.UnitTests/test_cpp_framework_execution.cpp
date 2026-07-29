@@ -922,6 +922,8 @@ int main ()
         }
 
         zlink::framework::detail::actor_gateway_runtime_t actor_gateway;
+        zlink::framework::serializer_registry_t actor_serializers;
+        actor_gateway.bind_serializers (actor_serializers);
         const zlink::framework::actor_ref_t barrier_actor (
           zlink::framework::node_rid_t::from_string ("barrier-node"),
           "player", "barrier-actor", 1);
@@ -936,8 +938,19 @@ int main ()
           [&] (const auto &) {
               return target_queue.reserve_barrier_next (
                 "production-join-barrier");
-          });
+        });
         auto actor_context = actor_gateway.actor_context (barrier_actor);
+        try {
+            auto serializer_bound_join =
+              actor_context.join_spot (
+                "serializer-target",
+                zlink::framework::message_t::from (
+                  std::string ("serializer-probe")));
+            (void) serializer_bound_join;
+        }
+        catch (...) {
+            return 37;
+        }
         deferred_queue.run ("production-cross-actor-barrier", [&] {
             actor_context.join_spot ("target-spot").defer ();
             if (!target_queue.try_post (

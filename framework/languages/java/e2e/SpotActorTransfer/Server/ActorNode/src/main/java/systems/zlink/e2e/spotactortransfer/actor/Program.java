@@ -89,6 +89,7 @@ public final class Program {
             String nodeRid = evidence.nodeRid();
             options.addRelocationStore(relocationStore);
             options.addHandlersFromPackageOf(TransferComponents.class);
+            options.configureLocations().setRouteCacheMaxAge(Duration.ZERO);
             options.configureLocations().setMessageFollowDuration(Duration.ofSeconds(2));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
@@ -101,7 +102,6 @@ public final class Program {
             ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.MESH);
             node.listen(config.meshEndpoint())
                 .setRoutingId(RoutingId.from(nodeRid));
-            node.channelName(Contracts.MESH);
             for (String peer : config.meshPeers().split(",")) {
                 String[] fields = peer.split("=", 2);
                 if (fields.length == 2 && !nodeRid.equals(fields[0])) {

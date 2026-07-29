@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/fanout/fanout_location_runtime.hpp"
+#include "runtime/configuration/service_scope.hpp"
 
 #include <zlink.hpp>
 
@@ -320,11 +321,16 @@ void fanout_location_runtime_t::pump ()
                 inbound.message.content_type =
                   received->payload.content_type;
                 inbound.topic = received->topic;
+                auto scope =
+                  zlink::framework::detail::service_scope_t::create (
+                  *_services,
+                  zlink::framework::detail::service_scope_kind_t::
+                    handler_invocation);
                 (void) _channel_runtime.dispatch_send (
                   subscriber->channel_name,
                   received->topic,
                   received->payload.packet_name,
-                  *_services, *_serializers, *_handlers,
+                  scope.provider (), *_serializers, *_handlers,
                   message, inbound);
             }
             catch (...) {

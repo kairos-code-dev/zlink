@@ -50,9 +50,9 @@ Transport가 packet을 받는 callback에서는 application session callback을 
 실행한다. 이 queue 경계에서 Framework의 dispatch, DI와 logging을 일관되게
 적용한다.
 
-Handler filter pipeline은 ChannelName dispatch에만 적용한다. Node direct, Spot, Actor와
-[STREAM session dispatch](01-glossary.ko.md#stream-session)에는 적용하지 않는다
-([Framework API §8](06-framework-api.ko.md#8-handler-등록과-dispatch)).
+[STREAM session dispatch](01-glossary.ko.md#stream-session)에는 Handler filter를 적용하지 않는다.
+다른 dispatch의 filter 적용 범위와 실행 규칙은
+[Framework API §8.1](06-framework-api.ko.md#81-handler-filter)이 정한다.
 
 - Session callback은 packet name, metadata와 request 정보를 담은 dispatch context와
   payload를 받는다.

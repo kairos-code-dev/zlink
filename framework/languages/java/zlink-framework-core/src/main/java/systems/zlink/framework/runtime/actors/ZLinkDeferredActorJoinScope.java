@@ -86,7 +86,7 @@ final class ZLinkDeferredActorJoinScope {
                 Objects.requireNonNull(actorIncarnation, "actorIncarnation"),
                 Objects.requireNonNull(dispatchActorId, "dispatchActorId"))
             : null;
-        State state = new State(runtimeScope, actorKey, dispatchActorId, actorAllowed);
+        State state = new State(runtimeScope, actorKey, actorAllowed);
         if (actorScope) {
             State active = ACTIVE_ACTOR_SCOPES.putIfAbsent(actorKey, state);
             if (active != null) {
@@ -226,8 +226,7 @@ final class ZLinkDeferredActorJoinScope {
             state.claimedActorIds.add(actorId);
             state.claimReleases.add(releaseClaim);
             state.requestBytes += requestBytes;
-            if (actorMailbox == null
-                || Objects.equals(state.dispatchActorId, actorId)) {
+            if (actorMailbox == null) {
                 state.intents.add(new Intent(deadlineNanos, operation, () -> { }));
                 return;
             }
@@ -343,10 +342,15 @@ final class ZLinkDeferredActorJoinScope {
                     for (Intent intent : List.copyOf(state.intents)) {
                         tail = tail.thenCompose(nothing -> neutralize(intent));
                     }
-                    return tail.handle((nothing, activationError) -> {
+                    tail.whenComplete((nothing, activationError) -> {
                         state.releaseClaims();
-                        return null;
                     });
+                    // Handler completion and deferred membership completion
+                    // are separate terminals. Barrier-backed intents were
+                    // reserved during registration, so activating their
+                    // latches here is enough to place them before application
+                    // turns that were already waiting on the Actor lane.
+                    return CompletableFuture.completedFuture(null);
                 });
         }
 
@@ -381,7 +385,6 @@ final class ZLinkDeferredActorJoinScope {
     static final class State {
         private final Object runtimeScope;
         private final ActorScopeKey actorKey;
-        private final String dispatchActorId;
         private final Predicate<String> actorAllowed;
         private final List<Intent> intents = new ArrayList<>();
         private final List<String> claimedActorIds = new ArrayList<>();
@@ -393,11 +396,9 @@ final class ZLinkDeferredActorJoinScope {
         private State(
             Object runtimeScope,
             ActorScopeKey actorKey,
-            String dispatchActorId,
             Predicate<String> actorAllowed) {
             this.runtimeScope = Objects.requireNonNull(runtimeScope, "runtimeScope");
             this.actorKey = actorKey;
-            this.dispatchActorId = dispatchActorId;
             this.actorAllowed = Objects.requireNonNull(actorAllowed, "actorAllowed");
         }
 

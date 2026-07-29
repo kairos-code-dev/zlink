@@ -3,8 +3,8 @@ package systems.zlink.e2e.registrationcodec.main.Handlers;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.e2e.registrationcodec.main.Infrastructure.EvidenceStore;
 import systems.zlink.framework.ZLinkHandlerFilter;
+import systems.zlink.framework.ZLinkHandlerFilterContext;
 import systems.zlink.framework.ZLinkHandlerFilterNext;
-import systems.zlink.framework.ZLinkMessageContext;
 
 public final class SecondOrderFilter implements ZLinkHandlerFilter {
     private final EvidenceStore state;
@@ -15,14 +15,14 @@ public final class SecondOrderFilter implements ZLinkHandlerFilter {
 
     @Override
     public <T> CompletionStage<T> invoke(
-        ZLinkMessageContext context,
+        ZLinkHandlerFilterContext context,
         ZLinkHandlerFilterNext<T> next) {
         record(context, "second-before");
         return next.invoke()
             .whenComplete((ignored, error) -> record(context, "second-after"));
     }
 
-    private void record(ZLinkMessageContext context, String step) {
+    private void record(ZLinkHandlerFilterContext context, String step) {
         state.record("Filter", context.packetName(), step);
     }
 }

@@ -49,7 +49,7 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
                     loggerFactory?.CreateLogger<ZLinkFanoutPacketDispatcher>()),
                 new ZLinkClientServerDispatcher(
                     new ZLinkChannelCommandDispatchPipeline(
-                        string.Empty,
+                        null,
                         handlerRegistry,
                         dispatcher,
                         ResolveHandlerGroups,
@@ -58,7 +58,7 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
                         registration.Codecs,
                         channelLogger),
                     new ZLinkChannelRequestDispatchPipeline(
-                        string.Empty,
+                        null,
                         handlerRegistry,
                         dispatcher,
                         ResolveHandlerGroups,

@@ -73,6 +73,23 @@ struct route_message_context_t : message_context_t
     zlink::routing_id_t source_node_rid;
 };
 
+/// Identifies the public dispatch surface currently invoking a root handler filter.
+enum class handler_dispatch_kind_t
+{
+    node_direct_send = 0,
+    node_direct_request = 1,
+    channel_send = 2,
+    channel_request = 3,
+    classic_fanout = 4
+};
+
+/// Context supplied to root handler filters. Filters inspect the dispatch surface and the same
+/// inbound message information that the handler receives; they cannot replace a request reply.
+struct handler_filter_context_t : message_context_t
+{
+    handler_dispatch_kind_t dispatch_kind = handler_dispatch_kind_t::channel_send;
+};
+
 namespace detail
 {
 

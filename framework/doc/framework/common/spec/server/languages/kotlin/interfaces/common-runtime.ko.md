@@ -7,6 +7,12 @@ Kotlin은 Java의 `ZLinkTopologyState`, `ZLinkFrameworkRuntimeState`,
 outcome·reason·result와 `ZLinkFrameworkRuntime`을 그대로 사용한다. 같은 enum, options, result wrapper와
 runtime facade를 추가하지 않는다. 별도 drain facade와 MeshName을 받는 partial termination member는 없으며,
 Kotlin은 Java host의 `Relocate`와 `Shutdown`을 그대로 사용한다.
+
+Handler filter도 Java의 `ZLinkHandlerFilter`, `ZLinkHandlerFilterContext`,
+`ZLinkHandlerFilterNext<T>`와 `ZLinkHandlerDispatchKind`를 그대로 사용한다. Kotlin
+전용 filter context나 dispatch enum을 추가하지 않는다. 기존 Kotlin filter 구현은
+`invoke`의 첫 인자를 `ZLinkMessageContext`에서 `ZLinkHandlerFilterContext`로 바꿔야
+한다.
 Host가 continuity preflight를 통과해 relocation unit을 준비하는 동안에는 Java enum의 `RELOCATING(2)`를
 관측하며, relocation이 완료되면 `RELOCATED(3)`으로 전환한다. `shutdown()`을 시작하면
 `DRAINING(4)`으로 전환한다.

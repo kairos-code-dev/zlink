@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelPublishDispatchPipeline(
-    string meshName,
+    string? meshName,
     ZLinkHandlerRegistry handlerRegistry,
     ZLinkHandlerDispatcher dispatcher,
     Func<string, IReadOnlySet<string>> resolveMappedGroups,
@@ -21,7 +21,7 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
         ZLinkCodecRegistryBuilder codecs,
         ILogger logger)
         : this(
-            "test-mesh",
+            null,
             handlerRegistry,
             dispatcher,
             resolveMappedGroups,
@@ -91,7 +91,12 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
                 header.Source);
             try
             {
-                await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)
+                await dispatcher.DispatchAsync(
+                        endpoint,
+                        message,
+                        context,
+                        ZLinkHandlerDispatchKind.ClassicFanout,
+                        cancellationToken)
                     .ConfigureAwait(false);
 
                 scope.Trace(dispatchErrors, ZLinkMessageFlowOutcome.Dispatched);

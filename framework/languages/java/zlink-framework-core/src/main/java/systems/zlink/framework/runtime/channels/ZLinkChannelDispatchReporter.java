@@ -12,6 +12,7 @@ import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 
 final class ZLinkChannelDispatchReporter {
     private final ZLinkDispatchErrorReporter reporter;
@@ -31,7 +32,12 @@ final class ZLinkChannelDispatchReporter {
         String sourceRid,
         Throwable error) {
         Throwable cause = unwrap(error);
-        List<Message> reply = ZLinkFrameworkErrorReply.create(errorText(reason, packetName, cause));
+        List<Message> reply = ZLinkFrameworkErrorReply.create(
+            cause instanceof ZLinkFrameworkException frameworkError
+                ? frameworkError.kind()
+                : systems.zlink.framework.errors.ZLinkFrameworkErrorKind
+                    .REQUEST_FAILED,
+            errorText(reason, packetName, cause));
         replyRawAndClose(router, routingId, requestSeq, reply);
         report(
             surface,

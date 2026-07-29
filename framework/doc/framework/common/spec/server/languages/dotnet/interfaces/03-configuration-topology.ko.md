@@ -402,20 +402,41 @@ ready peer 수와 liveness 대상에 포함하지 않는다. 어느 한쪽에라
 membership이 있으면 일반 peer admission과 liveness 규칙을 적용한다.
 
 Handler filter는 application이 구현하고 root에 등록하는 public extension point다. `next`를 호출하면 남은
-filter와 handler가 실행되고, 호출하지 않으면 현재 dispatch를 종료한다. 적용 범위와 실행 순서는 공통
-Framework API가 정한다.
+filter와 handler가 실행된다. 호출하지 않은 request는 `Rejected`로 끝나며 filter가 업무 reply를 직접
+만들지 않는다. 적용 범위, 실행 순서와 fanout 격리는 공통 Framework API가 정한다.
 
 ```csharp
+public enum ZLinkHandlerDispatchKind
+{
+    NodeDirectSend = 0,
+    NodeDirectRequest = 1,
+    ChannelSend = 2,
+    ChannelRequest = 3,
+    ClassicFanout = 4
+}
+
+public interface IZLinkHandlerFilterContext : IZLinkMessageContext
+{
+    ZLinkHandlerDispatchKind DispatchKind { get; }
+}
+
 public delegate ValueTask ZLinkHandlerFilterNext();
 
 public interface IZLinkHandlerFilter
 {
     ValueTask InvokeAsync(
-        IZLinkMessageContext context,
+        IZLinkHandlerFilterContext context,
         ZLinkHandlerFilterNext next,
         CancellationToken cancellationToken);
 }
 ```
+
+`ChannelSend`와 `ChannelRequest`는 RouteMesh와 ClientServer를 모두 포함한다. RouteMesh와 Node direct
+context는 MeshName을 제공하고 ClientServer와 `ClassicFanout`은 `null`을 제공한다. Filter는 `next`를
+최대 한 번 호출한다. 두 번째 호출은 `ZLinkFrameworkErrorKind.InvalidOperation`으로 실패하며 handler를
+다시 실행하지 않는다. Request에서 `next`를 호출하지 않으면
+`ZLinkFrameworkErrorKind.Rejected` reply를 보낸다. 이전 `IZLinkMessageContext` signature와 filter의
+업무 reply 대체 동작은 v11.0에서 호환 overload나 adapter로 유지하지 않는다.
 
 `AddInstanceSpotFactory`의 type 이름은 비어 있을 수 없고 UTF-8로 255 byte 이하여야 한다. Type별 active와
 pending limit은 생략할 수 있지만 명시한 값은 1..`int.MaxValue`다.
@@ -451,10 +472,12 @@ expected RID를 생략하면 admission handshake가 remote identity를 결정한
 handshake identity가 다르면 연결을 admission하지 않는다. Manual 연결도 자동 discovery 연결과 같은
 [MeshName](../../../../01-glossary.ko.md#meshname)·RID·ChannelName·security 검증을 사용한다.
 
-## 4. Channel handler scope
+## 4. Handler와 filter의 dispatch scope
 
-Channel send/request dispatch마다 DI scope를 하나 만든다. Handler와 filter는 이
-scope에서 Framework가 한 번씩 만들며 같은 scoped dependency를 사용한다.
+Node direct·Channel send/request와 classic fanout 구독 handler를 실행할 때마다 DI scope를 하나
+만든다. Handler와 filter는 이 scope에서 Framework가 한 번씩 만들며 같은 scoped dependency를
+사용한다. Classic fanout message가 여러 구독 handler와 일치하면 구독 handler마다 별도 scope를
+만든다.
 Application이 handler나 filter type을 singleton·scoped·transient로 등록해도 이
 수명은 바뀌지 않는다. Dispatch가 끝나면 Framework가 만든 instance를 먼저 정리하고
 scope를 정리한다.

@@ -199,7 +199,9 @@ export function rewriteActorAuthorityRoute(
   payload: Uint8Array,
   actor: ActorRef,
   spotId: string,
-  spotGeneration: bigint | undefined
+  spotGeneration: bigint | undefined,
+  ownerNodeGeneration?: bigint,
+  owner?: ZLinkLocationOwnerToken
 ): Buffer {
   const rewrite = (encoded: Buffer, depth: number): Buffer => {
     if (depth > 4) throw new Error('Actor authority payload nesting exceeds the supported bound.');
@@ -227,6 +229,13 @@ export function rewriteActorAuthorityRoute(
     value.actorGeneration = actor.objectGeneration.toString();
     value.spotId = spotId;
     value.spotGeneration = spotGeneration?.toString();
+    if (ownerNodeGeneration !== undefined) {
+      value.ownerNodeGeneration = ownerNodeGeneration.toString();
+    }
+    if (owner !== undefined) {
+      value.ownerId = owner.ownerId;
+      value.ownerLeaseGeneration = owner.leaseGeneration.toString();
+    }
     return Buffer.from(JSON.stringify(value));
   };
   return rewrite(Buffer.from(payload), 0);

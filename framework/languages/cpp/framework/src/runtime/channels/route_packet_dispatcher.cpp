@@ -35,6 +35,12 @@ make_route_message_context (const std::string &router_channel_id,
     return framework::route_message_context_t{std::move (base), source_node_rid};
 }
 
+const handler_registry_t &empty_handler_filters ()
+{
+    static const handler_registry_t filters;
+    return filters;
+}
+
 } // namespace
 
 route_packet_dispatcher_t::route_packet_dispatcher_t (std::string router_channel_id) :
@@ -48,13 +54,19 @@ route_packet_dispatcher_t::route_packet_dispatcher_t (
   serializer_registry_t &serializers,
   const route_handler_registry_t &handlers,
   const route_internal_packet_dispatcher_t &internal_packets,
-  dispatch_options_t dispatch_options) :
+  dispatch_options_t dispatch_options,
+  const handler_registry_t *filters,
+  handler_dispatch_kind_t send_dispatch_kind,
+  handler_dispatch_kind_t request_dispatch_kind) :
     _router_channel_id (std::move (router_channel_id)),
     _services (&services),
     _serializers (&serializers),
     _handlers (&handlers),
+    _filters (filters),
     _internal_packets (&internal_packets),
-    _dispatch_options (std::move (dispatch_options))
+    _dispatch_options (std::move (dispatch_options)),
+    _send_dispatch_kind (send_dispatch_kind),
+    _request_dispatch_kind (request_dispatch_kind)
 {
 }
 
@@ -147,10 +159,14 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
         return detail::propagate_failure<std::optional<route_dispatch_reply_t>> (body, "route command body missing");
     }
     auto context = make_route_message_context (_router_channel_id, received.source_node_rid, header);
-    auto dispatched = _invoker
-                        .invoke_send (*_handlers, _router_channel_id, header.message_name,
-                                      *_services, *_serializers, body.value (), context)
-                        .result ();
+    const auto &filters =
+      _filters != nullptr ? *_filters : empty_handler_filters ();
+    auto dispatched =
+      _invoker
+        .invoke_send (*_handlers, filters, _send_dispatch_kind,
+                      _router_channel_id, header.message_name, *_services,
+                      *_serializers, body.value (), context)
+        .result ();
     if (!dispatched) {
         dispatch_error_reporter_t (_dispatch_options)
           .report (message_dispatch_error_event_t{
@@ -209,10 +225,14 @@ result_t<std::optional<route_dispatch_reply_t>> route_packet_dispatcher_t::dispa
         return reply_error (received, header, error);
     }
     auto context = make_route_message_context (_router_channel_id, received.source_node_rid, header);
-    auto reply = _invoker
-                   .invoke_request (*_handlers, _router_channel_id, header.message_name, *_services,
-                                    *_serializers, body.value (), context)
-                   .result ();
+    const auto &filters =
+      _filters != nullptr ? *_filters : empty_handler_filters ();
+    auto reply =
+      _invoker
+        .invoke_request (*_handlers, filters, _request_dispatch_kind,
+                         _router_channel_id, header.message_name, *_services,
+                         *_serializers, body.value (), context)
+        .result ();
     if (!reply) {
         framework_exception_t error (reply.error_kind (), reply.error ()
                                                             ? reply.error ()->what ()

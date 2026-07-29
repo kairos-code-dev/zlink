@@ -95,13 +95,25 @@ final class HandlerContractTest {
     }
 
     @Test
-    void handlerFilterUsesMessageContextAndTypedNext() throws NoSuchMethodException {
+    void handlerFilterUsesFilterSpecificContextAndTypedNext()
+        throws NoSuchMethodException {
         Method method = ZLinkHandlerFilter.class.getMethod(
             "invoke",
-            ZLinkMessageContext.class,
+            ZLinkHandlerFilterContext.class,
             ZLinkHandlerFilterNext.class);
 
         assertEquals(1, method.getTypeParameters().length);
+        assertTrue(ZLinkMessageContext.class.isAssignableFrom(
+            ZLinkHandlerFilterContext.class));
+        ZLinkHandlerFilterContext.class.getMethod("dispatchKind");
+        assertEquals(
+            List.of(
+                ZLinkHandlerDispatchKind.NODE_DIRECT_SEND,
+                ZLinkHandlerDispatchKind.NODE_DIRECT_REQUEST,
+                ZLinkHandlerDispatchKind.CHANNEL_SEND,
+                ZLinkHandlerDispatchKind.CHANNEL_REQUEST,
+                ZLinkHandlerDispatchKind.CLASSIC_FANOUT),
+            List.of(ZLinkHandlerDispatchKind.values()));
     }
 
     @Test

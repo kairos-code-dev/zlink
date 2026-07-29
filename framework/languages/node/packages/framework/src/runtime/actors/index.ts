@@ -76,7 +76,9 @@ export {
 export {
   ZLinkDeferredJoinAcceptedJournal,
   type ZLinkDeferredJoinAcceptedRoot,
-  type ZLinkDeferredJoinDeliveryCursor
+  type ZLinkDeferredJoinDeliveryCursor,
+  type ZLinkDeferredJoinRecoveryInput,
+  type ZLinkDeferredJoinRecoveryManifest
 } from './deferred-join-accepted-journal';
 export {
   decodeActorAuthorityIdentity,
@@ -395,7 +397,11 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     spotId: RoutingId,
     spotGeneration: bigint,
     membershipEpoch: bigint,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    transfer?: {
+      readonly adapterKey: string;
+      readonly state: ZLinkMessage;
+    }
   ): Promise<ZLinkActor> {
     if (this.states.has(actorId) || this.relocationStaged.has(actorId)) {
       throw new Error(`Actor '${actorId}' already exists on the relocation target.`);
@@ -425,8 +431,20 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
         undefined,
         signal
       );
+      if (transfer !== undefined) {
+        const registry = this.options.actorTransferRegistry;
+        if (registry === undefined) {
+          throw new ZLinkConfigurationException('Actor transfer registry is not configured.');
+        }
+        await registry.restore(
+          transfer.adapterKey,
+          actor,
+          transfer.state,
+          signal
+        );
+      }
       const state = this.states.get(actorId)!;
-      state.setLocationGeneration(objectGeneration);
+      state.setLocationGeneration(authorityOwnerGeneration);
       state.setJoinedSpot(spotId, undefined, membershipEpoch);
       return actor;
     } catch (error) {

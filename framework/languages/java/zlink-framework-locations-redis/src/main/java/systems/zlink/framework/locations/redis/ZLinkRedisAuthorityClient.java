@@ -2946,7 +2946,8 @@ final class ZLinkRedisAuthorityClient {
             descriptorKey(request.targetDescriptor()));
         root.put(
             "TargetDescriptorLifecycleGeneration",
-            request.targetDescriptorLifecycleGeneration());
+            Long.toString(
+                request.targetDescriptorLifecycleGeneration()));
         root.put(
             "CapacityBundle",
             encodeCapacityBundle(request.capacityBundle()));

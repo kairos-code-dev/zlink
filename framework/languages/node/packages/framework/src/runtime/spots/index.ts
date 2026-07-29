@@ -1060,7 +1060,15 @@ export class DefaultZLinkSpotManager {
               actorId,
               transferRequest.completionOperationId,
               actorRef,
-              reply?.data() ?? Buffer.alloc(0)
+              reply?.data() ?? Buffer.alloc(0),
+              undefined,
+              {
+                targetMeshName: meshName,
+                targetSpotId: String(spotId),
+                targetSpotGeneration: control.currentSpotGeneration,
+                membershipEpoch: control.currentMembershipEpoch,
+                request: Buffer.from(record.parts[0]!.data())
+              }
             );
           this.options.runtimeEventPublisher?.publish({
             sourceName: 'zlink.framework.actor-handoff',
@@ -1276,6 +1284,232 @@ export class DefaultZLinkSpotManager {
         await activation.spot.onDisconnectActor?.(actor);
       }
     });
+  }
+
+  async recoverPublishedActorTransfer(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    target: {
+      readonly meshName: string;
+      readonly nodeRid: RoutingId;
+      readonly nodeGeneration: bigint;
+      readonly owner: {
+        readonly ownerId: string;
+        readonly leaseGeneration: bigint;
+      };
+      readonly spotId: string;
+      readonly spotGeneration: bigint;
+      readonly membershipEpoch: bigint;
+      readonly spotAuthority: import('../../contracts').ZLinkAuthoritySnapshot;
+      readonly spotAuthorityPayload: Uint8Array;
+      readonly activation?: ZLinkSpotActivation;
+      readonly implementation: Type<ZLinkSpot>;
+    },
+    signal?: AbortSignal
+  ): Promise<void> {
+    const recovery = root.recovery;
+    if (recovery === undefined) {
+      throw new Error(
+        `Actor '${root.actor.actorId}' published Join root has no recovery manifest.`
+      );
+    }
+    if (
+      target.meshName !== recovery.targetMeshName
+      || target.spotId !== recovery.targetSpotId
+      || target.spotGeneration !== recovery.targetSpotGeneration
+    ) {
+      throw new Error(
+        `Actor '${root.actor.actorId}' recovery root does not match its target authority.`
+      );
+    }
+    const recoveryPayload = await this.options.actorTransferRuntime
+      ?.readDeferredJoinRecoveryPayload(root, signal);
+    if (recoveryPayload === undefined) {
+      throw new Error(
+        `Actor '${root.actor.actorId}' recovery payload reader is unavailable.`
+      );
+    }
+    const request = BindingMessage.from(recoveryPayload);
+    let transferState: BindingMessage | undefined;
+    let materialized = false;
+    let authorityPublished = false;
+    let activation = target.activation;
+    let activationPrepared = false;
+    let activationPublished = activation !== undefined;
+    let currentRoot = root;
+    try {
+      const transfer = decodeFormalRemoteTransferRequest(request);
+      if (
+        transfer === undefined
+        || transfer.actorRef?.actorId !== root.actor.actorId
+        || transfer.actorRef.objectGeneration !== root.actor.objectGeneration
+      ) {
+        throw new Error(
+          `Actor '${root.actor.actorId}' published Join recovery request is invalid.`
+        );
+      }
+      let actor = this.options.actorLifecycleResolver?.(root.actor.actorId)
+        ?? this.options.actorResolver?.(root.actor.actorId);
+      if (this.options.actorTransferRuntime === undefined) {
+        throw new Error(
+          `Actor '${root.actor.actorId}' recovery runtime is unavailable.`
+        );
+      }
+      let targetActorRef = actor === undefined
+        ? {
+            actorId: root.actor.actorId,
+            objectGeneration: root.actor.objectGeneration,
+            meshName: recovery.targetMeshName,
+            nodeRid: target.nodeRid
+          }
+        : this.options.actorTransferRuntime.currentRoutedActorRef(actor);
+      if (
+        targetActorRef === undefined
+        || targetActorRef.actorId !== root.actor.actorId
+        || targetActorRef.objectGeneration !== root.actor.objectGeneration
+        || targetActorRef.meshName !== recovery.targetMeshName
+        || String(targetActorRef.nodeRid) !== String(target.nodeRid)
+      ) {
+        throw new Error(
+          `Actor '${root.actor.actorId}' recovery materialized a different target identity.`
+        );
+      }
+      const publication = await this.options.actorTransferRuntime
+        .takeOverDeferredJoinRecoveryAuthority(
+          currentRoot,
+          targetActorRef,
+          target,
+          signal
+        );
+      if (publication === undefined) {
+        return;
+      }
+      currentRoot = publication.root;
+      authorityPublished = true;
+      if (activation === undefined) {
+        activation = await this.prepareRelocationSpot(
+          target.meshName,
+          'user_spot',
+          publication.spotAuthority.allocation.stableType,
+          target.implementation,
+          recovery.targetSpotId as RoutingId,
+          publication.spotAuthority.objectGeneration,
+          publication.spotAuthority.authorityOwnerGeneration,
+          signal
+        );
+        activationPrepared = true;
+      }
+      if (actor === undefined) {
+        transferState = BindingMessage.from(
+          Buffer.from(transfer.transferState, 'base64')
+        );
+        actor = await this.options.actorTransferRuntime.prepareRecoveryRoutedActor(
+          root.actor.actorId,
+          transfer.actorType,
+          targetActorRef,
+          publication.actorAuthority.authorityOwnerGeneration,
+          recovery.targetSpotId as RoutingId,
+          recovery.targetSpotGeneration,
+          recovery.membershipEpoch,
+          transfer.transferAdapterKey,
+          transferState,
+          transfer.actorEntryNodeRid,
+          transfer.remoteBoundSessionTarget,
+          signal
+        );
+        materialized = true;
+        targetActorRef = this.options.actorTransferRuntime.currentRoutedActorRef(actor);
+        if (
+          targetActorRef === undefined
+          || targetActorRef.objectGeneration !== root.actor.objectGeneration
+          || String(targetActorRef.nodeRid) !== String(target.nodeRid)
+        ) {
+          throw new Error(
+            `Actor '${root.actor.actorId}' recovery did not preserve its published identity.`
+          );
+        }
+      }
+      this.options.actorTransferRuntime.bindRoutedActorRef(actor, targetActorRef);
+      const recoveredActivation = activation;
+      if (activationPrepared) {
+        await this.publishRelocationSpot(recoveredActivation);
+        activationPublished = true;
+      }
+      await recoveredActivation.serial.execute(async () => {
+        this.options.actorTransferRuntime!.commitRoutedActor(
+          actor!,
+          recovery.targetSpotId as RoutingId,
+          recoveredActivation.spot
+        );
+        this.options.actorTransferRuntime!.adoptRoutedActorAuthority(
+          actor!,
+          publication.actorAuthority,
+          recovery.targetSpotId as RoutingId,
+          recoveredActivation.spot,
+          recovery.membershipEpoch
+        );
+        await this.options.actorTransferRuntime!.publishRoutedActorOwnership(actor!);
+        if (
+          recoveredActivation.resolveJoinedActor(actor!.context.actorId) === undefined
+        ) {
+          recoveredActivation.commitActorJoin(actor!);
+        }
+        currentRoot = await this.options.actorTransferRuntime!
+          .markDeferredJoinAcceptedCommitted(currentRoot, targetActorRef!, signal);
+        for (
+          let index = currentRoot.replayCursor;
+          index < transfer.handoffBacklog.length;
+          index++
+        ) {
+          await replayActorHandoffBacklog(
+            [transfer.handoffBacklog[index]!],
+            (parts, returnResponse, remoteBoundSessionTarget, _fallbackActorRef) =>
+              this.dispatchActorPacket(
+                recoveredActivation,
+                actor!.context.actorId,
+                parts,
+                returnResponse,
+                remoteBoundSessionTarget,
+                targetActorRef!
+              )
+          );
+          currentRoot = await this.options.actorTransferRuntime!
+            .markDeferredJoinRecoveryMessageReplayed(
+              currentRoot,
+              index + 1,
+              signal
+            );
+        }
+        currentRoot = await this.options.actorTransferRuntime!
+          .commitAndDeliverDeferredJoinAccepted(
+            currentRoot,
+            actor!,
+            targetActorRef!,
+            operation => recoveredActivation.executeActor(
+              actor!.context.actorId,
+              async () => await operation()
+            ),
+            signal,
+            true
+          );
+        await this.options.actorTransferRuntime!.openRoutedActorSession(actor!);
+        await this.options.actorTransferRuntime!
+          .releaseDeferredJoinRecovery(currentRoot, signal);
+      });
+    } catch (error) {
+      if (materialized && !authorityPublished) {
+        const actor = this.options.actorLifecycleResolver?.(root.actor.actorId);
+        if (actor !== undefined) {
+          await this.options.actorTransferRuntime?.rollbackRoutedActor(actor, signal);
+        }
+      }
+      if (activationPrepared && !activationPublished && activation !== undefined) {
+        await this.abortRelocationSpot(activation).catch(() => undefined);
+      }
+      throw error;
+    } finally {
+      transferState?.close();
+      request.close();
+    }
   }
 
   completeFormalSourceLeaveTerminal(

@@ -620,6 +620,33 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
         return runtime.deliver_actor_join_completion (
           actor_ref, completion, completion_source_spot);
     };
+    auto deliver_joined =
+      [&] (const result_t<actor_join_reply_t> &joined)
+        -> result_t<void> {
+          if (!joined)
+              return deliver_failed (joined.error_kind ());
+          const auto callback_reply =
+            joined.value ().reply.is_empty ()
+              ? std::optional<message_t>{}
+              : std::make_optional (
+                  message_t::from_raw (
+                    joined.value ().reply, &serializers));
+          const actor_join_completion_t completion =
+            joined.value ().result_code == 0
+              ? actor_join_completion_t{
+                  actor_join_accepted_t{
+                    completion_operation_id.first,
+                    completion_operation_id.second,
+                    joined.value ().actor,
+                    callback_reply}}
+              : actor_join_completion_t{
+                  actor_join_rejected_t{
+                    completion_operation_id.first,
+                    completion_operation_id.second,
+                    callback_reply}};
+          return runtime.deliver_actor_join_completion (
+            actor_ref, completion, completion_source_spot);
+      };
     auto route = runtime.resolve_spot (spot_id);
     if (!route) {
         if (rid_targets_node (spot_id, local_spot_node_rid)) {
@@ -627,8 +654,11 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
               actor_ref, std::move (spot_id), payload, std::nullopt, {},
               completion_operation_id.first,
               completion_operation_id.second);
-            if (!joined)
-                (void) deliver_failed (joined.error_kind ());
+            const auto delivered = deliver_joined (joined);
+            if (!delivered)
+                return detail::propagate_failure<actor_join_reply_t> (
+                  delivered,
+                  "local Actor Join completion callback failed");
             return joined;
         }
         if (accepts_route_channels || (route_channel_name && !route_channel_name->empty ())) {
@@ -647,8 +677,11 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
           actor_ref, std::move (spot_id), payload, std::nullopt, {},
           completion_operation_id.first,
           completion_operation_id.second);
-        if (!joined)
-            (void) deliver_failed (joined.error_kind ());
+        const auto delivered = deliver_joined (joined);
+        if (!delivered)
+            return detail::propagate_failure<actor_join_reply_t> (
+              delivered,
+              "local Actor Join completion callback failed");
         return joined;
     }
     trace_actor_transfer ("resolved", actor_ref, route->node_rid, route->spot_id);
@@ -804,6 +837,26 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
       actor_ref, finalized.value ().actor,
       spot_route_t{route->node_rid, spot_id, route->spot_name},
       transfer_id);
+    const auto accepted_reply =
+      admitted.value ().payload.empty ()
+        ? std::optional<message_t>{}
+        : std::make_optional (
+            message_t::from_raw (
+              zlink::message_t::from (admitted.value ().payload),
+              &serializers));
+    const actor_join_completion_t completion =
+      actor_join_accepted_t{
+        completion_operation_id.first,
+        completion_operation_id.second,
+        finalized.value ().actor,
+        accepted_reply};
+    const auto delivered =
+      runtime.deliver_actor_join_completion (
+        actor_ref, completion, completion_source_spot);
+    if (!delivered)
+        return detail::propagate_failure<actor_join_reply_t> (
+          delivered,
+          "remote Actor Join accepted completion callback failed");
     runtime.emit_actor_transfer_marker ("message_follow_registered", actor_ref, transfer_id,
                                         route->spot_id, route->node_rid);
     return result_t<actor_join_reply_t>::success (
@@ -813,6 +866,7 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
 
 result_t<actor_join_reply_t>
 join_actor_to_entry_spot_through_route (spot_node_runtime_t runtime,
+                                        actor_gateway_runtime_t actor_gateway,
                                         route_client_t route_client,
                                         std::string local_spot_node_rid,
                                         std::optional<std::string> route_channel_name,
@@ -823,8 +877,9 @@ join_actor_to_entry_spot_through_route (spot_node_runtime_t runtime,
                                         serializer_registry_t &serializers)
 {
     if (target_node_rid.empty () || target_node_rid.value () == local_spot_node_rid) {
-        return runtime.join_actor_to_entry_spot_erased (actor_ref, std::move (target_node_rid),
-                                                        payload, actor_snapshot);
+        return runtime.join_actor_to_entry_spot_erased (
+          actor_ref, std::move (target_node_rid), payload, actor_snapshot,
+          actor_gateway.actor_context (actor_ref));
     }
     if (route_channel_name) {
         return join_actor_to_remote_spot_route_channel (
@@ -1275,17 +1330,20 @@ void configure_actor_gateway_spot_bridge (
           make_actor_gateway_spot_node_binding (zlink, spot_node, *runtime, serializers));
         auto binding = actor_gateway_spot_nodes.back ();
         runtime->on_actor_entry_spot_join (
-          [binding, &serializers] (const actor_ref_t &actor_ref, node_rid_t node_rid,
-                                   const zlink::message_t &payload,
-                                   const std::optional<zlink::message_t> &actor_snapshot) mutable {
+          [binding, actor_gateway, &serializers] (
+            const actor_ref_t &actor_ref, node_rid_t node_rid,
+            const zlink::message_t &payload,
+            const std::optional<zlink::message_t> &actor_snapshot) mutable {
               if (!node_rid.empty () && node_rid.value () != binding.local_spot_node_rid) {
                   return join_actor_to_entry_spot_through_route (
-                    binding.runtime, binding.route_client, binding.local_spot_node_rid,
+                    binding.runtime, actor_gateway, binding.route_client,
+                    binding.local_spot_node_rid,
                     binding.route_channel_name, actor_ref, node_rid, payload, actor_snapshot,
                     serializers);
               }
               return binding.runtime.join_actor_to_entry_spot_erased (
-                actor_ref, std::move (node_rid), payload, actor_snapshot);
+                actor_ref, std::move (node_rid), payload, actor_snapshot,
+                actor_gateway.actor_context (actor_ref));
           });
     }
     if (actor_gateway_spot_nodes.empty ()) {
@@ -1319,19 +1377,21 @@ void configure_actor_gateway_spot_bridge (
         };
         return join_spot_with_target_binding_first (bindings, spot_id, join_local, join_fallback);
     });
-    actor_gateway.on_join_entry_spot ([bindings = actor_gateway_spot_nodes, &serializers] (
-                                        const actor_ref_t &actor_ref,
-                                        const zlink::message_t &payload,
-                                        std::chrono::milliseconds) mutable {
+    actor_gateway.on_join_entry_spot (
+      [bindings = actor_gateway_spot_nodes, actor_gateway, &serializers] (
+        const actor_ref_t &actor_ref,
+        const zlink::message_t &payload,
+        std::chrono::milliseconds) mutable {
         auto last = result_t<actor_join_reply_t>::failure (
           framework_error_kind_t::spot_route_not_found, "SPOT node route not found");
         for (auto &binding : bindings) {
             auto node_rid = node_rid_t (binding.local_spot_node_rid);
             return binding.runtime.join_actor_to_entry_spot_erased (
-              actor_ref, std::move (node_rid), payload);
+              actor_ref, std::move (node_rid), payload, std::nullopt,
+              actor_gateway.actor_context (actor_ref));
         }
         return last;
-    });
+      });
     actor_gateway.on_join_barrier (
       [bindings = actor_gateway_spot_nodes] (
         const actor_ref_t &actor_ref) mutable

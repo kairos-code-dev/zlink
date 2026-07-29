@@ -66,6 +66,11 @@ import systems.zlink.framework.runtime.internal.service.ZLinkServiceRelocationWi
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceTopologyRegistry;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceWireCodec;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceWireFrame;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
+import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 /**
  * Raw-binding RouteMesh owner. Service topology and application dispatch are
@@ -2815,7 +2820,8 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                 metadata,
                 wire.encodeApplicationPayload(payload));
             List<Message> messages = List.of(
-                Message.from(payload.packetName().getBytes(StandardCharsets.UTF_8)),
+                Message.from(
+                    payload.packetName().getBytes(StandardCharsets.UTF_8)),
                 Message.from(payload.payload()));
             AtomicBoolean terminal = new AtomicBoolean();
             boolean accepted = ((ZLinkJavaRawSpotNode) spotNode())
@@ -3488,9 +3494,11 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                 header,
                 new byte[0],
                 wire.encodeApplicationPayload(payload));
-            List<Message> messages = List.of(
-                Message.from(payload.packetName().getBytes(StandardCharsets.UTF_8)),
-                Message.from(payload.payload()));
+            List<Message> messages =
+                applicationMessages(
+                    payload,
+                    header.request(),
+                    header.correlation());
             AtomicBoolean terminal = new AtomicBoolean();
             boolean accepted = ((ZLinkJavaRawSpotNode) spotNode())
                 .enqueueRemoteActor(
@@ -3984,14 +3992,21 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         return value;
     }
 
-    private static ZLinkServiceM6AWireCodec.ApplicationPayload applicationPayload(
+    static ZLinkServiceM6AWireCodec.ApplicationPayload applicationPayload(
         List<Message> parts) {
         if (parts == null || parts.isEmpty()) {
             throw new IllegalArgumentException("application message is required");
         }
-        String packetName = parts.size() > 1
-            ? parts.getFirst().toUtf8String()
-            : "message";
+        String packetName = "message";
+        if (parts.size() > 1) {
+            byte[] headerFrame = parts.getFirst().toByteArray();
+            try {
+                packetName =
+                    ZLinkStreamHeaderCodec.decodeOrPlain(headerFrame).packetName();
+            } catch (IllegalArgumentException plainPacketName) {
+                packetName = parts.getFirst().toUtf8String();
+            }
+        }
         byte[] payload = parts.size() > 1
             ? parts.get(1).toByteArray()
             : parts.getFirst().toByteArray();
@@ -3999,6 +4014,26 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             packetName,
             "application/zlink-framework-json-v1",
             payload);
+    }
+
+    static List<Message> applicationMessages(
+        ZLinkServiceM6AWireCodec.ApplicationPayload payload,
+        boolean request,
+        Long requestSequence) {
+        ZLinkStreamHeader header = new ZLinkStreamHeader(
+            request
+                ? ZLinkStreamMessageKind.REQUEST
+                : ZLinkStreamMessageKind.SEND,
+            ZLinkStreamCodec.JSON,
+            java.util.EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            request
+                ? Optional.ofNullable(requestSequence)
+                : Optional.empty(),
+            payload.packetName(),
+            Map.of());
+        return List.of(
+            Message.from(ZLinkStreamHeaderCodec.encode(header)),
+            Message.from(payload.payload()));
     }
 
     private static ZLinkBackendRequestResult backendResult(

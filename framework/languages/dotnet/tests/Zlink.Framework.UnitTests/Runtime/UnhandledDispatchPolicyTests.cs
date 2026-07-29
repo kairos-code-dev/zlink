@@ -377,6 +377,7 @@ public sealed partial class UnhandledDispatchPolicyTests
             .AddTransient<CapturingPublishHandler>()
             .BuildServiceProvider();
         var registration = new ZLinkFrameworkRegistration();
+        registration.Filters.Add(typeof(CapturingFanoutFilter));
         var observer = new CapturingMessageFlowObserver();
         registration.DispatchOptions.Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Detailed);
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
@@ -469,6 +470,10 @@ public sealed partial class UnhandledDispatchPolicyTests
         await pipeline.DispatchAsync("play", topicMessage, header, CancellationToken.None);
 
         Assert.Equal("delivered", probe.Value);
+        Assert.Equal(
+            ZLinkHandlerDispatchKind.ClassicFanout,
+            probe.FilterDispatchKind);
+        Assert.Null(probe.FilterMeshName);
         Assert.Empty(observer.Events);
         Assert.Contains("decode_error", dropReasons);
         await runner.StopAsync();
@@ -858,6 +863,25 @@ public sealed partial class UnhandledDispatchPolicyTests
     private sealed class PublishProbe
     {
         public string? Value { get; set; }
+
+        public ZLinkHandlerDispatchKind? FilterDispatchKind { get; set; }
+
+        public string? FilterMeshName { get; set; }
+    }
+
+    private sealed class CapturingFanoutFilter(PublishProbe probe)
+        : IZLinkHandlerFilter
+    {
+        public async ValueTask InvokeAsync(
+            IZLinkHandlerFilterContext context,
+            ZLinkHandlerFilterNext next,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            probe.FilterDispatchKind = context.DispatchKind;
+            probe.FilterMeshName = context.MeshName;
+            await next();
+        }
     }
 
     private sealed class CapturingPublishHandler(PublishProbe probe)

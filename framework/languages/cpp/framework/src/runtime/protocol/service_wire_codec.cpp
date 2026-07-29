@@ -3806,17 +3806,9 @@ std::vector<std::uint8_t> encode_reply_header (
     if (correlation == 0) {
         throw service_wire_error_t ("reply correlation must be nonzero");
     }
-    const auto typed_failure =
-      terminal_result == 102 || (terminal_result >= 104
-                                 && terminal_result <= 107);
-    const auto valid_failure =
-      failure_code <= 22
-      || (failure_code >= 33 && failure_code <= 35);
-    if ((terminal_result != 0
-         && (terminal_result < 101 || terminal_result > 113))
-        || !valid_failure || (terminal_result == 0 && failure_code != 0)
-        || (typed_failure && failure_code == 0)
-        || (!typed_failure && failure_code != 0)) {
+    if (!valid_terminal_failure (
+          terminal_result,
+          static_cast<framework_error_code> (failure_code))) {
         throw service_wire_error_t ("invalid reply terminal fields");
     }
     std::vector<std::uint8_t> result{
@@ -3839,15 +3831,10 @@ reply_header_t decode_reply_header (std::span<const std::uint8_t> bytes)
     const auto correlation = read_u64 (bytes, offset);
     const auto terminal = read_u32 (bytes, offset);
     const auto failure = read_u32 (bytes, offset);
-    const auto typed_failure =
-      terminal == 102 || (terminal >= 104 && terminal <= 107);
-    const auto valid_failure =
-      failure <= 22 || (failure >= 33 && failure <= 35);
     if (correlation == 0
-        || (terminal != 0 && (terminal < 101 || terminal > 113))
-        || !valid_failure || (terminal == 0 && failure != 0)
-        || (typed_failure && failure == 0)
-        || (!typed_failure && failure != 0)) {
+        || !valid_terminal_failure (
+          terminal,
+          static_cast<framework_error_code> (failure))) {
         throw service_wire_error_t ("invalid reply terminal fields");
     }
     return {correlation, terminal, failure};

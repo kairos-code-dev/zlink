@@ -571,6 +571,7 @@ class public_host_runtime_t :
     std::size_t dispatch_user_spot_operations ();
 
     host_options_t _options;
+    std::string _entry_spot_id;
     std::shared_ptr<mesh::raw_mesh_node_owner_t> _transport;
     std::unique_ptr<stateful::raw_relocation_replay_coordinator_t>
       _relocation_wire;

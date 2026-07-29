@@ -25,6 +25,7 @@ public static class SpotServiceNames
     public const string ActorType = "scenario-player";
     public const string UserSpotType = "scenario-user-spot";
     public const string InstanceSpotType = "scenario-instance-spot";
+    public const string WeightCapacitySpotType = "scenario-weight-capacity-spot";
     public const string AlternateSpotType = "scenario-alternate-spot";
     public const string SpotOnlyUserSpotType = "spot-only-user-spot";
     public const string MultiSpotTypeA = "multi-spot-a";
@@ -82,6 +83,14 @@ public sealed record EvidenceWaitReq(
 public sealed record PlacementWeightReq(int Weight);
 
 public sealed record PlacementWeightRes(int Weight);
+
+public sealed record PlacementWeightProbeRes(
+    int Requested,
+    int Current,
+    bool Accepted,
+    string ErrorKind);
+
+public sealed record TypedSpotCreateReq(string SpotId, string SpotType);
 
 public sealed record SpotMissingHandlerReq(string SpotRid);
 

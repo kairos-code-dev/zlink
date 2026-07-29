@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using SpotService.Shared;
 using Zlink.Framework.Contracts.Configuration;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Locations;
 
 namespace SpotService.Server.Play.Endpoints;
@@ -39,6 +40,29 @@ internal static class OperationalEndpoints
         {
             runtimeOptions.Mesh(SpotServiceNames.SpotChannel).PlacementWeight = request.Weight;
             return Results.Ok(new PlacementWeightRes(request.Weight));
+        });
+        app.MapPost("/placement-weight/probe", (
+            PlacementWeightReq request,
+            IZLinkRouteMeshRuntimeOptions runtimeOptions) =>
+        {
+            var placement = runtimeOptions.Mesh(SpotServiceNames.SpotChannel);
+            try
+            {
+                placement.PlacementWeight = request.Weight;
+                return Results.Ok(new PlacementWeightProbeRes(
+                    request.Weight,
+                    placement.PlacementWeight,
+                    true,
+                    string.Empty));
+            }
+            catch (ZLinkConfigurationException)
+            {
+                return Results.Ok(new PlacementWeightProbeRes(
+                    request.Weight,
+                    placement.PlacementWeight,
+                    false,
+                    nameof(ZLinkConfigurationException)));
+            }
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {

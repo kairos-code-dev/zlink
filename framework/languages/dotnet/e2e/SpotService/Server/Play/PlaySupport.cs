@@ -152,7 +152,8 @@ internal sealed record ServerOptions(
     string? MultiSpotRouterAEndpoint = null,
     string? MultiSpotRouterBEndpoint = null,
     int? MessageFollowDurationMilliseconds = null,
-    int? OwnerLeaseTtlMilliseconds = null)
+    int? OwnerLeaseTtlMilliseconds = null,
+    int? PopulationLimit = null)
 {
     public static ServerOptions Parse(string[] args, string defaultRole)
         => E2eConfiguration.Load<ServerOptions>(args) with { Role = defaultRole };

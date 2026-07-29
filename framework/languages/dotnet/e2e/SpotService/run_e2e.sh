@@ -77,9 +77,11 @@ case "$SCENARIO_SET" in
     NEED_SESSION_B=1
     NEED_TLS_STREAM=1
     ;;
-  sm-e1-f4|sm-e2-e3|sm-a7-a8-c4|sm-e4|sm-a5|sm-g2)
+  sm-e1-f4|sm-e2-e3|sm-a7-a8-c4|sm-e4|sm-a5|sm-g2|sm-g5)
     NEED_SESSION_NODES=0
-    if [[ "$SCENARIO_SET" != "sm-g2" ]]; then NEED_PLAY_B=0; fi
+    if [[ "$SCENARIO_SET" != "sm-g2" && "$SCENARIO_SET" != "sm-g5" ]]; then
+      NEED_PLAY_B=0
+    fi
     ;;
   sm-c6)
     NEED_SESSION_NODES=0
@@ -174,7 +176,7 @@ build_projects() {
 if [[ "$SCENARIO_SET" == "all" && "$ALL_CHILD" != "1" ]]; then
   echo "log_dir=$LOG_DIR"
   build_projects
-  for child_group in default-batch sm-f6 sm-g2 sm-g3 sm-g4 sm-g1 sm-q9; do
+  for child_group in default-batch sm-f6 sm-g2 sm-g3 sm-g4 sm-g5 sm-g1 sm-q9; do
     echo "child operation_group=${child_group}"
     timeout "${CHILD_PROCESS_TIMEOUT_SECONDS}s" \
       "$SCRIPT_DIR/run_e2e.sh" --all-child --skip-build --start-order "$E2E_START_ORDER" "$child_group"
@@ -694,6 +696,9 @@ start_named_server() {
           --owner-lease-ttl-milliseconds 30000
         )
       fi
+      if [[ "$SCENARIO_SET" == "sm-g5" ]]; then
+        PLAY_A_ARGS+=(--population-limit 1000)
+      fi
       start_server play-a "$PLAY_DLL" "${PLAY_A_ARGS[@]}"
       ;;
     play-b)
@@ -716,6 +721,9 @@ start_named_server() {
           --message-follow-duration-milliseconds 7000
           --owner-lease-ttl-milliseconds 30000
         )
+      fi
+      if [[ "$SCENARIO_SET" == "sm-g5" ]]; then
+        PLAY_B_ARGS+=(--population-limit 1000)
       fi
       start_server play-b "$PLAY_DLL" "${PLAY_B_ARGS[@]}"
       ;;
@@ -1145,6 +1153,7 @@ if [[ "$SCENARIO_SET" == "track-g" ]]; then
   run_client sm-g2
   run_client sm-g3
   run_client sm-g4
+  run_client sm-g5
   run_client sm-g1
 elif [[ "$SCENARIO_SET" == "all" || "$SCENARIO_SET" == "default-batch" ]]; then
   run_client sm-b1-b2-b3-b5
@@ -1185,6 +1194,7 @@ elif [[ "$SCENARIO_SET" == "all" || "$SCENARIO_SET" == "default-batch" ]]; then
     run_client sm-g2
     run_client sm-g3
     run_client sm-g4
+    run_client sm-g5
     run_client sm-g1
   fi
 else

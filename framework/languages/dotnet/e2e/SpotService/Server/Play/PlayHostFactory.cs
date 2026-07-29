@@ -108,17 +108,32 @@ internal static class PlayHostFactory
             {
                 spot.SetAdvertiseHost(options.SpotRouterAdvertiseHost);
             }
+            if (options.PopulationLimit is { } populationLimit)
+            {
+                spot.SetActorLimit(populationLimit);
+                spot.SetSpotLimit(populationLimit);
+            }
             spot.Objects().Server()
                 .AddEntrySpot<ScenarioEntrySpot>()
                 .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
                     SpotServiceNames.ActorType, factory => factory.RecreateOnRelocation())
                 .AddSpotFactory<ScenarioUserSpot>(
-                    SpotServiceNames.UserSpotType, factory => factory.DisableRelocation())
+                    SpotServiceNames.UserSpotType, factory =>
+                    {
+                        if (options.PopulationLimit is { } stableTypeLimit)
+                            factory.StableTypeLimit(stableTypeLimit);
+                        factory.DisableRelocation();
+                    })
                 .AddInstanceSpotFactory<ScenarioInstanceSpot>(
                     SpotServiceNames.InstanceSpotType,
                     factory => factory.DisableRelocation())
                 .AddSpotFactory<ScenarioAlternateSpot>(
                     SpotServiceNames.AlternateSpotType, factory => factory.DisableRelocation())
+                .AddSpotFactory<ScenarioWeightCapacitySpot>(
+                    SpotServiceNames.WeightCapacitySpotType,
+                    factory => factory
+                        .StableTypeLimit(1)
+                        .DisableRelocation())
                 .AddSpotFactory<MultiNodeSpotA>(
                     SpotServiceNames.MultiSpotTypeA, factory => factory.DisableRelocation())
                 .AddSpotFactory<MultiNodeSpotB>(

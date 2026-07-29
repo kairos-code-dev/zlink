@@ -337,6 +337,21 @@ internal static class GatewayHostFactory
                 result.Spot.NodeRid.ToString(),
                 result.State.ToString()));
         });
+        app.MapPost("/spot/get-or-create-typed", async (
+            TypedSpotCreateReq request,
+            IZLinkSpotManager spots,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await spots
+                .GetOrCreate(request.SpotId, request.SpotType)
+                .InMesh(SpotServiceNames.SpotChannel)
+                .Timeout(TimeSpan.FromSeconds(15))
+                .Async(cancellationToken);
+            return Results.Ok(new CreateSpotRes(
+                result.Spot.SpotId,
+                result.Spot.NodeRid.ToString(),
+                result.State.ToString()));
+        });
         app.MapPost("/actor/request", async (
             ActorRequestReq request,
             IZLinkActorClient actors,

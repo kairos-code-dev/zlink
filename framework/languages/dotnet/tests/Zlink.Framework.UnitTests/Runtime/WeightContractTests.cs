@@ -111,6 +111,33 @@ public sealed class WeightContractTests
     }
 
     [Fact]
+    public void EquivalentWeightsUseTheShortestExactRatioCycle()
+    {
+        WeightedCandidate[] candidates =
+        [
+            new("one", 100),
+            new("three", 300)
+        ];
+        var counts = candidates.ToDictionary(
+            static candidate => candidate.Name,
+            static _ => 0,
+            StringComparer.Ordinal);
+        long cursor = 0;
+
+        for (var index = 0; index < 20; index++)
+        {
+            var selected = ZLinkWeightedSelector.Select(
+                candidates,
+                static candidate => candidate.Weight,
+                ref cursor);
+            counts[selected!.Name]++;
+        }
+
+        Assert.Equal(5, counts["one"]);
+        Assert.Equal(15, counts["three"]);
+    }
+
+    [Fact]
     public void ObjectPlacementFiltersCapacityAndZeroWeightBeforeSelection()
     {
         var eligible = Descriptor(

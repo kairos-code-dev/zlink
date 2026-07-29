@@ -10,9 +10,11 @@ internal static class ZLinkWeightedSelector
     {
         if (eligible.Count == 0)
             return null;
-        var total = Sum(eligible, weight);
-        if (total <= 0)
+        var rawTotal = Sum(eligible, weight);
+        if (rawTotal <= 0)
             return null;
+        var divisor = CommonDivisor(eligible, weight);
+        var total = rawTotal / divisor;
         var ordinal = Interlocked.Increment(ref cursor);
         // Traverse the weighted ring with a step that is coprime to its size.
         // This preserves the exact ratio over one full ring while avoiding a
@@ -21,7 +23,7 @@ internal static class ZLinkWeightedSelector
         var selected = (long)(((ulong)ordinal * (ulong)step) % (ulong)total);
         foreach (var candidate in eligible)
         {
-            var candidateWeight = weight(candidate);
+            var candidateWeight = weight(candidate) / divisor;
             if (candidateWeight <= 0)
                 continue;
             if (selected < candidateWeight)
@@ -48,6 +50,26 @@ internal static class ZLinkWeightedSelector
         while (GreatestCommonDivisor(step, total) != 1)
             step++;
         return step;
+    }
+
+    private static int CommonDivisor<T>(
+        IEnumerable<T> eligible,
+        Func<T, int> weight)
+    {
+        var divisor = 0L;
+        foreach (var candidate in eligible)
+        {
+            var candidateWeight = weight(candidate);
+            if (candidateWeight <= 0)
+                continue;
+            divisor = divisor == 0
+                ? candidateWeight
+                : GreatestCommonDivisor(divisor, candidateWeight);
+            if (divisor == 1)
+                return 1;
+        }
+
+        return checked((int)divisor);
     }
 
     private static long GreatestCommonDivisor(long left, long right)

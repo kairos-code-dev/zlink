@@ -68,7 +68,7 @@
 | SM-G2 | 구현 | node B 추가 뒤 기존 Spot·actor owner 유지와 신규 Spot·actor의 명시적 node B 배치를 `sm-g2` 실행에서 확인했다. |
 | SM-G3 | 구현 | 같은 user spot에 여러 stream session이 동시에 join/request/leave를 수행하고 actor별 join/leave lifecycle evidence가 1회씩 남는지 확인한다. |
 | SM-G4 | 구현 | 다수 bound session에 동시에 push를 보내 각 session이 자기 actor push만 받는지 확인한다. |
-| SM-G5 | 미구현 | node-wide placement weight 범위, weight 0 제외와 장기 분배 비율 E2E가 없다. |
+| SM-G5 | 부분 구현·process 통과 | `sm-g5` actual-process에서 startup/runtime signed 범위, Actor·User Spot 80개씩의 `20:60` 배치, 기존 Actor owner 유지, weight `0`의 신규 placement 제외와 typed capacity-first fallback을 확인했다. `WeightContractTests`는 64-bit 합계와 같은 비율의 최소 selection cycle을 포함해 9/9다. 증거: `logs/20260729-162042-2859820/`. Snapshot 고정 뒤 capacity를 소진하는 race, 두 번째 reservation과 factory exactly-once, weight `0` relocation target 제외와 이미 얻은 reservation 유지의 deterministic 증거는 남아 있다. |
 
 현재 표에서 `미구현`과 `전환 대상`인 행은 `run_e2e.sh all`의 완료 범위에 포함되지 않는다.
 따라서 과거 default-batch 결과를 현행 Config 2 전체 완료 증거로 사용하지 않는다. Runtime M6

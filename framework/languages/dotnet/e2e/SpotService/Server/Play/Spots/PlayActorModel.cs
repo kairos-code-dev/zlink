@@ -217,3 +217,9 @@ internal sealed class ScenarioAlternateSpot(
 {
     public IZLinkSpotContext Context { get; } = context;
 }
+
+internal sealed class ScenarioWeightCapacitySpot(
+    IZLinkSpotContext context) : IZLinkSpot
+{
+    public IZLinkSpotContext Context { get; } = context;
+}

@@ -110,6 +110,7 @@ await (options.OperationGroup switch
     "sm-g2" => SmG2OwnerSpotRemapScenario.RunAsync(playA, playB, gateway),
     "sm-g3" => SmG3ConcurrentSessionActorLifecycleScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-g4" => SmG4ConcurrentBoundSessionPushScenario.RunAsync(options.SessionAStreamEndpoint),
+    "sm-g5" => SmG5PlacementWeightScenario.RunAsync(gateway, playA, playB),
     "sm-b1-b2-b3-b5" => RunB1B2B3B5Async(playA, playB, options.SessionAStreamEndpoint),
     "sm-d1-d6" => RunD1D2D6Async(
         playA,

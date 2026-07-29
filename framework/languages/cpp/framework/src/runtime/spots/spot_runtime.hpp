@@ -249,7 +249,12 @@ inline void record_actor_instance_index_unlocked (spot_node_builder_state_t &nod
 class spot_context_state_t : public std::enable_shared_from_this<spot_context_state_t>
 {
   public:
-    void detach_application_instance (bool notify_closing)
+    void detach_application_instance (
+      bool notify_closing,
+      spot_close_reason_t close_reason = spot_close_reason_t::explicit_close,
+      std::chrono::system_clock::time_point deadline =
+        std::chrono::system_clock::time_point::max (),
+      std::stop_token cleanup_cancellation = {})
     {
         auto lifetime_guard = shared_from_this ();
         {
@@ -260,7 +265,10 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
         std::exception_ptr callback_error;
         if (notify_closing && lifecycle.on_closing && instance) {
             try {
-                lifecycle.on_closing (instance.get ());
+                lifecycle.on_closing (
+                  instance.get (),
+                  spot_closing_context_t{close_reason, deadline},
+                  cleanup_cancellation);
             }
             catch (...) {
                 callback_error = std::current_exception ();
@@ -379,6 +387,21 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
     {
         std::lock_guard<std::mutex> lock (callback_mutex);
         return callback_depth > 0;
+    }
+};
+
+class spot_context_access_t final
+{
+  public:
+    static spot_context_t create ()
+    {
+        return spot_context_t ();
+    }
+
+    static spot_context_t create (
+      std::shared_ptr<spot_context_state_t> state)
+    {
+        return spot_context_t (std::move (state));
     }
 };
 
@@ -1004,15 +1027,15 @@ class spot_node_runtime_t
         context_state.on_create_actor_callbacks[std::type_index (typeid (TActor))] =
           [] (void *spot, void *actor, const zlink::message_t &request,
               serializer_registry_t &serializers) {
-              if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
+              if constexpr (detail::entry_spot_type<TSpot>
                             && has_framework_payload_on_create_actor_callback<TSpot, TActor>) {
                   static_cast<TSpot *> (spot)->on_create_actor (
                     *static_cast<TActor *> (actor), message_t::from_raw (request, &serializers));
-              } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
+              } else if constexpr (detail::entry_spot_type<TSpot>
                                    && has_raw_payload_on_create_actor_callback<TSpot, TActor>) {
                   static_cast<TSpot *> (spot)->on_create_actor (*static_cast<TActor *> (actor),
                                                               request);
-              } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
+              } else if constexpr (detail::entry_spot_type<TSpot>
                                    && has_on_create_actor_callback<TSpot, TActor>) {
                   static_cast<TSpot *> (spot)->on_create_actor (*static_cast<TActor *> (actor));
               }
@@ -1052,7 +1075,7 @@ class spot_node_runtime_t
           actor_ref_t (node_rid_t::from_string (effective_spot_node_rid (_state->snapshot)),
                        std::string (actor_ref.actor_type ()), std::string (actor_ref.actor_id ()),
                        actor_ref.generation () + 1);
-        if constexpr (std::is_base_of_v<entry_spot_t, TSpot>) {
+        if constexpr (detail::entry_spot_type<TSpot>) {
             if (_state->actor_created_keys.insert (key).second) {
                 notify_on_create_actor<TActor> (context_state, actor, create_request);
             }

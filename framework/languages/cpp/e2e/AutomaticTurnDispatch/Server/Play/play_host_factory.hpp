@@ -86,11 +86,15 @@ inline void configure_play_host (zlink::framework::app_t &app,
         spot.set_routing_id (zlink::routing_id_t::from (play_options.node_rid))
           .listen (play_options.spot_router_endpoint)
           .add_entry_spot<await_entry_spot_t> (
-            [evidence_ptr] { return std::make_shared<await_entry_spot_t> (*evidence_ptr); })
+            [evidence_ptr] (entry_spot_context_t context) {
+                return std::make_shared<await_entry_spot_t> (
+                  std::move (context), *evidence_ptr);
+            })
           .add_spot_factory<await_probe_spot_t> (
             yd::probe_spot_name,
-            [evidence_ptr, external_api] (spot_context_t) {
-                return std::make_shared<await_probe_spot_t> (*evidence_ptr, external_api);
+            [evidence_ptr, external_api] (spot_context_t context) {
+                return std::make_shared<await_probe_spot_t> (
+                  std::move (context), *evidence_ptr, external_api);
             },
             [] (auto &factory) {
                 factory.disable_relocation ();

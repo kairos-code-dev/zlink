@@ -93,47 +93,62 @@ struct scenario_actor_factory_t final
     }
 };
 
-class user_spot_t : public zlink::framework::spot_t
+class user_spot_t : public zlink::framework::spot_t<scenario_actor_t>
 {
   public:
-    explicit user_spot_t (scenario_state_t &state) : _state (state) {}
-
-    void configure (zlink::framework::spot_context_t &context)
+    user_spot_t (
+      zlink::framework::spot_context_t context,
+      scenario_state_t &state) :
+        _state (state),
+        _context (std::move (context))
     {
-        _context = context;
-        context.handlers ().add_actor_request<&user_spot_t::mutate> ("StateReq");
-        context.handlers ().add_actor_request<&user_spot_t::ping> ("ActorPingReq");
-        context.handlers ().add_actor_request<&user_spot_t::slow_ping> ("SlowActorPingReq");
-        context.handlers ().add_actor_request<&user_spot_t::complex> ("ComplexActorReq");
-        context.handlers ().add_actor_request<&user_spot_t::leave> ("LeaveReq");
-        context.handlers ().add_actor_request<&user_spot_t::disconnect> ("DisconnectReq");
-        context.handlers ().add_actor_request<&user_spot_t::outbound> ("OutboundReq");
-        context.handlers ().add_actor_request<&user_spot_t::run_worker> ("WorkerReq");
-        context.handlers ().add_actor_request<&user_spot_t::spot_to_spot> ("SpotToSpotReq");
-        context.handlers ().add_actor_request<&user_spot_t::type_mismatch> ("TypeMismatchReq");
-        context.handlers ().add_actor_request<&user_spot_t::push_to_session> ("PushReq");
-        context.handlers ().add_actor_request<&user_spot_t::snapshot> ("SnapshotReq");
-        context.handlers ().add_handler<&user_spot_t::direct_state> ("StateReq");
-        context.handlers ().add_handler<&user_spot_t::direct_request> ("DirectSpotReq");
-        context.handlers ().add_handler<&user_spot_t::direct_command> ("DirectSpotMsg");
-        context.handlers ().add_handler<&user_spot_t::start_worker> ("WorkerStartReq");
-        context.handlers ().add_handler<&user_spot_t::slow_request> ("SlowSpotReq");
-        context.handlers ().add_handler<&user_spot_t::spot_outbound> ("SpotOutboundReq");
-        context.handlers ().add_handler<&user_spot_t::spot_outbound_negative> (
-          "SpotOutboundNegativeReq");
-        context.handlers ().add_handler<&user_spot_t::spot_to_spot_direct> (
-          "SpotToSpotDirectReq");
-        context.handlers ().add_handler<&user_spot_t::spot_to_spot_timeout> (
-          "SpotToSpotTimeoutReq");
-        context.handlers ().add_handler<&user_spot_t::spot_to_spot_negative> (
-          "SpotToSpotNegativeReq");
-        context.handlers ().add_handler<&user_spot_t::start_idle_close> ("IdleCloseMsg");
-        context.handlers ().add_handler<&user_spot_t::stage_probe> ("StageProbeReq");
-        context.handlers ().add_handler<&user_spot_t::start_stage_timer> ("StageTimerStartMsg");
-        context.handlers ().add_subscribe<&user_spot_t::on_mesh_event> (e2e::mesh_topic);
     }
 
-    void on_initialize ()
+    zlink::framework::spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override
+    {
+        _context.handlers ().add_actor_request<&user_spot_t::mutate> ("StateReq");
+        _context.handlers ().add_actor_request<&user_spot_t::ping> ("ActorPingReq");
+        _context.handlers ().add_actor_request<&user_spot_t::slow_ping> ("SlowActorPingReq");
+        _context.handlers ().add_actor_request<&user_spot_t::complex> ("ComplexActorReq");
+        _context.handlers ().add_actor_request<&user_spot_t::leave> ("LeaveReq");
+        _context.handlers ().add_actor_request<&user_spot_t::disconnect> ("DisconnectReq");
+        _context.handlers ().add_actor_request<&user_spot_t::outbound> ("OutboundReq");
+        _context.handlers ().add_actor_request<&user_spot_t::run_worker> ("WorkerReq");
+        _context.handlers ().add_actor_request<&user_spot_t::spot_to_spot> ("SpotToSpotReq");
+        _context.handlers ().add_actor_request<&user_spot_t::type_mismatch> ("TypeMismatchReq");
+        _context.handlers ().add_actor_request<&user_spot_t::push_to_session> ("PushReq");
+        _context.handlers ().add_actor_request<&user_spot_t::snapshot> ("SnapshotReq");
+        _context.handlers ().add_handler<&user_spot_t::direct_state> ("StateReq");
+        _context.handlers ().add_handler<&user_spot_t::direct_request> ("DirectSpotReq");
+        _context.handlers ().add_handler<&user_spot_t::direct_command> ("DirectSpotMsg");
+        _context.handlers ().add_handler<&user_spot_t::start_worker> ("WorkerStartReq");
+        _context.handlers ().add_handler<&user_spot_t::slow_request> ("SlowSpotReq");
+        _context.handlers ().add_handler<&user_spot_t::spot_outbound> ("SpotOutboundReq");
+        _context.handlers ().add_handler<&user_spot_t::spot_outbound_negative> (
+          "SpotOutboundNegativeReq");
+        _context.handlers ().add_handler<&user_spot_t::spot_to_spot_direct> (
+          "SpotToSpotDirectReq");
+        _context.handlers ().add_handler<&user_spot_t::spot_to_spot_timeout> (
+          "SpotToSpotTimeoutReq");
+        _context.handlers ().add_handler<&user_spot_t::spot_to_spot_negative> (
+          "SpotToSpotNegativeReq");
+        _context.handlers ().add_handler<&user_spot_t::start_idle_close> ("IdleCloseMsg");
+        _context.handlers ().add_handler<&user_spot_t::stage_probe> ("StageProbeReq");
+        _context.handlers ().add_handler<&user_spot_t::start_stage_timer> ("StageTimerStartMsg");
+        _context.handlers ().add_subscribe<&user_spot_t::on_mesh_event> (e2e::mesh_topic);
+    }
+
+    zlink::framework::task_t<void> on_initialize () override
     {
         _state.record ("SpotInitialized", {}, _context.spot_id ());
         const auto spot_id = _context.spot_id ();
@@ -141,10 +156,11 @@ class user_spot_t : public zlink::framework::spot_t
             _timer = _context.add_timer<user_spot_timer_handler_t> (
               "sm-e2-tick", std::chrono::milliseconds (100));
         }
+        co_return;
     }
 
-    zlink::framework::spot_create_response_t
-    on_create (const zlink::framework::message_t &request)
+    zlink::framework::task_t<zlink::framework::spot_create_response_t>
+    on_create (const zlink::framework::message_t &request) override
     {
         if (!request.empty ()) {
             try {
@@ -165,24 +181,28 @@ class user_spot_t : public zlink::framework::spot_t
                 }
             }
         }
-        return zlink::framework::spot_create_response_t::accept ();
+        co_return zlink::framework::spot_create_response_t::accept ();
     }
 
-    void on_closing ()
+    zlink::framework::task_t<void>
+    on_closing (
+      const zlink::framework::spot_closing_context_t &,
+      std::stop_token) override
     {
         _state.record ("SpotClosing", {}, _context.spot_id ());
+        co_return;
     }
 
-    zlink::framework::spot_actor_join_response_t
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
     on_actor_join (std::string_view actor_id,
-                   const zlink::framework::message_t &request_message)
+                   const zlink::framework::message_t &request_message) override
     {
         try {
             const auto request = request_message.decode<e2e::join_admitted_user_spot_actor_req_t> ();
             if (!request.allow) {
                 _state.record ("SpotActorJoinRejected", std::string (actor_id),
                                _context.spot_id (), request.reason);
-                return zlink::framework::spot_actor_join_response_t::reject (
+                co_return zlink::framework::spot_actor_join_response_t::reject (
                   e2e::join_admitted_user_spot_actor_res_t{
                     .spot_id = _context.spot_id (),
                     .actor_id = std::string (actor_id),
@@ -194,7 +214,7 @@ class user_spot_t : public zlink::framework::spot_t
                            _context.spot_id (), request.reason);
             _state.record ("SpotActorJoined", std::string (actor_id),
                            _context.spot_id ());
-            return zlink::framework::spot_actor_join_response_t::accept (
+            co_return zlink::framework::spot_actor_join_response_t::accept (
               e2e::join_admitted_user_spot_actor_res_t{
                 .spot_id = _context.spot_id (),
                 .actor_id = std::string (actor_id),
@@ -207,7 +227,7 @@ class user_spot_t : public zlink::framework::spot_t
 
         const auto request = request_message.decode<e2e::join_req_t> ();
         _pending_joins[std::string (actor_id)] = request;
-        return zlink::framework::spot_actor_join_response_t::accept (
+        co_return zlink::framework::spot_actor_join_response_t::accept (
           e2e::join_res_t{.spot_id = _context.spot_id (),
                           .owner_node_rid = _state.node_rid,
                           .actor_id = std::string (actor_id),
@@ -220,7 +240,8 @@ class user_spot_t : public zlink::framework::spot_t
                                     .generation = 0}});
     }
 
-    zlink::framework::task_t<void> on_actor_joined (const scenario_actor_t &actor)
+    zlink::framework::task_t<void>
+    on_actor_joined (scenario_actor_t &actor) override
     {
         const auto pending = _pending_joins.find (actor.actor_id);
         if (pending != _pending_joins.end ()) {
@@ -235,13 +256,15 @@ class user_spot_t : public zlink::framework::spot_t
         co_return;
     }
 
-    zlink::framework::task_t<void> on_leave_actor (const scenario_actor_t &actor)
+    zlink::framework::task_t<void>
+    on_leave_actor (scenario_actor_t &actor) override
     {
         _state.record ("ActorLeft", actor.actor_id, _context.spot_id ());
         co_return;
     }
 
-    zlink::framework::task_t<void> on_disconnect_actor (const scenario_actor_t &actor)
+    zlink::framework::task_t<void>
+    on_disconnect_actor (scenario_actor_t &actor) override
     {
         _state.record ("ActorDisconnected", actor.actor_id,
                        _context.spot_id ());
@@ -831,38 +854,69 @@ user_spot_stage_timer_handler_t::handle (user_spot_t &spot,
     spot.record_stage_timer_tick (tick);
 }
 
-class entry_spot_t : public zlink::framework::entry_spot_t
+class entry_spot_t
+    : public zlink::framework::entry_spot_t<scenario_actor_t>
 {
   public:
-    explicit entry_spot_t (scenario_state_t &state) : _state (state) {}
-
-    void configure (zlink::framework::entry_spot_context_t &context)
+    entry_spot_t (
+      zlink::framework::entry_spot_context_t context,
+      scenario_state_t &state) :
+        _state (state),
+        _context (std::move (context))
     {
-        _context = context;
-        context.handlers ().add_actor_request<&entry_spot_t::join> ("JoinReq");
-        context.handlers ().add_actor_request<&entry_spot_t::join_admitted> (
+    }
+
+    zlink::framework::entry_spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+
+    const zlink::framework::entry_spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override
+    {
+        _context.handlers ().add_actor_request<&entry_spot_t::join> ("JoinReq");
+        _context.handlers ().add_actor_request<&entry_spot_t::join_admitted> (
           "JoinAdmittedUserSpotActorReq");
-        context.handlers ().add_actor_request<&entry_spot_t::ping> ("ActorPingReq");
-        context.handlers ().add_actor_request<&entry_spot_t::slow_ping> ("SlowActorPingReq");
-        context.handlers ().add_actor_request<&entry_spot_t::push_to_session> ("PushReq");
-        context.handlers ().add_actor_request<&entry_spot_t::snapshot> ("SnapshotReq");
-        context.handlers ().add_actor_request<&entry_spot_t::destroy_actor> ("DestroyActorReq");
+        _context.handlers ().add_actor_request<&entry_spot_t::ping> ("ActorPingReq");
+        _context.handlers ().add_actor_request<&entry_spot_t::slow_ping> ("SlowActorPingReq");
+        _context.handlers ().add_actor_request<&entry_spot_t::push_to_session> ("PushReq");
+        _context.handlers ().add_actor_request<&entry_spot_t::snapshot> ("SnapshotReq");
+        _context.handlers ().add_actor_request<&entry_spot_t::destroy_actor> ("DestroyActorReq");
     }
 
-    void configure (zlink::framework::spot_context_t &context)
-    {
-        zlink::framework::entry_spot_context_t entry_context (context);
-        configure (entry_context);
-    }
-
-    void on_create_actor (const scenario_actor_t &actor)
+    zlink::framework::task_t<zlink::framework::actor_create_response_t>
+    on_create_actor (
+      scenario_actor_t &actor,
+      const zlink::framework::message_t &) override
     {
         _state.record ("ActorCreated", actor.actor_id, _context.spot_id ());
+        co_return zlink::framework::actor_create_response_t::accept ();
     }
 
-    zlink::framework::task_t<void> on_actor_joined (const scenario_actor_t &actor)
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (
+      std::string_view,
+      const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+
+    zlink::framework::task_t<void>
+    on_actor_joined (scenario_actor_t &actor) override
     {
         _state.record ("EntryActorJoined", actor.actor_id,
+                       _context.spot_id ());
+        co_return;
+    }
+
+    zlink::framework::task_t<void>
+    on_leave_actor (scenario_actor_t &actor) override
+    {
+        _state.record ("EntryActorLeft", actor.actor_id,
                        _context.spot_id ());
         co_return;
     }
@@ -1013,8 +1067,50 @@ class entry_spot_t : public zlink::framework::entry_spot_t
     zlink::framework::entry_spot_context_t _context;
 };
 
-class alternate_user_spot_t : public zlink::framework::spot_t
+class alternate_user_spot_t
+    : public zlink::framework::spot_t<scenario_actor_t>
 {
+  public:
+    explicit alternate_user_spot_t (
+      zlink::framework::spot_context_t context) :
+        _context (std::move (context))
+    {
+    }
+
+    zlink::framework::spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override {}
+
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (
+      std::string_view,
+      const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+
+    zlink::framework::task_t<void>
+    on_actor_joined (scenario_actor_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void>
+    on_leave_actor (scenario_actor_t &) override
+    {
+        co_return;
+    }
+
+  private:
+    zlink::framework::spot_context_t _context;
 };
 
 } // namespace

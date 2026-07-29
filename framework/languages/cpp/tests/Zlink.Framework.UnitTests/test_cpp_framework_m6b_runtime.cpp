@@ -82,7 +82,8 @@ class memory_relocation_store_t final :
     std::map<std::string, std::vector<std::uint8_t>> _roots;
 };
 
-class execution_mode_spot_t final : public zlink::framework::spot_t
+class execution_mode_spot_t final
+    : public zlink::framework::spot_t<zlink::framework::actor_t>
 {
   public:
     explicit execution_mode_spot_t (zlink::framework::spot_context_t context) :
@@ -90,8 +91,28 @@ class execution_mode_spot_t final : public zlink::framework::spot_t
     {
     }
 
-    zlink::framework::spot_context_t &context () noexcept { return _context; }
-    void configure () {}
+    zlink::framework::spot_context_t &context () noexcept override { return _context; }
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+    void configure () override {}
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::reject ();
+    }
+    zlink::framework::task_t<void>
+    on_actor_joined (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
+    zlink::framework::task_t<void>
+    on_leave_actor (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
 
   private:
     zlink::framework::spot_context_t _context;

@@ -16,27 +16,35 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::server::play
 
 namespace yd = zlink::framework::e2e::automatic_turn_dispatch;
 
-class await_entry_spot_t : public zlink::framework::entry_spot_t
+class await_entry_spot_t
+    : public zlink::framework::entry_spot_t<await_actor_t>
 {
   public:
-    explicit await_entry_spot_t (evidence_store_t &evidence) : _evidence (evidence) {}
-
-    void configure (zlink::framework::entry_spot_context_t &context)
+    await_entry_spot_t (zlink::framework::entry_spot_context_t context,
+                        evidence_store_t &evidence) :
+        _evidence (evidence), _context (std::move (context))
     {
-        _context = context;
-        context.handlers ().add_actor_request<&await_entry_spot_t::actor_fast_req> (
+    }
+
+    zlink::framework::entry_spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+
+    const zlink::framework::entry_spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override
+    {
+        _context.handlers ().add_actor_request<&await_entry_spot_t::actor_fast_req> (
           yd::actor_fast_req_t::packet_name);
     }
 
-    void configure (zlink::framework::spot_context_t &context)
-    {
-        zlink::framework::entry_spot_context_t entry_context (context);
-        configure (entry_context);
-    }
-
-    zlink::framework::spot_actor_join_response_t
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
     on_actor_join (std::string_view actor_id,
-                   const zlink::framework::message_t &request_message)
+                   const zlink::framework::message_t &request_message) override
     {
         const auto request = request_message.decode<yd::delay_req_t> ();
         const auto spot_id = _context.spot_id ();
@@ -47,10 +55,20 @@ class await_entry_spot_t : public zlink::framework::entry_spot_t
         _evidence.add ("actor-join-target-completed|rid=" + _evidence.node_rid + "|spot="
                        + spot_id + "|actor=" + std::string (actor_id) + "|request="
                        + request.request_id + "|handler=entry");
-        return zlink::framework::spot_actor_join_response_t::accept (
+        co_return zlink::framework::spot_actor_join_response_t::accept (
           yd::delay_res_t{.request_id = request.request_id,
                             .marker = request.marker,
                             .node_rid = _evidence.node_rid});
+    }
+
+    zlink::framework::task_t<void> on_actor_joined (await_actor_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_leave_actor (await_actor_t &) override
+    {
+        co_return;
     }
 
     zlink::framework::task_t<yd::actor_await_res_t>

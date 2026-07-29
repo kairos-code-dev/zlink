@@ -72,16 +72,18 @@ inline int run_service_host (int argc, char **argv)
         mesh.configure_router_socket ().mailbox_byte_budget = 2 * 1024 * 1024;
         mesh.add_spot_factory<monitoring_spot_t> (
           spot_channel,
-          [] (zlink::framework::spot_context_t) {
-              return std::make_shared<monitoring_spot_t> ();
+          [] (zlink::framework::spot_context_t context) {
+              return std::make_shared<monitoring_spot_t> (
+                std::move (context));
           },
           [] (auto &factory) {
               factory.disable_relocation ();
           });
         mesh.add_spot_factory<monitoring_subject_spot_t> (
           monitoring_subject_spot,
-          [] (zlink::framework::spot_context_t) {
-              return std::make_shared<monitoring_subject_spot_t> ();
+          [] (zlink::framework::spot_context_t context) {
+              return std::make_shared<monitoring_subject_spot_t> (
+                std::move (context));
           },
           [] (auto &factory) {
               factory.disable_relocation ();

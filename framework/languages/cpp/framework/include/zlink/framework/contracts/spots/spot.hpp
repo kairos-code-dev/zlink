@@ -45,6 +45,7 @@ namespace zlink::framework
 namespace detail
 {
 class spot_node_builder_state_t;
+class spot_context_access_t;
 struct mesh_node_builder_state_t;
 void drain_spot_node_executors (spot_node_builder_state_t &node);
 void cancel_spot_node_dispatch_queues (spot_node_builder_state_t &node);
@@ -88,7 +89,41 @@ template <typename TActor>
 class actor_factory_builder_t;
 class spot_publisher_client_t;
 class spot_manager_t;
+class spot_context_t;
+class entry_spot_context_t;
 class instance_spot_context_t;
+struct spot_actor_join_response_t;
+struct actor_create_response_t;
+struct spot_create_response_t;
+
+enum class spot_close_reason_t
+{
+    explicit_close = 0,
+    host_shutdown = 1,
+    relocation_out = 2
+};
+
+struct spot_closing_context_t final
+{
+    spot_close_reason_t reason = spot_close_reason_t::explicit_close;
+    std::chrono::system_clock::time_point deadline;
+};
+
+enum class spot_relocation_ready_outcome_t : std::uint8_t
+{
+    continued = 0,
+    relocated = 1
+};
+
+struct spot_relocation_ready_completion_t final
+{
+    spot_relocation_ready_outcome_t outcome =
+      spot_relocation_ready_outcome_t::continued;
+};
+
+template <typename TActor> class spot_t;
+template <typename TActor> class entry_spot_t;
+class instance_spot_t;
 
 namespace detail
 {
@@ -104,24 +139,6 @@ using actor_join_completion_callback_t = std::function<task_t<void> (
   const actor_ref_t *, const std::optional<message_t> &,
   framework_error_kind_t, bool)>;
 } // namespace detail
-
-class spot_t
-{
-  public:
-    virtual ~spot_t () = default;
-};
-
-class entry_spot_t : public spot_t
-{
-  public:
-    ~entry_spot_t () override = default;
-};
-
-class instance_spot_t : public spot_t
-{
-  public:
-    ~instance_spot_t () override = default;
-};
 
 namespace detail
 {
@@ -1121,6 +1138,7 @@ class spot_context_t
     friend class instance_spot_context_t;
     friend class detail::spot_node_runtime_t;
     friend class detail::timer_runtime_t;
+    friend class detail::spot_context_access_t;
 
     spot_context_t ();
     explicit spot_context_t (std::shared_ptr<detail::spot_context_state_t> state);
@@ -1271,6 +1289,119 @@ class instance_spot_context_t : public spot_context_t
     explicit instance_spot_context_t (
       std::shared_ptr<detail::spot_context_state_t> state);
 };
+
+template <typename TActor>
+class spot_t
+{
+  public:
+    using actor_type = TActor;
+
+    virtual ~spot_t () = default;
+    virtual spot_context_t &context () noexcept = 0;
+    virtual const spot_context_t &context () const noexcept = 0;
+    virtual void configure () = 0;
+    virtual task_t<spot_create_response_t> on_create (
+      const message_t &request)
+    {
+        (void) request;
+        co_return spot_create_response_t::accept ();
+    }
+    virtual task_t<void> on_initialize () { co_return; }
+    virtual task_t<void> on_closing (
+      const spot_closing_context_t &context,
+      std::stop_token cleanup_cancellation)
+    {
+        (void) context;
+        (void) cleanup_cancellation;
+        co_return;
+    }
+    virtual task_t<void> on_relocation_ready_completed (
+      const spot_relocation_ready_completion_t &completion)
+    {
+        (void) completion;
+        co_return;
+    }
+    virtual task_t<spot_actor_join_response_t> on_actor_join (
+      std::string_view actor_id,
+      const message_t &request) = 0;
+    virtual task_t<void> on_actor_joined (TActor &actor) = 0;
+    virtual task_t<void> on_leave_actor (TActor &actor) = 0;
+    virtual task_t<void> on_disconnect_actor (TActor &actor)
+    {
+        (void) actor;
+        co_return;
+    }
+};
+
+template <typename TActor>
+class entry_spot_t
+{
+  public:
+    using actor_type = TActor;
+
+    virtual ~entry_spot_t () = default;
+    virtual entry_spot_context_t &context () noexcept = 0;
+    virtual const entry_spot_context_t &context () const noexcept = 0;
+    virtual void configure () = 0;
+    virtual task_t<void> on_initialize () { co_return; }
+    virtual task_t<void> on_closing (
+      const spot_closing_context_t &context,
+      std::stop_token cleanup_cancellation)
+    {
+        (void) context;
+        (void) cleanup_cancellation;
+        co_return;
+    }
+    virtual task_t<actor_create_response_t> on_create_actor (
+      TActor &actor,
+      const message_t &create_request)
+    {
+        (void) actor;
+        (void) create_request;
+        co_return actor_create_response_t::accept ();
+    }
+    virtual task_t<spot_actor_join_response_t> on_actor_join (
+      std::string_view actor_id,
+      const message_t &request) = 0;
+    virtual task_t<void> on_actor_joined (TActor &actor) = 0;
+    virtual task_t<void> on_leave_actor (TActor &actor) = 0;
+    virtual task_t<void> on_disconnect_actor (TActor &actor)
+    {
+        (void) actor;
+        co_return;
+    }
+};
+
+class instance_spot_t
+{
+  public:
+    virtual ~instance_spot_t () = default;
+    virtual instance_spot_context_t &context () noexcept = 0;
+    virtual const instance_spot_context_t &context () const noexcept = 0;
+    virtual void configure () = 0;
+    virtual task_t<void> on_initialize () { co_return; }
+    virtual task_t<void> on_closing (
+      const spot_closing_context_t &context,
+      std::stop_token cleanup_cancellation)
+    {
+        (void) context;
+        (void) cleanup_cancellation;
+        co_return;
+    }
+};
+
+namespace detail
+{
+template <typename T>
+concept user_spot_type =
+  requires { typename T::actor_type; }
+  && std::derived_from<T, spot_t<typename T::actor_type>>;
+
+template <typename T>
+concept entry_spot_type =
+  requires { typename T::actor_type; }
+  && std::derived_from<T, entry_spot_t<typename T::actor_type>>;
+} // namespace detail
 
 struct spot_create_result_t
 {
@@ -1467,131 +1598,44 @@ class spot_handler_registry_t
 
     template <typename TSpot, typename TActor> void register_actor_admission ()
     {
+        static_assert (
+          std::same_as<TActor, typename TSpot::actor_type>,
+          "SPOT actor handler type must match the Spot base actor_type");
         detail::spot_actor_admission_callbacks_t callbacks;
-        callbacks.entry_spot = std::is_base_of_v<entry_spot_t, TSpot>;
+        callbacks.entry_spot = detail::entry_spot_type<TSpot>;
         callbacks.join = [] (void *spot, std::string_view actor_id,
                              const zlink::message_t &request,
                              serializer_registry_t &serializers) {
             auto &typed_spot = *static_cast<TSpot *> (spot);
-            if constexpr (std::is_base_of_v<entry_spot_t, TSpot>) {
-                return spot_actor_join_response_t::accept ();
-            } else if constexpr (requires { typed_spot.on_actor_join (actor_id, message_t{}); }) {
-                return typed_spot.on_actor_join (actor_id,
-                                                 message_t::from_raw (request, &serializers));
-            } else if constexpr (requires { typed_spot.on_actor_join (actor_id, request); }) {
-                return typed_spot.on_actor_join (actor_id, request);
-            } else {
-                return spot_actor_join_response_t::reject ();
-            }
+            return typed_spot
+              .on_actor_join (
+                actor_id, message_t::from_raw (request, &serializers))
+              .result ()
+              .value ();
         };
         callbacks.on_actor_joined = [] (void *spot, void *actor) {
-            if constexpr (requires {
-                              static_cast<TSpot *> (spot)->on_actor_joined (
-                                *static_cast<TActor *> (actor));
-                          }) {
-                static_assert (
-                  std::same_as<decltype (static_cast<TSpot *> (spot)->on_actor_joined (
-                                 *static_cast<TActor *> (actor))),
-                               task_t<void>>,
-                  "on_actor_joined must return task_t<void>");
-                return static_cast<TSpot *> (spot)->on_actor_joined (
-                  *static_cast<TActor *> (actor));
-            }
-            return task_t<void> (result_t<void>::success ());
+            return static_cast<TSpot *> (spot)->on_actor_joined (
+              *static_cast<TActor *> (actor));
         };
         callbacks.on_create_actor = [] (void *spot, void *actor, const zlink::message_t &request,
                                       serializer_registry_t &serializers) {
-            if constexpr (std::is_base_of_v<entry_spot_t, TSpot> && requires {
-                              static_cast<TSpot *> (spot)->on_create_actor (
-                                *static_cast<TActor *> (actor), message_t{});
-                          }) {
-                using result_type = decltype (static_cast<TSpot *> (spot)->on_create_actor (
-                  *static_cast<TActor *> (actor), message_t{}));
-                if constexpr (std::same_as<result_type, task_t<actor_create_response_t>>) {
-                    return static_cast<TSpot *> (spot)->on_create_actor (
-                      *static_cast<TActor *> (actor),
-                      message_t::from_raw (request, &serializers));
-                } else if constexpr (std::same_as<result_type, actor_create_response_t>) {
-                    auto invoked = static_cast<TSpot *> (spot)->on_create_actor (
-                      *static_cast<TActor *> (actor),
-                      message_t::from_raw (request, &serializers));
-                    return task_t<actor_create_response_t> (
-                      result_t<actor_create_response_t>::success (std::move (invoked)));
-                } else {
-                    static_cast<TSpot *> (spot)->on_create_actor (
-                      *static_cast<TActor *> (actor),
-                      message_t::from_raw (request, &serializers));
-                }
-            } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot> && requires {
-                                     static_cast<TSpot *> (spot)->on_create_actor (
-                                       *static_cast<TActor *> (actor), request);
-                                 }) {
-                using result_type = decltype (static_cast<TSpot *> (spot)->on_create_actor (
-                  *static_cast<TActor *> (actor), request));
-                if constexpr (std::same_as<result_type, task_t<actor_create_response_t>>) {
-                    return static_cast<TSpot *> (spot)->on_create_actor (
-                      *static_cast<TActor *> (actor), request);
-                } else if constexpr (std::same_as<result_type, actor_create_response_t>) {
-                    auto invoked = static_cast<TSpot *> (spot)->on_create_actor (
-                      *static_cast<TActor *> (actor), request);
-                    return task_t<actor_create_response_t> (
-                      result_t<actor_create_response_t>::success (std::move (invoked)));
-                } else {
-                    static_cast<TSpot *> (spot)->on_create_actor (
-                      *static_cast<TActor *> (actor), request);
-                }
-            } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot> && requires {
-                                     static_cast<TSpot *> (spot)->on_create_actor (
-                                       *static_cast<TActor *> (actor));
-                                 }) {
-                using result_type = decltype (static_cast<TSpot *> (spot)->on_create_actor (
-                  *static_cast<TActor *> (actor)));
-                if constexpr (std::same_as<result_type, task_t<actor_create_response_t>>) {
-                    return static_cast<TSpot *> (spot)->on_create_actor (
-                      *static_cast<TActor *> (actor));
-                } else if constexpr (std::same_as<result_type, actor_create_response_t>) {
-                    auto invoked = static_cast<TSpot *> (spot)->on_create_actor (
-                      *static_cast<TActor *> (actor));
-                    return task_t<actor_create_response_t> (
-                      result_t<actor_create_response_t>::success (std::move (invoked)));
-                } else {
-                    static_cast<TSpot *> (spot)->on_create_actor (
-                      *static_cast<TActor *> (actor));
-                }
+            if constexpr (detail::entry_spot_type<TSpot>) {
+                return static_cast<TSpot *> (spot)->on_create_actor (
+                  *static_cast<TActor *> (actor),
+                  message_t::from_raw (request, &serializers));
+            } else {
+                return task_t<actor_create_response_t> (
+                  result_t<actor_create_response_t>::success (
+                    actor_create_response_t::accept ()));
             }
-            return task_t<actor_create_response_t> (
-              result_t<actor_create_response_t>::success (
-                actor_create_response_t::accept ()));
         };
         callbacks.on_leave_actor = [] (void *spot, void *actor) {
-            if constexpr (requires {
-                              static_cast<TSpot *> (spot)->on_leave_actor (
-                                *static_cast<TActor *> (actor));
-                          }) {
-                static_assert (
-                  std::same_as<decltype (static_cast<TSpot *> (spot)->on_leave_actor (
-                                 *static_cast<TActor *> (actor))),
-                               task_t<void>>,
-                  "on_leave_actor must return task_t<void>");
-                return static_cast<TSpot *> (spot)->on_leave_actor (
-                  *static_cast<TActor *> (actor));
-            }
-            return task_t<void> (result_t<void>::success ());
+            return static_cast<TSpot *> (spot)->on_leave_actor (
+              *static_cast<TActor *> (actor));
         };
         callbacks.on_disconnect_actor = [] (void *spot, void *actor) {
-            if constexpr (requires {
-                              static_cast<TSpot *> (spot)->on_disconnect_actor (
-                                *static_cast<TActor *> (actor));
-                          }) {
-                static_assert (
-                  std::same_as<decltype (static_cast<TSpot *> (spot)->on_disconnect_actor (
-                                 *static_cast<TActor *> (actor))),
-                               task_t<void>>,
-                  "on_disconnect_actor must return task_t<void>");
-                return static_cast<TSpot *> (spot)->on_disconnect_actor (
-                  *static_cast<TActor *> (actor));
-            }
-            return task_t<void> (result_t<void>::success ());
+            return static_cast<TSpot *> (spot)->on_disconnect_actor (
+              *static_cast<TActor *> (actor));
         };
         register_actor_admission_erased (std::type_index (typeid (TActor)), std::move (callbacks));
     }
@@ -1790,34 +1834,10 @@ struct spot_lifecycle_callbacks_t
       void *, const zlink::message_t &, serializer_registry_t &)>
       on_create;
     std::function<void (void *)> on_initialize;
-    std::function<void (void *)> on_closing;
+    std::function<void (
+      void *, const spot_closing_context_t &, std::stop_token)> on_closing;
 };
 
-template <typename TSpot>
-concept has_framework_create_callback = requires (TSpot & spot, const message_t &request)
-{
-    {
-        spot.on_create (request)
-    } -> std::same_as<spot_create_response_t>;
-};
-
-template <typename TSpot>
-concept has_async_framework_create_callback = requires (TSpot & spot, const message_t &request)
-{
-    {
-        spot.on_create (request)
-    } -> std::same_as<task_t<spot_create_response_t>>;
-};
-
-template <typename TSpot> concept has_initialize_callback = requires (TSpot & spot)
-{
-    spot.on_initialize ();
-};
-
-template <typename TSpot> concept has_closing_callback = requires (TSpot & spot)
-{
-    spot.on_closing ();
-};
 } // namespace detail
 
 class spot_node_builder_t
@@ -1835,11 +1855,10 @@ class spot_node_builder_t
     // relocation. The default is 30 seconds; zero disables Message Follow.
     spot_node_builder_t &set_message_follow_duration (std::chrono::milliseconds duration);
     template <typename TEntrySpot>
+    requires detail::entry_spot_type<TEntrySpot>
     spot_node_builder_t &add_entry_spot (
       std::function<std::shared_ptr<TEntrySpot> (entry_spot_context_t)> factory)
     {
-        static_assert (std::is_base_of_v<entry_spot_t, TEntrySpot>,
-                       "Entry SPOT type must derive from zlink::framework::entry_spot_t");
         if (!factory) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "Entry SPOT factory must not be empty");
@@ -1853,9 +1872,7 @@ class spot_node_builder_t
     }
 
     template <typename TSpot>
-    requires std::derived_from<TSpot, spot_t>
-             && (!std::derived_from<TSpot, entry_spot_t>)
-             && (!std::derived_from<TSpot, instance_spot_t>)
+    requires detail::user_spot_type<TSpot>
     spot_node_builder_t &add_spot_factory (
       std::string stable_type,
       std::function<std::shared_ptr<TSpot> (spot_context_t)> factory,
@@ -2001,10 +2018,6 @@ class spot_node_builder_t
       std::string spot_name,
       std::function<std::shared_ptr<TSpot> (TContext)> factory)
     {
-        static_assert (requires (TSpot &spot) {
-            { spot.context () };
-            spot.configure ();
-        }, "Context factory Spot must expose context() and configure()");
         detail::spot_lifecycle_callbacks_t callbacks;
         auto create = [factory = std::move (factory)] (TContext context) {
             const auto expected_state = context._state;
@@ -2028,16 +2041,26 @@ class spot_node_builder_t
         } else {
             callbacks.create_spot_context_instance = std::move (create);
         }
-        if constexpr (detail::has_initialize_callback<TSpot>) {
-            callbacks.on_initialize = [] (void *spot) {
-                static_cast<TSpot *> (spot)->on_initialize ();
-            };
+        if constexpr (detail::user_spot_type<TSpot>) {
+            callbacks.on_create =
+              [] (void *spot, const zlink::message_t &request,
+                  serializer_registry_t &serializers) {
+                  return static_cast<TSpot *> (spot)->on_create (
+                    message_t::from_raw (request, &serializers));
+              };
         }
-        if constexpr (detail::has_closing_callback<TSpot>) {
-            callbacks.on_closing = [] (void *spot) {
-                static_cast<TSpot *> (spot)->on_closing ();
-            };
-        }
+        callbacks.on_initialize = [] (void *spot) {
+            static_cast<TSpot *> (spot)->on_initialize ().result ().value ();
+        };
+        callbacks.on_closing =
+          [] (void *spot,
+              const spot_closing_context_t &context,
+              std::stop_token cleanup_cancellation) {
+            static_cast<TSpot *> (spot)
+              ->on_closing (context, cleanup_cancellation)
+              .result ()
+              .value ();
+        };
         register_lifecycle_erased (std::move (spot_name), std::move (callbacks));
     }
     void register_lifecycle_erased (std::string spot_name,

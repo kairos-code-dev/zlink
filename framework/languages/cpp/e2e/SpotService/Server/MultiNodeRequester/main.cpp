@@ -10,10 +10,47 @@
 #include <memory>
 #include <string>
 
-class requester_bridge_spot_t : public zlink::framework::spot_t
+class requester_bridge_spot_t
+    : public zlink::framework::spot_t<zlink::framework::actor_t>
 {
   public:
-    void configure (zlink::framework::spot_context_t &) {}
+    explicit requester_bridge_spot_t (
+      zlink::framework::spot_context_t context) :
+        _context (std::move (context))
+    {
+    }
+
+    zlink::framework::spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override {}
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (
+      std::string_view,
+      const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::reject ();
+    }
+    zlink::framework::task_t<void>
+    on_actor_joined (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
+    zlink::framework::task_t<void>
+    on_leave_actor (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
+
+  private:
+    zlink::framework::spot_context_t _context;
 };
 
 struct requester_options_t
@@ -81,8 +118,9 @@ int main (int argc, char **argv)
           .channel_name (requester_mesh);
         spot.add_spot_factory<requester_bridge_spot_t> (
           "requester-bridge",
-          [] (spot_context_t) {
-              return std::make_shared<requester_bridge_spot_t> ();
+          [] (spot_context_t context) {
+              return std::make_shared<requester_bridge_spot_t> (
+                std::move (context));
           },
           [] (auto &factory) {
               factory.disable_relocation ();

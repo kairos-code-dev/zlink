@@ -235,18 +235,21 @@ struct conversation_idle_timer_handler_t
     void handle (conversation_spot_t &spot, const zlink::framework::timer_tick_t &tick) const;
 };
 
-class conversation_spot_t : public spot_t
+class conversation_spot_t : public spot_t<support_user_actor_t>
 {
   public:
-    explicit conversation_spot_t (supportchat_conversation_runtime_t &runtime) :
-        _runtime (runtime)
+    conversation_spot_t (spot_context_t context,
+                         supportchat_conversation_runtime_t &runtime) :
+        _runtime (runtime), _context (std::move (context))
     {
     }
 
-    void configure (spot_context_t &context)
+    spot_context_t &context () noexcept override { return _context; }
+    const spot_context_t &context () const noexcept override { return _context; }
+
+    void configure () override
     {
-        _context = context;
-        context.handlers ()
+        _context.handlers ()
           .add_actor_request<&conversation_spot_t::join> (join_conversation_req_t::packet_name)
           .add_actor_request<&conversation_spot_t::send_message> (
             send_chat_message_req_t::packet_name)
@@ -257,11 +260,12 @@ class conversation_spot_t : public spot_t
     /* 공통 sample spec §14: 유휴 감지는 conversation Spot의 server-side timer가 소유한다.
      * idle deadline이 지나면 `WaitingForClose`로 바꾸고 idle 알림을, close grace가 지나면
      * 대화를 닫고 closed 알림을 **모든 참가자**에게 보낸다. */
-    void on_initialize ()
+    task_t<void> on_initialize () override
     {
         _idle_timer =
           _context.add_timer<conversation_idle_timer_handler_t> ("conversation-idle",
                                                                  std::chrono::milliseconds (500));
+        co_return;
     }
 
     void on_idle_tick ()
@@ -279,27 +283,29 @@ class conversation_spot_t : public spot_t
         }
     }
 
-    spot_create_response_t on_create (const zlink::framework::message_t &request)
+    task_t<spot_create_response_t>
+    on_create (const zlink::framework::message_t &request) override
     {
         auto create = request.decode<conversation_create_req_t> ();
         _conversation = conversation_t (create.conversation_id, create.subject,
                                         create.customer_actor_id);
-        return spot_create_response_t::accept ();
+        co_return spot_create_response_t::accept ();
     }
 
-    spot_actor_join_response_t on_actor_join (std::string_view actor_id,
-                                              const zlink::framework::message_t &message)
+    task_t<spot_actor_join_response_t>
+    on_actor_join (std::string_view actor_id,
+                   const zlink::framework::message_t &message) override
     {
         const auto profile = _runtime.actor_profile (std::string (actor_id));
         if (!profile) {
-            return spot_actor_join_response_t::reject ();
+            co_return spot_actor_join_response_t::reject ();
         }
         const auto request = message.decode<join_conversation_req_t> ();
         const auto participant_id = profile->participant_id.empty () ? profile->actor_id
                                                                       : profile->participant_id;
         if (request.participant_id != participant_id || request.role != profile->role
             || request.display_name != profile->display_name) {
-            return spot_actor_join_response_t::reject ();
+            co_return spot_actor_join_response_t::reject ();
         }
         auto projected = require_conversation ();
         conversation_state_t admission_state;
@@ -316,10 +322,11 @@ class conversation_spot_t : public spot_t
             }
         }
         _pending_actor_joins.insert (std::string (actor_id));
-        return spot_actor_join_response_t::accept (join_conversation_res_t{admission_state});
+        co_return spot_actor_join_response_t::accept (
+          join_conversation_res_t{admission_state});
     }
 
-    task_t<void> on_actor_joined (support_user_actor_t &actor)
+    task_t<void> on_actor_joined (support_user_actor_t &actor) override
     {
         if (_pending_actor_joins.erase (actor.actor_id) == 0) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -328,6 +335,8 @@ class conversation_spot_t : public spot_t
         (void) join_actor (actor);
         co_return;
     }
+
+    task_t<void> on_leave_actor (support_user_actor_t &) override { co_return; }
 
     join_conversation_res_t join (support_user_actor_t &actor,
                                   spot_actor_request_context_t &,
@@ -493,44 +502,48 @@ inline void conversation_idle_timer_handler_t::handle (conversation_spot_t &spot
     spot.on_idle_tick ();
 }
 
-class support_entry_spot_t : public entry_spot_t
+class support_entry_spot_t : public entry_spot_t<support_user_actor_t>
 {
   public:
-    explicit support_entry_spot_t (supportchat_conversation_runtime_t &runtime) :
-        _runtime (runtime)
+    support_entry_spot_t (entry_spot_context_t context,
+                          supportchat_conversation_runtime_t &runtime) :
+        _runtime (runtime), _context (std::move (context))
     {
     }
 
-    void configure (entry_spot_context_t &context)
+    entry_spot_context_t &context () noexcept override { return _context; }
+    const entry_spot_context_t &context () const noexcept override
     {
-        _context = context;
-        context.handlers ()
+        return _context;
+    }
+
+    void configure () override
+    {
+        _context.handlers ()
           .add_actor_request<&support_entry_spot_t::set_available> (
             set_agent_available_req_t::packet_name)
           .add_actor_request<&support_entry_spot_t::open_conversation> (
             open_conversation_req_t::packet_name);
     }
 
-    void configure (spot_context_t &context)
-    {
-        entry_spot_context_t entry_context (context);
-        configure (entry_context);
-    }
-
-    spot_actor_join_response_t on_actor_join (std::string_view actor_id,
-                                              const zlink::message_t &request)
+    task_t<spot_actor_join_response_t>
+    on_actor_join (std::string_view actor_id,
+                   const zlink::message_t &request) override
     {
         auto join = request.parse_json<ensure_support_user_actor_req_t> ();
         _pending_profiles[std::string (actor_id)] = std::move (join);
-        return spot_actor_join_response_t::accept ();
+        co_return spot_actor_join_response_t::accept ();
     }
 
-    void on_create_actor (support_user_actor_t &actor, const zlink::framework::message_t &request)
+    task_t<actor_create_response_t>
+    on_create_actor (support_user_actor_t &actor,
+                     const zlink::framework::message_t &request) override
     {
         apply_actor_profile (actor, request.decode<ensure_support_user_actor_req_t> ());
+        co_return actor_create_response_t::accept ();
     }
 
-    task_t<void> on_actor_joined (support_user_actor_t &actor)
+    task_t<void> on_actor_joined (support_user_actor_t &actor) override
     {
         const auto pending = _pending_profiles.find (actor.actor_id);
         if (pending != _pending_profiles.end ()) {
@@ -543,6 +556,8 @@ class support_entry_spot_t : public entry_spot_t
         }
         co_return;
     }
+
+    task_t<void> on_leave_actor (support_user_actor_t &) override { co_return; }
 
     set_agent_available_res_t set_available (support_user_actor_t &actor,
                                              spot_actor_request_context_t &,
@@ -929,12 +944,15 @@ int main (int argc, char **argv)
         support_spot.channel_name ("supportchat.session.actor.route");
         support_spot.listen (topology.support_spot_router_endpoint)
           .add_entry_spot<support_entry_spot_t> (
-            [runtime_ptr] { return std::make_shared<support_entry_spot_t> (*runtime_ptr); })
+            [runtime_ptr] (entry_spot_context_t context) {
+                return std::make_shared<support_entry_spot_t> (
+                  std::move (context), *runtime_ptr);
+            })
           .add_spot_factory<conversation_spot_t> (
             support_conversation_spot,
-            [runtime_ptr] (spot_context_t) {
+            [runtime_ptr] (spot_context_t context) {
                 return std::make_shared<conversation_spot_t> (
-                  *runtime_ptr);
+                  std::move (context), *runtime_ptr);
             },
             [] (auto &factory) {
                 factory.disable_relocation ();

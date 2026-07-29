@@ -502,21 +502,33 @@ e2e::join_target_res_t make_join_reply (const std::string &scenario,
                                   std::string{}};
 }
 
-class transfer_entry_spot_t : public fw::entry_spot_t
+class transfer_entry_spot_t : public fw::entry_spot_t<transfer_actor_t>
 {
   public:
-    void configure (fw::spot_context_t &context)
+    explicit transfer_entry_spot_t (fw::entry_spot_context_t context) :
+        _context (std::move (context))
     {
-        context.handlers ().add_actor_request<&transfer_entry_spot_t::join_target> (
-          e2e::join_target_req_t::packet_name);
-        context.handlers ().add_actor_request<&transfer_entry_spot_t::bound_push> (
-          e2e::bound_push_req_t::packet_name);
-        context.handlers ().add_actor_request<&transfer_entry_spot_t::probe> (
-          e2e::probe_req_t::packet_name);
-        _context = fw::entry_spot_context_t (context);
     }
 
-    void on_create_actor (transfer_actor_t &actor, const fw::message_t &create_request)
+    fw::entry_spot_context_t &context () noexcept override { return _context; }
+    const fw::entry_spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override
+    {
+        _context.handlers ().add_actor_request<&transfer_entry_spot_t::join_target> (
+          e2e::join_target_req_t::packet_name);
+        _context.handlers ().add_actor_request<&transfer_entry_spot_t::bound_push> (
+          e2e::bound_push_req_t::packet_name);
+        _context.handlers ().add_actor_request<&transfer_entry_spot_t::probe> (
+          e2e::probe_req_t::packet_name);
+    }
+
+    fw::task_t<fw::actor_create_response_t>
+    on_create_actor (transfer_actor_t &actor,
+                     const fw::message_t &create_request) override
     {
         if (!create_request.empty ()) {
             const auto request = create_request.decode<e2e::actor_create_req_t> ();
@@ -528,23 +540,25 @@ class transfer_entry_spot_t : public fw::entry_spot_t
         }
         g_evidence->add ("create", actor.actor_id, "create",
                          actor.actor_type + ":" + std::to_string (actor.state_version));
+        co_return fw::actor_create_response_t::accept ();
     }
 
-    fw::spot_actor_join_response_t on_actor_join (std::string_view actor_id,
-                                                  const fw::message_t &request)
+    fw::task_t<fw::spot_actor_join_response_t>
+    on_actor_join (std::string_view actor_id,
+                   const fw::message_t &request) override
     {
         g_evidence->add ("local", std::string (actor_id), "admission", "actor-id-only");
-        return fw::spot_actor_join_response_t::accept (request);
+        co_return fw::spot_actor_join_response_t::accept (request);
     }
 
-    fw::task_t<void> on_actor_joined (transfer_actor_t &actor)
+    fw::task_t<void> on_actor_joined (transfer_actor_t &actor) override
     {
         g_evidence->add ("local", actor.actor_id, "entry_joined",
                          std::to_string (actor.state_version));
         co_return;
     }
 
-    fw::task_t<void> on_leave_actor (const transfer_actor_t &actor)
+    fw::task_t<void> on_leave_actor (transfer_actor_t &actor) override
     {
         if (actor.actor_type == e2e::actor_type_no_adapter) {
             g_evidence->add ("transfer", actor.actor_id, "transfer_out_empty_default",
@@ -612,33 +626,45 @@ class transfer_entry_spot_t : public fw::entry_spot_t
     fw::entry_spot_context_t _context;
 };
 
-class transfer_user_spot_t : public fw::spot_t
+class transfer_user_spot_t : public fw::spot_t<transfer_actor_t>
 {
   public:
-    void configure (fw::spot_context_t &context)
+    explicit transfer_user_spot_t (fw::spot_context_t context) :
+        _context (std::move (context))
     {
-        context.handlers ().add_actor_request<&transfer_user_spot_t::join_target> (
-          e2e::join_target_req_t::packet_name);
-        context.handlers ().add_actor_request<&transfer_user_spot_t::probe> (
-          e2e::probe_req_t::packet_name);
-        context.handlers ().add_actor_send<&transfer_user_spot_t::handoff_packet> (
-          e2e::handoff_packet_msg_t::packet_name);
-        context.handlers ().add_actor_request<&transfer_user_spot_t::bound_push> (
-          e2e::bound_push_req_t::packet_name);
-        _context = context;
     }
 
-    fw::spot_create_response_t on_create (const fw::message_t &request)
+    fw::spot_context_t &context () noexcept override { return _context; }
+    const fw::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override
+    {
+        _context.handlers ().add_actor_request<&transfer_user_spot_t::join_target> (
+          e2e::join_target_req_t::packet_name);
+        _context.handlers ().add_actor_request<&transfer_user_spot_t::probe> (
+          e2e::probe_req_t::packet_name);
+        _context.handlers ().add_actor_send<&transfer_user_spot_t::handoff_packet> (
+          e2e::handoff_packet_msg_t::packet_name);
+        _context.handlers ().add_actor_request<&transfer_user_spot_t::bound_push> (
+          e2e::bound_push_req_t::packet_name);
+    }
+
+    fw::task_t<fw::spot_create_response_t>
+    on_create (const fw::message_t &request) override
     {
         if (!request.empty ()) {
             _mode = request.decode<e2e::create_spot_req_t> ().mode;
         }
         g_evidence->add ("create_spot", _context.spot_id (), "spot_created", _mode);
-        return fw::spot_create_response_t::accept ();
+        co_return fw::spot_create_response_t::accept ();
     }
 
-    fw::spot_actor_join_response_t on_actor_join (std::string_view actor_id,
-                                                  const fw::message_t &request)
+    fw::task_t<fw::spot_actor_join_response_t>
+    on_actor_join (std::string_view actor_id,
+                   const fw::message_t &request) override
     {
         const auto join = request.decode<e2e::join_target_req_t> ();
         const auto id = std::string (actor_id);
@@ -650,14 +676,14 @@ class transfer_user_spot_t : public fw::spot_t
                          "spot=" + _context.spot_id () + "|mode=" + _mode
                            + "|input=actor-id-only");
         if (_mode == "reject" || join.expected_mode == "reject") {
-            return fw::spot_actor_join_response_t::reject (
+            co_return fw::spot_actor_join_response_t::reject (
               make_join_reply (join.scenario, id, false, _context.spot_id ()));
         }
-        return fw::spot_actor_join_response_t::accept (
+        co_return fw::spot_actor_join_response_t::accept (
           make_join_reply (join.scenario, id, true, _context.spot_id ()));
     }
 
-    fw::task_t<void> on_actor_joined (transfer_actor_t &actor)
+    fw::task_t<void> on_actor_joined (transfer_actor_t &actor) override
     {
         if (_mode == "delay-joined") {
             const auto scenario = scenario_for (actor.actor_id);
@@ -687,7 +713,7 @@ class transfer_user_spot_t : public fw::spot_t
         co_return;
     }
 
-    fw::task_t<void> on_leave_actor (const transfer_actor_t &actor)
+    fw::task_t<void> on_leave_actor (transfer_actor_t &actor) override
     {
         g_evidence->add ("transfer", actor.actor_id, "target_leave",
                          _context.spot_id ());
@@ -1381,11 +1407,16 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
         mesh.listen (router_endpoint).set_routing_id (zlink::routing_id_t::from (rid));
         mesh.channel_name (e2e::mesh_name);
         if (host_role == transfer_host_role_t::actor_node) {
-            mesh.add_entry_spot<transfer_entry_spot_t> ()
+            mesh.add_entry_spot<transfer_entry_spot_t> (
+              [] (fw::entry_spot_context_t context) {
+                  return std::make_shared<transfer_entry_spot_t> (
+                    std::move (context));
+              })
               .add_spot_factory<transfer_user_spot_t> (
                 "transfer-user",
-                [] (fw::spot_context_t) {
-                    return std::make_shared<transfer_user_spot_t> ();
+                [] (fw::spot_context_t context) {
+                    return std::make_shared<transfer_user_spot_t> (
+                      std::move (context));
                 },
                 [] (auto &factory) {
                     factory.disable_relocation ();

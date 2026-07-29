@@ -95,7 +95,7 @@ struct customer_actor_factory_t final
     }
 };
 
-class customer_entry_spot_t : public entry_spot_t
+class customer_entry_spot_t : public entry_spot_t<customer_actor_t>
 {
   public:
     customer_entry_spot_t (entry_spot_context_t context,
@@ -104,9 +104,13 @@ class customer_entry_spot_t : public entry_spot_t
     {
     }
 
-    entry_spot_context_t &context () noexcept { return _context; }
+    entry_spot_context_t &context () noexcept override { return _context; }
+    const entry_spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
 
-    void configure ()
+    void configure () override
     {
         /* Actor 위치 조회는 Framework의 Actor Directory가 담당한다. Entry Spot은
          * actor에 도착한 subscription과 상태 message만 처리한다. */
@@ -117,11 +121,15 @@ class customer_entry_spot_t : public entry_spot_t
             delivery_status_updated_msg_t::packet_name);
     }
 
-    spot_actor_join_response_t on_actor_join (std::string_view,
-                                              const zlink::message_t &)
+    task_t<spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::message_t &) override
     {
-        return spot_actor_join_response_t::accept ();
+        co_return spot_actor_join_response_t::accept ();
     }
+
+    task_t<void> on_actor_joined (customer_actor_t &) override { co_return; }
+    task_t<void> on_leave_actor (customer_actor_t &) override { co_return; }
 
     subscribe_delivery_res_t
     subscribe_delivery (customer_actor_t &actor,

@@ -29,7 +29,7 @@ class bingo_room_draw_timer_handler_t
     task_t<void> handle (bingo_room_spot_t &spot, const timer_tick_t &tick) const;
 };
 
-class bingo_room_spot_t : public spot_t
+class bingo_room_spot_t : public spot_t<player_actor_t>
 {
   public:
     bingo_room_spot_t () = default;
@@ -41,10 +41,10 @@ class bingo_room_spot_t : public spot_t
     {
     }
 
-    spot_context_t &context () noexcept { return *_context; }
-    const spot_context_t &context () const noexcept { return *_context; }
+    spot_context_t &context () noexcept override { return *_context; }
+    const spot_context_t &context () const noexcept override { return *_context; }
 
-    void configure ()
+    void configure () override
     {
         _context->handlers ().add_actor_request<&bingo_room_spot_t::submit_card> ();
         _context->handlers ().add_actor_request<&bingo_room_spot_t::observe_events> ();
@@ -53,27 +53,36 @@ class bingo_room_spot_t : public spot_t
           sample_names_t::reward_topic);
     }
 
-    spot_create_response_t on_create (const message_t &request)
+    task_t<spot_create_response_t>
+    on_create (const message_t &request) override
     {
         if (!request.empty ()) {
             auto settings = request.decode<bingo_room_settings_payload_t> ();
             _is_observer = settings.purpose == "Observer";
             _observed_room_id = settings.observed_room_id;
         }
-        return spot_create_response_t::accept ();
+        co_return spot_create_response_t::accept ();
     }
 
-    void on_initialize ()
+    task_t<void> on_initialize () override
     {
         using namespace std::chrono_literals;
         _draw_timer =
           _context->add_timer<bingo_room_draw_timer_handler_t> ("bingo-draw", 200ms);
+        co_return;
     }
 
-    void on_closing () { _draw_timer.cancel (); }
+    task_t<void> on_closing (
+      const spot_closing_context_t &,
+      std::stop_token) override
+    {
+        _draw_timer.cancel ();
+        co_return;
+    }
 
-    spot_actor_join_response_t on_actor_join (std::string_view actor_id,
-                                              const message_t &request_message)
+    task_t<spot_actor_join_response_t>
+    on_actor_join (std::string_view actor_id,
+                   const message_t &request_message) override
     {
         auto request = request_message.decode<bingo_room_join_req_t> ();
         const auto joined_actor_id =
@@ -83,7 +92,7 @@ class bingo_room_spot_t : public spot_t
                 throw std::runtime_error ("observe-only actor can join only its observer room");
             }
             _pending_joins[joined_actor_id] = request;
-            return spot_actor_join_response_t::accept (bingo_room_join_res_t{
+            co_return spot_actor_join_response_t::accept (bingo_room_join_res_t{
               bingo_room_state_t{request.room_id, bingo_room_status_t::running}});
         }
         if (_is_observer) {
@@ -93,7 +102,8 @@ class bingo_room_spot_t : public spot_t
         projected.set_room_id_if_empty (request.room_id);
         projected.join (joined_actor_id, request.display_name);
         _pending_joins[joined_actor_id] = request;
-        return spot_actor_join_response_t::accept (bingo_room_join_res_t{projected.snapshot ()});
+        co_return spot_actor_join_response_t::accept (
+          bingo_room_join_res_t{projected.snapshot ()});
     }
 
     observe_bingo_events_res_t observe_events (
@@ -111,7 +121,7 @@ class bingo_room_spot_t : public spot_t
       const message_context_t &context,
       const submit_bingo_card_req_t &request);
 
-    task_t<void> on_actor_joined (const player_actor_t &actor)
+    task_t<void> on_actor_joined (player_actor_t &actor) override
     {
         const auto pending = _pending_joins.find (actor.actor.actor_id);
         if (pending == _pending_joins.end ()) {
@@ -121,7 +131,7 @@ class bingo_room_spot_t : public spot_t
         _game.set_room_id_if_empty (request.room_id);
         if (request.observe_only) {
             _pending_joins.erase (pending);
-            observers[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
+            observers[actor.actor.actor_id] = &actor;
         } else {
             get_player_record_res_t record;
             try {
@@ -139,13 +149,13 @@ class bingo_room_spot_t : public spot_t
                 || !_game.can_accept_player ()) {
                 _pending_joins.erase (actor.actor.actor_id);
                 (void) co_await _context->leave_actor (
-                  actor_ref_for (actor), const_cast<player_actor_t &> (actor));
+                  actor_ref_for (actor), actor);
                 co_return;
             }
             _pending_joins.erase (resumed);
             const auto display_name = actor.display_name.empty () ? request.display_name
                                                                   : actor.display_name;
-            actors[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
+            actors[actor.actor.actor_id] = &actor;
             const auto joined = _game.join (actor.actor.actor_id, display_name,
                                             record.wins, record.losses);
             send_to_players (joined.player_joined, actor.actor.actor_id);
@@ -159,7 +169,7 @@ class bingo_room_spot_t : public spot_t
         co_return;
     }
 
-    task_t<void> on_leave_actor (const player_actor_t &actor)
+    task_t<void> on_leave_actor (player_actor_t &actor) override
     {
         const auto player = actors.find (actor.actor.actor_id);
         if (player != actors.end ()) {

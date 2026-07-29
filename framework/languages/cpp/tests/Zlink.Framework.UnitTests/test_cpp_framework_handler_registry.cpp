@@ -162,8 +162,39 @@ struct spot_actor_t
 /// Exercises the Spot dispatch side of the unified MessageContext: the Spot packet member and the
 /// Spot Actor member both take the universal context, and the Spot subscription member takes the
 /// publish context.
-struct dispatch_spot_t : public zlink::framework::spot_t
+struct dispatch_spot_t : public zlink::framework::spot_t<spot_actor_t>
 {
+    zlink::framework::spot_context_t &context () noexcept override
+    {
+        std::terminate ();
+    }
+
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        std::terminate ();
+    }
+
+    void configure () override {}
+
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+
+    zlink::framework::task_t<void>
+    on_actor_joined (spot_actor_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void>
+    on_leave_actor (spot_actor_t &) override
+    {
+        co_return;
+    }
+
     void on_packet (const zlink::framework::message_context_t &context, const request_t &request)
     {
         last_payload = request.value;

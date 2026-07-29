@@ -84,18 +84,6 @@ class controlled_worker_scheduler_t final : public zlink::framework::detail::wor
     std::queue<std::function<void ()>> owner_jobs;
 };
 
-class test_spot_context_t : public zlink::framework::spot_context_t
-{
-  public:
-    test_spot_context_t () : zlink::framework::spot_context_t () {}
-
-    explicit test_spot_context_t (
-      std::shared_ptr<zlink::framework::detail::spot_context_state_t> state) :
-        zlink::framework::spot_context_t (std::move (state))
-    {
-    }
-};
-
 struct timer_activation_dependency_t
 {
     timer_activation_dependency_t () { ++created; }
@@ -183,7 +171,9 @@ bool verify_timer_handler_activation_lifetime ()
         state->spot_instance =
           std::make_shared<timer_activation_spot_t> ();
 
-        test_spot_context_t context (state);
+        auto context =
+          zlink::framework::detail::spot_context_access_t::create (
+            state);
         auto first =
           context.add_timer<timer_activation_handler_t> (
             "first", std::chrono::hours (24));
@@ -289,7 +279,9 @@ bool verify_close_waits_for_timer_callback_barrier ()
       handler);
     handler.reset ();
 
-    test_spot_context_t context (state);
+    auto context =
+      zlink::framework::detail::spot_context_access_t::create (
+        state);
     if (!state->enter_callback ()) {
         return false;
     }
@@ -333,7 +325,8 @@ context_with_scheduler (const std::shared_ptr<controlled_worker_scheduler_t> &sc
 {
     auto state = std::make_shared<zlink::framework::detail::spot_context_state_t> ();
     state->worker_scheduler = scheduler;
-    return test_spot_context_t (state);
+    return zlink::framework::detail::spot_context_access_t::create (
+      state);
 }
 
 bool wait_until (const std::function<bool ()> &predicate)
@@ -514,7 +507,8 @@ int main ()
         return 5;
     }
 
-    test_spot_context_t context;
+    auto context =
+      zlink::framework::detail::spot_context_access_t::create ();
     auto async_call = context.run_cpu_worker ([] { return 1; });
     auto async_result = async_call.submit ().result ();
     if (async_result

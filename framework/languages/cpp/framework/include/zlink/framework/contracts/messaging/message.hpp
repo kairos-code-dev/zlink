@@ -29,7 +29,7 @@ class spot_create_response_t;
 class spot_handler_registry_t;
 class spot_node_builder_t;
 class spot_manager_t;
-class spot_t;
+template <typename TActor> class spot_t;
 
 namespace detail
 {
@@ -105,7 +105,7 @@ class message_t
     friend class spot_handler_registry_t;
     friend class spot_node_builder_t;
     friend class spot_manager_t;
-    friend class spot_t;
+    template <typename TActor> friend class spot_t;
 
     static message_t from_raw (zlink::message_t message,
                                const serializer_registry_t *serializers = nullptr)

@@ -180,33 +180,37 @@ struct player_actor_factory_t final
 
 /* owner spot이 보낸 진행 notify가 이 노드의 entry spot으로 route돼 들어온다. 어느 노드로 갈지는
  * location store의 session binding이 정하므로, API는 자기 노드의 actor만 보면 된다. */
-class player_entry_spot_t : public entry_spot_t
+class player_entry_spot_t : public entry_spot_t<player_actor_t>
 {
   public:
-    explicit player_entry_spot_t (game_api_store_t &store) :
-        _store (store)
+    player_entry_spot_t (entry_spot_context_t context,
+                         game_api_store_t &store) :
+        _store (store), _context (std::move (context))
     {
     }
 
-    void configure (entry_spot_context_t &context)
+    entry_spot_context_t &context () noexcept override { return _context; }
+    const entry_spot_context_t &context () const noexcept override
     {
-        _context = context;
-        context.handlers ()
+        return _context;
+    }
+
+    void configure () override
+    {
+        _context.handlers ()
           .add_actor_send<&player_entry_spot_t::quest_progress_notified> (
             notify_quest_progress_msg_t::packet_name)
           .add_actor_request<&player_entry_spot_t::join_session> (join_session_req_t::packet_name);
     }
 
-    void configure (spot_context_t &context)
+    task_t<spot_actor_join_response_t>
+    on_actor_join (std::string_view, const zlink::message_t &) override
     {
-        entry_spot_context_t entry_context (context);
-        configure (entry_context);
+        co_return spot_actor_join_response_t::accept ();
     }
 
-    spot_actor_join_response_t on_actor_join (std::string_view, const zlink::message_t &)
-    {
-        return spot_actor_join_response_t::accept ();
-    }
+    task_t<void> on_actor_joined (player_actor_t &) override { co_return; }
+    task_t<void> on_leave_actor (player_actor_t &) override { co_return; }
 
     /* session이 join을 actor로 relay한다. actor가 이 노드의 entry spot에 붙어 있어야 owner spot이
      * session binding으로 이 노드를 찾을 수 있다. */
@@ -533,8 +537,10 @@ int main (int argc, char **argv)
         auto api_spot = options.add_route_mesh (api_spot_mesh_for (topology.api_name));
         api_spot.channel_name (sample_names_t::quest_spot_route);
         api_spot.listen (topology.selected_api_spot_router_endpoint ())
-          .add_entry_spot<player_entry_spot_t> ([store_ptr] {
-              return std::make_shared<player_entry_spot_t> (*store_ptr);
+          .add_entry_spot<player_entry_spot_t> ([store_ptr] (
+                                                  entry_spot_context_t context) {
+              return std::make_shared<player_entry_spot_t> (
+                std::move (context), *store_ptr);
           })
           .add_actor_factory<player_actor_t, player_actor_factory_t> (
             gamequest_player_actor_type,

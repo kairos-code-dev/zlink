@@ -867,12 +867,14 @@ struct contract_create_request_t
     int value{};
 };
 
-struct contract_spot_t : public zlink::framework::spot_t
+struct contract_spot_t
+    : public zlink::framework::spot_t<contract_actor_t>
 {
-    zlink::framework::spot_actor_join_response_t on_actor_join (
-      std::string_view, zlink::framework::message_t)
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (
+      std::string_view, const zlink::framework::message_t &) override
     {
-        return zlink::framework::spot_actor_join_response_t::accept ();
+        co_return zlink::framework::spot_actor_join_response_t::accept ();
     }
 
     void on_create_actor (contract_actor_t &, const zlink::framework::message_t &) {}
@@ -895,16 +897,33 @@ struct contract_instance_spot_t : public zlink::framework::instance_spot_t
 {
 };
 
-struct contract_context_spot_t : public zlink::framework::spot_t
+struct contract_context_spot_t
+    : public zlink::framework::spot_t<contract_actor_t>
 {
     explicit contract_context_spot_t (
       zlink::framework::spot_context_t context) :
         value (std::move (context))
     {
     }
-    zlink::framework::spot_context_t &context () noexcept { return value; }
-    const zlink::framework::spot_context_t &context () const noexcept { return value; }
-    void configure () {}
+    zlink::framework::spot_context_t &context () noexcept override { return value; }
+    const zlink::framework::spot_context_t &context () const noexcept override { return value; }
+    void configure () override {}
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+    zlink::framework::task_t<void>
+    on_actor_joined (contract_actor_t &) override
+    {
+        co_return;
+    }
+    zlink::framework::task_t<void>
+    on_leave_actor (contract_actor_t &) override
+    {
+        co_return;
+    }
     zlink::framework::spot_context_t value;
 };
 
@@ -928,16 +947,36 @@ struct contract_context_spot_relocation_adapter_t
     }
 };
 
-struct contract_context_entry_spot_t : public zlink::framework::entry_spot_t
+struct contract_context_entry_spot_t
+    : public zlink::framework::entry_spot_t<contract_actor_t>
 {
     explicit contract_context_entry_spot_t (
       zlink::framework::entry_spot_context_t context) :
         value (std::move (context))
     {
     }
-    zlink::framework::entry_spot_context_t &context () noexcept { return value; }
-    const zlink::framework::entry_spot_context_t &context () const noexcept { return value; }
-    void configure () {}
+    zlink::framework::entry_spot_context_t &context () noexcept override { return value; }
+    const zlink::framework::entry_spot_context_t &context () const noexcept override
+    {
+        return value;
+    }
+    void configure () override {}
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+    zlink::framework::task_t<void>
+    on_actor_joined (contract_actor_t &) override
+    {
+        co_return;
+    }
+    zlink::framework::task_t<void>
+    on_leave_actor (contract_actor_t &) override
+    {
+        co_return;
+    }
     zlink::framework::entry_spot_context_t value;
 };
 
@@ -948,9 +987,12 @@ struct contract_context_instance_spot_t : public zlink::framework::instance_spot
         value (std::move (context))
     {
     }
-    zlink::framework::instance_spot_context_t &context () noexcept { return value; }
-    const zlink::framework::instance_spot_context_t &context () const noexcept { return value; }
-    void configure () {}
+    zlink::framework::instance_spot_context_t &context () noexcept override { return value; }
+    const zlink::framework::instance_spot_context_t &context () const noexcept override
+    {
+        return value;
+    }
+    void configure () override {}
     zlink::framework::instance_spot_context_t value;
 };
 
@@ -1357,9 +1399,16 @@ static_assert (
                                "send", &named_route_handler_t::handle_send)),
                  zlink::framework::route_mesh_channel_builder_t &>);
 
-static_assert (std::has_virtual_destructor_v<zlink::framework::spot_t>);
-static_assert (std::has_virtual_destructor_v<zlink::framework::entry_spot_t>);
-static_assert (std::is_base_of_v<zlink::framework::spot_t, zlink::framework::entry_spot_t>);
+static_assert (
+  std::has_virtual_destructor_v<
+    zlink::framework::spot_t<contract_actor_t>>);
+static_assert (
+  std::has_virtual_destructor_v<
+    zlink::framework::entry_spot_t<contract_actor_t>>);
+static_assert (
+  !std::is_base_of_v<
+    zlink::framework::spot_t<contract_actor_t>,
+    zlink::framework::entry_spot_t<contract_actor_t>>);
 static_assert (std::has_virtual_destructor_v<
                zlink::framework::actor_relocation_adapter_t<contract_actor_t>>);
 static_assert (std::is_same_v<
@@ -1374,7 +1423,8 @@ static_assert (std::is_same_v<
 static_assert (std::is_same_v<decltype (std::declval<contract_spot_t &> ().on_actor_join (
                                 std::declval<std::string_view> (),
                                 std::declval<zlink::framework::message_t> ())),
-                              zlink::framework::spot_actor_join_response_t>);
+                              zlink::framework::task_t<
+                                zlink::framework::spot_actor_join_response_t>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().close ()),
                  zlink::framework::task_t<bool>>);

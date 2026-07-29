@@ -24,18 +24,31 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::server::play
 
 namespace yd = zlink::framework::e2e::automatic_turn_dispatch;
 
-class await_probe_spot_t : public zlink::framework::spot_t
+class await_probe_spot_t
+    : public zlink::framework::spot_t<await_actor_t>
 {
   public:
-    await_probe_spot_t (evidence_store_t &evidence, external_api_http_client_t external_api) :
-        _evidence (evidence), _external_api (std::move (external_api))
+    await_probe_spot_t (zlink::framework::spot_context_t context,
+                        evidence_store_t &evidence,
+                        external_api_http_client_t external_api) :
+        _evidence (evidence), _context (std::move (context)),
+        _external_api (std::move (external_api))
     {
     }
 
-    void configure (zlink::framework::spot_context_t &context)
+    zlink::framework::spot_context_t &context () noexcept override
     {
-        _context = context;
-        context.handlers ()
+        return _context;
+    }
+
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override
+    {
+        _context.handlers ()
           .add_handler<&await_probe_spot_t::hold_req> (yd::hold_req_t::packet_name)
           .add_handler<&await_probe_spot_t::hold_command> (yd::hold_msg_t::packet_name)
           .add_handler<&await_probe_spot_t::await_req> (yd::await_req_t::packet_name)
@@ -72,9 +85,9 @@ class await_probe_spot_t : public zlink::framework::spot_t
             yd::actor_push_await_req_t::packet_name);
     }
 
-    zlink::framework::spot_actor_join_response_t
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
     on_actor_join (std::string_view actor_id,
-                   const zlink::framework::message_t &request_message)
+                   const zlink::framework::message_t &request_message) override
     {
         const auto request = request_message.decode<yd::delay_req_t> ();
         const auto spot_id = _context.spot_id ();
@@ -85,13 +98,13 @@ class await_probe_spot_t : public zlink::framework::spot_t
         _evidence.add ("actor-join-target-completed|rid=" + _evidence.node_rid + "|spot="
                        + spot_id + "|actor=" + std::string (actor_id) + "|request="
                        + request.request_id + "|turn=" + current_turn_id () + "|handler=spot");
-        return zlink::framework::spot_actor_join_response_t::accept (
+        co_return zlink::framework::spot_actor_join_response_t::accept (
           yd::delay_res_t{.request_id = request.request_id,
                           .marker = request.marker,
                           .node_rid = _evidence.node_rid});
     }
 
-    zlink::framework::task_t<void> on_leave_actor (const await_actor_t &actor)
+    zlink::framework::task_t<void> on_leave_actor (await_actor_t &actor) override
     {
         if (!actor.join_request_id.empty ()) {
             _evidence.add ("actor-join-source-left|rid=" + _evidence.node_rid + "|spot="
@@ -102,7 +115,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
         co_return;
     }
 
-    zlink::framework::task_t<void> on_actor_joined (const await_actor_t &actor)
+    zlink::framework::task_t<void> on_actor_joined (await_actor_t &actor) override
     {
         if (!actor.join_request_id.empty ()) {
             _evidence.add ("actor-join-target-joined|rid=" + _evidence.node_rid + "|spot="

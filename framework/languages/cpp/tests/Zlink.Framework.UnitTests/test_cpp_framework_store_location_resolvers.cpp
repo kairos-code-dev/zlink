@@ -879,21 +879,49 @@ class missing_auto_connect_request_client_t final
     zlink::framework::app_t *_app;
 };
 
-class local_user_spot_t final : public zlink::framework::spot_t
+class actor_free_user_spot_contract_t
+    : public zlink::framework::spot_t<zlink::framework::actor_t>
+{
+  public:
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::reject ();
+    }
+    zlink::framework::task_t<void>
+    on_actor_joined (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
+    zlink::framework::task_t<void>
+    on_leave_actor (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
+};
+
+class local_user_spot_t final
+    : public actor_free_user_spot_contract_t
 {
   public:
     explicit local_user_spot_t (zlink::framework::spot_context_t context) :
         _context (std::move (context))
     {
     }
-    zlink::framework::spot_context_t &context () noexcept { return _context; }
-    void configure () {}
+    zlink::framework::spot_context_t &context () noexcept override { return _context; }
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+    void configure () override {}
 
   private:
     zlink::framework::spot_context_t _context;
 };
 
-class context_owned_user_spot_t final : public zlink::framework::spot_t
+class context_owned_user_spot_t final
+    : public actor_free_user_spot_contract_t
 {
   public:
     explicit context_owned_user_spot_t (
@@ -910,92 +938,39 @@ class context_owned_user_spot_t final : public zlink::framework::spot_t
             _destruction_count->fetch_add (1, std::memory_order_relaxed);
     }
 
-    zlink::framework::spot_context_t &context () noexcept { return _context; }
-    const zlink::framework::spot_context_t &context () const noexcept { return _context; }
-    void configure () {}
+    zlink::framework::spot_context_t &context () noexcept override { return _context; }
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+    void configure () override {}
 
   private:
     zlink::framework::spot_context_t _context;
     std::shared_ptr<std::atomic<int>> _destruction_count;
 };
 
-class mismatched_context_user_spot_t final : public zlink::framework::spot_t
-{
-  public:
-    mismatched_context_user_spot_t () :
-        _context (empty_context_t{})
-    {
-    }
-
-    zlink::framework::spot_context_t &context () noexcept { return _context; }
-    const zlink::framework::spot_context_t &context () const noexcept { return _context; }
-    void configure () {}
-
-  private:
-    class empty_context_t final : public zlink::framework::spot_context_t
-    {
-      public:
-        empty_context_t () = default;
-    };
-
-    zlink::framework::spot_context_t _context;
-};
-
-class context_factory_rejection_client_t final
-    : public zlink::framework::hosted_service_t
-{
-  public:
-    explicit context_factory_rejection_client_t (
-      zlink::framework::app_t &app) :
-        _app (&app)
-    {
-    }
-
-    void start (zlink::framework::service_provider_t &services) override
-    {
-        auto &manager =
-          services.get_required<zlink::framework::spot_manager_t> ();
-        const auto created = manager
-                               .get_or_create (
-                                 zlink::framework::spot_id_t ("context-mismatch"),
-                                 "mismatch")
-                               .timeout (std::chrono::seconds (2))
-                               .submit ()
-                               .result ();
-        observed = !created
-                   && created.error_kind ()
-                        == zlink::framework::framework_error_kind_t::spot_create_failed;
-        if (!observed) {
-            last_error = created.error () ? created.error ()->what ()
-                                          : "mismatched Context was accepted";
-        }
-        _app->stop ();
-    }
-
-    void stop () noexcept override {}
-
-    bool observed = false;
-    std::string last_error;
-
-  private:
-    zlink::framework::app_t *_app;
-};
-
-class occupied_user_spot_t final : public zlink::framework::spot_t
+class occupied_user_spot_t final
+    : public actor_free_user_spot_contract_t
 {
   public:
     explicit occupied_user_spot_t (zlink::framework::spot_context_t context) :
         _context (std::move (context))
     {
     }
-    zlink::framework::spot_context_t &context () noexcept { return _context; }
-    void configure () {}
+    zlink::framework::spot_context_t &context () noexcept override { return _context; }
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+    void configure () override {}
 
   private:
     zlink::framework::spot_context_t _context;
 };
 
-class failing_user_spot_t final : public zlink::framework::spot_t
+class failing_user_spot_t final
+    : public actor_free_user_spot_contract_t
 {
   public:
     explicit failing_user_spot_t (zlink::framework::spot_context_t context) :
@@ -1004,8 +979,12 @@ class failing_user_spot_t final : public zlink::framework::spot_t
         throw std::runtime_error (
           "intentional User Spot materialization failure");
     }
-    zlink::framework::spot_context_t &context () noexcept { return _context; }
-    void configure () {}
+    zlink::framework::spot_context_t &context () noexcept override { return _context; }
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+    void configure () override {}
 
   private:
     zlink::framework::spot_context_t _context;
@@ -2016,41 +1995,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     EXPECT_EQ (1u, observed_generation);
     EXPECT_EQ (1, destruction_count->load (std::memory_order_relaxed))
       << "host teardown must release the Spot instance/context ownership cycle";
-}
-
-TEST (ZLinkFrameworkStoreLocationResolvers,
-      ContextOnlySpotFactoryRejectsMismatchedReturnedContext)
-{
-    auto app = zlink::framework::app_t::create ();
-    context_factory_rejection_client_t *client = nullptr;
-    const auto endpoint =
-      std::string ("tcp://127.0.0.1:")
-      + std::to_string (bindable_loopback_port (29706));
-
-    app.add_zlink_framework ([&] (
-                               zlink::framework::zlink_framework_options_t &options) {
-        auto node = options.add_route_mesh ("context-rejection-mesh");
-        node.channel_name ("context-rejection-route");
-        node.set_routing_id (
-              zlink::routing_id_t::from ("context-rejection-node"))
-          .listen (endpoint)
-          .add_spot_factory<mismatched_context_user_spot_t> (
-            "mismatch",
-            [] (zlink::framework::spot_context_t) {
-                return std::make_shared<mismatched_context_user_spot_t> ();
-            },
-            [] (auto &factory) {
-                factory.disable_relocation ();
-            });
-    });
-    auto service =
-      std::make_unique<context_factory_rejection_client_t> (app);
-    client = service.get ();
-    app.add_hosted_service (std::move (service));
-
-    EXPECT_EQ (0, app.run (0, nullptr));
-    ASSERT_NE (nullptr, client);
-    EXPECT_TRUE (client->observed) << client->last_error;
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers,

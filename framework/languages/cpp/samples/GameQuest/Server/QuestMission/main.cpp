@@ -270,35 +270,50 @@ class quest_event_store_t
     std::map<std::string, int> _rehydrate_count;
 };
 
-class player_quest_spot_t : public spot_t
+class player_quest_spot_t : public spot_t<actor_t>
 {
   public:
-    player_quest_spot_t (quest_event_store_t &store,
+    player_quest_spot_t (spot_context_t context,
+                         quest_event_store_t &store,
                          actor_directory_t &directory,
                          actor_client_t &actors) :
-        _store (store), _directory (directory), _actors (actors)
+        _store (store), _directory (directory), _actors (actors),
+        _context (std::move (context))
     {
     }
 
-    void configure (spot_context_t &context)
+    spot_context_t &context () noexcept override { return _context; }
+    const spot_context_t &context () const noexcept override { return _context; }
+
+    void configure () override
     {
-        _context = context;
-        context.handlers ()
+        _context.handlers ()
           .add_handler<&player_quest_spot_t::apply> (gameplay_msg_t::packet_name)
           .add_handler<&player_quest_spot_t::sync> (sync_quest_progress_req_t::packet_name)
           .add_handler<&player_quest_spot_t::get> (get_quest_progress_req_t::packet_name)
           .add_handler<&player_quest_spot_t::admin> (projection_admin_req_t::packet_name);
     }
 
-    spot_create_response_t on_create (const zlink::framework::message_t &request)
+    task_t<spot_create_response_t>
+    on_create (const zlink::framework::message_t &request) override
     {
         auto create = request.decode<player_quest_spot_create_req_t> ();
         _player_id = create.player_id;
         _store.rehydrate_owner (_player_id);
         std::cerr << "gamequest player quest spot ready player=" << _player_id
                   << " spot=" << _player_id << "\n";
-        return spot_create_response_t::accept ();
+        co_return spot_create_response_t::accept ();
     }
+
+    task_t<spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
+    {
+        co_return spot_actor_join_response_t::accept ();
+    }
+
+    task_t<void> on_actor_joined (actor_t &) override { co_return; }
+    task_t<void> on_leave_actor (actor_t &) override { co_return; }
 
     /* 공통 sample spec §11.2: gameplay event는 응답 없는 one-way다. 진행 notify는 player의 현재
      * session binding이 가리키는 노드의 entry spot으로 route한다 — binding이 없으면 생략(§12). */
@@ -429,8 +444,9 @@ int main (int argc, char **argv)
         quest_spot.listen (topology.selected_mission_spot_router_endpoint ())
           .add_spot_factory<player_quest_spot_t> (
             sample_names_t::player_quest_spot,
-            [quest_store_ptr, spot_services] (spot_context_t) mutable {
+            [quest_store_ptr, spot_services] (spot_context_t context) mutable {
                 return std::make_shared<player_quest_spot_t> (
+                  std::move (context),
                   *quest_store_ptr,
                   spot_services.get_required<actor_directory_t> (),
                   spot_services.get_required<actor_client_t> ());

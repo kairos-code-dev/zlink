@@ -31,7 +31,7 @@ class tictactoe_game_timer_handler_t
     task_t<void> handle (tictactoe_game_spot_t &spot, const timer_tick_t &tick) const;
 };
 
-class tictactoe_game_spot_t : public spot_t
+class tictactoe_game_spot_t : public spot_t<player_actor_t>
 {
   private:
     std::map<std::string, player_actor_t *> actors;
@@ -43,16 +43,16 @@ class tictactoe_game_spot_t : public spot_t
     {
     }
 
-    spot_context_t &context () noexcept { return _context; }
-    const spot_context_t &context () const noexcept { return _context; }
+    spot_context_t &context () noexcept override { return _context; }
+    const spot_context_t &context () const noexcept override { return _context; }
 
-    void configure ()
+    void configure () override
     {
         _context.handlers ().add_actor_request<&tictactoe_game_spot_t::place_mark> ();
         _context.handlers ().add_actor_send<&tictactoe_game_spot_t::leave_game> ();
     }
 
-    spot_create_response_t on_create (const message_t &)
+    task_t<spot_create_response_t> on_create (const message_t &) override
     {
         auto room_id = _context.spot_id ();
         if (const auto separator = room_id.rfind (':');
@@ -60,29 +60,37 @@ class tictactoe_game_spot_t : public spot_t
             room_id = room_id.substr (separator + 1);
         }
         _match.emplace (room_id);
-        return spot_create_response_t::accept ();
+        co_return spot_create_response_t::accept ();
     }
 
-    void on_initialize ()
+    task_t<void> on_initialize () override
     {
         using namespace std::chrono_literals;
         _game_timer =
           _context.add_timer<tictactoe_game_timer_handler_t> ("game-tick", 1s);
+        co_return;
     }
 
-    void on_closing () { _game_timer.cancel (); }
+    task_t<void> on_closing (
+      const spot_closing_context_t &,
+      std::stop_token) override
+    {
+        _game_timer.cancel ();
+        co_return;
+    }
 
-    spot_actor_join_response_t on_actor_join (std::string_view actor_id,
-                                              const message_t &request_message)
+    task_t<spot_actor_join_response_t>
+    on_actor_join (std::string_view actor_id,
+                   const message_t &request_message) override
     {
         auto request = request_message.decode<tictactoe_game_join_req_t> ();
         if (request.player.actor_id.empty ()
             || request.player.level < sample_names_t::required_level) {
-            return spot_actor_join_response_t::reject ();
+            co_return spot_actor_join_response_t::reject ();
         }
         auto response = match ().evaluate_join (std::string (actor_id), request.room_id);
         _pending_joins[std::string (actor_id)] = request;
-        return spot_actor_join_response_t::accept (
+        co_return spot_actor_join_response_t::accept (
           std::move (response));
     }
 
@@ -94,7 +102,7 @@ class tictactoe_game_spot_t : public spot_t
                      const message_context_t &,
                      const leave_game_req_t &request);
 
-    task_t<void> on_actor_joined (const player_actor_t &actor)
+    task_t<void> on_actor_joined (player_actor_t &actor) override
     {
         const auto pending = _pending_joins.find (actor.actor_id);
         if (pending == _pending_joins.end ()) {
@@ -105,7 +113,7 @@ class tictactoe_game_spot_t : public spot_t
         players[actor.actor_id] = request.player;
         actor.apply_player (request.player);
         (void) match ().join (actor.actor_id, request.room_id);
-        actors[actor.actor_id] = const_cast<player_actor_t *> (&actor);
+        actors[actor.actor_id] = &actor;
         const auto &state = match ().snapshot ();
         player_joined_notify_t notify{
             state.room_id,
@@ -122,14 +130,14 @@ class tictactoe_game_spot_t : public spot_t
         co_return;
     }
 
-    task_t<void> on_leave_actor (const player_actor_t &actor)
+    task_t<void> on_leave_actor (player_actor_t &actor) override
     {
         actors.erase (actor.actor_id);
         players.erase (actor.actor_id);
         co_return;
     }
 
-    task_t<void> on_disconnect_actor (const player_actor_t &actor)
+    task_t<void> on_disconnect_actor (player_actor_t &actor) override
     {
         actor.mark_disconnected ();
         co_return;

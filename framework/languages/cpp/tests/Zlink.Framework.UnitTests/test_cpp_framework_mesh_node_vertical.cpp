@@ -147,10 +147,6 @@ static_assert (
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::mesh_channel_builder_t &> ().server ()),
                  zlink::framework::mesh_channel_server_builder_t>);
-struct contract_entry_spot_t;
-struct contract_spot_t : zlink::framework::spot_t
-{
-};
 struct contract_actor_t final : zlink::framework::actor_t
 {
     explicit contract_actor_t (
@@ -174,6 +170,14 @@ struct contract_actor_factory_t final
         co_return std::make_shared<contract_actor_t> (
           std::move (context));
     }
+};
+struct contract_entry_spot_t
+    : zlink::framework::entry_spot_t<contract_actor_t>
+{
+};
+struct contract_spot_t
+    : zlink::framework::spot_t<contract_actor_t>
+{
 };
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()

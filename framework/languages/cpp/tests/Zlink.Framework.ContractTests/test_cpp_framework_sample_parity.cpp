@@ -119,10 +119,16 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     EXPECT_EQ (player_actor.actor.actor_id, authenticated.actor_id);
 
     bingo_room_spot_t room_spot (allocated.room_id);
-    const auto joined = room_spot.on_actor_join (
-      authenticated.actor_id,
-      zlink::framework::message_t::from (bingo_room_join_req_t{
-                      allocated.room_id, authenticated.actor_id, authenticated.display_name}));
+    const auto joined = room_spot
+                          .on_actor_join (
+                            authenticated.actor_id,
+                            zlink::framework::message_t::from (
+                              bingo_room_join_req_t{
+                                allocated.room_id,
+                                authenticated.actor_id,
+                                authenticated.display_name}))
+                          .result ()
+                          .value ();
     ASSERT_TRUE (joined.accepted);
     ASSERT_TRUE (joined.reply);
     const auto join_reply = joined.reply->decode<bingo_room_join_res_t> ();
@@ -150,10 +156,16 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
       std::string::npos);
 
     auto second_actor = actor_factory.create (actor_ref_snapshot_t{{}, "player-2", 1}, "Player 2");
-    const auto second_joined = room_spot.on_actor_join (
-      "player-2",
-      zlink::framework::message_t::from (
-                      bingo_room_join_req_t{allocated.room_id, "player-2", "Player 2"}));
+    const auto second_joined = room_spot
+                                 .on_actor_join (
+                                   "player-2",
+                                   zlink::framework::message_t::from (
+                                     bingo_room_join_req_t{
+                                       allocated.room_id,
+                                       "player-2",
+                                       "Player 2"}))
+                                 .result ()
+                                 .value ();
     ASSERT_TRUE (second_joined.accepted);
     ASSERT_TRUE (second_joined.reply);
     EXPECT_EQ (second_joined.reply->decode<bingo_room_join_res_t> ().state.players.size (), 1U);

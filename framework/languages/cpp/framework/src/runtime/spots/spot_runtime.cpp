@@ -5324,7 +5324,8 @@ void spot_node_runtime_t::release_native_handles () noexcept
         }
         for (auto &context : contexts) {
             try {
-                context->detach_application_instance (true);
+                context->detach_application_instance (
+                  true, spot_close_reason_t::host_shutdown);
             }
             catch (...) {
             }

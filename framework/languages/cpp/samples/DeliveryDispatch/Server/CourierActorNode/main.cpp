@@ -52,7 +52,7 @@ struct courier_actor_factory_t final
     }
 };
 
-class courier_entry_spot_t : public entry_spot_t
+class courier_entry_spot_t : public entry_spot_t<courier_actor_t>
 {
   public:
     courier_entry_spot_t (entry_spot_context_t context, channel_client_t &channels) :
@@ -60,9 +60,13 @@ class courier_entry_spot_t : public entry_spot_t
     {
     }
 
-    entry_spot_context_t &context () noexcept { return _context; }
+    entry_spot_context_t &context () noexcept override { return _context; }
+    const entry_spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
 
-    void configure ()
+    void configure () override
     {
         /* Actor 생성과 위치 조회는 Framework의 ActorManager와 Actor Client가 담당한다.
          * Entry Spot은 actor에 도착한 application message만 처리한다. */
@@ -75,10 +79,14 @@ class courier_entry_spot_t : public entry_spot_t
             courier_decision_msg_t::packet_name);
     }
 
-    spot_actor_join_response_t on_actor_join (std::string_view, const zlink::message_t &)
+    task_t<spot_actor_join_response_t>
+    on_actor_join (std::string_view, const zlink::message_t &) override
     {
-        return spot_actor_join_response_t::accept ();
+        co_return spot_actor_join_response_t::accept ();
     }
+
+    task_t<void> on_actor_joined (courier_actor_t &) override { co_return; }
+    task_t<void> on_leave_actor (courier_actor_t &) override { co_return; }
 
     bind_courier_session_res_t bind_courier_session (courier_actor_t &,
                                                     message_context_t &,

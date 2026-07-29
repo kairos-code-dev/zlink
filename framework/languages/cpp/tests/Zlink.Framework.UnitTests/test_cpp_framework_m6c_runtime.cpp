@@ -45,7 +45,7 @@ std::string authority_key (object_kind_t kind, const std::string &key)
 inventory_digest_t digest_with (std::uint8_t value);
 
 class fail_first_restore_spot_t final
-    : public zlink::framework::spot_t
+    : public zlink::framework::spot_t<zlink::framework::actor_t>
 {
   public:
     explicit fail_first_restore_spot_t (
@@ -54,23 +54,47 @@ class fail_first_restore_spot_t final
     {
     }
 
-    zlink::framework::spot_context_t &context () noexcept
+    zlink::framework::spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+    const zlink::framework::spot_context_t &context () const noexcept override
     {
         return _context;
     }
 
-    void configure () {}
+    void configure () override {}
 
-    zlink::framework::spot_create_response_t
-    on_create (const zlink::framework::message_t &)
+    zlink::framework::task_t<zlink::framework::spot_create_response_t>
+    on_create (const zlink::framework::message_t &) override
     {
         ++create_count;
-        return zlink::framework::spot_create_response_t::accept ();
+        co_return zlink::framework::spot_create_response_t::accept ();
     }
 
-    void on_initialize ()
+    zlink::framework::task_t<void> on_initialize () override
     {
         ++initialize_count;
+        co_return;
+    }
+
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::reject ();
+    }
+
+    zlink::framework::task_t<void>
+    on_actor_joined (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void>
+    on_leave_actor (zlink::framework::actor_t &) override
+    {
+        co_return;
     }
 
     static inline int factory_count = 0;
@@ -112,7 +136,7 @@ class fail_first_restore_adapter_t final
 };
 
 class concurrent_restore_spot_t final
-    : public zlink::framework::spot_t
+    : public zlink::framework::spot_t<zlink::framework::actor_t>
 {
   public:
     explicit concurrent_restore_spot_t (
@@ -122,12 +146,32 @@ class concurrent_restore_spot_t final
         ++factory_count;
     }
 
-    zlink::framework::spot_context_t &context () noexcept
+    zlink::framework::spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+    const zlink::framework::spot_context_t &context () const noexcept override
     {
         return _context;
     }
 
-    void configure () {}
+    void configure () override {}
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::reject ();
+    }
+    zlink::framework::task_t<void>
+    on_actor_joined (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
+    zlink::framework::task_t<void>
+    on_leave_actor (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
 
     static inline std::atomic_int factory_count{0};
     static inline std::atomic_int restore_count{0};

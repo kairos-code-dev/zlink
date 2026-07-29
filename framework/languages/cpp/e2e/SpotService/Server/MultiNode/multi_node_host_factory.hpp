@@ -111,7 +111,10 @@ inline int run_multi_node_server (int argc, char **argv)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .channel_name (spot_name);
         spot.add_entry_spot<multi_node_entry_spot_t> (
-          [state_ptr] { return std::make_shared<multi_node_entry_spot_t> (*state_ptr); })
+          [state_ptr] (entry_spot_context_t context) {
+              return std::make_shared<multi_node_entry_spot_t> (
+                std::move (context), *state_ptr);
+          })
           .add_actor_factory<multi_node_actor_t, multi_node_actor_factory_t> (
             e2e::actor_type,
             std::make_shared<multi_node_actor_factory_t> (),
@@ -119,8 +122,9 @@ inline int run_multi_node_server (int argc, char **argv)
         if (node_rid == multi_node_a_name) {
             spot.add_spot_factory<multi_node_spot_a_t> (
               e2e::multi_spot_a,
-              [state_ptr] (spot_context_t) {
-                  return std::make_shared<multi_node_spot_a_t> (*state_ptr);
+              [state_ptr] (spot_context_t context) {
+                  return std::make_shared<multi_node_spot_a_t> (
+                    std::move (context), *state_ptr);
               },
               [] (auto &factory) {
                   factory.disable_relocation ();
@@ -128,8 +132,9 @@ inline int run_multi_node_server (int argc, char **argv)
         } else {
             spot.add_spot_factory<multi_node_spot_b_t> (
               e2e::multi_spot_b,
-              [state_ptr] (spot_context_t) {
-                  return std::make_shared<multi_node_spot_b_t> (*state_ptr);
+              [state_ptr] (spot_context_t context) {
+                  return std::make_shared<multi_node_spot_b_t> (
+                    std::move (context), *state_ptr);
               },
               [] (auto &factory) {
                   factory.disable_relocation ();

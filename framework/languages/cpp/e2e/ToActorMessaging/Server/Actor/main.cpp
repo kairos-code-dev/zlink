@@ -87,28 +87,59 @@ class to_actor_e2e_actor_factory_t final
     }
 };
 
-class to_actor_e2e_spot_t : public zlink::framework::entry_spot_t
+class to_actor_e2e_spot_t
+    : public zlink::framework::entry_spot_t<to_actor_e2e_actor_t>
 {
   public:
-    explicit to_actor_e2e_spot_t (evidence_store_t &evidence) : _evidence (evidence) {}
-
-    void configure (zlink::framework::spot_context_t &context)
+    to_actor_e2e_spot_t (zlink::framework::entry_spot_context_t context,
+                         evidence_store_t &evidence) :
+        _evidence (evidence), _context (std::move (context))
     {
-        _context = zlink::framework::entry_spot_context_t (context);
-        context.handlers ().add_actor_send<&to_actor_e2e_spot_t::on_notify> (
+    }
+
+    zlink::framework::entry_spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+
+    const zlink::framework::entry_spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override
+    {
+        _context.handlers ().add_actor_send<&to_actor_e2e_spot_t::on_notify> (
           e2e::actor_notify_t::packet_name);
-        context.handlers ().add_actor_request<&to_actor_e2e_spot_t::on_ask> (
+        _context.handlers ().add_actor_request<&to_actor_e2e_spot_t::on_ask> (
           e2e::actor_ask_t::packet_name);
     }
 
-    void on_create_actor (to_actor_e2e_actor_t &actor, const zlink::framework::message_t &)
+    zlink::framework::task_t<zlink::framework::actor_create_response_t>
+    on_create_actor (to_actor_e2e_actor_t &actor,
+                     const zlink::framework::message_t &) override
     {
         _evidence.append ({"create", actor.actor_id (), "create", "created"});
+        co_return zlink::framework::actor_create_response_t::accept ();
     }
 
-    zlink::framework::task_t<void> on_actor_joined (to_actor_e2e_actor_t &actor)
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+
+    zlink::framework::task_t<void>
+    on_actor_joined (to_actor_e2e_actor_t &actor) override
     {
         _evidence.append ({"join", actor.actor_id (), "join", "joined"});
+        co_return;
+    }
+
+    zlink::framework::task_t<void>
+    on_leave_actor (to_actor_e2e_actor_t &) override
+    {
         co_return;
     }
 
@@ -262,7 +293,10 @@ int main (int argc, char **argv)
           .listen (configuration.spot_endpoint)
           .set_routing_id (zlink::routing_id_t::from (configuration.node_rid))
           .add_entry_spot<to_actor_e2e_spot_t> (
-            [evidence_ptr] { return std::make_shared<to_actor_e2e_spot_t> (*evidence_ptr); })
+            [evidence_ptr] (zlink::framework::entry_spot_context_t context) {
+                return std::make_shared<to_actor_e2e_spot_t> (
+                  std::move (context), *evidence_ptr);
+            })
           .add_actor_factory<
             to_actor_e2e_actor_t,
             to_actor_e2e_actor_factory_t> (

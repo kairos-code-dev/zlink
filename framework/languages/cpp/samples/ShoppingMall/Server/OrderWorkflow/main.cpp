@@ -37,18 +37,21 @@ inline void from_json (const nlohmann::json &json, order_workflow_spot_create_re
     value.order_id = json_string (json, "orderId", "order_id");
 }
 
-class order_workflow_spot_t : public spot_t
+class order_workflow_spot_t : public spot_t<actor_t>
 {
   public:
-    explicit order_workflow_spot_t (sample_topology_t topology) :
-        _store (std::move (topology))
+    order_workflow_spot_t (spot_context_t context,
+                           sample_topology_t topology) :
+        _store (std::move (topology)), _context (std::move (context))
     {
     }
 
-    void configure (spot_context_t &context)
+    spot_context_t &context () noexcept override { return _context; }
+    const spot_context_t &context () const noexcept override { return _context; }
+
+    void configure () override
     {
-        _context = context;
-        context.handlers ()
+        _context.handlers ()
           .add_handler<&order_workflow_spot_t::start> (start_order_workflow_req_t::packet_name)
           .add_handler<&order_workflow_spot_t::continue_> (
             continue_order_workflow_req_t::packet_name)
@@ -58,14 +61,30 @@ class order_workflow_spot_t : public spot_t
             rebuild_order_projection_req_t::packet_name);
     }
 
-    spot_create_response_t on_create (const zlink::framework::message_t &request)
+    task_t<spot_create_response_t>
+    on_create (const zlink::framework::message_t &request) override
     {
         auto create = request.decode<order_workflow_spot_create_req_t> ();
         _order_id = create.order_id;
-        return spot_create_response_t::accept ();
+        co_return spot_create_response_t::accept ();
     }
 
-    void on_closing () { _continue_timer.cancel (); }
+    task_t<void> on_closing (const spot_closing_context_t &,
+                             std::stop_token) override
+    {
+        _continue_timer.cancel ();
+        co_return;
+    }
+
+    task_t<spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
+    {
+        co_return spot_actor_join_response_t::accept ();
+    }
+
+    task_t<void> on_actor_joined (actor_t &) override { co_return; }
+    task_t<void> on_leave_actor (actor_t &) override { co_return; }
 
     /* 공통 sample spec §9.3: 시작은 루프를 Created까지만 돌리고 즉시 응답하며, 나머지 단계를
      * 진행할 재개 호출을 기다리지 않고 예약한다. 결제 지연을 HTTP 응답에 묶지 않기 위해서다. */
@@ -227,9 +246,9 @@ int main (int argc, char **argv)
         order_spot.listen (instance.spot_router_endpoint)
           .add_spot_factory<order_workflow_spot_t> (
             sample_names_t::order_workflow_spot,
-            [topology] (spot_context_t) {
+            [topology] (spot_context_t context) {
                 return std::make_shared<order_workflow_spot_t> (
-                  topology);
+                  std::move (context), topology);
             },
             [] (auto &factory) {
                 factory.disable_relocation ();

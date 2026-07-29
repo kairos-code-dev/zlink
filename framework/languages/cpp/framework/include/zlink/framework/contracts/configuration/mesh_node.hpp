@@ -168,6 +168,7 @@ class mesh_node_builder_t
     }
 
     template <typename TEntrySpot>
+    requires detail::entry_spot_type<TEntrySpot>
     mesh_node_builder_t &add_entry_spot (
       std::function<std::shared_ptr<TEntrySpot> (entry_spot_context_t)> factory)
     {
@@ -176,9 +177,7 @@ class mesh_node_builder_t
     }
 
     template <typename TSpot>
-    requires std::derived_from<TSpot, spot_t>
-             && (!std::derived_from<TSpot, entry_spot_t>)
-             && (!std::derived_from<TSpot, instance_spot_t>)
+    requires detail::user_spot_type<TSpot>
     mesh_node_builder_t &add_spot_factory (
       std::string stable_type,
       std::function<std::shared_ptr<TSpot> (spot_context_t)> factory,

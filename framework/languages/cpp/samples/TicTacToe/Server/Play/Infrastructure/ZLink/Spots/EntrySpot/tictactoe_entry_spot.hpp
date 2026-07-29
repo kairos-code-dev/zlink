@@ -19,7 +19,7 @@ using namespace framework;
 using framework::actor_ref_t;
 using framework::message_t;
 
-class tictactoe_entry_spot_t : public entry_spot_t
+class tictactoe_entry_spot_t : public entry_spot_t<player_actor_t>
 {
   public:
     explicit tictactoe_entry_spot_t (entry_spot_context_t context) :
@@ -27,10 +27,10 @@ class tictactoe_entry_spot_t : public entry_spot_t
     {
     }
 
-    entry_spot_context_t &context () noexcept { return _context; }
-    const entry_spot_context_t &context () const noexcept { return _context; }
+    entry_spot_context_t &context () noexcept override { return _context; }
+    const entry_spot_context_t &context () const noexcept override { return _context; }
 
-    void configure ()
+    void configure () override
     {
         _context.handlers ().add_actor_request<&tictactoe_entry_spot_t::join_game> ();
         _context.handlers ().add_actor_request<&tictactoe_entry_spot_t::observe_milestone> ();
@@ -48,24 +48,35 @@ class tictactoe_entry_spot_t : public entry_spot_t
 
     /* 공통 sample spec §13: 인증에서 받은 PlayerInfo가 actor 생성 payload로 들어오고,
      * actor는 그 값(display name/level/wins)을 그대로 보관한다. */
-    void on_create_actor (const player_actor_t &actor, const message_t &create_request)
+    task_t<actor_create_response_t>
+    on_create_actor (
+      player_actor_t &actor,
+      const message_t &create_request) override
     {
         actor.apply_player (create_request.decode<player_info_t> ());
         created_actor_ids.push_back (actor.actor_id);
+        co_return actor_create_response_t::accept ();
     }
 
-    task_t<void> on_actor_joined (const player_actor_t &actor)
+    task_t<spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const message_t &) override
+    {
+        co_return spot_actor_join_response_t::accept ();
+    }
+
+    task_t<void> on_actor_joined (player_actor_t &actor) override
     {
         actor_ids.push_back (actor.actor_id);
         if (!actor.destroy_after_entry_spot_join) {
             co_return;
         }
         std::cout << "entry spot: actor destroy requested. actor=" << actor.actor_id << std::endl;
-        co_await _context.destroy_actor (const_cast<player_actor_t &> (actor));
+        co_await _context.destroy_actor (actor);
         std::cout << "entry spot: actor destroy completed. actor=" << actor.actor_id << std::endl;
     }
 
-    task_t<void> on_leave_actor (const player_actor_t &actor)
+    task_t<void> on_leave_actor (player_actor_t &actor) override
     {
         actor_ids.erase (std::remove (actor_ids.begin (), actor_ids.end (), actor.actor_id),
                          actor_ids.end ());
@@ -73,7 +84,7 @@ class tictactoe_entry_spot_t : public entry_spot_t
         co_return;
     }
 
-    task_t<void> on_disconnect_actor (const player_actor_t &actor)
+    task_t<void> on_disconnect_actor (player_actor_t &actor) override
     {
         actor.mark_disconnected ();
         observers.erase (actor.actor_id);

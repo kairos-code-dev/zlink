@@ -49,7 +49,8 @@ struct admission_request_t
     int packet{};
 };
 
-struct admission_entry_spot_t : public zlink::framework::entry_spot_t
+struct admission_entry_spot_t
+    : public zlink::framework::entry_spot_t<admission_actor_t>
 {
     void configure (zlink::framework::spot_context_t &context)
     {

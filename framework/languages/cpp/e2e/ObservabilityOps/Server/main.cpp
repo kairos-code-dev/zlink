@@ -201,7 +201,7 @@ struct room_timer_handler_t
     void handle (room_spot_t &spot, const fw::timer_tick_t &tick) const;
 };
 
-class room_spot_t : public fw::spot_t
+class room_spot_t : public fw::spot_t<fw::actor_t>
 {
   public:
     room_spot_t (fw::spot_context_t context,
@@ -213,10 +213,10 @@ class room_spot_t : public fw::spot_t
     {
     }
 
-    fw::spot_context_t &context () noexcept { return _context; }
-    const fw::spot_context_t &context () const noexcept { return _context; }
+    fw::spot_context_t &context () noexcept override { return _context; }
+    const fw::spot_context_t &context () const noexcept override { return _context; }
 
-    void configure ()
+    void configure () override
     {
         _context.handlers ().add_handler<&room_spot_t::apply_action> (
           obs::obs_action_req_t::packet_name);
@@ -224,7 +224,7 @@ class room_spot_t : public fw::spot_t
           obs::projection_topic);
     }
 
-    void on_initialize ()
+    fw::task_t<void> on_initialize () override
     {
         if (_event_store) {
             _applied = _event_store
@@ -235,7 +235,17 @@ class room_spot_t : public fw::spot_t
             _timer = _context.add_timer<room_timer_handler_t> ("obs-tick",
                                                                std::chrono::milliseconds (200));
         }
+        co_return;
     }
+
+    fw::task_t<fw::spot_actor_join_response_t>
+    on_actor_join (std::string_view, const fw::message_t &) override
+    {
+        co_return fw::spot_actor_join_response_t::accept ();
+    }
+
+    fw::task_t<void> on_actor_joined (fw::actor_t &) override { co_return; }
+    fw::task_t<void> on_leave_actor (fw::actor_t &) override { co_return; }
 
     obs::obs_action_res_t apply_action (const obs::obs_action_req_t &request)
     {
@@ -305,7 +315,7 @@ struct obs_actor_factory_t final : fw::actor_factory_t<obs_actor_t>
 
 /* Entry spot hosts the player actors: admission accepts every join and the
  * ping handler accumulates state, so post-transfer pings prove continuity. */
-class obs_entry_spot_t : public fw::entry_spot_t
+class obs_entry_spot_t : public fw::entry_spot_t<obs_actor_t>
 {
   public:
     explicit obs_entry_spot_t (fw::entry_spot_context_t context) :
@@ -313,25 +323,28 @@ class obs_entry_spot_t : public fw::entry_spot_t
     {
     }
 
-    fw::entry_spot_context_t &context () noexcept { return _context; }
-    const fw::entry_spot_context_t &context () const noexcept
+    fw::entry_spot_context_t &context () noexcept override { return _context; }
+    const fw::entry_spot_context_t &context () const noexcept override
     {
         return _context;
     }
 
-    void configure ()
+    void configure () override
     {
         _context.handlers ().add_actor_request<&obs_entry_spot_t::actor_ping> (
           obs::actor_ping_req_t::packet_name);
     }
 
-    fw::spot_actor_join_response_t on_actor_join (std::string_view actor_id,
-                                                  const fw::message_t &)
+    fw::task_t<fw::spot_actor_join_response_t>
+    on_actor_join (std::string_view actor_id, const fw::message_t &) override
     {
-        return fw::spot_actor_join_response_t::accept (
+        co_return fw::spot_actor_join_response_t::accept (
           obs::join_actor_res_t{std::string (actor_id),
                                 std::string (_context.node_rid ().value ()), true, {}});
     }
+
+    fw::task_t<void> on_actor_joined (obs_actor_t &) override { co_return; }
+    fw::task_t<void> on_leave_actor (obs_actor_t &) override { co_return; }
 
     obs::actor_ping_res_t actor_ping (obs_actor_t &actor,
                                       fw::message_context_t &,

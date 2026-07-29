@@ -258,19 +258,24 @@ inline int run_play_server (int argc, char **argv)
                                        e2e::channel_echo_req_t,
                                        e2e::channel_echo_res_t> ("ChannelEchoReq");
         spot.add_entry_spot<entry_spot_t> (
-          [state_ptr] { return std::make_shared<entry_spot_t> (*state_ptr); })
+          [state_ptr] (entry_spot_context_t context) {
+              return std::make_shared<entry_spot_t> (
+                std::move (context), *state_ptr);
+          })
           .add_spot_factory<user_spot_t> (
             e2e::user_spot,
-            [state_ptr] (spot_context_t) {
-                return std::make_shared<user_spot_t> (*state_ptr);
+            [state_ptr] (spot_context_t context) {
+                return std::make_shared<user_spot_t> (
+                  std::move (context), *state_ptr);
             },
             [] (auto &factory) {
                 factory.disable_relocation ();
             })
           .add_spot_factory<alternate_user_spot_t> (
             e2e::alternate_spot,
-            [] (spot_context_t) {
-                return std::make_shared<alternate_user_spot_t> ();
+            [] (spot_context_t context) {
+                return std::make_shared<alternate_user_spot_t> (
+                  std::move (context));
             },
             [] (auto &factory) {
                 factory.disable_relocation ();

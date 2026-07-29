@@ -52,24 +52,42 @@ struct multi_node_actor_factory_t final
     }
 };
 
-template <const char *NodeName> class multi_node_spot_t : public zlink::framework::spot_t
+template <const char *NodeName>
+class multi_node_spot_t
+    : public zlink::framework::spot_t<multi_node_actor_t>
 {
   public:
-    explicit multi_node_spot_t (scenario_state_t &state) : _state (state) {}
-
-    void configure (zlink::framework::spot_context_t &context)
+    multi_node_spot_t (
+      zlink::framework::spot_context_t context,
+      scenario_state_t &state) :
+        _state (state),
+        _context (std::move (context))
     {
-        _context = context;
-        context.handlers ().add_handler<&multi_node_spot_t::state_request> ("StateReq");
-        context.handlers ().add_handler<&multi_node_spot_t::state_command> ("StateMsg");
-        context.handlers ().add_handler<&multi_node_spot_t::state_command> ("DirectSpotMsg");
-        context.handlers ().add_actor_request<&multi_node_spot_t::actor_probe> (
+    }
+
+    zlink::framework::spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override
+    {
+        _context.handlers ().add_handler<&multi_node_spot_t::state_request> ("StateReq");
+        _context.handlers ().add_handler<&multi_node_spot_t::state_command> ("StateMsg");
+        _context.handlers ().add_handler<&multi_node_spot_t::state_command> ("DirectSpotMsg");
+        _context.handlers ().add_actor_request<&multi_node_spot_t::actor_probe> (
           "SpotOnlyActorProbeReq");
     }
 
-    void on_initialize ()
+    zlink::framework::task_t<void> on_initialize () override
     {
         _state.record ("MultiSpotInitialized", {}, _context.spot_id ());
+        co_return;
     }
 
     zlink::framework::task_t<zlink::framework::spot_create_response_t>
@@ -108,13 +126,25 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
         co_return zlink::framework::spot_create_response_t::accept ();
     }
 
-    zlink::framework::spot_actor_join_response_t
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
     on_actor_join (std::string_view actor_id,
-                   const zlink::framework::message_t &)
+                   const zlink::framework::message_t &) override
     {
         _state.record ("SpotActorJoined", std::string (actor_id),
                        _context.spot_id ());
-        return zlink::framework::spot_actor_join_response_t::accept ();
+        co_return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+
+    zlink::framework::task_t<void>
+    on_actor_joined (multi_node_actor_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void>
+    on_leave_actor (multi_node_actor_t &) override
+    {
+        co_return;
     }
 
     e2e::state_res_t state_request (const e2e::state_req_t &request)
@@ -158,22 +188,52 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
 using multi_node_spot_a_t = multi_node_spot_t<multi_node_a_name>;
 using multi_node_spot_b_t = multi_node_spot_t<multi_node_b_name>;
 
-class multi_node_entry_spot_t : public zlink::framework::entry_spot_t
+class multi_node_entry_spot_t
+    : public zlink::framework::entry_spot_t<multi_node_actor_t>
 {
   public:
-    explicit multi_node_entry_spot_t (scenario_state_t &state) : _state (state) {}
-
-    void configure (zlink::framework::entry_spot_context_t &context)
+    multi_node_entry_spot_t (
+      zlink::framework::entry_spot_context_t context,
+      scenario_state_t &state) :
+        _state (state),
+        _context (std::move (context))
     {
-        _context = context;
-        context.handlers ().add_actor_request<&multi_node_entry_spot_t::join_spot_only> (
+    }
+
+    zlink::framework::entry_spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+
+    const zlink::framework::entry_spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override
+    {
+        _context.handlers ().add_actor_request<&multi_node_entry_spot_t::join_spot_only> (
           "SpotOnlyJoinReq");
     }
 
-    void configure (zlink::framework::spot_context_t &context)
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (
+      std::string_view,
+      const zlink::framework::message_t &) override
     {
-        zlink::framework::entry_spot_context_t entry_context (context);
-        configure (entry_context);
+        co_return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+
+    zlink::framework::task_t<void>
+    on_actor_joined (multi_node_actor_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void>
+    on_leave_actor (multi_node_actor_t &) override
+    {
+        co_return;
     }
 
     zlink::framework::task_t<e2e::spot_only_join_res_t>

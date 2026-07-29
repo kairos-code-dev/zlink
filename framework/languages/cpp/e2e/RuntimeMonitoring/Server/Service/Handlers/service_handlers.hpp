@@ -67,24 +67,103 @@ struct failing_timer_handler_t
     void handle (monitoring_spot_t &, const zlink::framework::timer_tick_t &) const;
 };
 
-class monitoring_spot_t : public zlink::framework::spot_t
+class monitoring_spot_t
+    : public zlink::framework::spot_t<zlink::framework::actor_t>
 {
   public:
+    explicit monitoring_spot_t (zlink::framework::spot_context_t context) :
+        _context (std::move (context))
+    {
+    }
+
     ~monitoring_spot_t () override = default;
 
-    void configure (zlink::framework::spot_context_t &context)
+    zlink::framework::spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override
     {
         using namespace std::chrono_literals;
-        context.add_timer<failing_timer_handler_t> ("failing", 50ms);
-        context.add_timer<failing_timer_handler_t> (
+        _context.add_timer<failing_timer_handler_t> ("failing", 50ms);
+        _context.add_timer<failing_timer_handler_t> (
           "stopping", 50ms, {.stop_on_unhandled_exception = true});
     }
+
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+
+    zlink::framework::task_t<void>
+    on_actor_joined (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void>
+    on_leave_actor (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
+
+  private:
+    zlink::framework::spot_context_t _context;
 };
 
-class monitoring_subject_spot_t : public zlink::framework::spot_t
+class monitoring_subject_spot_t
+    : public zlink::framework::spot_t<zlink::framework::actor_t>
 {
   public:
+    explicit monitoring_subject_spot_t (
+      zlink::framework::spot_context_t context) :
+        _context (std::move (context))
+    {
+    }
+
     ~monitoring_subject_spot_t () override = default;
+
+    zlink::framework::spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+
+    const zlink::framework::spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override {}
+
+    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    on_actor_join (std::string_view,
+                   const zlink::framework::message_t &) override
+    {
+        co_return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+
+    zlink::framework::task_t<void>
+    on_actor_joined (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void>
+    on_leave_actor (zlink::framework::actor_t &) override
+    {
+        co_return;
+    }
+
+  private:
+    zlink::framework::spot_context_t _context;
 };
 
 inline void failing_timer_handler_t::handle (monitoring_spot_t &,

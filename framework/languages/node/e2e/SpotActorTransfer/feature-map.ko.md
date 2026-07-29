@@ -59,7 +59,9 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 - Focused contract test는 cross-node Accepted root의 operation ID·raw reply·target ActorRef·generation과
   `Prepared→Committed→Delivered` cursor, callback retry·dedupe, backlog 선행 순서를 검증한다. 새 journal
   instance는 provider-backed committed root를 복구하고 Delivered 뒤 callback을 다시 실행하지 않는다.
-  Prepared 뒤 materialization 실패 cleanup과 callback 뒤 Delivered CAS conflict도 검증한다. Redis provide
+  Delivered를 기록한 뒤에는 authority에서 root reference를 CAS로 해제하고 blob을 삭제한다. 이 해제 CAS가
+  충돌해도 callback은 다시 실행하지 않고 cleanup만 재시도한다. Prepared 뒤 materialization 실패 cleanup과
+  callback 뒤 Delivered CAS conflict도 검증한다. Redis provider
   test는 immutable bytes, CRC32C와 provider clock 기준 expiry·renew·delete를 검증한다.
 - `run_e2e.sh all`은 일반 네 process 묶음과 세 Actor node가 필요한 `ST-F5`를 별도 fresh process로
   실행한다. 두 시나리오는 application metadata나 DTO에 operation ID·ActorRef·owner RID를 노출하지

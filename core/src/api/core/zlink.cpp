@@ -226,49 +226,13 @@ zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_)
             errno = EINVAL;
             return ZLINK_CONFIG_INVALID_ARGUMENT;
         }
-
-        std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> socket_state =
-          zlink::socket_reqrep_internal::find_or_create_request_reply_state (handle);
-        if (!socket_state
-            || zlink::socket_reqrep_internal::ensure_completion_queue_ready (socket_state) != 0) {
-            const int err = errno ? errno : EFAULT;
-            errno = err;
-            return zlink::config_result_internal::from_errno (err);
-        }
-        if (poller_add_hidden_completion_registration (
-              poller, zlink::socket_reqrep_internal::completion_signal_socket (socket_state),
-              socket_, poller_subject_socket_request_completion, &socket_state->completion,
-              socket_state)
+        if (poller_add_registration (
+              poller, handle.socket, user_data_, events_, socket_, poller_subject_none)
             != 0) {
-            const int err = errno ? errno : EFAULT;
-            errno = err;
-            return zlink::config_result_internal::from_errno (err);
+            return zlink::config_result_internal::from_errno (errno);
         }
-
-        if (type == ZLINK_CORE_SOCKET_ROUTER) {
-            std::shared_ptr<zlink::reqrep_internal::router_request_reply_state_t>
-              router_state = zlink::reqrep_internal::find_or_create_router_state (socket_);
-            if (!router_state
-                || zlink::reqrep_internal::ensure_router_completion_queue_ready (router_state)
-                     != 0) {
-                const int err = errno ? errno : EFAULT;
-                (void) poller_remove_all_registrations_for_subject (poller, socket_);
-                errno = err;
-                return zlink::config_result_internal::from_errno (err);
-            }
-            if (poller_add_hidden_completion_registration (
-                  poller,
-                  zlink::reqrep_internal::router_completion_signal_socket (router_state),
-                  socket_, poller_subject_router_request_completion, &router_state->completion,
-                  router_state)
-                != 0) {
-                const int err = errno ? errno : EFAULT;
-                (void) poller_remove_all_registrations_for_subject (poller, socket_);
-                errno = err;
-                return zlink::config_result_internal::from_errno (err);
-            }
-        }
-
+        handle.socket->acquire_completion_poller ();
+        poller->registrations.back ().owns_completion_processing = true;
         return ZLINK_CONFIG_OK;
     }
     if (validate_socket_callback_poller_events (handle, events_) != 0)
@@ -278,88 +242,9 @@ zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_)
         != 0) {
         return zlink::config_result_internal::from_errno (errno);
     }
-
     if (type == ZLINK_CORE_SOCKET_DEALER || type == ZLINK_CORE_SOCKET_ROUTER) {
-        std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> state =
-          zlink::socket_reqrep_internal::find_or_create_request_reply_state (handle);
-        if (!state || zlink::socket_reqrep_internal::ensure_completion_queue_ready (state) != 0) {
-            const int err = errno;
-            (void) poller_remove_all_registrations_for_subject (poller, socket_);
-            errno = err;
-            return zlink::config_result_internal::from_errno (err);
-        }
-        if (type == ZLINK_CORE_SOCKET_DEALER && (events_ & ZLINK_POLLIN) != 0
-            && zlink::socket_reqrep_internal::ensure_internal_dispatch_installed (state) != 0) {
-            const int err = errno;
-            (void) poller_remove_all_registrations_for_subject (poller, socket_);
-            errno = err;
-            return zlink::config_result_internal::from_errno (err);
-        }
-        const int primary_index =
-          poller_find_registration_index (poller, socket_, poller_subject_none);
-        if (primary_index >= 0) {
-            poller->registrations[static_cast<size_t> (primary_index)].state_ref = state;
-            bool dispatch_installed = false;
-            {
-                std::lock_guard<std::mutex> lock (state->mutex);
-                dispatch_installed = state->internal_dispatch_installed;
-            }
-            if (dispatch_installed && (events_ & ZLINK_POLLIN) != 0
-                && poller->poller.modify (
-                     handle.socket, static_cast<short> (events_ & ~ZLINK_POLLIN))
-                     != 0) {
-                const int err = errno;
-                (void) poller_remove_all_registrations_for_subject (poller, socket_);
-                errno = err;
-                return zlink::config_result_internal::from_errno (err);
-            }
-        }
-        if (poller_add_hidden_completion_registration (
-              poller, zlink::socket_reqrep_internal::completion_signal_socket (state), socket_,
-              poller_subject_socket_request_completion, &state->completion, state)
-            != 0) {
-            const int err = errno;
-            (void) poller_remove_all_registrations_for_subject (poller, socket_);
-            errno = err;
-            return zlink::config_result_internal::from_errno (err);
-        }
-        if (type == ZLINK_CORE_SOCKET_DEALER && (events_ & ZLINK_POLLIN) != 0
-            && zlink::socket_reqrep_internal::ensure_recv_queue_ready (state) != 0) {
-            const int err = errno;
-            (void) poller_remove_all_registrations_for_subject (poller, socket_);
-            errno = err;
-            return zlink::config_result_internal::from_errno (err);
-        }
-        if (type == ZLINK_CORE_SOCKET_DEALER && (events_ & ZLINK_POLLIN) != 0
-            && poller_add_hidden_receive_registration (
-                 poller, state->recv_queue.rx_socket (), socket_, user_data_, state)
-                 != 0) {
-            const int err = errno;
-            (void) poller_remove_all_registrations_for_subject (poller, socket_);
-            errno = err;
-            return zlink::config_result_internal::from_errno (err);
-        }
-    }
-
-    if (type == ZLINK_CORE_SOCKET_ROUTER) {
-        std::shared_ptr<zlink::reqrep_internal::router_request_reply_state_t> state =
-          zlink::reqrep_internal::find_or_create_router_state (socket_);
-        if (!state
-            || zlink::reqrep_internal::ensure_router_completion_queue_ready (state) != 0) {
-            const int err = errno;
-            (void) poller_remove_all_registrations_for_subject (poller, socket_);
-            errno = err;
-            return zlink::config_result_internal::from_errno (err);
-        }
-        if (poller_add_hidden_completion_registration (
-              poller, zlink::reqrep_internal::router_completion_signal_socket (state), socket_,
-              poller_subject_router_request_completion, &state->completion, state)
-            != 0) {
-            const int err = errno;
-            (void) poller_remove_all_registrations_for_subject (poller, socket_);
-            errno = err;
-            return zlink::config_result_internal::from_errno (err);
-        }
+        handle.socket->acquire_completion_poller ();
+        poller->registrations.back ().owns_completion_processing = true;
     }
 
     return ZLINK_CONFIG_OK;
@@ -370,7 +255,8 @@ zlink_config_result_t zlink_poller_modify (void *poller_, void *socket_, short e
     poller_handle_t *poller = as_poller_handle (poller_);
     if (!poller)
         return ZLINK_CONFIG_INVALID_HANDLE;
-    if ((events_ & ZLINK_POLLCOMPLETION) != 0) {
+    if ((events_ & ZLINK_POLLCOMPLETION) != 0
+        && events_ != ZLINK_POLLCOMPLETION) {
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
@@ -380,7 +266,8 @@ zlink_config_result_t zlink_poller_modify (void *poller_, void *socket_, short e
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     socket_handle_t handle = make_socket_handle (target.socket);
-    if (validate_socket_callback_poller_events (handle, events_) != 0)
+    if (events_ != ZLINK_POLLCOMPLETION
+        && validate_socket_callback_poller_events (handle, events_) != 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     const int index =
       poller_find_registration_index (poller, socket_, poller_subject_none);
@@ -388,83 +275,13 @@ zlink_config_result_t zlink_poller_modify (void *poller_, void *socket_, short e
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
-    const int type = socket_type (handle);
-    const short old_events = poller->registrations[index].events;
-    short physical_events = events_;
-    bool added_receive = false;
-    std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> state;
-    int receive_index = -1;
-    if (type == ZLINK_CORE_SOCKET_DEALER) {
-        state = poller->registrations[index].state_ref
-                  ? std::static_pointer_cast<
-                      zlink::socket_reqrep_internal::socket_request_reply_state_t> (
-                      poller->registrations[index].state_ref)
-                  : zlink::socket_reqrep_internal::find_or_create_request_reply_state (handle);
-        if (!state) {
-            errno = EFAULT;
-            return ZLINK_CONFIG_INTERNAL_ERROR;
-        }
-        if ((events_ & ZLINK_POLLIN) != 0
-            && zlink::socket_reqrep_internal::ensure_internal_dispatch_installed (state) != 0)
-            return zlink::config_result_internal::from_errno (errno);
-
-        bool dispatch_installed = false;
-        {
-            std::lock_guard<std::mutex> lock (state->mutex);
-            dispatch_installed = state->internal_dispatch_installed;
-        }
-        if (dispatch_installed)
-            physical_events = static_cast<short> (physical_events & ~ZLINK_POLLIN);
-
-        receive_index = poller_find_registration_index (
-          poller, socket_, poller_subject_socket_request_receive);
-        if ((events_ & ZLINK_POLLIN) != 0 && receive_index < 0) {
-            if (zlink::socket_reqrep_internal::ensure_recv_queue_ready (state) != 0
-                || poller_add_hidden_receive_registration (
-                     poller, state->recv_queue.rx_socket (), socket_,
-                     poller->registrations[index].user_data, state)
-                     != 0)
-                return zlink::config_result_internal::from_errno (errno);
-            added_receive = true;
-        }
-    }
-
     if (poller->poller.modify (
           static_cast<zlink::socket_base_t *> (poller->registrations[index].socket),
-          physical_events)
+          events_)
         != 0) {
-        const int err = errno;
-        if (added_receive) {
-            const int added_index = poller_find_registration_index (
-              poller, socket_, poller_subject_socket_request_receive);
-            if (added_index >= 0)
-                (void) poller_remove_registration_at (poller, added_index);
-        }
-        errno = err;
-        return zlink::config_result_internal::from_errno (err);
+        return zlink::config_result_internal::from_errno (errno);
     }
     poller->registrations[index].events = events_;
-
-    if (type == ZLINK_CORE_SOCKET_DEALER && (events_ & ZLINK_POLLIN) == 0
-        && receive_index >= 0
-        && poller_remove_registration_at (poller, receive_index) != 0) {
-        const int err = errno;
-        short old_physical_events = old_events;
-        bool dispatch_installed = false;
-        {
-            std::lock_guard<std::mutex> lock (state->mutex);
-            dispatch_installed = state->internal_dispatch_installed;
-        }
-        if (dispatch_installed)
-            old_physical_events =
-              static_cast<short> (old_physical_events & ~ZLINK_POLLIN);
-        (void) poller->poller.modify (
-          static_cast<zlink::socket_base_t *> (poller->registrations[index].socket),
-          old_physical_events);
-        poller->registrations[index].events = old_events;
-        errno = err;
-        return zlink::config_result_internal::from_errno (err);
-    }
     return ZLINK_CONFIG_OK;
 }
 

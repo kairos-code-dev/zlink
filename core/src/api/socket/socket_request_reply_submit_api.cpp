@@ -21,7 +21,8 @@ namespace
 {
 const size_t stack_request_reply_part_capacity = 8;
 
-int send_dealer_reply_to_target (const reqrep::dealer_reply_target_t &target_,
+int send_dealer_reply_to_target (zlink::socket_base_t *socket_,
+                                 const reqrep::dealer_reply_target_t &target_,
                                  zlink::part_helper_internal::handle_state_t *helper_state_,
                                  zlink_msg_t *final_part_)
 {
@@ -68,28 +69,13 @@ int send_dealer_reply_to_target (const reqrep::dealer_reply_target_t &target_,
         return -1;
     }
 
-    for (size_t i = 0; i < total_part_count; ++i) {
-        zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (&combined[i]);
-        if (i + 1 < total_part_count)
-            msg->set_flags (zlink::msg_t::more);
-        else
-            msg->reset_flags (zlink::msg_t::more);
-
-        const bool written = i + 1 < total_part_count ? target_.pipe->write (msg)
-                                                      : target_.pipe->write_and_flush (msg);
-        if (!written) {
-            const int saved_errno = errno ? errno : EAGAIN;
-            target_.pipe->rollback ();
-            zlink::request_reply::close_built_parts (combined, total_part_count);
-            errno = saved_errno;
-            return -1;
-        }
-
-        // pipe_t::write copies msg_t into the pipe and transfers the content
-        // ownership to that queued copy. Match socket xsend paths by clearing
-        // the caller-side slot before the cleanup pass reaches it.
-        const int rc = zlink_msg_init (&combined[i]);
-        errno_assert (rc == 0);
+    if (reqrep::send_completion_frames (
+          socket_, target_.pipe, NULL, combined, total_part_count)
+        != 0) {
+        const int saved_errno = errno;
+        zlink::request_reply::close_built_parts (combined, total_part_count);
+        errno = saved_errno;
+        return -1;
     }
 
     zlink::request_reply::close_built_parts (combined, total_part_count);
@@ -385,34 +371,38 @@ zlink_submit_result_t zlink_router_reply_part (void *router_,
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    if (first_part) {
-        if (zlink::request_reply::send_envelope_control_frames (
-              zlink::request_reply::reply_type, request_seq_,
-              [&] (size_t index_, const void *data_, size_t size_) {
-                  return reqrep::send_request_frame (
-                    handle.socket, state.get (),
-                    index_ == zlink::request_reply::envelope_protocol_index ? peer_rid_ : NULL,
-                    data_, size_, ZLINK_SNDMORE);
-              })
-            != 0) {
+    if (part_flag_ == ZLINK_PART_MORE) {
+        if (reqrep::stage_request_payload_part (state.get (), part_) != 0) {
             const int saved_errno = errno;
             zlink::part_helper_internal::abort_send_step (state);
             zlink::part_helper_internal::consume_send_part (part_);
             errno = saved_errno;
             return zlink::submit_result_internal::from_errno (saved_errno);
         }
+        return ZLINK_SUBMIT_OK;
     }
 
-    if (reqrep::send_request_payload_part (handle.socket, state.get (), peer_rid_, part_,
-                                           ZLINK_SEND_FLAGS_NONE, part_flag_)
+    const size_t payload_count = state->send.buffered_parts.size () + 1;
+    std::vector<zlink_msg_t> payload (payload_count);
+    for (size_t i = 0; i < payload_count; ++i)
+        zlink_msg_init (&payload[i]);
+    for (size_t i = 0; i < state->send.buffered_parts.size (); ++i)
+        zlink_msg_move (&payload[i], &state->send.buffered_parts[i]);
+    zlink_msg_move (&payload[payload_count - 1], part_);
+
+    if (reqrep::send_request_reply_message (
+          handle.socket, peer_rid_, &payload[0], payload_count, ZLINK_SEND_FLAGS_NONE,
+          zlink::request_reply::reply_type, request_seq_)
         != 0) {
         const int saved_errno = errno;
+        zlink::request_reply::close_built_parts (&payload);
         zlink::part_helper_internal::abort_send_step (state);
         zlink::part_helper_internal::consume_send_part (part_);
         errno = saved_errno;
         return zlink::submit_result_internal::from_errno (saved_errno);
     }
 
+    zlink::request_reply::close_built_parts (&payload);
     zlink::part_helper_internal::complete_send_step (state, part_flag_);
     return ZLINK_SUBMIT_OK;
 }
@@ -479,7 +469,7 @@ zlink_submit_result_t zlink_dealer_reply_part (void *dealer_,
         return zlink::submit_result_internal::from_errno (saved_errno);
     }
 
-    if (send_dealer_reply_to_target (target, state.get (), part_) != 0) {
+    if (send_dealer_reply_to_target (handle.socket, target, state.get (), part_) != 0) {
         const int saved_errno = errno;
         reqrep::restore_dealer_reply_target (request_state, request_seq_, target);
         zlink::part_helper_internal::abort_send_step (state);

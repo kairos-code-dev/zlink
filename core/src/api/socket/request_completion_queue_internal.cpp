@@ -4,12 +4,8 @@
 
 #include "api/socket/request_completion_queue_internal.hpp"
 
-#include <utility>
-
 #include "api/socket/request_reply_protocol_internal.hpp"
-#include "core/ctx.hpp"
-#include "core/socket_poller.hpp"
-#include "core/recv_internal.hpp"
+#include "sockets/common/socket_base.hpp"
 
 namespace
 {
@@ -17,49 +13,6 @@ void *&request_completion_owner_tls ()
 {
     static thread_local void *owner = NULL;
     return owner;
-}
-
-int move_completion_parts (std::vector<zlink_msg_t> *dest_, zlink_msg_t *parts_, size_t part_count_)
-{
-    if (!dest_) {
-        errno = EFAULT;
-        return -1;
-    }
-    if (!parts_ && part_count_ > 0) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    dest_->reserve (part_count_);
-    for (size_t i = 0; i < part_count_; ++i) {
-        zlink_msg_t moved;
-        zlink_msg_init (&moved);
-        if (zlink_msg_move (&moved, &parts_[i]) != 0) {
-            zlink_msg_close (&moved);
-            zlink::close_msg_frames (dest_);
-            errno = EFAULT;
-            return -1;
-        }
-        dest_->push_back (moved);
-    }
-    return 0;
-}
-
-void drain_signal_socket_nonblocking (zlink::socket_base_t *socket_)
-{
-    if (!socket_)
-        return;
-
-    while (true) {
-        zlink::msg_t msg;
-        if (msg.init () != 0)
-            return;
-        if (socket_->recv (&msg, ZLINK_DONTWAIT) != 0) {
-            msg.close ();
-            return;
-        }
-        msg.close ();
-    }
 }
 
 class request_completion_callback_scope_t
@@ -78,268 +31,98 @@ class request_completion_callback_scope_t
 };
 }
 
-zlink::request_completion::queued_completion_t::queued_completion_t () :
-    handler (NULL), userdata (NULL), errnum (0)
-{
-}
-
-zlink::request_completion::queued_completion_t::~queued_completion_t ()
-{
-    zlink::close_msg_frames (&parts);
-}
-
-zlink::request_completion::queued_completion_t::queued_completion_t (
-  queued_completion_t &&other_) noexcept :
-    handler (other_.handler), userdata (other_.userdata), errnum (other_.errnum)
-{
-    parts.swap (other_.parts);
-    other_.handler = NULL;
-    other_.userdata = NULL;
-    other_.errnum = 0;
-}
-
-zlink::request_completion::queued_completion_t &
-zlink::request_completion::queued_completion_t::operator= (queued_completion_t &&other_) noexcept
-{
-    if (this == &other_)
-        return *this;
-
-    zlink::close_msg_frames (&parts);
-    handler = other_.handler;
-    userdata = other_.userdata;
-    errnum = other_.errnum;
-    parts.swap (other_.parts);
-    other_.handler = NULL;
-    other_.userdata = NULL;
-    other_.errnum = 0;
-    return *this;
-}
-
 zlink::request_completion::queue_state_t::queue_state_t () :
-    owner_thread_valid (false), signal_pending (false), close_requested (false), poller_refs (0)
+    owner_thread_valid (false),
+    closed (false)
 {
 }
 
-namespace
+zlink::request_completion::control_t::control_t () :
+    handler (NULL),
+    userdata (NULL),
+    errnum (0)
 {
-int ensure_signal_ready_locked (zlink::request_completion::queue_state_t *state_,
-                                zlink::ctx_t *ctx_,
-                                const char *prefix_)
-{
-    if (state_->close_requested) {
-        errno = ETERM;
-        return -1;
-    }
-    return zlink::internal_pair_queue::ensure (ctx_, prefix_, &state_->signal);
-}
-}
-
-int zlink::request_completion::ensure_signal_ready (queue_state_t *state_,
-                                                    zlink::ctx_t *ctx_,
-                                                    const char *prefix_)
-{
-    if (!state_ || !ctx_ || !prefix_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    std::lock_guard<std::mutex> lock (state_->mutex);
-    return ensure_signal_ready_locked (state_, ctx_, prefix_);
 }
 
 int zlink::request_completion::enqueue (queue_state_t *state_,
-                                        zlink::ctx_t *ctx_,
-                                        const char *prefix_,
+                                        void *owner_handle_,
                                         zlink_reply_handler_fn handler_,
                                         void *userdata_,
                                         int errnum_,
                                         zlink_msg_t *parts_,
                                         size_t part_count_)
 {
-    if (!state_ || !ctx_ || !prefix_ || !handler_) {
+    if (!state_ || !owner_handle_ || !handler_ || parts_ || part_count_ != 0) {
         errno = EFAULT;
         return -1;
     }
-    queued_completion_t completion;
-    completion.handler = handler_;
-    completion.userdata = userdata_;
-    completion.errnum = errnum_;
-    completion.parts.reserve (part_count_);
 
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
-        if (ensure_signal_ready_locked (state_, ctx_, prefix_) != 0)
+        if (state_->closed) {
+            errno = ETERM;
             return -1;
-        if (move_completion_parts (&completion.parts, parts_, part_count_) != 0)
-            return -1;
-        // Hot path: many request replies may complete before the application
-        // drains the queue. Signal only the first pending batch; draining clears
-        // signal_pending and avoids one inproc wakeup per reply.
-        const bool should_signal = state_->pending.empty () && !state_->signal_pending;
-        state_->pending.push_back (std::move (completion));
-        if (should_signal) {
-            state_->signal_pending = true;
-            static const unsigned char signal_byte = 0x7a;
-            const int signal_rc = zlink::internal_pair_queue::send_buffer_frame (
-              state_->signal.tx_socket (), &signal_byte, sizeof (signal_byte), 0);
-            if (signal_rc != 0) {
-                state_->signal_pending = false;
-                return -1;
-            }
         }
+        control_t control;
+        control.handler = handler_;
+        control.userdata = userdata_;
+        control.errnum = errnum_;
+        state_->controls.push_back (control);
     }
 
+    static_cast<zlink::socket_base_t *> (owner_handle_)->notify_request_completion ();
     errno = 0;
     return 0;
 }
 
-int zlink::request_completion::signal (queue_state_t *state_,
-                                       zlink::ctx_t *ctx_,
-                                       const char *prefix_)
+void zlink::request_completion::invoke_callback (void *owner_handle_,
+                                                 zlink_reply_handler_fn handler_,
+                                                 int errnum_,
+                                                 zlink_msg_t *parts_,
+                                                 size_t part_count_,
+                                                 void *userdata_)
 {
-    if (!state_ || !ctx_ || !prefix_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        if (ensure_signal_ready_locked (state_, ctx_, prefix_) != 0)
-            return -1;
-        if (state_->signal_pending) {
-            errno = 0;
-            return 0;
-        }
-        state_->signal_pending = true;
-        static const unsigned char signal_byte = 0x7a;
-        const int signal_rc = zlink::internal_pair_queue::send_buffer_frame (
-          state_->signal.tx_socket (), &signal_byte, sizeof (signal_byte), 0);
-        if (signal_rc != 0) {
-            state_->signal_pending = false;
-            return -1;
-        }
-    }
-    errno = 0;
-    return 0;
+    const request_completion_callback_scope_t scope (owner_handle_);
+    zlink::request_reply::complete_reply_callback (
+      handler_, errnum_, parts_, part_count_, userdata_);
 }
 
 int zlink::request_completion::drain (queue_state_t *state_, void *owner_handle_)
 {
-    if (!state_) {
+    if (!state_ || !owner_handle_) {
         errno = EFAULT;
         return -1;
     }
 
-    claim_owner_thread (state_);
-    int drained = 0;
-    while (true) {
-        std::deque<queued_completion_t> batch;
-        bool queue_empty = false;
-        {
-            std::lock_guard<std::mutex> lock (state_->mutex);
-            // Always consume the signal byte and clear signal_pending whenever
-            // we observe the queue here. Without this, a draining swap below
-            // leaves signal_pending=true even after the byte has been observed
-            // by the poller, so subsequent enqueue() calls take the
-            // !signal_pending == false branch and skip waking up the fd.
-            // Concretely: reply N+1, N+2, ... never raise the signaler until
-            // the next drain comes around through the poller's timeout, which
-            // caps throughput at 1 / poll_timeout per client.
-            if (state_->signal_pending) {
-                drain_signal_socket_nonblocking (state_->signal.rx_socket ());
-                state_->signal_pending = false;
-            }
-            if (state_->pending.empty ()) {
-                queue_empty = true;
-            } else {
-                batch.swap (state_->pending);
-            }
-        }
-
-        if (queue_empty)
-            break;
-
-        for (std::deque<queued_completion_t>::iterator it = batch.begin (); it != batch.end ();
-             ++it) {
-            const request_completion_callback_scope_t scope (owner_handle_);
-            zlink_msg_t *parts = it->parts.empty () ? NULL : &it->parts[0];
-            zlink::request_reply::complete_reply_callback (it->handler, it->errnum, parts,
-                                                           it->parts.size (), it->userdata);
-            ++drained;
-        }
+    std::deque<control_t> controls;
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        state_->owner_thread = std::this_thread::get_id ();
+        state_->owner_thread_valid = true;
+        controls.swap (state_->controls);
     }
+
+    for (std::deque<control_t>::iterator it = controls.begin (); it != controls.end (); ++it)
+        invoke_callback (owner_handle_, it->handler, it->errnum, NULL, 0, it->userdata);
+
     errno = 0;
-    return drained;
+    return static_cast<int> (controls.size ());
 }
 
 void zlink::request_completion::close (queue_state_t *state_)
 {
     if (!state_)
         return;
-
-    bool close_now = false;
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        state_->pending.clear ();
-        state_->owner_thread_valid = false;
-        state_->close_requested = true;
-        if (state_->poller_refs > 0 && state_->signal.tx_socket () && !state_->signal_pending) {
-            state_->signal_pending = true;
-            static const unsigned char signal_byte = 0x7a;
-            if (zlink::internal_pair_queue::send_buffer_frame (
-                  state_->signal.tx_socket (), &signal_byte, sizeof (signal_byte), ZLINK_DONTWAIT)
-                != 0) {
-                state_->signal_pending = false;
-            }
-        } else if (state_->poller_refs == 0) {
-            state_->signal_pending = false;
-            close_now = true;
-        }
-    }
-    if (close_now)
-        zlink::internal_pair_queue::close_and_wait (&state_->signal);
-}
-
-int zlink::request_completion::acquire_signal_poller_ref (queue_state_t *state_)
-{
-    if (!state_) {
-        errno = EFAULT;
-        return -1;
-    }
-
     std::lock_guard<std::mutex> lock (state_->mutex);
-    if (state_->close_requested || !state_->signal.rx_socket ()) {
-        errno = ETERM;
-        return -1;
-    }
-    ++state_->poller_refs;
-    errno = 0;
-    return 0;
-}
-
-void zlink::request_completion::release_signal_poller_ref (queue_state_t *state_)
-{
-    if (!state_)
-        return;
-
-    bool close_now = false;
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        if (state_->poller_refs > 0)
-            --state_->poller_refs;
-        close_now = state_->close_requested && state_->poller_refs == 0;
-        if (close_now)
-            state_->signal_pending = false;
-    }
-    if (close_now)
-        zlink::internal_pair_queue::close_and_wait (&state_->signal);
+    state_->closed = true;
+    state_->controls.clear ();
+    state_->owner_thread_valid = false;
 }
 
 void zlink::request_completion::claim_owner_thread (queue_state_t *state_)
 {
     if (!state_)
         return;
-
     std::lock_guard<std::mutex> lock (state_->mutex);
     state_->owner_thread = std::this_thread::get_id ();
     state_->owner_thread_valid = true;
@@ -349,7 +132,6 @@ bool zlink::request_completion::current_thread_is_owner (queue_state_t *state_)
 {
     if (!state_)
         return false;
-
     std::lock_guard<std::mutex> lock (state_->mutex);
     return state_->owner_thread_valid && state_->owner_thread == std::this_thread::get_id ();
 }
@@ -358,92 +140,11 @@ bool zlink::request_completion::has_pending (queue_state_t *state_)
 {
     if (!state_)
         return false;
-
     std::lock_guard<std::mutex> lock (state_->mutex);
-    return !state_->pending.empty ();
-}
-
-zlink::socket_base_t *zlink::request_completion::signal_socket (queue_state_t *state_)
-{
-    return state_ ? state_->signal.rx_socket () : NULL;
+    return !state_->controls.empty ();
 }
 
 bool zlink::request_completion::in_request_completion_callback (void *owner_handle_)
 {
     return owner_handle_ != NULL && request_completion_owner_tls () == owner_handle_;
-}
-
-int zlink::request_completion::wait_input_or_signal (zlink::socket_base_t *input_,
-                                                     zlink::socket_base_t *signal_,
-                                                     long timeout_ms_,
-                                                     bool *input_ready_out_,
-                                                     bool *signal_ready_out_)
-{
-    if (!signal_ready_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-    *signal_ready_out_ = false;
-    wait_signal_t signal = {signal_, signal_ready_out_};
-    return wait_input_or_signals (input_, signal_ ? &signal : NULL, signal_ ? 1 : 0, timeout_ms_,
-                                  input_ready_out_);
-}
-
-int zlink::request_completion::wait_input_or_signals (zlink::socket_base_t *input_,
-                                                      const wait_signal_t *signals_,
-                                                      size_t signal_count_,
-                                                      long timeout_ms_,
-                                                      bool *input_ready_out_)
-{
-    if (!input_ || !input_ready_out_ || (signal_count_ > 0 && !signals_)) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    *input_ready_out_ = false;
-    for (size_t i = 0; i < signal_count_; ++i) {
-        if (!signals_[i].socket || !signals_[i].ready_out) {
-            errno = EFAULT;
-            return -1;
-        }
-        *signals_[i].ready_out = false;
-    }
-
-    if (signal_count_ == 0) {
-        const int wait_rc = zlink::wait_socket_events_internal (input_, ZLINK_POLLIN, timeout_ms_);
-        if (wait_rc < 0)
-            return -1;
-        if (wait_rc == 0)
-            return 0;
-        *input_ready_out_ = true;
-        return 1;
-    }
-
-    zlink::socket_poller_t poller;
-    if (poller.add (input_, NULL, ZLINK_POLLIN) != 0)
-        return -1;
-    for (size_t i = 0; i < signal_count_; ++i) {
-        if (poller.add (signals_[i].socket, NULL, ZLINK_POLLIN) != 0)
-            return -1;
-    }
-
-    const int event_capacity = static_cast<int> (signal_count_ + 1);
-    std::vector<zlink::socket_poller_t::event_t> events (event_capacity);
-    const int rc = poller.wait (&events[0], event_capacity, timeout_ms_);
-    if (rc <= 0)
-        return rc;
-
-    for (int i = 0; i < rc; ++i) {
-        if (events[i].socket == input_)
-            *input_ready_out_ = true;
-        else {
-            for (size_t j = 0; j < signal_count_; ++j) {
-                if (events[i].socket == signals_[j].socket) {
-                    *signals_[j].ready_out = true;
-                    break;
-                }
-            }
-        }
-    }
-    return rc;
 }

@@ -146,6 +146,15 @@ struct socket_monitor_runtime_t
                                  uint32_t *ready_count_out_);
     bool erase_ready_connection_for_endpoint (const endpoint_uri_pair_t &endpoint_uri_pair_,
                                               uint32_t *ready_count_out_);
+    bool mark_transport_pair_lane_ready (
+      const endpoint_uri_pair_t &endpoint_uri_pair_,
+      const unsigned char *routing_id_,
+      size_t routing_id_size_,
+      transport_lane_t lane_,
+      uint64_t pair_id_,
+      uint64_t generation_);
+    void erase_transport_pair_readiness_for_endpoint (
+      const endpoint_uri_pair_t &endpoint_uri_pair_);
     void reset_worker_state ();
     void start_task (uint64_t task_id_);
     bool dequeue_worker_event_nowait (socket_monitor_event_record_t *out_);
@@ -165,6 +174,7 @@ struct socket_monitor_runtime_t
     uint64_t task_id;
     bool task_running;
     std::set<std::string> ready_connections;
+    std::map<std::string, uint8_t> transport_pair_ready_lanes;
 };
 
 struct socket_dispatch_bridge_t

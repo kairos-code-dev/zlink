@@ -18,7 +18,7 @@ void prepare_direct_send_message (zlink::msg_t *msg_, int flags_)
 
 bool is_submit_retry_errno (int err_)
 {
-    return err_ == ENOTCONN || err_ == EHOSTUNREACH;
+    return err_ == ENOTCONN || err_ == EHOSTUNREACH || err_ == ECONNREFUSED;
 }
 
 bool submit_retry_enabled (const zlink::options_t &options_, int flags_)
@@ -176,12 +176,25 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
             return 0;
         }
     }
+    if (errno != EAGAIN && (flags_ & ZLINK_DONTWAIT) == 0
+        && options.sndtimeo != 0 && !submit_retry_enabled (options, flags_)
+        && is_submit_retry_errno (errno)
+        && socket_has_manual_connect_endpoints ()
+        && xsubmit_retry_allowed (target_rid_, errno)) {
+        // Paired transports expose no application pipe until both lanes have
+        // validated their handshake. A blocking send to a locally initiated
+        // endpoint waits for that attach just as it waits for HWM credit.
+        errno = EAGAIN;
+    }
     if (unlikely (errno != EAGAIN) && submit_retry_enabled (options, flags_)
         && is_submit_retry_errno (errno) && xsubmit_retry_allowed (target_rid_, errno)) {
         const uint64_t end = _clock.now_ms () + effective_submit_retry_timeout (options);
         int attempts_left = options.submit_retry_attempts;
         int last_errno = errno;
-        while (attempts_left-- > 0) {
+        dispatch_runtime ().mark_send_recovery_pending ();
+        if (transport_has_out ())
+            dispatch_runtime ().mark_send_recovery_ready ();
+        while (attempts_left > 0) {
             const uint64_t now = _clock.now_ms ();
             if (now >= end)
                 break;
@@ -191,11 +204,25 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
 
             arm_send_ready_notification ();
             const int wait_ms = submit_retry_wait_ms (remaining);
-            rc = process_commands (wait_ms, false);
-            if (unlikely (rc != 0)) {
-                dispatch_runtime ().clear_send_recovery_pending ();
-                return -1;
-            }
+            const uint64_t attempt_at =
+              now + static_cast<uint64_t> (wait_ms);
+            do {
+                const uint64_t before_wait = _clock.now_ms ();
+                if (before_wait >= attempt_at)
+                    break;
+                rc = process_commands (
+                  static_cast<int> (attempt_at - before_wait), false);
+                if (unlikely (rc != 0)) {
+                    dispatch_runtime ().clear_send_recovery_pending ();
+                    return -1;
+                }
+            } while (_clock.now_ms () < attempt_at);
+            if (_clock.now_ms () >= end)
+                break;
+            if (!dispatch_runtime ().send_recovery_ready ())
+                continue;
+            dispatch_runtime ().clear_send_recovery_ready ();
+            --attempts_left;
 
             prepare_direct_send_message (msg_, flags_);
             _auto_hwm_send_attempts.fetch_add (1, std::memory_order_relaxed);
@@ -213,8 +240,9 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
                 dispatch_runtime ().clear_send_recovery_pending ();
                 return 0;
             }
-            last_errno = errno;
-            if (!is_submit_retry_errno (errno))
+            if (errno != EAGAIN)
+                last_errno = errno;
+            if (errno != EAGAIN && !is_submit_retry_errno (errno))
                 break;
             if (!xsubmit_retry_allowed (target_rid_, errno))
                 break;
@@ -456,12 +484,15 @@ int zlink::socket_base_t::recv_pipe (msg_t *msg_, pipe_t **pipe_out_, int flags_
 int zlink::socket_base_t::recv_routed (msg_t *msg_,
                                       zlink_routing_id_t *source_rid_out_,
                                       int flags_,
-                                      uint64_t *connection_id_out_)
+                                      uint64_t *connection_id_out_,
+                                      pipe_t **source_pipe_out_)
 {
     if (source_rid_out_)
         source_rid_out_->size = 0;
     if (connection_id_out_)
         *connection_id_out_ = 0;
+    if (source_pipe_out_)
+        *source_pipe_out_ = NULL;
 
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
@@ -480,7 +511,8 @@ int zlink::socket_base_t::recv_routed (msg_t *msg_,
         command_runtime ().reset_recv_ticks ();
     }
 
-    int rc = xrecv_routed (msg_, source_rid_out_, connection_id_out_);
+    int rc =
+      xrecv_routed (msg_, source_rid_out_, connection_id_out_, source_pipe_out_);
     if (unlikely (rc != 0 && errno != EAGAIN))
         return -1;
 
@@ -494,7 +526,8 @@ int zlink::socket_base_t::recv_routed (msg_t *msg_,
             return -1;
         command_runtime ().reset_recv_ticks ();
 
-        rc = xrecv_routed (msg_, source_rid_out_, connection_id_out_);
+        rc =
+          xrecv_routed (msg_, source_rid_out_, connection_id_out_, source_pipe_out_);
         if (rc < 0)
             return rc;
         extract_flags (msg_);
@@ -508,7 +541,8 @@ int zlink::socket_base_t::recv_routed (msg_t *msg_,
     while (true) {
         if (unlikely (process_commands (block ? timeout : 0, false) != 0))
             return -1;
-        rc = xrecv_routed (msg_, source_rid_out_, connection_id_out_);
+        rc =
+          xrecv_routed (msg_, source_rid_out_, connection_id_out_, source_pipe_out_);
         if (rc == 0) {
             command_runtime ().reset_recv_ticks ();
             break;

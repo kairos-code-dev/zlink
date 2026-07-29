@@ -83,8 +83,6 @@ int queue_router_reply_completion (const std::shared_ptr<router_request_reply_st
 int drain_router_reply_completions (const std::shared_ptr<router_request_reply_state_t> &state_,
                                     void *owner_handle_);
 bool has_router_reply_completions (const std::shared_ptr<router_request_reply_state_t> &state_);
-zlink::socket_base_t *
-router_completion_signal_socket (const std::shared_ptr<router_request_reply_state_t> &state_);
 void claim_router_completion_owner (const std::shared_ptr<router_request_reply_state_t> &state_);
 bool current_thread_is_router_completion_owner (
   const std::shared_ptr<router_request_reply_state_t> &state_);
@@ -95,6 +93,8 @@ bool in_request_completion_callback (void *handle_);
 
 bool has_pending_router_request_work (
   const std::shared_ptr<router_request_reply_state_t> &state_);
+void fail_disconnected_router_requests (
+  const std::shared_ptr<router_request_reply_state_t> &state_, int errnum_);
 
 //  Fails outstanding requests with ETERM and drains their completions.
 int drain_close_router_request_reply_state (void *router_);

@@ -50,7 +50,11 @@ int zlink::routing_socket_base_t::xsetsockopt (int option_, const void *optval_,
 void zlink::routing_socket_base_t::xwrite_activated (pipe_t *pipe_)
 {
     const out_pipe_index_t::iterator index_it = _out_pipe_index.find (pipe_);
-    zlink_assert (index_it != _out_pipe_index.end ());
+    // ROUTER keeps a duplicate peer in the anonymous set when handover is
+    // disabled. A paired transport can release that pipe's initial write hold
+    // after validation even though it intentionally has no outbound route.
+    if (index_it == _out_pipe_index.end ())
+        return;
     mark_out_pipe_active (&index_it->second->second);
 }
 
@@ -223,6 +227,12 @@ bool zlink::routing_socket_base_t::xsubmit_retry_allowed (const zlink_routing_id
     const out_pipe_t *const outpipe = lookup_out_pipe (routing_id);
     if (outpipe)
         return outpipe->locally_initiated;
+
+    if (_connect_routing_id.size () == routing_id.size ()
+        && (_connect_routing_id.empty ()
+            || memcmp (_connect_routing_id.data (), routing_id.data (),
+                       routing_id.size ()) == 0))
+        return true;
 
     return _submit_retry_local_rids.count (routing_id) != 0;
 }

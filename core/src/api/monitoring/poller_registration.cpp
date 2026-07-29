@@ -5,9 +5,7 @@
 #include <stdint.h>
 
 #include "api/monitoring/poller_api_internal.hpp"
-#include "api/socket/request_completion_queue_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
-#include "api/monitoring/poller_completion_internal.hpp"
 
 void *poller_index_user_data (size_t index_)
 {
@@ -79,55 +77,6 @@ int poller_add_fd_registration (poller_handle_t *poller_,
     registration.events = events_;
     poller_->registrations.push_back (registration);
     poller_->fd_registration_indices[registration.fd] = poller_->registrations.size () - 1;
-    return 0;
-}
-
-int poller_add_hidden_completion_registration (poller_handle_t *poller_,
-                                               zlink::socket_base_t *signal_socket_,
-                                               void *subject_,
-                                               poller_subject_kind_t subject_kind_,
-                                               zlink::request_completion::queue_state_t *queue_,
-                                               const std::shared_ptr<void> &state_ref_)
-{
-    if (!poller_ || !signal_socket_ || !subject_ || !queue_ || !state_ref_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    if (zlink::request_completion::acquire_signal_poller_ref (queue_) != 0)
-        return -1;
-
-    if (poller_add_registration (poller_, signal_socket_, NULL, ZLINK_POLLIN, subject_,
-                                 subject_kind_)
-        != 0) {
-        const int err = errno ? errno : EFAULT;
-        zlink::request_completion::release_signal_poller_ref (queue_);
-        errno = err;
-        return -1;
-    }
-
-    poller_->registrations.back ().state_ref = state_ref_;
-    poller_->registrations.back ().completion_queue = queue_;
-    errno = 0;
-    return 0;
-}
-
-int poller_add_hidden_receive_registration (poller_handle_t *poller_,
-                                            zlink::socket_base_t *receive_socket_,
-                                            void *subject_,
-                                            void *user_data_,
-                                            const std::shared_ptr<void> &state_ref_)
-{
-    if (!poller_ || !receive_socket_ || !subject_ || !state_ref_) {
-        errno = EFAULT;
-        return -1;
-    }
-    if (poller_add_registration (poller_, receive_socket_, user_data_, ZLINK_POLLIN, subject_,
-                                 poller_subject_socket_request_receive)
-        != 0)
-        return -1;
-    poller_->registrations.back ().state_ref = state_ref_;
-    errno = 0;
     return 0;
 }
 
@@ -237,6 +186,10 @@ int poller_remove_all_registrations_for_subject (poller_handle_t *poller_, void 
 
 void release_poller_registration (const poller_registration_t &registration_)
 {
+    if (registration_.socket && registration_.owns_completion_processing) {
+        static_cast<zlink::socket_base_t *> (registration_.socket)
+          ->release_completion_poller ();
+    }
     switch (registration_.subject_kind) {
         case poller_subject_timer:
             timer_handle_release_poller_ref (as_timer_handle (registration_.subject));
@@ -244,11 +197,6 @@ void release_poller_registration (const poller_registration_t &registration_)
         case poller_subject_fd:
             break;
         default:
-            if (poller_subject_is_completion (registration_.subject_kind)
-                && registration_.completion_queue) {
-                zlink::request_completion::release_signal_poller_ref (
-                  registration_.completion_queue);
-            }
             break;
     }
 }

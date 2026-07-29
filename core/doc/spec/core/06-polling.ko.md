@@ -131,11 +131,14 @@ poller 하나의 add, modify, remove와 wait는 caller가 직렬화한다. 서�
 
 `ZLINK_POLLCOMPLETION`은 raw DEALER 또는 ROUTER를 `zlink_poller_add()`로 등록할 때만 사용할 수 있다. 다른
 bit와 OR하지 않고 단독으로 등록한다. request completion signal은 public receive record가 아니다.
-`zlink_poller_wait()`가 signal을 관측하면 내부 completion queue를 진행시키고 등록된 reply callback을 그 wait
-호출의 thread에서 dispatch한다. completion signal만 처리한 경우 public event를 만들지 않으므로 wait는 `0`을
-반환할 수 있으며, callback이 변경한 caller-owned 상태를 확인한 뒤 다음 작업을 진행할 수 있다. `recv_part`
-계열은 이 completion을 drain하지 않는다. 다른 source, `zlink_poll()` item 또는 `zlink_poller_modify()`에
-사용하면 `ZLINK_CONFIG_INVALID_ARGUMENT`, `errno == EINVAL`이다.
+`zlink_poller_wait()`가 signal을 관측하면 paired Completion transport에서 reply payload를
+수신하고 등록된 reply callback을 그 wait 호출의 thread에서 dispatch한다. Reply payload를
+두 번째 내부 payload queue로 복사하지 않는다. Timeout, shutdown과 같이 payload가 없는
+terminal 결과는 callback 실행 thread를 유지하기 위한 작은 control queue를 사용할 수 있다.
+Completion signal만 처리한 경우 public event를 만들지 않으므로 wait는 `0`을 반환할 수
+있으며, callback이 변경한 caller-owned 상태를 확인한 뒤 다음 작업을 진행할 수 있다.
+`recv_part` 계열은 이 completion을 drain하지 않는다. 다른 source, `zlink_poll()` item 또는
+`zlink_poller_modify()`에 사용하면 `ZLINK_CONFIG_INVALID_ARGUMENT`, `errno == EINVAL`이다.
 
 ## 5. 오류와 close
 

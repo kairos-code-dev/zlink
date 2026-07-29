@@ -12,6 +12,7 @@
     zlink_connect;
     zlink_ctx_auto_hwm_recalculate;
     zlink_ctx_get;
+    zlink_ctx_get_data;
     zlink_ctx_new;
     zlink_ctx_set;
     zlink_ctx_set_data;

@@ -130,6 +130,11 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
     bool process_zmp_handshake_input ();
     int process_ready_message (msg_t *msg_);
     int process_error_message (msg_t *msg_);
+    bool paired_transport () const;
+    void schedule_ready_reply (transport_lane_t lane_,
+                               uint64_t pair_id_,
+                               uint64_t generation_);
+    bool prepare_deferred_ready_reply ();
 
     //  Async I/O methods
     void start_async_read ();
@@ -261,6 +266,8 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
     unsigned char _hello_send[zmp_hello_buf_size];
     size_t _hello_send_size;
     std::vector<unsigned char> _ready_send;
+    std::vector<unsigned char> _deferred_ready_send;
+    bool _deferred_ready_pending;
     unsigned char _peer_routing_id[256];
     size_t _peer_routing_id_size;
 

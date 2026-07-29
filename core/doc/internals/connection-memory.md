@@ -16,7 +16,19 @@ effective message size and HWM rather than with a single fixed connection cost.
 
 ## Variable components
 
-Send and receive queues retain message objects and referenced payload storage.
+Directional pipes charge each complete message once while writing it. The
+charge includes payload and routing-frame bytes and is never smaller than one
+`msg_t`. The peer returns that exact charge as byte credit when it releases the
+message. This uses fixed integer work in the existing pipe synchronization
+path; it adds no allocator query, heap allocation, system call, or new hot-path
+lock.
+
+The directional HWM limits this accounted storage. An empty pipe may admit one
+message larger than the HWM, subject to the socket's maximum message size, and
+then blocks later writes. The monitor reports bytes in flight and this
+oversize-admission history. These values explain Core accounting but are not an
+exact process resident-memory measurement.
+
 Kernel buffers may grow according to platform autotuning. TLS adds record and
 handshake storage. Monitor snapshots report the applied HWM plan but do not
 measure all allocator and kernel overhead.

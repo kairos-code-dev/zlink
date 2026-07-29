@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
+#include "core/auto_hwm_policy.hpp"
 #include "core/ctx.hpp"
 
 #include <climits>
@@ -65,9 +66,13 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             break;
 
         case ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            if (is_int && value >= 0) {
+            if (optvallen_ == sizeof (uint64_t)) {
+                uint64_t msg_unit_bytes = 0;
+                memcpy (&msg_unit_bytes, optval_, sizeof (msg_unit_bytes));
+                if (msg_unit_bytes > auto_hwm_max_message_unit_bytes)
+                    break;
                 scoped_lock_t locker (_opt_sync);
-                _auto_hwm.set_msg_unit_bytes (value);
+                _auto_hwm.set_msg_unit_bytes (msg_unit_bytes);
                 refresh_auto_hwm = true;
                 break;
             }
@@ -165,9 +170,10 @@ int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             break;
 
         case ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            if (is_int) {
+            if (*optvallen_ == sizeof (uint64_t)) {
                 scoped_lock_t locker (_opt_sync);
-                *value = _auto_hwm.msg_unit_bytes ();
+                const uint64_t msg_unit_bytes = _auto_hwm.msg_unit_bytes ();
+                memcpy (optval_, &msg_unit_bytes, sizeof (msg_unit_bytes));
                 return 0;
             }
             break;

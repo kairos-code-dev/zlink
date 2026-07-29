@@ -46,13 +46,15 @@ enum
     auto_hwm_connection_bucket_none = UINT32_MAX
 };
 
+const uint64_t auto_hwm_max_message_unit_bytes = UINT64_MAX / 512u;
+
 struct auto_hwm_context_plan_t
 {
     auto_hwm_context_plan_t ();
 
     bool enabled;
     zlink_auto_hwm_profile_t profile;
-    int message_unit_bytes;
+    uint64_t message_unit_bytes;
 };
 
 struct auto_hwm_socket_plan_t
@@ -68,6 +70,7 @@ struct auto_hwm_socket_plan_t
     uint64_t unit_budget_bytes;
     uint32_t size_cap;
     uint64_t pending_messages;
+    uint64_t pending_bytes;
     bool connection_bucket_enabled;
     uint32_t connection_bucket_count;
     uint32_t connection_bucket_hwm_4k;
@@ -75,8 +78,8 @@ struct auto_hwm_socket_plan_t
     bool connection_bucket_hysteresis_enabled;
     uint32_t previous_connection_bucket_index;
     bool connection_bucket_hysteresis_retained;
-    int sndhwm;
-    int rcvhwm;
+    uint64_t sndhwm;
+    uint64_t rcvhwm;
     bool manual_sndbuf;
     bool manual_rcvbuf;
     int requested_sndbuf;
@@ -98,13 +101,13 @@ auto_hwm_policy_class_t auto_hwm_policy_class_for_role (auto_hwm_role_t role_, i
 void auto_hwm_context_plan_make (bool enabled_,
                                  zlink_auto_hwm_profile_t profile_,
                                  auto_hwm_context_plan_t *out_,
-                                 int message_unit_bytes_ = 0);
+                                 uint64_t message_unit_bytes_ = 0);
 void auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
                                    int socket_type_,
                                    size_t managed_connections_,
                                    size_t active_hwm_connections_,
                                    auto_hwm_socket_plan_t *out_,
-                                   int message_unit_bytes_ = 0,
+                                   uint64_t message_unit_bytes_ = 0,
                                    int sndbuf_ = -1,
                                    int rcvbuf_ = -1,
                                    bool manual_sndbuf_ = false,
@@ -125,7 +128,7 @@ void auto_hwm_socket_plan_for_role (const auto_hwm_context_plan_t &context_,
                                     size_t managed_connections_,
                                     size_t active_hwm_connections_,
                                     auto_hwm_socket_plan_t *out_,
-                                    int message_unit_bytes_ = 0,
+                                    uint64_t message_unit_bytes_ = 0,
                                     int sndbuf_ = -1,
                                     int rcvbuf_ = -1,
                                     bool manual_sndbuf_ = false,

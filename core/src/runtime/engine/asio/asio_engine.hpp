@@ -73,6 +73,7 @@ class asio_engine_t : public i_engine
 
     virtual bool handshake () { return true; }
     virtual void plug_internal () {}
+    virtual bool prepare_deferred_handshake_output () { return false; }
 
     virtual int process_command_message (msg_t *msg_)
     {

@@ -86,11 +86,11 @@ struct command_t
         {
         } activate_read;
 
-        //  Sent by pipe reader to inform pipe writer about how many
-        //  messages it has read so far.
+        //  Sent by pipe reader to return cumulative byte and message credit.
         struct
         {
             uint64_t msgs_read;
+            uint64_t bytes_read;
         } activate_write;
 
         //  Sent by pipe reader to writer after creating a new inpipe.
@@ -115,8 +115,8 @@ struct command_t
         //  Sent by one of pipe to another part for modify hwm
         struct
         {
-            int inhwm;
-            int outhwm;
+            uint64_t inhwm;
+            uint64_t outhwm;
         } pipe_hwm;
 
         //  Sent by I/O object ot the socket to request the shutdown of

@@ -125,11 +125,14 @@ means this public poller API is present in the build.
 `ZLINK_POLLCOMPLETION` is valid only when adding a raw DEALER or ROUTER with
 `zlink_poller_add()`. Register it alone, without OR-ing another bit. A request
 completion signal is not a public receive record. When `zlink_poller_wait()`
-observes the signal, it progresses the internal completion queue and dispatches
-registered reply callbacks on the thread executing that wait call. If only a
-completion signal was processed, no public event is produced and wait may
-return `0`; the caller can inspect state changed by the callback and continue.
-The `recv_part` families do not drain this completion. Using
+observes the signal, Core receives reply payload from the paired Completion
+transport and dispatches the registered reply callback on the thread executing
+that wait call. Reply payload is not copied into a second internal payload
+queue. Timeout, shutdown, and other payloadless terminal results may use a
+small control queue to preserve callback ownership. If only a completion signal
+was processed, no public event is produced and wait may return `0`; the caller
+can inspect state changed by the callback and continue. The `recv_part`
+families do not drain this completion. Using
 `ZLINK_POLLCOMPLETION` on another source, in a `zlink_poll()` item, or in
 `zlink_poller_modify()` returns `ZLINK_CONFIG_INVALID_ARGUMENT` with
 `errno == EINVAL`.

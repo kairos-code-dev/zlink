@@ -71,6 +71,15 @@ template <typename T, int ID = 0> class array_t
 
     void erase (T *item_) { erase (static_cast<item_t *> (item_)->get_array_index ()); }
 
+    bool contains (T *item_) const
+    {
+        if (!item_)
+            return false;
+        const int index = static_cast<item_t *> (item_)->get_array_index ();
+        return index >= 0 && static_cast<size_type> (index) < _items.size ()
+               && _items[static_cast<size_type> (index)] == item_;
+    }
+
     void erase (size_type index_)
     {
         if (_items.empty ())

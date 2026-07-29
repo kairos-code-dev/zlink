@@ -218,6 +218,8 @@ void zlink::socket_base_t::process_async_mailbox ()
     lifecycle_coordinator ().mark_async_processing_started ();
     do {
         process_commands (0, false);
+        acknowledge_request_completion_notification ();
+        (void) drain_request_completion_controls ();
         if (lifecycle_coordinator ().is_destroyed ()) {
             if (!lifecycle_coordinator ().is_async_mailbox_active ()) {
                 mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);

@@ -79,6 +79,28 @@ struct socket_request_reply_bridge_t
     std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state;
 };
 
+struct transport_pair_pipes_t
+{
+    transport_pair_pipes_t () :
+        application (NULL),
+        completion (NULL),
+        generation (0),
+        application_attached (false),
+        application_validated (false),
+        completion_validated (false),
+        ready (false)
+    {
+    }
+
+    pipe_t *application;
+    pipe_t *completion;
+    uint64_t generation;
+    bool application_attached;
+    bool application_validated;
+    bool completion_validated;
+    bool ready;
+};
+
 class socket_recv_source_rid_scope_t
 {
   public:
@@ -145,7 +167,10 @@ class socket_base_t : public own_t,
     int recv_routed (zlink::msg_t *msg_,
                      zlink_routing_id_t *source_rid_out_,
                      int flags_,
-                     uint64_t *connection_id_out_ = NULL);
+                     uint64_t *connection_id_out_ = NULL,
+                     zlink::pipe_t **source_pipe_out_ = NULL);
+    pipe_t *completion_pipe_for_application (pipe_t *application_pipe_) const;
+    pipe_t *completion_pipe_for_peer (const zlink_routing_id_t *peer_rid_) const;
     int close ();
     int close (int handoff_timeout_ms_);
     int socket_msg_dispatch_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
@@ -164,6 +189,14 @@ class socket_base_t : public own_t,
                                                      void *userdata_);
     bool socket_msg_dispatch_active () const;
     bool send_ready_handler_active () const;
+    int ensure_completion_processing ();
+    void release_completion_processing ();
+    void acquire_completion_poller ();
+    void release_completion_poller ();
+    void resume_completion_processing_if_needed ();
+    void notify_request_completion ();
+    int drain_request_completion_controls ();
+    void acknowledge_request_completion_notification ();
     static socket_base_t *current_socket_msg_dispatch_socket ();
     static socket_base_t *current_send_ready_dispatch_socket ();
     static zlink::pipe_t *current_socket_msg_dispatch_pipe ();
@@ -245,6 +278,13 @@ class socket_base_t : public own_t,
     void event_connection_ready_changed (const endpoint_uri_pair_t &endpoint_uri_pair_,
                                          const unsigned char *routing_id_,
                                          size_t routing_id_size_);
+    void event_transport_pair_lane_ready (
+      const endpoint_uri_pair_t &endpoint_uri_pair_,
+      const unsigned char *routing_id_,
+      size_t routing_id_size_,
+      transport_lane_t lane_,
+      uint64_t pair_id_,
+      uint64_t generation_);
     void emit_inproc_connection_ready (pipe_t *pipe_);
 
     //  Query the state of a specific peer. The default implementation
@@ -336,7 +376,8 @@ class socket_base_t : public own_t,
     virtual int xrecv_pipe (zlink::msg_t *msg_, zlink::pipe_t **pipe_out_);
     virtual int xrecv_routed (zlink::msg_t *msg_,
                               zlink_routing_id_t *source_rid_out_,
-                              uint64_t *connection_id_out_);
+                              uint64_t *connection_id_out_,
+                              zlink::pipe_t **source_pipe_out_ = NULL);
     virtual int xterm_peer_rid (const zlink_routing_id_t *peer_rid_);
     virtual int xsocket_msg_dispatch (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
@@ -514,7 +555,8 @@ class socket_base_t : public own_t,
     //  Register the pipe with this socket.
     void attach_pipe (zlink::pipe_t *pipe_,
                       bool subscribe_to_all_ = false,
-                      bool locally_initiated_ = false);
+                      bool locally_initiated_ = false,
+                      bool transport_validated_ = true);
 
     //  Processes commands sent to this socket (if any). If timeout is -1,
     //  returns only after at least one command was processed.
@@ -565,6 +607,9 @@ class socket_base_t : public own_t,
     bool _manual_rcvhwm;
     bool _manual_sndbuf;
     bool _manual_rcvbuf;
+    bool _completion_async_owned;
+    std::atomic<uint32_t> _completion_poller_refs;
+    std::atomic<bool> _request_completion_pending;
     auto_hwm_context_plan_t _auto_hwm_context_plan;
     auto_hwm_socket_plan_t _auto_hwm_socket_plan;
     bool _auto_hwm_connection_bucket_state_valid;
@@ -573,11 +618,16 @@ class socket_base_t : public own_t,
     uint64_t _auto_hwm_connection_bucket_message_bytes;
     uint64_t _auto_hwm_last_recalc_ms;
     uint32_t _auto_hwm_last_recalc_reason;
-    int32_t _auto_hwm_deferred_sndhwm;
-    int32_t _auto_hwm_deferred_rcvhwm;
+    uint64_t _auto_hwm_deferred_sndhwm;
+    uint64_t _auto_hwm_deferred_rcvhwm;
+    bool _auto_hwm_deferred_sndhwm_valid;
+    bool _auto_hwm_deferred_rcvhwm_valid;
     alignas (64) std::atomic<uint64_t> _auto_hwm_send_attempts;
     alignas (64) std::atomic<uint64_t> _auto_hwm_send_blocked_attempts;
     uint32_t _local_peer_weight;
+    typedef std::pair<uint64_t, uint64_t> transport_pair_key_t;
+    typedef std::map<transport_pair_key_t, transport_pair_pipes_t> transport_pairs_t;
+    transport_pairs_t _transport_pairs;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 };

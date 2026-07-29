@@ -58,6 +58,16 @@ bool set_sockopt_int (void *socket_, zlink_option_t option_, int value_, const c
     return rc == 0;
 }
 
+bool set_hwm_bytes (void *socket_, zlink_option_t option_, uint64_t value_, const char *name_)
+{
+    const int rc = zlink_set_option (socket_, option_, &value_, sizeof (value_));
+    if (rc != 0 && bench_debug_enabled ()) {
+        std::cerr << "setsockopt(" << name_ << ") failed: " << zlink_strerror (zlink_errno ())
+                  << std::endl;
+    }
+    return rc == 0;
+}
+
 namespace perf_multi_metric
 {
 inline size_t header_size ()
@@ -267,8 +277,10 @@ bool open_perf_like_delivery_ready_monitor (void *socket_,
     const int monitor_hwm = parse_positive_env ("PERF_MONITOR_HWM", 1000);
     set_sockopt_int (monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
     if (monitor_hwm > 0) {
-        set_sockopt_int (monitor, ZLINK_OPT_SNDHWM, monitor_hwm, "ZLINK_OPT_SNDHWM");
-        set_sockopt_int (monitor, ZLINK_OPT_RCVHWM, monitor_hwm, "ZLINK_OPT_RCVHWM");
+        const uint64_t monitor_hwm_bytes =
+          static_cast<uint64_t> (monitor_hwm) * sizeof (zlink_msg_t);
+        set_hwm_bytes (monitor, ZLINK_OPT_SNDHWM, monitor_hwm_bytes, "ZLINK_OPT_SNDHWM");
+        set_hwm_bytes (monitor, ZLINK_OPT_RCVHWM, monitor_hwm_bytes, "ZLINK_OPT_RCVHWM");
     }
 
     out_->monitor = monitor;
@@ -356,7 +368,7 @@ void configure_bounded_pair_socket (void *socket_, int timeout_ms_)
 
 void configure_send_ready_backpressure_socket (void *socket_)
 {
-    const int hwm = 1;
+    const uint64_t hwm = 65536u + sizeof (zlink_msg_t);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
 }
@@ -471,10 +483,10 @@ bool open_perf_like_connect_monitor_with_perf_sockopts (void *socket_, connect_m
     if (!open_perf_like_connect_monitor (socket_, out_))
         return false;
 
-    const int monitor_hwm = 1000;
+    const uint64_t monitor_hwm = 1000u * sizeof (zlink_msg_t);
     if (!set_sockopt_int (out_->monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER")
-        || !set_sockopt_int (out_->monitor, ZLINK_OPT_SNDHWM, monitor_hwm, "ZLINK_OPT_SNDHWM")
-        || !set_sockopt_int (out_->monitor, ZLINK_OPT_RCVHWM, monitor_hwm, "ZLINK_OPT_RCVHWM")) {
+        || !set_hwm_bytes (out_->monitor, ZLINK_OPT_SNDHWM, monitor_hwm, "ZLINK_OPT_SNDHWM")
+        || !set_hwm_bytes (out_->monitor, ZLINK_OPT_RCVHWM, monitor_hwm, "ZLINK_OPT_RCVHWM")) {
         close_perf_like_connect_monitor (out_);
         return false;
     }

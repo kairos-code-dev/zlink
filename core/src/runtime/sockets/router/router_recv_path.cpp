@@ -234,17 +234,22 @@ int zlink::router_t::xrecv (msg_t *msg_)
 
 int zlink::router_t::xrecv_routed (msg_t *msg_,
                                   zlink_routing_id_t *source_rid_out_,
-                                  uint64_t *connection_id_out_)
+                                  uint64_t *connection_id_out_,
+                                  pipe_t **source_pipe_out_)
 {
     socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
     if (connection_id_out_)
         *connection_id_out_ = 0;
+    if (source_pipe_out_)
+        *source_pipe_out_ = NULL;
     if (_prefetched) {
         if (source_rid_out_)
             copy_router_pipe_source_rid (_current_in, source_rid_out_);
         if (connection_id_out_ && _current_in)
             *connection_id_out_ =
               _prefetched_msg.transport_connection_id ();
+        if (source_pipe_out_)
+            *source_pipe_out_ = _current_in;
 
         const int rc = msg_->move (_prefetched_msg);
         errno_assert (rc == 0);
@@ -284,6 +289,8 @@ int zlink::router_t::xrecv_routed (msg_t *msg_,
     if (connection_id_out_) {
         *connection_id_out_ = msg_->transport_connection_id ();
     }
+    if (source_pipe_out_)
+        *source_pipe_out_ = _current_in;
 
     _more_in = (msg_->flags () & msg_t::more) != 0;
 

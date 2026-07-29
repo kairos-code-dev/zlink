@@ -22,6 +22,16 @@ uint32_t compute_blocked_ratio_ppm_local (uint64_t attempts_, uint64_t blocked_)
     return scaled > 0xffffffffull ? 0xffffffffu : static_cast<uint32_t> (scaled);
 }
 
+bool add_snapshot_counter (uint64_t *value_, uint64_t delta_)
+{
+    if (!value_ || UINT64_MAX - *value_ < delta_) {
+        errno = EOVERFLOW;
+        return false;
+    }
+    *value_ += delta_;
+    return true;
+}
+
 }
 
 int zlink::socket_base_t::monitor_snapshot (zlink_monitor_status_t *out_)
@@ -33,6 +43,8 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_status_t *out_)
 
     process_commands (0, false);
     memset (out_, 0, sizeof (*out_));
+    out_->abi_version = ZLINK_MONITOR_STATUS_ABI_VERSION;
+    out_->struct_size = static_cast<uint32_t> (sizeof (*out_));
     out_->source_kind = ZLINK_MONITOR_SOURCE_SOCKET;
     out_->detail_flags =
       ZLINK_MONITOR_STATUS_DETAIL_SND_PENDING_MSGS | ZLINK_MONITOR_STATUS_DETAIL_RCV_PENDING_MSGS
@@ -44,8 +56,22 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_status_t *out_)
 
         for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count (); i != size; ++i) {
             pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
-            out_->snd_pending_msgs += pipe->get_snd_pending_msgs ();
-            out_->rcv_pending_msgs += pipe->get_rcv_pending_msgs_approx ();
+            if (!add_snapshot_counter (
+                  &out_->snd_pending_msgs, pipe->get_snd_pending_msgs ())
+                || !add_snapshot_counter (
+                  &out_->rcv_pending_msgs, pipe->get_rcv_pending_msgs_approx ())
+                || !add_snapshot_counter (
+                  &out_->snd_bytes_in_flight, pipe->get_snd_pending_bytes ())
+                || !add_snapshot_counter (
+                  &out_->rcv_bytes_in_flight, pipe->get_rcv_pending_bytes_approx ())
+                || !add_snapshot_counter (
+                  &out_->oversize_message_admission_count,
+                  pipe->get_oversize_message_admission_count ())) {
+                return -1;
+            }
+            out_->oversize_message_admission_max_bytes =
+              std::max (out_->oversize_message_admission_max_bytes,
+                        pipe->get_oversize_message_admission_max_bytes ());
         }
     }
     out_->auto_hwm_enabled = _auto_hwm_context_plan.enabled ? 1u : 0u;
@@ -63,8 +89,10 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_status_t *out_)
     out_->auto_hwm_connection_bucket_hysteresis_retained =
       _auto_hwm_socket_plan.connection_bucket_hysteresis_retained ? 1u : 0u;
     out_->auto_hwm_effective_message_bytes = _auto_hwm_socket_plan.effective_message_bytes;
-    out_->auto_hwm_applied_sndhwm = options.sndhwm;
-    out_->auto_hwm_applied_rcvhwm = options.rcvhwm;
+    out_->auto_hwm_planned_sndhwm_bytes = _auto_hwm_socket_plan.sndhwm;
+    out_->auto_hwm_planned_rcvhwm_bytes = _auto_hwm_socket_plan.rcvhwm;
+    out_->auto_hwm_applied_sndhwm_bytes = options.sndhwm;
+    out_->auto_hwm_applied_rcvhwm_bytes = options.rcvhwm;
     out_->auto_hwm_effective_sndbuf = options.sndbuf;
     out_->auto_hwm_effective_rcvbuf = options.rcvbuf;
     out_->auto_hwm_last_recalc_ms = _auto_hwm_last_recalc_ms;
@@ -72,8 +100,13 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_status_t *out_)
     out_->auto_hwm_send_blocked_ratio_ppm = compute_blocked_ratio_ppm_local (
       _auto_hwm_send_attempts.load (std::memory_order_relaxed),
       _auto_hwm_send_blocked_attempts.load (std::memory_order_relaxed));
-    out_->auto_hwm_deferred_sndhwm = _auto_hwm_deferred_sndhwm;
-    out_->auto_hwm_deferred_rcvhwm = _auto_hwm_deferred_rcvhwm;
+    out_->auto_hwm_deferred_sndhwm_bytes = _auto_hwm_deferred_sndhwm;
+    out_->auto_hwm_deferred_rcvhwm_bytes = _auto_hwm_deferred_rcvhwm;
+    out_->auto_hwm_deferred_sndhwm_valid =
+      _auto_hwm_deferred_sndhwm_valid ? 1u : 0u;
+    out_->auto_hwm_deferred_rcvhwm_valid =
+      _auto_hwm_deferred_rcvhwm_valid ? 1u : 0u;
+    out_->minimum_core_message_charge_bytes = sizeof (msg_t);
 
     return 0;
 }
@@ -201,6 +234,7 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
         }
         monitor.start_task (task_id);
         monitor.events_atomic.store (monitor.events, std::memory_order_release);
+
     }
     return rc;
 }
@@ -284,6 +318,8 @@ void zlink::socket_base_t::event_disconnected (const endpoint_uri_pair_t &endpoi
     monitor_event_record_t ready_count_record;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
+        monitor_runtime ().erase_transport_pair_readiness_for_endpoint (
+          endpoint_uri_pair_);
         if (monitor_runtime ().events & ZLINK_EVENT_DISCONNECTED) {
             uint64_t values[1] = {reason_};
             enqueue_disconnected = build_monitor_event_record (
@@ -353,6 +389,31 @@ void zlink::socket_base_t::event_connection_ready_changed (
     event (endpoint_uri_pair_, routing_id_, routing_id_size_, values, 1,
            ZLINK_EVENT_CONNECTION_READY,
            socket_monitor_internal_connection_ready_edge);
+}
+
+void zlink::socket_base_t::event_transport_pair_lane_ready (
+  const endpoint_uri_pair_t &endpoint_uri_pair_,
+  const unsigned char *routing_id_,
+  size_t routing_id_size_,
+  transport_lane_t lane_,
+  uint64_t pair_id_,
+  uint64_t generation_)
+{
+    if ((monitor_runtime ().events_atomic.load (std::memory_order_acquire)
+         & ZLINK_EVENT_CONNECTION_READY)
+        == 0)
+        return;
+
+    bool pair_ready = false;
+    {
+        scoped_lock_t lock (monitor_runtime ().sync);
+        pair_ready = monitor_runtime ().mark_transport_pair_lane_ready (
+          endpoint_uri_pair_, routing_id_, routing_id_size_, lane_, pair_id_,
+          generation_);
+    }
+    if (pair_ready)
+        event_connection_ready_changed (
+          endpoint_uri_pair_, routing_id_, routing_id_size_);
 }
 
 void zlink::socket_base_t::emit_inproc_connection_ready (pipe_t *pipe_)

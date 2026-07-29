@@ -40,7 +40,8 @@ class router_t : public routing_socket_base_t
     int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
     int xrecv_routed (zlink::msg_t *msg_,
                       zlink_routing_id_t *source_rid_out_,
-                      uint64_t *connection_id_out_) ZLINK_OVERRIDE;
+                      uint64_t *connection_id_out_,
+                      zlink::pipe_t **source_pipe_out_ = NULL) ZLINK_OVERRIDE;
     bool xhas_in () ZLINK_OVERRIDE;
     bool xhas_out () ZLINK_OVERRIDE;
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;

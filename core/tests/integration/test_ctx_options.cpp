@@ -12,6 +12,24 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 static void read_socket_auto_hwm_snapshot (void *socket_, zlink_monitor_status_t *out_);
 
+static uint64_t get_u64_socket_option (void *socket_, zlink_option_t option_)
+{
+    uint64_t value = UINT64_MAX;
+    size_t value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (socket_, option_, &value, &value_size));
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (value), value_size);
+    return value;
+}
+
+static uint64_t get_u64_context_option (void *ctx_, zlink_ctx_option_t option_)
+{
+    uint64_t value = UINT64_MAX;
+    size_t value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_get_data (ctx_, option_, &value, &value_size));
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (value), value_size);
+    return value;
+}
+
 #ifdef ZLINK_HAVE_LINUX
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -231,14 +249,10 @@ void test_ctx_option_auto_hwm_defaults ()
 
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (router);
-    int hwm = -1;
-    size_t hwm_size = sizeof (hwm);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
-    TEST_ASSERT_EQUAL_INT (256, hwm);
-    hwm = -1;
-    hwm_size = sizeof (hwm);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_RCVHWM, &hwm, &hwm_size));
-    TEST_ASSERT_EQUAL_INT (256, hwm);
+    TEST_ASSERT_EQUAL_UINT64 (256ull * 4096ull,
+                              get_u64_socket_option (router, ZLINK_OPT_SNDHWM));
+    TEST_ASSERT_EQUAL_UINT64 (256ull * 4096ull,
+                              get_u64_socket_option (router, ZLINK_OPT_RCVHWM));
     test_context_socket_close (router);
 }
 
@@ -277,35 +291,45 @@ void test_ctx_option_auto_hwm_round_trip ()
 void test_ctx_option_auto_hwm_msg_unit_round_trip_and_validation ()
 {
     void *ctx = get_test_context ();
-    TEST_ASSERT_EQUAL_INT (ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT,
-                           zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
+    TEST_ASSERT_EQUAL_UINT64 (ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT,
+                              get_u64_context_option (
+                                ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
-    zlink_config_result_t err = ZLINK_CONFIG_INVALID_ARGUMENT;
-    TEST_ASSERT_EQUAL_INT (64, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &err));
-    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, err);
+    const uint64_t value_64 = 64;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set_data (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                          &value_64, sizeof (value_64)));
+    TEST_ASSERT_EQUAL_UINT64 (
+      value_64, get_u64_context_option (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES));
 
     const int negative = -1;
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
                            zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, negative));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_EQUAL_INT (64, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
+    TEST_ASSERT_EQUAL_UINT64 (
+      value_64, get_u64_context_option (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES));
 
     const int value = 128;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_ctx_set_data (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value) - 1));
+      zlink_ctx_set_data (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value)));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_EQUAL_INT (64, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
+    TEST_ASSERT_EQUAL_UINT64 (
+      value_64, get_u64_context_option (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 0));
-    TEST_ASSERT_EQUAL_INT (0, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
+    const uint64_t zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set_data (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &zero, sizeof (zero)));
+    TEST_ASSERT_EQUAL_UINT64 (
+      0, get_u64_context_option (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES));
 }
 
 void test_ctx_option_auto_hwm_msg_unit_applies_to_socket_snapshots ()
 {
     void *ctx = get_test_context ();
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
+    const uint64_t unit_64 = 64;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set_data (
+      ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &unit_64, sizeof (unit_64)));
 
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (router);
@@ -313,12 +337,16 @@ void test_ctx_option_auto_hwm_msg_unit_applies_to_socket_snapshots ()
     read_socket_auto_hwm_snapshot (router, &status);
     TEST_ASSERT_EQUAL_UINT64 (64u, status.auto_hwm_effective_message_bytes);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 256));
+    const uint64_t unit_256 = 256;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set_data (
+      ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &unit_256, sizeof (unit_256)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
     read_socket_auto_hwm_snapshot (router, &status);
     TEST_ASSERT_EQUAL_UINT64 (256u, status.auto_hwm_effective_message_bytes);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 0));
+    const uint64_t unit_zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set_data (
+      ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &unit_zero, sizeof (unit_zero)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
     read_socket_auto_hwm_snapshot (router, &status);
     TEST_ASSERT_EQUAL_UINT64 (4096u, status.auto_hwm_effective_message_bytes);
@@ -334,18 +362,22 @@ void test_ctx_option_auto_hwm_msg_unit_applies_to_socket_snapshots ()
 void test_ctx_option_auto_hwm_msg_unit_preserves_socket_override_priority ()
 {
     void *ctx = get_test_context ();
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
+    const uint64_t unit_64 = 64;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set_data (
+      ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &unit_64, sizeof (unit_64)));
 
     void *explicit_socket = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (explicit_socket);
     void *context_socket = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (context_socket);
 
-    int override_value = 512;
+    uint64_t override_value = 512;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (explicit_socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
                                                  &override_value, sizeof (override_value)));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 256));
+    const uint64_t unit_256 = 256;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set_data (
+      ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &unit_256, sizeof (unit_256)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
 
     zlink_monitor_status_t status;
@@ -361,7 +393,9 @@ void test_ctx_option_auto_hwm_msg_unit_preserves_socket_override_priority ()
     read_socket_auto_hwm_snapshot (explicit_socket, &status);
     TEST_ASSERT_EQUAL_UINT64 (256u, status.auto_hwm_effective_message_bytes);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 0));
+    const uint64_t unit_zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set_data (
+      ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &unit_zero, sizeof (unit_zero)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
     read_socket_auto_hwm_snapshot (explicit_socket, &status);
     TEST_ASSERT_EQUAL_UINT64 (4096u, status.auto_hwm_effective_message_bytes);
@@ -379,14 +413,10 @@ void test_ctx_option_auto_hwm_enabled_applies_profile ()
 
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (router);
-    int hwm = -1;
-    size_t hwm_size = sizeof (hwm);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
-    TEST_ASSERT_EQUAL_INT (256, hwm);
-    hwm = -1;
-    hwm_size = sizeof (hwm);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_RCVHWM, &hwm, &hwm_size));
-    TEST_ASSERT_EQUAL_INT (256, hwm);
+    TEST_ASSERT_EQUAL_UINT64 (256ull * 4096ull,
+                              get_u64_socket_option (router, ZLINK_OPT_SNDHWM));
+    TEST_ASSERT_EQUAL_UINT64 (256ull * 4096ull,
+                              get_u64_socket_option (router, ZLINK_OPT_RCVHWM));
     int buffer = -1;
     size_t buffer_size = sizeof (buffer);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDBUF, &buffer, &buffer_size));
@@ -402,10 +432,8 @@ void test_ctx_option_auto_hwm_enabled_applies_profile ()
                                               ZLINK_AUTO_HWM_PROFILE_COMPACT));
     router = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (router);
-    hwm = -1;
-    hwm_size = sizeof (hwm);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
-    TEST_ASSERT_EQUAL_INT (64, hwm);
+    TEST_ASSERT_EQUAL_UINT64 (64ull * 4096ull,
+                              get_u64_socket_option (router, ZLINK_OPT_SNDHWM));
     buffer = -1;
     buffer_size = sizeof (buffer);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDBUF, &buffer, &buffer_size));
@@ -437,11 +465,11 @@ void test_socket_option_auto_hwm_msg_unit_round_trip ()
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (router);
 
-    int value = -1;
+    uint64_t value = UINT64_MAX;
     size_t value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, &value_size));
-    TEST_ASSERT_EQUAL_INT (0, value);
+    TEST_ASSERT_EQUAL_UINT64 (0, value);
 
     zlink_monitor_status_t status;
     read_socket_auto_hwm_snapshot (router, &status);
@@ -458,7 +486,7 @@ void test_socket_option_auto_hwm_msg_unit_round_trip ()
     value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, &value_size));
-    TEST_ASSERT_EQUAL_INT (8192, value);
+    TEST_ASSERT_EQUAL_UINT64 (8192, value);
     read_socket_auto_hwm_snapshot (router, &status);
     TEST_ASSERT_EQUAL_UINT64 (8192u, status.auto_hwm_effective_message_bytes);
 
@@ -471,7 +499,7 @@ void test_socket_option_auto_hwm_msg_unit_round_trip ()
     value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, &value_size));
-    TEST_ASSERT_EQUAL_INT (8192, value);
+    TEST_ASSERT_EQUAL_UINT64 (8192, value);
 
     value = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -501,8 +529,8 @@ void test_socket_option_auto_hwm_buffer_options_do_not_change_snapshot_contract 
 
     zlink_monitor_status_t status;
     read_socket_auto_hwm_snapshot (router, &status);
-    const int initial_sndhwm = status.auto_hwm_applied_sndhwm;
-    const int initial_rcvhwm = status.auto_hwm_applied_rcvhwm;
+    const uint64_t initial_sndhwm = status.auto_hwm_applied_sndhwm_bytes;
+    const uint64_t initial_rcvhwm = status.auto_hwm_applied_rcvhwm_bytes;
 
     const int sndbuf = 1048576;
     const int rcvbuf = 2097152;
@@ -512,8 +540,8 @@ void test_socket_option_auto_hwm_buffer_options_do_not_change_snapshot_contract 
       zlink_set_option (router, ZLINK_OPT_RCVBUF, &rcvbuf, sizeof (rcvbuf)));
 
     read_socket_auto_hwm_snapshot (router, &status);
-    TEST_ASSERT_EQUAL_INT32 (initial_sndhwm, status.auto_hwm_applied_sndhwm);
-    TEST_ASSERT_EQUAL_INT32 (initial_rcvhwm, status.auto_hwm_applied_rcvhwm);
+    TEST_ASSERT_EQUAL_UINT64 (initial_sndhwm, status.auto_hwm_applied_sndhwm_bytes);
+    TEST_ASSERT_EQUAL_UINT64 (initial_rcvhwm, status.auto_hwm_applied_rcvhwm_bytes);
 
     test_context_socket_close (router);
 }
@@ -527,8 +555,8 @@ void test_socket_option_manual_hwm_overrides_auto_hwm_recalculation ()
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (router);
 
-    const int manual_sndhwm = 77;
-    const int manual_rcvhwm = 88;
+    const uint64_t manual_sndhwm = 77;
+    const uint64_t manual_rcvhwm = 88;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (router, ZLINK_OPT_SNDHWM, &manual_sndhwm, sizeof (manual_sndhwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -536,22 +564,24 @@ void test_socket_option_manual_hwm_overrides_auto_hwm_recalculation ()
 
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_PROFILE, ZLINK_AUTO_HWM_PROFILE_THROUGHPUT));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
+    const uint64_t unit_64 = 64;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set_data (
+      ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &unit_64, sizeof (unit_64)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
 
-    int value = 0;
+    uint64_t value = 0;
     size_t value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDHWM, &value, &value_size));
-    TEST_ASSERT_EQUAL_INT (manual_sndhwm, value);
+    TEST_ASSERT_EQUAL_UINT64 (manual_sndhwm, value);
     value = 0;
     value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_RCVHWM, &value, &value_size));
-    TEST_ASSERT_EQUAL_INT (manual_rcvhwm, value);
+    TEST_ASSERT_EQUAL_UINT64 (manual_rcvhwm, value);
 
     zlink_monitor_status_t status;
     read_socket_auto_hwm_snapshot (router, &status);
-    TEST_ASSERT_EQUAL_INT32 (manual_sndhwm, status.auto_hwm_applied_sndhwm);
-    TEST_ASSERT_EQUAL_INT32 (manual_rcvhwm, status.auto_hwm_applied_rcvhwm);
+    TEST_ASSERT_EQUAL_UINT64 (manual_sndhwm, status.auto_hwm_applied_sndhwm_bytes);
+    TEST_ASSERT_EQUAL_UINT64 (manual_rcvhwm, status.auto_hwm_applied_rcvhwm_bytes);
 
     test_context_socket_close (router);
 }

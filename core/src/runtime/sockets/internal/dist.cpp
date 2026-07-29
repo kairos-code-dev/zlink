@@ -240,20 +240,23 @@ bool zlink::dist_t::write_at (pipes_t::size_type index_, msg_t *msg_)
     return true;
 }
 
-bool zlink::dist_t::check_hwm ()
+bool zlink::dist_t::check_hwm (const msg_t *msg_)
 {
-    if (_matching_hwm_cache_valid)
+    if (!msg_ && _matching_hwm_cache_valid)
         return _matching_hwm_ready;
 
     bool ready = true;
     for (pipes_t::size_type i = 0; i < _matching; ++i)
-        if (!_pipes[i]->check_hwm ()) {
+        if (msg_ ? !_pipes[i]->check_hwm_for_message (msg_)
+                 : !_pipes[i]->check_hwm ()) {
             ready = false;
             break;
         }
 
-    _matching_hwm_cache_valid = true;
-    _matching_hwm_ready = ready;
+    if (!msg_) {
+        _matching_hwm_cache_valid = true;
+        _matching_hwm_ready = ready;
+    }
     return ready;
 }
 

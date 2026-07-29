@@ -5,7 +5,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "api/monitoring/poller_api_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
 #include "api/socket/socket_message_api_internal.hpp"
 #include "core/msg.hpp"

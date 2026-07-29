@@ -449,7 +449,10 @@ if(TARGET test_issue_566)
   set_tests_properties(test_issue_566 PROPERTIES TIMEOUT 30)
 endif()
 if(TARGET test_transport_matrix)
-  set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
+  # DEALER/ROUTER use two physical connections, so TLS/WSS matrix cases
+  # perform twice as many transport handshakes.
+set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 120)
+set_tests_properties(test_router_concurrent_routed_recv PROPERTIES TIMEOUT 120)
 endif()
 if(TARGET test_xpub_nodrop)
   set_tests_properties(test_xpub_nodrop PROPERTIES TIMEOUT 45)

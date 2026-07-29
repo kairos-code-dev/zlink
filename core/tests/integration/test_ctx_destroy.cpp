@@ -304,7 +304,7 @@ void test_engine_less_session_releases_socket_term_ack_with_pending_message ()
 
     zlink::object_t *parents[2] = {session, socket};
     zlink::pipe_t *pipes[2] = {NULL, NULL};
-    const int hwms[2] = {16, 16};
+    const uint64_t hwms[2] = {16, 16};
     const bool conflates[2] = {false, false};
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::pipepair (parents, pipes, hwms, conflates, true));
@@ -368,7 +368,7 @@ void test_reciprocal_pipe_ack_is_queued_before_local_completion ()
 
     zlink::object_t *parents[2] = {socket, socket};
     zlink::pipe_t *pipes[2] = {NULL, NULL};
-    const int hwms[2] = {1, 1};
+    const uint64_t hwms[2] = {1, 1};
     const bool conflates[2] = {false, false};
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::pipepair (parents, pipes, hwms, conflates, true));

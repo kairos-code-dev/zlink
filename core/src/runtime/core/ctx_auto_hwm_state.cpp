@@ -33,7 +33,7 @@ void zlink::ctx_auto_hwm_state_t::set_profile (zlink_auto_hwm_profile_t profile_
     _profile = profile_;
 }
 
-void zlink::ctx_auto_hwm_state_t::set_msg_unit_bytes (int msg_unit_bytes_)
+void zlink::ctx_auto_hwm_state_t::set_msg_unit_bytes (uint64_t msg_unit_bytes_)
 {
     _msg_unit_bytes = msg_unit_bytes_;
 }
@@ -53,7 +53,7 @@ zlink_auto_hwm_profile_t zlink::ctx_auto_hwm_state_t::profile () const
     return _profile;
 }
 
-int zlink::ctx_auto_hwm_state_t::msg_unit_bytes () const
+uint64_t zlink::ctx_auto_hwm_state_t::msg_unit_bytes () const
 {
     return _msg_unit_bytes;
 }

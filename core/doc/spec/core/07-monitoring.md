@@ -117,6 +117,8 @@ typedef void (*zlink_monitor_handler_fn)(
 typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 typedef zlink_monitor_handler_fn zlink_socket_monitor_handler_fn;
 
+#define ZLINK_MONITOR_STATUS_ABI_VERSION 2u
+
 ZLINK_EXPORT void zlink_monitor_ignore_handler (const zlink_monitor_event_t *event_,
                                                 void *userdata_);
 
@@ -125,6 +127,8 @@ typedef struct zlink_socket_monitor_open_options_t {
 } zlink_socket_monitor_open_options_t;
 
 typedef struct zlink_monitor_status_t {
+  uint32_t abi_version;
+  uint32_t struct_size;
   zlink_monitor_source_kind_t source_kind;
   zlink_monitor_state_mask_t state_flags;
   zlink_monitor_status_detail_mask_t detail_flags;
@@ -143,15 +147,24 @@ typedef struct zlink_monitor_status_t {
   uint32_t auto_hwm_connection_bucket_hwm_4k;
   uint32_t auto_hwm_connection_bucket_hysteresis_retained;
   uint64_t auto_hwm_effective_message_bytes;
-  int32_t auto_hwm_applied_sndhwm;
-  int32_t auto_hwm_applied_rcvhwm;
+  uint64_t auto_hwm_planned_sndhwm_bytes;
+  uint64_t auto_hwm_planned_rcvhwm_bytes;
+  uint64_t auto_hwm_applied_sndhwm_bytes;
+  uint64_t auto_hwm_applied_rcvhwm_bytes;
   int32_t auto_hwm_effective_sndbuf;
   int32_t auto_hwm_effective_rcvbuf;
   uint64_t auto_hwm_last_recalc_ms;
   uint32_t auto_hwm_last_recalc_reason;
   uint32_t auto_hwm_send_blocked_ratio_ppm;
-  int32_t auto_hwm_deferred_sndhwm;
-  int32_t auto_hwm_deferred_rcvhwm;
+  uint64_t auto_hwm_deferred_sndhwm_bytes;
+  uint64_t auto_hwm_deferred_rcvhwm_bytes;
+  uint32_t auto_hwm_deferred_sndhwm_valid;
+  uint32_t auto_hwm_deferred_rcvhwm_valid;
+  uint64_t snd_bytes_in_flight;
+  uint64_t rcv_bytes_in_flight;
+  uint64_t minimum_core_message_charge_bytes;
+  uint64_t oversize_message_admission_count;
+  uint64_t oversize_message_admission_max_bytes;
 } zlink_monitor_status_t;
 
 ZLINK_EXPORT void *zlink_socket_monitor_open(
@@ -180,6 +193,10 @@ selects no event, while `EVENT_ALL` selects every bit. A raw socket monitor
 status has `source_kind == ZLINK_MONITOR_SOURCE_SOCKET`. Optional fields whose
 bits are absent from `detail_flags` are zero. When no connection bucket applies,
 `auto_hwm_connection_bucket_index` is `UINT32_MAX`.
+`abi_version` is `ZLINK_MONITOR_STATUS_ABI_VERSION`, and `struct_size` is the
+number of bytes in the returned ABI version. Version 2 replaces the former
+32-bit count HWM fields with 64-bit byte fields; the old layout is not accepted
+as a compatibility layout.
 
 Each detail bit makes exactly the following fields valid. A field belongs to
 one bit only, and every field in a row is zero when that bit is absent.
@@ -188,8 +205,16 @@ one bit only, and every field in a row is zero when that bit is absent.
 |---|---|
 | `ZLINK_MONITOR_STATUS_DETAIL_SND_PENDING_MSGS` | `snd_pending_msgs` |
 | `ZLINK_MONITOR_STATUS_DETAIL_RCV_PENDING_MSGS` | `rcv_pending_msgs` |
-| `ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUDGET` | `auto_hwm_enabled`, `auto_hwm_profile`, `auto_hwm_role`, `auto_hwm_policy_class`, `auto_hwm_unit_budget_bytes`, `auto_hwm_size_cap`, `auto_hwm_socket_message_slots`, `auto_hwm_connection_bucket_enabled`, `auto_hwm_connection_bucket_count`, `auto_hwm_connection_bucket_index`, `auto_hwm_connection_bucket_hwm_4k`, `auto_hwm_connection_bucket_hysteresis_retained`, `auto_hwm_effective_message_bytes`, `auto_hwm_last_recalc_ms`, `auto_hwm_last_recalc_reason`, `auto_hwm_send_blocked_ratio_ppm`, `auto_hwm_deferred_sndhwm`, `auto_hwm_deferred_rcvhwm` |
-| `ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS` | `auto_hwm_applied_sndhwm`, `auto_hwm_applied_rcvhwm`, `auto_hwm_effective_sndbuf`, `auto_hwm_effective_rcvbuf` |
+| `ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUDGET` | `auto_hwm_enabled`, `auto_hwm_profile`, `auto_hwm_role`, `auto_hwm_policy_class`, `auto_hwm_unit_budget_bytes`, `auto_hwm_size_cap`, `auto_hwm_socket_message_slots`, `auto_hwm_connection_bucket_enabled`, `auto_hwm_connection_bucket_count`, `auto_hwm_connection_bucket_index`, `auto_hwm_connection_bucket_hwm_4k`, `auto_hwm_connection_bucket_hysteresis_retained`, `auto_hwm_effective_message_bytes`, `auto_hwm_planned_sndhwm_bytes`, `auto_hwm_planned_rcvhwm_bytes`, `auto_hwm_last_recalc_ms`, `auto_hwm_last_recalc_reason`, `auto_hwm_send_blocked_ratio_ppm`, `auto_hwm_deferred_sndhwm_bytes`, `auto_hwm_deferred_rcvhwm_bytes`, `auto_hwm_deferred_sndhwm_valid`, `auto_hwm_deferred_rcvhwm_valid` |
+| `ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS` | `auto_hwm_applied_sndhwm_bytes`, `auto_hwm_applied_rcvhwm_bytes`, `auto_hwm_effective_sndbuf`, `auto_hwm_effective_rcvbuf`, `snd_bytes_in_flight`, `rcv_bytes_in_flight`, `minimum_core_message_charge_bytes`, `oversize_message_admission_count`, `oversize_message_admission_max_bytes` |
+
+The planned fields report the current automatic policy result. The applied
+fields report the byte HWM currently used by the socket, including manual
+overrides. A deferred value is meaningful only when its matching `_valid`
+field is non-zero. `snd_bytes_in_flight` and `rcv_bytes_in_flight` are
+directional pipe totals at snapshot time. Pending message fields remain counts.
+The minimum charge and oversize fields explain byte accounting without
+requiring an allocator lookup for every message.
 
 The socket monitor provides bind, accept, connect, disconnect, handshake,
 protocol-error, and close events. Handler mode and receive mode are mutually

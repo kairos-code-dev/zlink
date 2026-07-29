@@ -75,7 +75,12 @@ zlink::session_base_t::session_base_t (class io_thread_t *io_thread_,
     _socket (socket_),
     _pending_peer_routing_id (),
     _pending_peer_routing_id_valid (false),
-    _io_thread (io_thread_),
+      _transport_lane (options_.transport_lane),
+      _transport_pair_id (options_.transport_pair_id),
+      _transport_pair_generation (options_.transport_pair_generation),
+      _socket_pipe_bound (false),
+      _transport_pair_reconnect_in_progress (false),
+      _io_thread (io_thread_),
     _has_linger_timer (false),
     _addr (addr_)
 {
@@ -90,6 +95,16 @@ void zlink::session_base_t::set_peer_routing_id (const unsigned char *data_, siz
 {
     if (_pipe) {
         _pipe->set_peer_routing_id (data_, size_);
+        pipe_t *socket_pipe = _pipe->get_peer ();
+        if (socket_pipe) {
+            const bool preserve_connect_routing_id =
+              socket_pipe->is_locally_initiated ()
+              && socket_pipe->get_transport_lane ()
+                   == transport_lane_application
+              && socket_pipe->get_routing_id ().size () != 0;
+            if (!preserve_connect_routing_id)
+                socket_pipe->set_peer_routing_id (data_, size_);
+        }
         return;
     }
 
@@ -116,6 +131,25 @@ const zlink::blob_t &zlink::session_base_t::peer_routing_id () const
     return empty_routing_id;
 }
 
+int zlink::session_base_t::set_peer_transport_pair (transport_lane_t lane_,
+                                                    uint64_t pair_id_,
+                                                    uint64_t generation_)
+{
+    if (_transport_pair_id != 0
+        && (_transport_pair_id != pair_id_
+            || _transport_pair_generation != generation_
+            || _transport_lane != lane_)) {
+        errno = EPROTO;
+        return -1;
+    }
+    _transport_lane = lane_;
+    _transport_pair_id = pair_id_;
+    _transport_pair_generation = generation_;
+    if (_pipe)
+        _pipe->set_transport_pair (lane_, pair_id_, generation_);
+    return 0;
+}
+
 zlink::session_base_t::~session_base_t ()
 {
     zlink_assert (!_pipe);
@@ -140,6 +174,10 @@ void zlink::session_base_t::attach_pipe (pipe_t *pipe_)
     zlink_assert (pipe_);
     _pipe = pipe_;
     _pipe->set_event_sink (this);
+    // Non-paired transports attach the socket-side end before the session is
+    // started. Paired DEALER/ROUTER transports defer that bind until both
+    // lanes have completed and validated their handshake.
+    _socket_pipe_bound = pipe_->get_transport_pair_id () == 0;
 }
 
 void zlink::session_base_t::pipe_terminated (pipe_t *pipe_)
@@ -171,7 +209,11 @@ void zlink::session_base_t::pipe_terminated (pipe_t *pipe_)
         _pending = false;
         own_t::process_term (0);
     } else if (!_pending && !_pipe && _terminating_pipes.empty () && !is_terminating ()) {
-        terminate ();
+        if (is_active_transport_pair ()
+            && options.transport_pair_state->can_reconnect ())
+            start_transport_pair_reconnect (false);
+        else
+            terminate ();
     }
 }
 
@@ -218,6 +260,9 @@ void zlink::session_base_t::pipe_peer_terminated (pipe_t *pipe_)
 
     _engine->terminate ();
     _engine = NULL;
+    if (is_active_transport_pair ()
+        && options.transport_pair_state->can_reconnect ())
+        start_transport_pair_reconnect (false);
 }
 
 zlink::socket_base_t *zlink::session_base_t::get_socket () const
@@ -253,19 +298,31 @@ void zlink::session_base_t::engine_ready ()
 
         const bool conflate = get_effective_conflate_option (options);
 
-        int hwms[2] = {conflate ? -1 : options.rcvhwm, conflate ? -1 : options.sndhwm};
+        uint64_t hwms[2] = {conflate ? 0 : options.rcvhwm,
+                            conflate ? 0 : options.sndhwm};
         bool conflates[2] = {conflate, conflate};
         //  Session<->socket pipes back one transport connection; use the
         //  small per-connection chunk granularity.
         const int rc = pipepair (parents, pipes, hwms, conflates, true);
         errno_assert (rc == 0);
+        pipes[0]->set_transport_pair (
+          _transport_lane, _transport_pair_id, _transport_pair_generation);
+        pipes[1]->set_transport_pair (
+          _transport_lane, _transport_pair_id, _transport_pair_generation);
+        pipes[1]->set_locally_initiated (_active);
+        if (_transport_pair_id != 0
+            && _transport_lane == transport_lane_application)
+            pipes[1]->hold_writes_until_transport_pair_ready ();
 
         //  Plug the local end of the pipe.
         pipes[0]->set_event_sink (this);
 
         if (options.type == ZLINK_CORE_SOCKET_STREAM && stream_pipe_lwm_hint > 0) {
-            pipes[0]->set_lwm_hint (stream_pipe_lwm_hint);
-            pipes[1]->set_lwm_hint (stream_pipe_lwm_hint);
+            const uint64_t stream_lwm_hint_bytes =
+              static_cast<uint64_t> (stream_pipe_lwm_hint)
+              * ZLINK_AUTO_HWM_STREAM_UNIT_BYTES_DFLT;
+            pipes[0]->set_lwm_hint (stream_lwm_hint_bytes);
+            pipes[1]->set_lwm_hint (stream_lwm_hint_bytes);
         }
 
         //  Remember the local end of the pipe.
@@ -288,10 +345,20 @@ void zlink::session_base_t::engine_ready ()
 
         //  Ask socket to plug into the remote end of the pipe.
         send_bind (_socket, pipes[1]);
+        _socket_pipe_bound = true;
+    }
+    if (_pipe && !_socket_pipe_bound && _pipe->get_peer ()) {
+        send_bind (_socket, _pipe->get_peer ());
+        _socket_pipe_bound = true;
     }
     if (_pipe)
         _pipe->set_transport_connection_id (
           _engine->get_endpoint ().connection_id);
+    if (is_active_transport_pair ()) {
+        options.transport_pair_state->mark_ready (
+          _transport_lane, _transport_pair_generation);
+        _transport_pair_reconnect_in_progress = false;
+    }
 }
 
 void zlink::session_base_t::engine_error (bool handshaked_, zlink::i_engine::error_reason_t reason_)
@@ -321,7 +388,15 @@ void zlink::session_base_t::engine_error (bool handshaked_, zlink::i_engine::err
     zlink_assert (reason_ == i_engine::connection_error || reason_ == i_engine::timeout_error
                   || reason_ == i_engine::protocol_error);
 
-    switch (reason_) {
+    if ((reason_ == i_engine::connection_error
+         || reason_ == i_engine::timeout_error)
+        && is_active_transport_pair ()
+        && options.transport_pair_state->can_reconnect ()) {
+        start_transport_pair_reconnect (true);
+    } else {
+        if (reason_ == i_engine::protocol_error && is_active_transport_pair ())
+            options.transport_pair_state->disable_reconnect ();
+        switch (reason_) {
         case i_engine::timeout_error:
             /* FALLTHROUGH */
         case i_engine::connection_error:
@@ -338,6 +413,7 @@ void zlink::session_base_t::engine_error (bool handshaked_, zlink::i_engine::err
                 terminate ();
             }
             break;
+        }
     }
 
     //  Just in case there's only a delimiter in the pipe.
@@ -437,9 +513,51 @@ void zlink::session_base_t::reconnect ()
         _pipe->hiccup ();
 }
 
+bool zlink::session_base_t::is_active_transport_pair () const
+{
+    return _active && _transport_pair_id != 0
+           && options.transport_pair_state.get () != NULL;
+}
+
+void zlink::session_base_t::start_transport_pair_reconnect (bool force_)
+{
+    if (!is_active_transport_pair ()
+        || !options.transport_pair_state->can_reconnect ()
+        || (_transport_pair_reconnect_in_progress && !force_))
+        return;
+
+    _transport_pair_reconnect_in_progress = true;
+    _transport_pair_generation =
+      options.transport_pair_state->begin_reset ();
+    options.transport_pair_generation = _transport_pair_generation;
+    _socket_pipe_bound = false;
+
+    if (_pipe) {
+        pipe_t *old_pipe = _pipe;
+        old_pipe->terminate (false);
+        _terminating_pipes.insert (old_pipe);
+        _pipe = NULL;
+    }
+
+    reset ();
+    if (options.reconnect_ivl > 0)
+        start_connecting (true);
+    else {
+        std::string *ep = new (std::string);
+        _addr->to_string (*ep);
+        send_term_endpoint (_socket, ep);
+    }
+}
+
 void zlink::session_base_t::start_connecting (bool wait_)
 {
     zlink_assert (_active);
+
+    if (is_active_transport_pair ()) {
+        _transport_pair_generation =
+          options.transport_pair_state->current_generation ();
+        options.transport_pair_generation = _transport_pair_generation;
+    }
 
     //  Choose I/O thread to run connecter in. Given that we are already
     //  running in an I/O thread, there must be at least one available.

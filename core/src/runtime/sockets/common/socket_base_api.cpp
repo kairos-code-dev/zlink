@@ -3,11 +3,31 @@
 #include "utils/precompiled.hpp"
 
 #include "core/ctx.hpp"
+#include "api/socket/socket_request_reply_internal.hpp"
+#include "api/socket/socket_request_reply_router_state_internal.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "core/mailbox.hpp"
 #include "core/msg.hpp"
 #include "core/options.hpp"
 #include "utils/err.hpp"
+
+namespace
+{
+bool same_pair_peer_identity (const zlink::pipe_t *first_, const zlink::pipe_t *second_)
+{
+    if (!first_ || !second_)
+        return false;
+    const zlink::pipe_t *first_peer = first_->get_peer ();
+    const zlink::pipe_t *second_peer = second_->get_peer ();
+    const zlink::blob_t &first =
+      first_peer ? first_peer->get_routing_id () : first_->get_routing_id ();
+    const zlink::blob_t &second =
+      second_peer ? second_peer->get_routing_id () : second_->get_routing_id ();
+    return first.size () == second.size ()
+           && (first.size () == 0
+               || memcmp (first.data (), second.data (), first.size ()) == 0);
+}
+}
 
 void zlink::socket_base_t::finish_close_handoff (int handoff_timeout_ms_)
 {
@@ -71,15 +91,98 @@ int zlink::socket_base_t::xterm_peer_rid (const zlink_routing_id_t *peer_rid_)
 
 void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
                                         bool subscribe_to_all_,
-                                        bool locally_initiated_)
+                                        bool locally_initiated_,
+                                        bool transport_validated_)
 {
     pipe_->set_event_sink (this);
-    {
+    const bool already_attached = endpoint_runtime ().attached_pipes.contains (pipe_);
+    if (!already_attached) {
         scoped_lock_t lock (monitor_runtime ().sync);
         endpoint_runtime ().attach_pipe (pipe_);
     }
 
-    xattach_pipe (pipe_, subscribe_to_all_, locally_initiated_);
+    const uint64_t pair_id = pipe_->get_transport_pair_id ();
+    const bool completion =
+      pair_id != 0 && pipe_->get_transport_lane () == transport_lane_completion;
+    bool attach_application = pair_id == 0;
+    pipe_t *ready_application = NULL;
+    pipe_t *ready_completion = NULL;
+    if (pair_id != 0) {
+        const transport_pair_key_t pair_key (
+          pair_id, pipe_->get_transport_pair_generation ());
+        transport_pair_pipes_t &pair = _transport_pairs[pair_key];
+        pair.generation = pipe_->get_transport_pair_generation ();
+        pipe_t *&lane_pipe = completion ? pair.completion : pair.application;
+        if (lane_pipe && lane_pipe != pipe_) {
+            pipe_->terminate (false);
+            if (pair.application)
+                pair.application->terminate (false);
+            if (pair.completion)
+                pair.completion->terminate (false);
+            return;
+        }
+        lane_pipe = pipe_;
+        if (completion)
+            pair.completion_validated =
+              pair.completion_validated || transport_validated_;
+        else
+            pair.application_validated =
+              pair.application_validated || transport_validated_;
+
+        if (pair.application && !pair.application_attached) {
+            attach_application = true;
+            pair.application_attached = true;
+        }
+
+        if (pair.application && pair.completion
+            && pair.application_validated && pair.completion_validated
+            && !pair.ready) {
+            if (!same_pair_peer_identity (pair.application, pair.completion)) {
+                pipe_->terminate (false);
+                pair.application->terminate (false);
+                pair.completion->terminate (false);
+                return;
+            }
+            pair.ready = true;
+            ready_application = pair.application;
+            ready_completion = pair.completion;
+        }
+    }
+
+    if (attach_application) {
+        pipe_t *application =
+          pair_id == 0
+            ? pipe_
+            : _transport_pairs[transport_pair_key_t (
+                pair_id, pipe_->get_transport_pair_generation ())].application;
+        xattach_pipe (application, subscribe_to_all_,
+                      locally_initiated_ || application->is_locally_initiated ());
+        if (pair_id != 0
+            && application->get_endpoint_pair ().identifier ().find (
+                 "inproc://")
+                 == 0)
+            emit_inproc_connection_ready (application);
+        if (dispatch_runtime ().send_recovery_pending () && transport_has_out ()) {
+            dispatch_runtime ().mark_send_recovery_ready ();
+            static_cast<mailbox_t *> (_mailbox)->signal ();
+        }
+    }
+    if (ready_application
+        && ready_application->release_writes_for_transport_pair ())
+        write_activated (ready_application);
+    if (ready_completion) {
+        if (ready_completion->check_read ())
+            socket_reqrep_internal::process_completion_pipe (
+              this, ready_completion);
+        if (ready_application && ready_application->check_read ())
+            xread_activated (ready_application);
+    } else if (completion) {
+        transport_pair_pipes_t &pair =
+          _transport_pairs[transport_pair_key_t (
+            pair_id, pipe_->get_transport_pair_generation ())];
+        if (pair.ready && pipe_->check_read ())
+            socket_reqrep_internal::process_completion_pipe (this, pipe_);
+    }
     if (get_ctx ())
         get_ctx ()->schedule_auto_hwm_recalculate ();
 
@@ -214,7 +317,16 @@ int zlink::socket_base_t::get_events (int events_, uint32_t *out_)
             return -1;
         errno_assert (rc == 0);
 
+        const bool completion_notified =
+          _request_completion_pending.exchange (false, std::memory_order_acq_rel);
+        const int completion_controls = drain_request_completion_controls ();
+        if (completion_controls < 0)
+            return -1;
+
         uint32_t events = 0;
+        if ((events_ & ZLINK_POLLCOMPLETION)
+            && (completion_notified || completion_controls > 0))
+            events |= ZLINK_POLLCOMPLETION;
         if ((events_ & ZLINK_POLLOUT) && has_out ())
             events |= ZLINK_POLLOUT;
 
@@ -235,7 +347,16 @@ int zlink::socket_base_t::get_events_internal (int events_, uint32_t *out_)
         return -1;
     errno_assert (rc == 0);
 
+    const bool completion_notified =
+      _request_completion_pending.exchange (false, std::memory_order_acq_rel);
+    const int completion_controls = drain_request_completion_controls ();
+    if (completion_controls < 0)
+        return -1;
+
     uint32_t events = 0;
+    if ((events_ & ZLINK_POLLCOMPLETION)
+        && (completion_notified || completion_controls > 0))
+        events |= ZLINK_POLLCOMPLETION;
     if ((events_ & ZLINK_POLLIN) && has_in ())
         events |= ZLINK_POLLIN;
     if ((events_ & ZLINK_POLLOUT) && has_out ())
@@ -243,6 +364,51 @@ int zlink::socket_base_t::get_events_internal (int events_, uint32_t *out_)
 
     *out_ = events;
     return 0;
+}
+
+int zlink::socket_base_t::drain_request_completion_controls ()
+{
+    int drained = 0;
+    std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t> socket_state =
+      request_reply_state ();
+    if (socket_state) {
+        const int rc =
+          socket_reqrep_internal::drain_reply_completions (socket_state, this);
+        if (rc < 0)
+            return -1;
+        drained += rc;
+    }
+
+    std::shared_ptr<reqrep_internal::router_request_reply_state_t> router_state =
+      router_request_reply_state ();
+    if (router_state) {
+        const int rc =
+          reqrep_internal::drain_router_reply_completions (router_state, this);
+        if (rc < 0)
+            return -1;
+        drained += rc;
+    }
+    return drained;
+}
+
+void zlink::socket_base_t::acknowledge_request_completion_notification ()
+{
+    _request_completion_pending.exchange (false, std::memory_order_acq_rel);
+}
+
+void zlink::socket_base_t::resume_completion_processing_if_needed ()
+{
+    if (_completion_poller_refs.load (std::memory_order_acquire) != 0)
+        return;
+
+    std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t> socket_state =
+      request_reply_state ();
+    std::shared_ptr<reqrep_internal::router_request_reply_state_t> router_state =
+      router_request_reply_state ();
+    if ((socket_state && socket_reqrep_internal::has_pending_request_work (socket_state))
+        || (router_state && reqrep_internal::has_pending_router_request_work (router_state))) {
+        (void) ensure_completion_processing ();
+    }
 }
 
 int zlink::socket_base_t::join (const char *group_)
@@ -285,12 +451,34 @@ bool zlink::socket_base_t::transport_has_out ()
 
 void zlink::socket_base_t::read_activated (pipe_t *pipe_)
 {
+    if (pipe_ && pipe_->get_transport_pair_id () != 0
+        && pipe_->get_transport_lane () == transport_lane_completion) {
+        transport_pairs_t::const_iterator it =
+          _transport_pairs.find (transport_pair_key_t (
+            pipe_->get_transport_pair_id (),
+            pipe_->get_transport_pair_generation ()));
+        if (it != _transport_pairs.end () && it->second.ready)
+            socket_reqrep_internal::process_completion_pipe (this, pipe_);
+        return;
+    }
+    if (pipe_ && pipe_->get_transport_pair_id () != 0) {
+        transport_pairs_t::const_iterator it =
+          _transport_pairs.find (transport_pair_key_t (
+            pipe_->get_transport_pair_id (),
+            pipe_->get_transport_pair_generation ()));
+        if (it == _transport_pairs.end () || !it->second.ready)
+            return;
+    }
     xread_activated (pipe_);
 }
 
 void zlink::socket_base_t::write_activated (pipe_t *pipe_)
 {
-    xwrite_activated (pipe_);
+    const bool completion =
+      pipe_ && pipe_->get_transport_pair_id () != 0
+      && pipe_->get_transport_lane () == transport_lane_completion;
+    if (!completion)
+        xwrite_activated (pipe_);
     if (dispatch_runtime ().send_recovery_pending ()
         && !dispatch_runtime ().send_recovery_ready ()) {
         dispatch_runtime ().mark_send_recovery_ready ();
@@ -327,7 +515,32 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
     const unsigned char *routing_id_data = routing_id_copy.empty () ? NULL : &routing_id_copy[0];
     const size_t routing_id_size = routing_id_copy.size ();
 
-    xpipe_terminated (pipe_);
+    pipe_t *paired_pipe = NULL;
+    const uint64_t pair_id = pipe_ ? pipe_->get_transport_pair_id () : 0;
+    const bool completion =
+      pipe_ && pair_id != 0 && pipe_->get_transport_lane () == transport_lane_completion;
+    bool application_attached = pair_id == 0;
+    if (pair_id != 0) {
+        transport_pairs_t::iterator pair_it =
+          _transport_pairs.find (transport_pair_key_t (
+            pair_id, pipe_->get_transport_pair_generation ()));
+        if (pair_it != _transport_pairs.end ()) {
+            application_attached = pair_it->second.application_attached;
+            paired_pipe = completion ? pair_it->second.application : pair_it->second.completion;
+            if (completion)
+                pair_it->second.completion = NULL;
+            else
+                pair_it->second.application = NULL;
+            if (!pair_it->second.application && !pair_it->second.completion)
+                _transport_pairs.erase (pair_it);
+        }
+    }
+
+    if (!completion && application_attached)
+        xpipe_terminated (pipe_);
+    if (!completion)
+        socket_reqrep_internal::forget_router_reply_targets_for_pipe (
+          request_reply_state (), pipe_);
     endpoint_runtime ().inprocs.erase_pipe (pipe_);
 
     uint32_t ready_count = 0;
@@ -364,6 +577,54 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
 
     if (get_ctx ())
         get_ctx ()->schedule_auto_hwm_recalculate ();
+
+    if (paired_pipe && !is_terminating ()) {
+        socket_reqrep_internal::fail_disconnected_peer_requests (
+          request_reply_state (), routing_id_data, routing_id_size, ECONNRESET);
+        reqrep_internal::fail_disconnected_router_requests (
+          router_request_reply_state (), ECONNRESET);
+        paired_pipe->terminate (false);
+    }
+}
+
+zlink::pipe_t *
+zlink::socket_base_t::completion_pipe_for_application (pipe_t *application_pipe_) const
+{
+    if (!application_pipe_)
+        return NULL;
+    const transport_pair_key_t pair_key (
+      application_pipe_->get_transport_pair_id (),
+      application_pipe_->get_transport_pair_generation ());
+    transport_pairs_t::const_iterator it = _transport_pairs.find (pair_key);
+    return it == _transport_pairs.end () || !it->second.ready
+             ? NULL
+             : it->second.completion;
+}
+
+zlink::pipe_t *
+zlink::socket_base_t::completion_pipe_for_peer (const zlink_routing_id_t *peer_rid_) const
+{
+    if (!peer_rid_ || peer_rid_->size == 0)
+        return NULL;
+    pipe_t *selected = NULL;
+    uint64_t selected_generation = 0;
+    for (transport_pairs_t::const_iterator it = _transport_pairs.begin (),
+                                           end = _transport_pairs.end ();
+         it != end; ++it) {
+        pipe_t *application = it->second.application;
+        if (!application || !it->second.completion || !it->second.ready)
+            continue;
+        const blob_t &rid = application->get_routing_id ().size () > 0
+                              ? application->get_routing_id ()
+                              : it->second.completion->get_routing_id ();
+        if (rid.size () == peer_rid_->size
+            && memcmp (rid.data (), peer_rid_->data, rid.size ()) == 0
+            && (!selected || it->first.second > selected_generation)) {
+            selected = it->second.completion;
+            selected_generation = it->first.second;
+        }
+    }
+    return selected;
 }
 
 int zlink::socket_base_t::socket_id () const

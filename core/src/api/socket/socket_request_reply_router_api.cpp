@@ -6,13 +6,9 @@
 
 #include "api/socket/part_helper_internal.hpp"
 #include "api/message/recv_result_internal.hpp"
-#include "api/monitoring/poller_api_internal.hpp"
-#include "api/socket/socket_request_reply_router_state_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_runtime_io_helpers.hpp"
 #include "api/socket/socket_request_reply_submit_internal.hpp"
-#include "api/socket/socket_request_reply_wait_internal.hpp"
-#include "core/socket_poller.hpp"
 
 namespace reqrep = zlink::socket_reqrep_internal;
 
@@ -44,27 +40,6 @@ void export_router_recv_part_metadata_view (const zlink_routing_id_t *source_nod
         *request_seq_out_ = request_seq_;
 }
 
-zlink_recv_result_t
-recv_router_parts_with_helper (const std::shared_ptr<reqrep::socket_request_reply_state_t> &state_,
-                               const zlink_routing_id_t **source_node_rid_out_,
-                               uint64_t *request_seq_out_,
-                               zlink_msg_t **parts_out_,
-                               size_t *part_count_out_,
-                               zlink_recv_flags_t flags_)
-{
-    if (!state_ || !source_node_rid_out_ || !request_seq_out_ || !parts_out_
-        || !part_count_out_) {
-        errno = EFAULT;
-        return ZLINK_RECV_INVALID_HANDLE;
-    }
-    const int timeout_ms = (flags_ & ZLINK_DONTWAIT) ? 0 : -1;
-    const int rc = reqrep::recv_internal_router_queue (
-      &state_->recv_queue, source_node_rid_out_, request_seq_out_, parts_out_, part_count_out_,
-      static_cast<int> (flags_), timeout_ms);
-    if (rc != 0)
-        return zlink::recv_result_internal::from_errno (errno);
-    return ZLINK_RECV_OK;
-}
 }
 
 zlink_recv_result_t zlink_router_recv_part (void *router_,
@@ -91,83 +66,17 @@ zlink_recv_result_t zlink_router_recv_part (void *router_,
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> helper_state =
       zlink::part_helper_internal::find_handle_state (router_);
 
-    std::shared_ptr<reqrep::socket_request_reply_state_t> state =
-      reqrep::find_request_reply_state (handle);
-    std::shared_ptr<zlink::reqrep_internal::router_request_reply_state_t>
-      router_reply_state = handle.socket->router_request_reply_state ();
-    bool use_helper_queue = false;
-    if (state) {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        use_helper_queue = state->internal_dispatch_installed;
-    }
-
     const bool recv_sequence_active =
       zlink::part_helper_internal::recv_sequence_active (helper_state);
     auto recv_router_parts_once = [&] (const zlink_routing_id_t **source_node_rid_out,
                                        uint64_t *request_seq_out, zlink_msg_t **parts_out,
                                        size_t *part_count_out) -> zlink_recv_result_t {
-        reqrep::drain_router_completion_queues (router_, state, router_reply_state);
-
-        const zlink_recv_flags_t try_flags =
-          static_cast<zlink_recv_flags_t> (flags_ | ZLINK_DONTWAIT);
-        const bool blocking = (flags_ & ZLINK_DONTWAIT) == 0;
-        zlink::socket_base_t *input_socket =
-          use_helper_queue && state ? state->recv_queue.rx_socket () : handle.socket;
-        zlink::socket_base_t *socket_signal =
-          state ? reqrep::completion_signal_socket (state) : NULL;
-        zlink::socket_base_t *router_reply_signal =
-          router_reply_state
-            ? zlink::reqrep_internal::router_completion_signal_socket (router_reply_state)
-            : NULL;
-
-        if (blocking && !use_helper_queue && !state && !router_reply_state) {
-            // Hot path: plain router recv has no completion queues to service.
-            // Keep it on the direct blocking recv path instead of routing through
-            // the poll loop used by request/reply helpers.
-            return reqrep::recv_router_message_direct (
-                     handle, source_node_rid_out, request_seq_out, parts_out, part_count_out,
-                     static_cast<int> (flags_))
-                     == 0
-                   ? ZLINK_RECV_OK
-                   : zlink::recv_result_internal::from_errno (errno);
-        }
-
-        while (true) {
-            zlink_recv_result_t rc =
-              use_helper_queue
-                ? recv_router_parts_with_helper (state, source_node_rid_out, request_seq_out,
-                                                 parts_out, part_count_out, try_flags)
-                : static_cast<zlink_recv_result_t> (
-                    reqrep::recv_router_message_direct (
-                      handle, source_node_rid_out, request_seq_out, parts_out, part_count_out,
-                      static_cast<int> (try_flags))
-                        == 0
-                      ? ZLINK_RECV_OK
-                      : zlink::recv_result_internal::from_errno (errno));
-            if (rc == ZLINK_RECV_OK)
-                return rc;
-            if (!blocking || errno != EAGAIN)
-                return zlink::recv_result_internal::from_errno (errno);
-
-            bool input_ready = false;
-            bool socket_signal_ready = false;
-            bool router_reply_signal_ready = false;
-            const int wait_rc = reqrep::wait_router_input_or_completion (
-              input_socket, socket_signal, router_reply_signal, -1, &input_ready,
-              &socket_signal_ready, &router_reply_signal_ready);
-            if (wait_rc <= 0) {
-                if (wait_rc == 0)
-                    errno = EAGAIN;
-                return zlink::recv_result_internal::from_errno (errno);
-            }
-
-            if (socket_signal_ready || router_reply_signal_ready)
-                reqrep::drain_router_completion_queues (router_, state, router_reply_state);
-            if (!input_ready && !socket_signal_ready && !router_reply_signal_ready) {
-                errno = EAGAIN;
-                return zlink::recv_result_internal::from_errno (errno);
-            }
-        }
+        return reqrep::recv_router_message_direct (
+                 handle, source_node_rid_out, request_seq_out, parts_out, part_count_out,
+                 static_cast<int> (flags_))
+                 == 0
+               ? ZLINK_RECV_OK
+               : zlink::recv_result_internal::from_errno (errno);
     };
 
     if (!recv_sequence_active) {
@@ -208,8 +117,7 @@ zlink_recv_result_t zlink_router_recv_part (void *router_,
 
         const int stage_rc = zlink::part_helper_internal::stage_recv_sequence (
           helper_state, zlink::part_helper_internal::recv_family_router,
-          use_helper_queue && state ? state->recv_queue.rx_socket () : handle.socket,
-          source_node_rid, request_seq, parts, part_count,
+          handle.socket, source_node_rid, request_seq, parts, part_count,
           std::this_thread::get_id ());
         zlink_multipart_close (parts, part_count);
         if (stage_rc != 0) {
@@ -232,8 +140,7 @@ zlink_recv_result_t zlink_router_recv_part (void *router_,
         return ZLINK_RECV_OK;
     }
 
-    zlink::socket_base_t *source_socket =
-      use_helper_queue && state ? state->recv_queue.rx_socket () : handle.socket;
+    zlink::socket_base_t *source_socket = handle.socket;
     bool first_part = false;
     if (zlink::part_helper_internal::prepare_recv_step (
           router_, zlink::part_helper_internal::recv_family_router, source_socket, &helper_state,
@@ -330,14 +237,8 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
 
     std::shared_ptr<reqrep::socket_request_reply_state_t> state =
       reqrep::find_or_create_request_reply_state (handle);
-    if (!state || reqrep::ensure_internal_dispatch_installed (state) != 0
-        || reqrep::ensure_recv_queue_ready (state) != 0)
+    if (!state)
         return zlink::recv_result_internal::from_errno (errno);
-    handle.socket->socket_msg_dispatch_drain_pending ();
-    int receive_timeout_ms = -1;
-    if (reqrep::effective_recv_timeout_ms (handle.socket, flags_, &receive_timeout_ms) != 0)
-        return zlink::recv_result_internal::from_errno (errno);
-
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> helper_state =
       zlink::part_helper_internal::find_handle_state (dealer_);
     const bool recv_sequence_active =
@@ -346,9 +247,9 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
     auto recv_dealer_parts_once = [&] (uint8_t *message_type_out, uint64_t *request_seq_out,
                                        zlink_msg_t **parts_out,
                                        size_t *part_count_out) -> zlink_recv_result_t {
-        return reqrep::recv_internal_dealer_queue (
-                 &state->recv_queue, message_type_out, request_seq_out, parts_out,
-                 part_count_out, static_cast<int> (flags_), receive_timeout_ms)
+        return reqrep::recv_dealer_message_direct (
+                 handle, state, message_type_out, request_seq_out, parts_out,
+                 part_count_out, static_cast<int> (flags_))
                  == 0
                ? ZLINK_RECV_OK
                : zlink::recv_result_internal::from_errno (errno);
@@ -392,7 +293,7 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
 
         const int stage_rc = zlink::part_helper_internal::stage_recv_sequence (
           helper_state, zlink::part_helper_internal::recv_family_dealer,
-          state->recv_queue.rx_socket (), NULL, request_seq, parts, part_count,
+          handle.socket, NULL, request_seq, parts, part_count,
           std::this_thread::get_id ());
         zlink_multipart_close (parts, part_count);
         if (stage_rc != 0) {
@@ -415,7 +316,7 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
     }
 
     bool first_part = false;
-    zlink::socket_base_t *source_socket = state->recv_queue.rx_socket ();
+    zlink::socket_base_t *source_socket = handle.socket;
     if (zlink::part_helper_internal::prepare_recv_step (
           dealer_, zlink::part_helper_internal::recv_family_dealer, source_socket, &helper_state,
           &first_part, &source_socket)

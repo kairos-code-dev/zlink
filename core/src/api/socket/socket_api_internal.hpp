@@ -59,6 +59,15 @@ static inline int socket_type (socket_handle_t handle_)
     return handle_.socket ? handle_.socket->socket_type () : -1;
 }
 
+static inline int validate_recv_flags (int flags_)
+{
+    if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return 0;
+}
+
 static inline int core_socket_type_from_public_type (zlink_socket_type_t type_)
 {
     switch (type_) {

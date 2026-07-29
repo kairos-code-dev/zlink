@@ -116,6 +116,8 @@ typedef void (*zlink_monitor_handler_fn)(
 typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 typedef zlink_monitor_handler_fn zlink_socket_monitor_handler_fn;
 
+#define ZLINK_MONITOR_STATUS_ABI_VERSION 2u
+
 ZLINK_EXPORT void zlink_monitor_ignore_handler (const zlink_monitor_event_t *event_,
                                                 void *userdata_);
 
@@ -124,6 +126,8 @@ typedef struct zlink_socket_monitor_open_options_t {
 } zlink_socket_monitor_open_options_t;
 
 typedef struct zlink_monitor_status_t {
+  uint32_t abi_version;
+  uint32_t struct_size;
   zlink_monitor_source_kind_t source_kind;
   zlink_monitor_state_mask_t state_flags;
   zlink_monitor_status_detail_mask_t detail_flags;
@@ -142,15 +146,24 @@ typedef struct zlink_monitor_status_t {
   uint32_t auto_hwm_connection_bucket_hwm_4k;
   uint32_t auto_hwm_connection_bucket_hysteresis_retained;
   uint64_t auto_hwm_effective_message_bytes;
-  int32_t auto_hwm_applied_sndhwm;
-  int32_t auto_hwm_applied_rcvhwm;
+  uint64_t auto_hwm_planned_sndhwm_bytes;
+  uint64_t auto_hwm_planned_rcvhwm_bytes;
+  uint64_t auto_hwm_applied_sndhwm_bytes;
+  uint64_t auto_hwm_applied_rcvhwm_bytes;
   int32_t auto_hwm_effective_sndbuf;
   int32_t auto_hwm_effective_rcvbuf;
   uint64_t auto_hwm_last_recalc_ms;
   uint32_t auto_hwm_last_recalc_reason;
   uint32_t auto_hwm_send_blocked_ratio_ppm;
-  int32_t auto_hwm_deferred_sndhwm;
-  int32_t auto_hwm_deferred_rcvhwm;
+  uint64_t auto_hwm_deferred_sndhwm_bytes;
+  uint64_t auto_hwm_deferred_rcvhwm_bytes;
+  uint32_t auto_hwm_deferred_sndhwm_valid;
+  uint32_t auto_hwm_deferred_rcvhwm_valid;
+  uint64_t snd_bytes_in_flight;
+  uint64_t rcv_bytes_in_flight;
+  uint64_t minimum_core_message_charge_bytes;
+  uint64_t oversize_message_admission_count;
+  uint64_t oversize_message_admission_max_bytes;
 } zlink_monitor_status_t;
 
 ZLINK_EXPORT void *zlink_socket_monitor_open(
@@ -175,6 +188,9 @@ ZLINK_EXPORT zlink_close_result_t zlink_monitor_close(void **monitor_p);
 `events == 0`은 event를 선택하지 않고 `EVENT_ALL`은 모든 bit를 선택한다. raw socket monitor status의
 `source_kind`는 `ZLINK_MONITOR_SOURCE_SOCKET`이다. `detail_flags`에 없는 선택 field는 0이며
 `auto_hwm_connection_bucket_index`는 bucket이 없으면 `UINT32_MAX`다.
+`abi_version`은 `ZLINK_MONITOR_STATUS_ABI_VERSION`이고, `struct_size`는 반환된 ABI version의
+전체 byte 크기다. Version 2는 이전 32-bit count HWM field를 64-bit byte field로
+교체한다. 이전 layout을 호환 layout으로 받지 않는다.
 
 각 detail bit가 유효하게 만드는 field는 다음과 같다. 한 field는 한 bit에만 속하며 bit가 없으면 표의
 field를 모두 0으로 채운다.
@@ -183,8 +199,15 @@ field를 모두 0으로 채운다.
 |---|---|
 | `ZLINK_MONITOR_STATUS_DETAIL_SND_PENDING_MSGS` | `snd_pending_msgs` |
 | `ZLINK_MONITOR_STATUS_DETAIL_RCV_PENDING_MSGS` | `rcv_pending_msgs` |
-| `ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUDGET` | `auto_hwm_enabled`, `auto_hwm_profile`, `auto_hwm_role`, `auto_hwm_policy_class`, `auto_hwm_unit_budget_bytes`, `auto_hwm_size_cap`, `auto_hwm_socket_message_slots`, `auto_hwm_connection_bucket_enabled`, `auto_hwm_connection_bucket_count`, `auto_hwm_connection_bucket_index`, `auto_hwm_connection_bucket_hwm_4k`, `auto_hwm_connection_bucket_hysteresis_retained`, `auto_hwm_effective_message_bytes`, `auto_hwm_last_recalc_ms`, `auto_hwm_last_recalc_reason`, `auto_hwm_send_blocked_ratio_ppm`, `auto_hwm_deferred_sndhwm`, `auto_hwm_deferred_rcvhwm` |
-| `ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS` | `auto_hwm_applied_sndhwm`, `auto_hwm_applied_rcvhwm`, `auto_hwm_effective_sndbuf`, `auto_hwm_effective_rcvbuf` |
+| `ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUDGET` | `auto_hwm_enabled`, `auto_hwm_profile`, `auto_hwm_role`, `auto_hwm_policy_class`, `auto_hwm_unit_budget_bytes`, `auto_hwm_size_cap`, `auto_hwm_socket_message_slots`, `auto_hwm_connection_bucket_enabled`, `auto_hwm_connection_bucket_count`, `auto_hwm_connection_bucket_index`, `auto_hwm_connection_bucket_hwm_4k`, `auto_hwm_connection_bucket_hysteresis_retained`, `auto_hwm_effective_message_bytes`, `auto_hwm_planned_sndhwm_bytes`, `auto_hwm_planned_rcvhwm_bytes`, `auto_hwm_last_recalc_ms`, `auto_hwm_last_recalc_reason`, `auto_hwm_send_blocked_ratio_ppm`, `auto_hwm_deferred_sndhwm_bytes`, `auto_hwm_deferred_rcvhwm_bytes`, `auto_hwm_deferred_sndhwm_valid`, `auto_hwm_deferred_rcvhwm_valid` |
+| `ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS` | `auto_hwm_applied_sndhwm_bytes`, `auto_hwm_applied_rcvhwm_bytes`, `auto_hwm_effective_sndbuf`, `auto_hwm_effective_rcvbuf`, `snd_bytes_in_flight`, `rcv_bytes_in_flight`, `minimum_core_message_charge_bytes`, `oversize_message_admission_count`, `oversize_message_admission_max_bytes` |
+
+Planned field는 현재 자동 정책의 계산 결과를 제공한다. Applied field는 수동 override를
+포함해 소켓이 실제로 사용하는 byte HWM을 제공한다. Deferred 값은 대응하는 `_valid`
+field가 0이 아닐 때만 유효하다. `snd_bytes_in_flight`와 `rcv_bytes_in_flight`는 snapshot
+시점의 directional pipe 합계다. Pending message field의 단위는 계속 count다. Minimum
+charge와 oversize field를 사용하면 message마다 allocator를 조회하지 않고도 byte
+회계 결과를 진단할 수 있다.
 
 socket monitor는 bind, accept, connect, disconnect, handshake, protocol error와 close event를 제공한다.
 handler mode와 recv mode는 상호 배타이며 두 번째 mode는 `EBUSY`다. event의 address와 routing ID는

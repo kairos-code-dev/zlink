@@ -35,6 +35,10 @@ zlink::asio_zmp_engine_t::asio_zmp_engine_t (fd_t fd_,
     _hello_body_bytes (0),
     _hello_body_len (0),
     _hello_send_size (0),
+    _negotiated_transport_lane (options_.transport_lane),
+    _negotiated_transport_pair_id (options_.transport_pair_id),
+    _negotiated_transport_pair_generation (
+      options_.transport_pair_generation),
     _peer_routing_id_size (0),
     _subscription_required (false),
     _last_error_code (0)
@@ -55,6 +59,10 @@ zlink::asio_zmp_engine_t::asio_zmp_engine_t (fd_t fd_,
     _hello_body_bytes (0),
     _hello_body_len (0),
     _hello_send_size (0),
+    _negotiated_transport_lane (options_.transport_lane),
+    _negotiated_transport_pair_id (options_.transport_pair_id),
+    _negotiated_transport_pair_generation (
+      options_.transport_pair_generation),
     _peer_routing_id_size (0),
     _subscription_required (false),
     _last_error_code (0)
@@ -78,6 +86,10 @@ zlink::asio_zmp_engine_t::asio_zmp_engine_t (
     _hello_body_bytes (0),
     _hello_body_len (0),
     _hello_send_size (0),
+    _negotiated_transport_lane (options_.transport_lane),
+    _negotiated_transport_pair_id (options_.transport_pair_id),
+    _negotiated_transport_pair_generation (
+      options_.transport_pair_generation),
     _peer_routing_id_size (0),
     _subscription_required (false),
     _last_error_code (0),
@@ -103,6 +115,8 @@ void zlink::asio_zmp_engine_t::init_zmp_engine ()
     memset (_peer_routing_id, 0, sizeof (_peer_routing_id));
     _peer_routing_id_size = 0;
     _ready_send.clear ();
+    _deferred_ready_send.clear ();
+    _deferred_ready_pending = false;
     _ready_sent = false;
     _ready_received = false;
     _last_error_code = 0;
@@ -183,12 +197,23 @@ void zlink::asio_zmp_engine_t::plug_internal ()
 {
     set_handshake_timer ();
 
-    zmp_control::build_hello_ready_frames (_options, _hello_send, sizeof (_hello_send),
-                                           &_hello_send_size, _ready_send);
+    const bool defer_ready =
+      paired_transport () && !_options.transport_pair_initiator;
+    if (defer_ready) {
+        zmp_control::build_hello_frame (
+          _options, _hello_send, sizeof (_hello_send), &_hello_send_size);
+        _ready_send.assign (
+          _hello_send, _hello_send + _hello_send_size);
+        _ready_sent = false;
+    } else {
+        zmp_control::build_hello_ready_frames (
+          _options, _hello_send, sizeof (_hello_send), &_hello_send_size,
+          _ready_send);
+        _ready_sent = true;
+    }
     _outpos = &_ready_send[0];
     _outsize = _ready_send.size ();
     _hello_sent = true;
-    _ready_sent = true;
 
     if (_options.type == ZLINK_CORE_SOCKET_PUB || _options.type == ZLINK_CORE_SOCKET_XPUB)
         _subscription_required = true;
@@ -206,8 +231,10 @@ bool zlink::asio_zmp_engine_t::handshake ()
         }
     }
 
-    if (!_hello_sent)
+    if (!_hello_sent) {
+        errno = EAGAIN;
         return false;
+    }
 
     if (_encoder == NULL) {
         _encoder = new (std::nothrow) zmp_encoder_t (_options.out_batch_size);
@@ -223,8 +250,10 @@ bool zlink::asio_zmp_engine_t::handshake ()
     if (!process_handshake_input ())
         return false;
 
-    if (!_ready_received)
+    if (!_ready_received) {
+        errno = EAGAIN;
         return false;
+    }
 
     if (_has_handshake_stage) {
         session ()->set_peer_routing_id (_peer_routing_id, _peer_routing_id_size);
@@ -256,8 +285,15 @@ bool zlink::asio_zmp_engine_t::handshake ()
         _has_handshake_timer = false;
     }
 
-    socket ()->event_connection_ready_changed (
-      _endpoint_uri_pair, _peer_routing_id, _peer_routing_id_size);
+    if (!paired_transport ()) {
+        socket ()->event_connection_ready_changed (
+          _endpoint_uri_pair, _peer_routing_id, _peer_routing_id_size);
+    } else {
+        socket ()->event_transport_pair_lane_ready (
+          _endpoint_uri_pair, _peer_routing_id, _peer_routing_id_size,
+          _negotiated_transport_lane, _negotiated_transport_pair_id,
+          _negotiated_transport_pair_generation);
+    }
 
     if (_output_stopped)
         restart_output ();
@@ -379,7 +415,58 @@ int zlink::asio_zmp_engine_t::process_ready_message (msg_t *msg_)
         return -1;
     }
 
+    transport_lane_t lane = transport_lane_application;
+    uint64_t pair_id = 0;
+    uint64_t generation = 0;
+    const int pair_rc =
+      zmp_metadata::parse_transport_pair (properties, &lane, &pair_id, &generation);
+    if (pair_rc < 0 || (paired_transport () && pair_rc == 0)
+        || (!paired_transport () && pair_rc != 0)
+        || (pair_rc > 0
+            && session ()->set_peer_transport_pair (lane, pair_id, generation) != 0)) {
+        set_last_error (zmp_error_internal, "transport pair metadata invalid");
+        return -1;
+    }
+    if (pair_rc > 0) {
+        _negotiated_transport_lane = lane;
+        _negotiated_transport_pair_id = pair_id;
+        _negotiated_transport_pair_generation = generation;
+    }
+    if (paired_transport () && !_options.transport_pair_initiator)
+        schedule_ready_reply (lane, pair_id, generation);
+
     return 0;
+}
+
+bool zlink::asio_zmp_engine_t::paired_transport () const
+{
+    return _options.type == ZLINK_CORE_SOCKET_DEALER
+           || _options.type == ZLINK_CORE_SOCKET_ROUTER;
+}
+
+void zlink::asio_zmp_engine_t::schedule_ready_reply (
+  transport_lane_t lane_, uint64_t pair_id_, uint64_t generation_)
+{
+    options_t response_options = _options;
+    response_options.zmp_metadata = true;
+    response_options.transport_lane = lane_;
+    response_options.transport_pair_id = pair_id_;
+    response_options.transport_pair_generation = generation_;
+    zmp_control::build_ready_frame (response_options, _deferred_ready_send);
+    _deferred_ready_pending = true;
+    if (_outsize == 0 && prepare_deferred_handshake_output ())
+        start_async_write ();
+}
+
+bool zlink::asio_zmp_engine_t::prepare_deferred_handshake_output ()
+{
+    if (!_deferred_ready_pending || _outsize != 0)
+        return false;
+    _outpos = &_deferred_ready_send[0];
+    _outsize = _deferred_ready_send.size ();
+    _deferred_ready_pending = false;
+    _ready_sent = true;
+    return true;
 }
 
 int zlink::asio_zmp_engine_t::process_error_message (msg_t *msg_)

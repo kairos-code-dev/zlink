@@ -956,7 +956,7 @@ static void configure_stream_regression_socket (void *socket_, int backlog_)
     TEST_ASSERT_NOT_NULL (socket_);
 
     const int zero = 0;
-    const int hwm = 10;
+    const uint64_t hwm = 10u * (4096u + sizeof (zlink_msg_t));
     const int timeout_ms = 200;
     const int nodelay = 1;
     const int backlog = backlog_ > 0 ? backlog_ : 256;

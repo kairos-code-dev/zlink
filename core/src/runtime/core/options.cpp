@@ -87,12 +87,12 @@ static int do_setsockopt_string_allow_empty_strict (const void *const optval_,
     return sockopt_invalid ();
 }
 
-const int default_hwm = 1000;
+const uint64_t default_hwm_bytes = ZLINK_HWM_BYTES_DFLT;
 const int default_batch_size = 8192; // 32768;// //16384;
 
 zlink::options_t::options_t () :
-    sndhwm (default_hwm),
-    rcvhwm (default_hwm),
+    sndhwm (default_hwm_bytes),
+    rcvhwm (default_hwm_bytes),
     auto_hwm_msg_unit_bytes (0),
     affinity (0),
     routing_id_size (0),
@@ -128,6 +128,12 @@ zlink::options_t::options_t () :
     tcp_keepalive_idle (-1),
     tcp_keepalive_intvl (-1),
     tcp_nodelay (1),
+    zmp_metadata (false),
+    transport_lane (transport_lane_application),
+    transport_pair_id (0),
+    transport_pair_generation (0),
+    transport_pair_initiator (false),
+    transport_pair_state (),
     socket_id (0),
     conflate (false),
     handshake_ivl (30000),
@@ -141,8 +147,7 @@ zlink::options_t::options_t () :
     can_recv_hiccup_msg (false),
     busy_poll (0),
     rid_duplicate_policy (ZLINK_RID_DUPLICATE_REJECT),
-    peer_weight (100),
-    zmp_metadata (false)
+    peer_weight (100)
 #ifdef ZLINK_HAVE_TLS
     ,
     tls_verify (1),

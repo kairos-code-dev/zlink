@@ -8,7 +8,6 @@
 #include "api/core/close_result_internal.hpp"
 #include "api/core/config_result_internal.hpp"
 #include "api/monitoring/poller_api_internal.hpp"
-#include "api/monitoring/poller_completion_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
 #include "utils/clock.hpp"
 
@@ -24,42 +23,6 @@ long remaining_timeout_ms (long timeout_ms_, zlink::clock_t &clock_, uint64_t de
     if (now_ms >= deadline_ms_)
         return 0;
     return static_cast<long> (deadline_ms_ - now_ms);
-}
-
-int drain_hidden_completion_registrations (poller_handle_t *poller_)
-{
-    if (!poller_)
-        return 0;
-
-    int drained = 0;
-    for (std::vector<poller_registration_t>::const_iterator it = poller_->registrations.begin ();
-         it != poller_->registrations.end (); ++it) {
-        if (!poller_completion_is_hidden (&*it))
-            continue;
-        const int drain_rc = poller_completion_drain_hidden (&*it);
-        if (drain_rc < 0)
-            return -1;
-        drained += drain_rc;
-    }
-    errno = 0;
-    return drained;
-}
-
-int drain_hidden_completion_event (const poller_registration_t *registration_,
-                                   bool *observed_hidden_out_,
-                                   bool *drained_any_out_)
-{
-    if (!poller_completion_is_hidden (registration_))
-        return 0;
-
-    if (observed_hidden_out_)
-        *observed_hidden_out_ = true;
-    const int drain_rc = poller_completion_drain_hidden (registration_);
-    if (drain_rc < 0)
-        return -1;
-    if (drain_rc > 0 && drained_any_out_)
-        *drained_any_out_ = true;
-    return 1;
 }
 
 }
@@ -220,34 +183,15 @@ int zlink_poller_wait (void *poller_,
             return rc;
         }
         if (rc == 0) {
-            if (timeout_ == 0) {
-                const int drain_rc = drain_hidden_completion_registrations (poller);
-                if (drain_rc < 0) {
-                    if (error_out_)
-                        *error_out_ = zlink::config_result_internal::from_errno (errno);
-                    return -1;
-                }
-            }
             if (error_out_)
                 *error_out_ = ZLINK_CONFIG_OK;
             return 0;
         }
 
         int public_count = 0;
-        bool drained_any = false;
-        bool observed_hidden = false;
         for (int i = 0; i < rc; ++i) {
             const poller_registration_t *registration =
               poller_find_registration_for_native (poller, poller->native_events[i]);
-            const int hidden_rc =
-              drain_hidden_completion_event (registration, &observed_hidden, &drained_any);
-            if (hidden_rc < 0) {
-                if (error_out_)
-                    *error_out_ = zlink::config_result_internal::from_errno (errno);
-                return -1;
-            }
-            if (hidden_rc > 0)
-                continue;
 
             zlink_poller_event_t candidate;
             if (poller_fill_public_event_from_registration (registration,
@@ -301,16 +245,6 @@ int zlink_poller_wait (void *poller_,
             if (error_out_)
                 *error_out_ = ZLINK_CONFIG_OK;
             return public_count;
-        }
-        // Hidden completion drains fire user callbacks (e.g. reply handlers)
-        // that flip caller-visible state. Even when no public event is
-        // produced, the caller must be allowed to inspect that state and
-        // submit follow-up work. Looping back into wait() here would block
-        // until the next timeout, capping throughput at 1/timeout per slot.
-        if (drained_any || observed_hidden) {
-            if (error_out_)
-                *error_out_ = ZLINK_CONFIG_OK;
-            return 0;
         }
     }
 }

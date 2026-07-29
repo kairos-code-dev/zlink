@@ -137,8 +137,8 @@ zlink_send(server, parts, 2, 0);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_OPT_SNDHWM` | int | 자동 | PAIR의 peer-queue 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
-| `ZLINK_OPT_RCVHWM` | int | 자동 | PAIR의 peer-queue 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
+| `ZLINK_OPT_SNDHWM` | `uint64_t` bytes | 자동 | PAIR의 peer-queue 역할에 맞춰 계산한 자동 HWM. 수동 설정이 우선하며 `0`은 무제한 |
+| `ZLINK_OPT_RCVHWM` | `uint64_t` bytes | 자동 | PAIR의 peer-queue 역할에 맞춰 계산한 자동 HWM. 수동 설정이 우선하며 `0`은 무제한 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 미전송 메시지 대기 시간 (ms), -1=무한 |
 | `ZLINK_OPT_SNDTIMEO` | int | 1000 | 송신 타임아웃(ms). 무한 대기는 `-1`을 명시적으로 설정 |
 | `ZLINK_OPT_RCVTIMEO` | int | 1000 | 수신 타임아웃(ms). 무한 대기는 `-1`을 명시적으로 설정 |

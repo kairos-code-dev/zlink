@@ -69,7 +69,7 @@ void test_router_mandatory_hwm ()
     int mandatory = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
-    int sndhwm = 1;
+    const uint64_t sndhwm = 65536u + sizeof (zlink_msg_t);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (router, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm)));
     int linger = 1;
@@ -81,7 +81,7 @@ void test_router_mandatory_hwm ()
     //  Create dealer called "X" and connect it to our router, configure HWM
     void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "X", 1));
-    int rcvhwm = 1;
+    const uint64_t rcvhwm = sndhwm;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (dealer, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm)));
 
@@ -137,7 +137,7 @@ void test_router_send_rid_mandatory_hwm ()
     int mandatory = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
-    int sndhwm = 1;
+    const uint64_t sndhwm = 65536u + sizeof (zlink_msg_t);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (router, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm)));
     int linger = 1;
@@ -148,7 +148,7 @@ void test_router_send_rid_mandatory_hwm ()
 
     void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "X", 1));
-    int rcvhwm = 1;
+    const uint64_t rcvhwm = sndhwm;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (dealer, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, my_endpoint));
@@ -197,14 +197,14 @@ void test_router_send_rid_multipart_hwm_is_backpressure ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory,
                                sizeof (mandatory)));
-    int sndhwm = 1;
+    const uint64_t sndhwm = 65536u + 2u * sizeof (zlink_msg_t) + 32u;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (router, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm)));
     bind_loopback_ipv4 (router, endpoint, sizeof endpoint);
 
     void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "X", 1));
-    int rcvhwm = 1;
+    const uint64_t rcvhwm = sndhwm;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (dealer, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));

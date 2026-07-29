@@ -20,19 +20,6 @@ using zlink::reqrep_internal::router_state_identity_index_t;
 std::mutex g_request_reply_index_mutex;
 router_state_identity_index_t g_router_state_identity_index;
 
-zlink::ctx_t *resolve_router_state_ctx (const std::shared_ptr<router_request_reply_state_t> &state_)
-{
-    if (!state_)
-        return NULL;
-
-    socket_handle_t handle = as_socket_handle (state_->owner);
-    if (!handle.socket) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return handle.socket->get_ctx ();
-}
-
 struct router_timeout_callback_ctx_t
 {
     std::shared_ptr<router_request_reply_state_t> state;
@@ -169,11 +156,12 @@ int zlink::reqrep_internal::init_buffer_frame (zlink_msg_t *msg_, const void *da
 int zlink::reqrep_internal::ensure_router_completion_queue_ready (
   const std::shared_ptr<router_request_reply_state_t> &state_)
 {
-    zlink::ctx_t *ctx = resolve_router_state_ctx (state_);
-    if (!ctx)
+    if (!state_ || !state_->owner) {
+        errno = EFAULT;
         return -1;
-    return zlink::request_completion::ensure_signal_ready (&state_->completion, ctx,
-                                                           "zlink.router.reqrep.completion");
+    }
+    errno = 0;
+    return 0;
 }
 
 int zlink::reqrep_internal::queue_router_reply_completion (
@@ -184,12 +172,12 @@ int zlink::reqrep_internal::queue_router_reply_completion (
   zlink_msg_t *parts_,
   size_t part_count_)
 {
-    zlink::ctx_t *ctx = resolve_router_state_ctx (state_);
-    if (!ctx)
+    if (!state_ || !state_->owner) {
+        errno = EFAULT;
         return -1;
-    return zlink::request_completion::enqueue (&state_->completion, ctx,
-                                               "zlink.router.reqrep.completion", handler_,
-                                               userdata_, errnum_, parts_, part_count_);
+    }
+    return zlink::request_completion::enqueue (
+      &state_->completion, state_->owner, handler_, userdata_, errnum_, parts_, part_count_);
 }
 
 int zlink::reqrep_internal::drain_router_reply_completions (
@@ -206,12 +194,6 @@ bool zlink::reqrep_internal::has_router_reply_completions (
   const std::shared_ptr<router_request_reply_state_t> &state_)
 {
     return state_ ? zlink::request_completion::has_pending (&state_->completion) : false;
-}
-
-zlink::socket_base_t *zlink::reqrep_internal::router_completion_signal_socket (
-  const std::shared_ptr<router_request_reply_state_t> &state_)
-{
-    return state_ ? zlink::request_completion::signal_socket (&state_->completion) : NULL;
 }
 
 void zlink::reqrep_internal::claim_router_completion_owner (
@@ -243,6 +225,30 @@ bool zlink::reqrep_internal::has_pending_router_request_work (
         return true;
     std::lock_guard<std::mutex> lock (state_->mutex);
     return !state_->requests.pending_replies.empty ();
+}
+
+void zlink::reqrep_internal::fail_disconnected_router_requests (
+  const std::shared_ptr<router_request_reply_state_t> &state_, int errnum_)
+{
+    if (!state_)
+        return;
+
+    std::vector<pending_reply_t> failed;
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        for (std::unordered_map<uint64_t, pending_reply_t>::iterator it =
+               state_->requests.pending_replies.begin ();
+             it != state_->requests.pending_replies.end (); ++it) {
+            failed.push_back (it->second);
+        }
+        state_->requests.pending_replies.clear ();
+        state_->requests.pending_sequences.clear ();
+    }
+    for (size_t i = 0; i < failed.size (); ++i) {
+        zlink::request_timeout::cancel (failed[i].timeout_task);
+        (void) queue_router_reply_completion (
+          state_, failed[i].handler, failed[i].userdata, errnum_, NULL, 0);
+    }
 }
 
 int zlink::reqrep_internal::drain_close_router_request_reply_state (void *router_)

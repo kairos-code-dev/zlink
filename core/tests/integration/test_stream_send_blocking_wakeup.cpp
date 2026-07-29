@@ -22,10 +22,10 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
-const int kStreamHwm = 10;
 const int kSendTimeoutMs = 1000;
 const int kWakeupSendTimeoutMs = 5000;
 const size_t kPayloadSize = 4096;
+const uint64_t kStreamHwm = 10u * (kPayloadSize + sizeof (zlink_msg_t));
 const int kRouteIdSize = 4;
 const int kSocketBufBytes = 4096;
 const int kProbeTimeoutMs = 250;

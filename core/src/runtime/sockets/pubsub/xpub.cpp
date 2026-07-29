@@ -334,7 +334,7 @@ int zlink::xpub_t::xsend (msg_t *msg_)
 
     if (_send_all_data && !_manual && !options.invert_matching) {
         int rc = -1;
-        if (_lossy || _dist.check_hwm ()) {
+        if (_lossy || _dist.check_hwm (msg_)) {
             if (_dist.send_to_all (msg_) == 0) {
                 _more_send = msg_more;
                 rc = 0;
@@ -364,7 +364,7 @@ int zlink::xpub_t::xsend (msg_t *msg_)
     }
 
     int rc = -1; //  Assume we fail
-    if (_lossy || _dist.check_hwm ()) {
+    if (_lossy || _dist.check_hwm (msg_)) {
         if (_dist.send_to_matching (msg_) == 0) {
             //  If we are at the end of multi-part message we can mark
             //  all the pipes as non-matching.

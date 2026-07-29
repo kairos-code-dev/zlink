@@ -7,39 +7,15 @@
 
 #include <unordered_map>
 #include <vector>
-#include <memory>
-
 #include "api/socket/socket_api_internal.hpp"
 #include "core/socket_poller.hpp"
-
-namespace zlink
-{
-namespace request_completion
-{
-struct queue_state_t;
-}
-}
 
 enum poller_subject_kind_t
 {
     poller_subject_none = 0,
     poller_subject_fd,
-    poller_subject_timer,
-    poller_subject_socket_request_receive,
-    poller_subject_socket_request_completion,
-    poller_subject_router_request_completion
+    poller_subject_timer
 };
-
-//  Validates the public recv flags word for helper receive entry points.
-static inline int validate_recv_flags (int flags_)
-{
-    if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return 0;
-}
-
 
 struct poller_registration_t
 {
@@ -50,8 +26,7 @@ struct poller_registration_t
         subject_kind (poller_subject_none),
         user_data (NULL),
         events (0),
-        completion_queue (NULL),
-        state_ref ()
+        owns_completion_processing (false)
     {
     }
 
@@ -61,8 +36,7 @@ struct poller_registration_t
     poller_subject_kind_t subject_kind;
     void *user_data;
     short events;
-    zlink::request_completion::queue_state_t *completion_queue;
-    std::shared_ptr<void> state_ref;
+    bool owns_completion_processing;
 };
 
 //  Releases per-subject references taken when a registration was added.
@@ -123,17 +97,6 @@ int poller_add_fd_registration (poller_handle_t *poller_,
                                 short events_,
                                 void *subject_,
                                 poller_subject_kind_t subject_kind_);
-int poller_add_hidden_completion_registration (poller_handle_t *poller_,
-                                               zlink::socket_base_t *signal_socket_,
-                                               void *subject_,
-                                               poller_subject_kind_t subject_kind_,
-                                               zlink::request_completion::queue_state_t *queue_,
-                                               const std::shared_ptr<void> &state_ref_);
-int poller_add_hidden_receive_registration (poller_handle_t *poller_,
-                                            zlink::socket_base_t *receive_socket_,
-                                            void *subject_,
-                                            void *user_data_,
-                                            const std::shared_ptr<void> &state_ref_);
 int poller_find_registration_index (poller_handle_t *poller_, void *subject_);
 int poller_find_registration_index (poller_handle_t *poller_,
                                     void *subject_,

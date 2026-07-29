@@ -28,6 +28,12 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
+bool should_run_request_reply_test (const char *name_)
+{
+    const char *selected = getenv ("ZLINK_TEST_CASE");
+    return !selected || !*selected || strcmp (selected, name_) == 0;
+}
+
 struct reply_probe_t
 {
     std::mutex mutex;
@@ -677,17 +683,17 @@ void run_blocking_dealer_receive_ownership_transition (bool use_dealer_receive_)
 
     socket_handle_t handle = as_socket_handle (dealer);
     std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> state;
-    bool dispatcher_ready = false;
-    const auto dispatcher_deadline =
+    bool direct_receive_ready = false;
+    const auto receive_deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
-    while (std::chrono::steady_clock::now () < dispatcher_deadline) {
+    while (std::chrono::steady_clock::now () < receive_deadline) {
         state = zlink::socket_reqrep_internal::find_request_reply_state (handle);
         if (state) {
             std::lock_guard<std::mutex> lock (state->mutex);
-            dispatcher_ready =
-              state->internal_dispatch_installed && state->recv_queue.rx_socket () != NULL;
+            direct_receive_ready =
+              !state->internal_dispatch_installed;
         }
-        if (dispatcher_ready)
+        if (direct_receive_ready)
             break;
         msleep (1);
     }
@@ -716,8 +722,8 @@ void run_blocking_dealer_receive_ownership_transition (bool use_dealer_receive_)
     TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
 
     TEST_ASSERT_TRUE_MESSAGE (
-      dispatcher_ready,
-      "blocking DEALER receive did not establish dispatcher ownership before waiting");
+      direct_receive_ready,
+      "blocking DEALER receive created an internal payload queue");
     TEST_ASSERT_EQUAL_INT (ZLINK_RECV_OK, recv_result);
     TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, received_has_more);
     TEST_ASSERT_EQUAL_STRING ("unsolicited-during-transition", received_payload.c_str ());
@@ -732,12 +738,12 @@ void run_blocking_dealer_receive_ownership_transition (bool use_dealer_receive_)
     test_context_socket_close_zero_linger (router);
 }
 
-void test_blocking_generic_dealer_recv_owns_dispatch_queue_before_first_request ()
+void test_blocking_generic_dealer_recv_remains_on_transport_pipe ()
 {
     run_blocking_dealer_receive_ownership_transition (false);
 }
 
-void test_blocking_typed_dealer_recv_owns_dispatch_queue_before_first_request ()
+void test_blocking_typed_dealer_recv_remains_on_transport_pipe ()
 {
     run_blocking_dealer_receive_ownership_transition (true);
 }
@@ -792,7 +798,7 @@ void test_typed_dealer_recv_honors_configured_no_input_timeout ()
     run_dealer_no_input_receive_timeout (true);
 }
 
-void test_dispatcher_dealer_generic_recv_and_poller_preserve_raw_queue ()
+void test_direct_dealer_generic_recv_and_poller_preserve_raw_order ()
 {
     const char *endpoint = "inproc://zmp-dealer-generic-dispatch-queue";
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
@@ -804,10 +810,9 @@ void test_dispatcher_dealer_generic_recv_and_poller_preserve_raw_queue ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
     msleep (SETTLE_TIME);
 
-    // Establish the ROUTER route before the request helper installs the
-    // DEALER dispatcher, then leave a multipart raw message queued. Handler
-    // installation may synchronously drain this message and must not reenter
-    // while the request-state mutex is held.
+    // Establish the ROUTER route, then leave a multipart raw message in the
+    // Application transport pipe. Starting a request must not move it into an
+    // internal payload queue or change FIFO order.
     zlink_msg_t identify;
     zlink_msg_init (&identify);
     init_string_part (&identify, "identify");
@@ -920,8 +925,9 @@ void test_dispatcher_dealer_generic_recv_and_poller_preserve_raw_queue ()
       ZLINK_RECV_OK, recv_generic_part_with_retry (dealer, &received, &has_more));
     TEST_ASSERT_EQUAL_STRING ("ordered-two", part_to_string_and_close (&received).c_str ());
 
-    // A queued record remains owned by the internal receive queue across a
-    // transport disconnect and is still consumable before socket close.
+    // Unread records belong to the transport generation. Disconnecting the
+    // pair drops that generation instead of preserving payload in a hidden
+    // application queue.
     zlink_msg_t before_disconnect;
     zlink_msg_init (&before_disconnect);
     init_string_part (&before_disconnect, "before-disconnect");
@@ -940,8 +946,10 @@ void test_dispatcher_dealer_generic_recv_and_poller_preserve_raw_queue ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK, zlink_disconnect (dealer, endpoint));
     zlink_msg_init (&received);
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_RECV_OK, recv_generic_part_with_retry (dealer, &received, &has_more));
-    TEST_ASSERT_EQUAL_STRING ("before-disconnect", part_to_string_and_close (&received).c_str ());
+      ZLINK_RECV_NO_DATA,
+      zlink_recv_part (dealer, &source_rid, &received, &has_more,
+                       static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&received));
     TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK, zlink_connect (dealer, endpoint));
     msleep (SETTLE_TIME);
 
@@ -1761,29 +1769,36 @@ int main ()
 {
     setup_test_environment (180);
 
+#define RUN_SELECTED(test_)                                                        \
+    do {                                                                           \
+        if (should_run_request_reply_test (#test_))                                 \
+            RUN_TEST (test_);                                                       \
+    } while (false)
+
     UNITY_BEGIN ();
-    RUN_TEST (test_dealer_to_router_request_reply_basic);
-    RUN_TEST (test_dealer_receives_unsolicited_message_after_request_reply);
-    RUN_TEST (test_concurrent_first_dealer_requests_share_dispatch_install);
-    RUN_TEST (test_blocking_generic_dealer_recv_owns_dispatch_queue_before_first_request);
-    RUN_TEST (test_blocking_typed_dealer_recv_owns_dispatch_queue_before_first_request);
-    RUN_TEST (test_generic_dealer_recv_honors_configured_no_input_timeout);
-    RUN_TEST (test_typed_dealer_recv_honors_configured_no_input_timeout);
-    RUN_TEST (test_dispatcher_dealer_generic_recv_and_poller_preserve_raw_queue);
-    RUN_TEST (test_concurrent_dispatch_install_and_close_terminates_cleanly);
-    RUN_TEST (test_prefixed_multipart_second_prefix_allocation_failure_rolls_back);
-    RUN_TEST (test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id);
-    RUN_TEST (test_router_to_router_request_reply_basic);
-    RUN_TEST (test_connect_only_router_requester_receives_reply);
-    RUN_TEST (test_multiple_in_flight_requests_complete_independently);
-    RUN_TEST (test_out_of_order_replies_match_original_request);
-    RUN_TEST (test_extra_reply_is_dropped_after_first_completion);
-    RUN_TEST (test_dealer_to_dealer_reply_routes_to_source_peer_and_closes);
-    RUN_TEST (test_dealer_to_dealer_multipart_reply_preserves_large_first_part);
-    RUN_TEST (test_dealer_request_receive_without_reply_closes_cleanly);
-    RUN_TEST (test_router_request_rejects_non_router_target);
-    RUN_TEST (test_dealer_request_uses_socket_default_timeout_when_reply_is_missing);
-    RUN_TEST (test_request_reply_process_exits_cleanly_after_round_trip);
+    RUN_SELECTED (test_dealer_to_router_request_reply_basic);
+    RUN_SELECTED (test_dealer_receives_unsolicited_message_after_request_reply);
+    RUN_SELECTED (test_concurrent_first_dealer_requests_share_dispatch_install);
+    RUN_SELECTED (test_blocking_generic_dealer_recv_remains_on_transport_pipe);
+    RUN_SELECTED (test_blocking_typed_dealer_recv_remains_on_transport_pipe);
+    RUN_SELECTED (test_generic_dealer_recv_honors_configured_no_input_timeout);
+    RUN_SELECTED (test_typed_dealer_recv_honors_configured_no_input_timeout);
+    RUN_SELECTED (test_direct_dealer_generic_recv_and_poller_preserve_raw_order);
+    RUN_SELECTED (test_concurrent_dispatch_install_and_close_terminates_cleanly);
+    RUN_SELECTED (test_prefixed_multipart_second_prefix_allocation_failure_rolls_back);
+    RUN_SELECTED (test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id);
+    RUN_SELECTED (test_router_to_router_request_reply_basic);
+    RUN_SELECTED (test_connect_only_router_requester_receives_reply);
+    RUN_SELECTED (test_multiple_in_flight_requests_complete_independently);
+    RUN_SELECTED (test_out_of_order_replies_match_original_request);
+    RUN_SELECTED (test_extra_reply_is_dropped_after_first_completion);
+    RUN_SELECTED (test_dealer_to_dealer_reply_routes_to_source_peer_and_closes);
+    RUN_SELECTED (test_dealer_to_dealer_multipart_reply_preserves_large_first_part);
+    RUN_SELECTED (test_dealer_request_receive_without_reply_closes_cleanly);
+    RUN_SELECTED (test_router_request_rejects_non_router_target);
+    RUN_SELECTED (test_dealer_request_uses_socket_default_timeout_when_reply_is_missing);
+    RUN_SELECTED (test_request_reply_process_exits_cleanly_after_round_trip);
+#undef RUN_SELECTED
     const int rc = UNITY_END ();
     fflush (NULL);
     std::_Exit (rc);

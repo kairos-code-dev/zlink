@@ -795,7 +795,6 @@ set(api-monitoring-sources
     src/api/monitoring/monitor_dispatch_context.cpp
     src/api/monitoring/monitor_query_api.cpp
     src/api/monitoring/monitor_socket_api.cpp
-    src/api/monitoring/poller_completion_internal.cpp
     src/api/monitoring/poller_api.cpp
     src/api/monitoring/poller_event_conversion.cpp
     src/api/monitoring/poller_poll_once.cpp
@@ -804,7 +803,6 @@ set(api-monitoring-sources
     src/api/monitoring/timer_scheduler_backend.cpp)
 
 set(api-socket-sources
-    src/api/socket/internal_pair_queue_internal.cpp
     src/api/socket/part_helper_api.cpp
     src/api/socket/part_helper_state.cpp
     src/api/socket/request_completion_queue_internal.cpp

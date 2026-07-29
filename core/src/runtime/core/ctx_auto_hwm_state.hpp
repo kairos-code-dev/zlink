@@ -12,7 +12,7 @@ struct ctx_auto_hwm_options_t
 {
     bool enabled;
     zlink_auto_hwm_profile_t profile;
-    int msg_unit_bytes;
+    uint64_t msg_unit_bytes;
 };
 
 class ctx_auto_hwm_state_t
@@ -23,12 +23,12 @@ class ctx_auto_hwm_state_t
     void set_enabled (bool enabled_);
     void set_recalc_debounce_ms (int debounce_ms_);
     void set_profile (zlink_auto_hwm_profile_t profile_);
-    void set_msg_unit_bytes (int msg_unit_bytes_);
+    void set_msg_unit_bytes (uint64_t msg_unit_bytes_);
 
     bool enabled () const;
     int recalc_debounce_ms () const;
     zlink_auto_hwm_profile_t profile () const;
-    int msg_unit_bytes () const;
+    uint64_t msg_unit_bytes () const;
     ctx_auto_hwm_options_t options () const;
 
     uint64_t recalc_task_id () const;
@@ -43,7 +43,7 @@ class ctx_auto_hwm_state_t
     bool _enabled;
     int _recalc_debounce_ms;
     zlink_auto_hwm_profile_t _profile;
-    int _msg_unit_bytes;
+    uint64_t _msg_unit_bytes;
     bool _recalc_pending;
     uint64_t _last_change_ms;
     uint64_t _recalc_deadline_ms;

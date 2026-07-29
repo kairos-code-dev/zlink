@@ -27,8 +27,6 @@ extern "C" int zlink_router_enable_request_reply_receive (void *router_)
 
     std::shared_ptr<reqrep::socket_request_reply_state_t> state =
       reqrep::find_or_create_request_reply_state (handle);
-    if (reqrep::ensure_recv_queue_ready (state) != 0)
-        return -1;
     return reqrep::ensure_internal_dispatch_installed (state);
 }
 

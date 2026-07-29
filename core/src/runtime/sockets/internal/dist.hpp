@@ -52,7 +52,7 @@ class dist_t
     static bool has_out ();
 
     //  Check HWM of all matching pipes.
-    bool check_hwm ();
+    bool check_hwm (const zlink::msg_t *msg_ = NULL);
 
     //  Roll back any queued multipart prefix and restore normal state.
     void rollback ();

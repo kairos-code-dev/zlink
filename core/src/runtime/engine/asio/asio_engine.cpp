@@ -1123,7 +1123,15 @@ void zlink::asio_engine_t::on_write_complete (const boost::system::error_code &e
         _pipeline.async_zero_copy = false;
     }
 
-    //  If still handshaking and there's nothing more to write, just return
+    //  Some protocols must wait for peer metadata before constructing their
+    //  final handshake frame. Let them publish that frame after the current
+    //  handshake output has drained.
+    if (_outsize == 0 && prepare_deferred_handshake_output ()) {
+        start_async_write ();
+        return;
+    }
+
+    //  If still handshaking and there's nothing more to write, just return.
     if (_connection_facade.handshaking && _outsize == 0)
         return;
 

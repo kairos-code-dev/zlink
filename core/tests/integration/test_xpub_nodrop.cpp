@@ -12,13 +12,14 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
-const int kTcpPipeHwm = 100;
-const int kTcpSocketHwm = kTcpPipeHwm / 2;
 const int kTcpSendTimeoutMs = 2000;
 const int kPubSendTimeoutMs = 200;
 const int kTcpDrainCompletionTimeoutSec = 15;
 const char *kPubsubTopic = "bench";
 const size_t kPubsubPayloadSize = 256;
+const uint64_t kTcpPipeHwm =
+  100u * (kPubsubPayloadSize + sizeof (zlink_msg_t));
+const uint64_t kTcpSocketHwm = kTcpPipeHwm / 2;
 
 struct delivery_ready_state_t
 {
@@ -149,7 +150,7 @@ void test ()
     //  Create a publisher
     void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
 
-    int hwm = 2000;
+    const uint64_t hwm = 2000u * sizeof (zlink_msg_t);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (pub, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
@@ -170,7 +171,7 @@ void test ()
     //  or all published messages might be lost
     recv_string_expect_success (pub, "\1", 0);
 
-    int hwmlimit = hwm - 1;
+    int hwmlimit = 1999;
     int send_count = 0;
 
     //  Send an empty message
@@ -208,7 +209,7 @@ void test ()
 
     send_count = 0;
     recv_count = 0;
-    hwmlimit = hwm;
+    hwmlimit = 2000;
 
     //  Send an empty message until we get an error, which must be EAGAIN
     while (zlink_send (pub, "", 0, 0) == 0)

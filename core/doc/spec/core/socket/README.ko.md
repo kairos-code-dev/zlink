@@ -424,10 +424,24 @@ raw socket과 discovery에 적용된다.
 | `ZLINK_OPT_RECOVERY_IVL` | 멀티캐스트 복구 간격 (ms, `int`) |
 | `ZLINK_OPT_SNDBUF` | 커널 송신 버퍼 크기 (`int`; -1=OS 기본값 유지, 0 이상=OS에 크기 요청) |
 | `ZLINK_OPT_RCVBUF` | 커널 수신 버퍼 크기 (`int`; -1=OS 기본값 유지, 0 이상=OS에 크기 요청) |
-| `ZLINK_OPT_SNDHWM` | 송신 HWM (`int`; 0=무제한) |
-| `ZLINK_OPT_RCVHWM` | 수신 HWM (`int`; 0=무제한) |
-| `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 자동 HWM 계산에서 메시지 슬롯으로 환산할 때 쓰는 바이트 단위 (`int`; 0=소켓 타입 기본값, 음수는 `EINVAL`) |
+| `ZLINK_OPT_SNDHWM` | Directional send pipe의 accounted byte HWM (`uint64_t`; 기본값 `4,096,000`, `0`=무제한) |
+| `ZLINK_OPT_RCVHWM` | Directional receive pipe의 accounted byte HWM (`uint64_t`; 기본값 `4,096,000`, `0`=무제한) |
+| `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 자동 byte HWM을 계산할 때 쓰는 planning unit (`uint64_t`, byte 단위; `0`=소켓 타입 기본값) |
 | `ZLINK_OPT_MAXMSGSIZE` | 최대 인바운드 메시지 크기 (`int64_t`; -1=무제한) |
+
+세 `uint64_t` option은 `zlink_set_option()`과 `zlink_get_option()`에서 정확히
+`sizeof(uint64_t)` byte를 사용해야 합니다. 이전 4-byte 값은 과거 message count로
+해석하지 않고 `ZLINK_CONFIG_INVALID_ARGUMENT`로 거절합니다. 자동 planning unit은
+관찰한 message 크기가 아닙니다. Profile과 connection bucket이 선택한 slot에 이 값을
+곱해 계획 byte HWM을 계산합니다. Pipe admission은 실제로 보관한 byte를 계산합니다.
+
+HWM은 각 directional pipe에 적용합니다. Accounted byte가 limit에 도달하면 receiver가
+충분한 byte credit을 반환할 때까지 이후 write가 대기합니다. 비어 있는 pipe에는
+accounted 크기가 HWM보다 큰 message 한 건을 허용할 수 있습니다. 따라서 유효한 큰
+message를 HWM이 작다는 이유만으로 모두 거절하지 않습니다. 이 message도
+`ZLINK_OPT_MAXMSGSIZE`를 만족해야 하며, 한 건을 허용한 뒤에는 이후 write가 대기합니다.
+Core는 `ceil(hwm_bytes / 2)`에서 credit을 반환합니다. 이 pipe 기준은 고정값이며
+Framework의 receive 재개 기준과 별개입니다.
 
 ##### Timing
 
@@ -635,13 +649,15 @@ ZLINK_EXPORT zlink_config_result_t zlink_set_option (void *handle_,
 공통 옵션을 설정한다. `handle_`은 raw socket 또는 discovery다.
 `option_` 매개변수는 `zlink_option_t` enum 값입니다. `optval_`
 포인터는 값을 제공하고 `optvallen_`은 크기를 바이트 단위로 지정합니다.
+`ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`,
+`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 정확한 `uint64_t` 값을 요구합니다.
 
 Raw socket과 discovery의 설정 시점은 각 option 계약을 따른다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**에러:** 옵션이 알 수 없거나 값이 범위를 벗어나면 `EINVAL`. Context가 종료된
-경우 `ETERM`.
+**에러:** 옵션을 알 수 없거나 값이 범위를 벗어나거나 byte-count option의 크기가
+정확하지 않으면 `EINVAL`. Context가 종료된 경우 `ETERM`.
 
 **참고:** `zlink_get_option`
 
@@ -658,7 +674,10 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_option (void *handle_,
                       size_t *optvallen_);
 ```
 
-공통 옵션의 현재 값을 가져온다. `handle_`은 raw socket 또는 discovery다.
+공통 옵션의 현재 값을 가져온다. `handle_`은 raw socket 또는 discovery다. 세 HWM
+byte-count option에는 `uint64_t` output buffer가 필요하며, 성공하면
+`*optvallen_`을 `sizeof(uint64_t)`로 설정합니다. Buffer가 작거나 이전 크기이면 값을
+잘라 쓰지 않고 실패합니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 

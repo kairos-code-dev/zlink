@@ -58,13 +58,12 @@ socket_request_reply_state_t::socket_request_reply_state_t (zlink::socket_base_t
 
 int ensure_completion_queue_ready (const std::shared_ptr<socket_request_reply_state_t> &state_)
 {
-    if (!state_ || !state_->socket || !state_->socket->get_ctx ()) {
+    if (!state_ || !state_->socket) {
         errno = EFAULT;
         return -1;
     }
-
-    return zlink::request_completion::ensure_signal_ready (
-      &state_->completion, state_->socket->get_ctx (), "zlink.router.reqrep.completion");
+    errno = 0;
+    return 0;
 }
 
 int queue_reply_completion (const std::shared_ptr<socket_request_reply_state_t> &state_,
@@ -80,8 +79,7 @@ int queue_reply_completion (const std::shared_ptr<socket_request_reply_state_t> 
     }
 
     const int rc = zlink::request_completion::enqueue (
-      &state_->completion, state_->socket->get_ctx (), "zlink.router.reqrep.completion", handler_,
-      userdata_, errnum_, parts_, part_count_);
+      &state_->completion, state_->socket, handler_, userdata_, errnum_, parts_, part_count_);
     return rc;
 }
 
@@ -98,12 +96,6 @@ int drain_reply_completions (const std::shared_ptr<socket_request_reply_state_t>
 bool has_pending_reply_completions (const std::shared_ptr<socket_request_reply_state_t> &state_)
 {
     return state_ ? zlink::request_completion::has_pending (&state_->completion) : false;
-}
-
-zlink::socket_base_t *
-completion_signal_socket (const std::shared_ptr<socket_request_reply_state_t> &state_)
-{
-    return state_ ? zlink::request_completion::signal_socket (&state_->completion) : NULL;
 }
 
 void claim_completion_owner (const std::shared_ptr<socket_request_reply_state_t> &state_)
@@ -211,9 +203,7 @@ int start_request (socket_handle_t handle_,
 {
     std::shared_ptr<socket_request_reply_state_t> state =
       find_or_create_request_reply_state (handle_);
-    if (ensure_completion_queue_ready (state) != 0)
-        return -1;
-    if (ensure_internal_dispatch_installed (state) != 0)
+    if (!state || handle_.socket->ensure_completion_processing () != 0)
         return -1;
 
     pending_key_t key;

@@ -54,6 +54,18 @@ A Core connection identity distinguishes a physical lifetime. Core does not
 interpret it as a mesh lifecycle generation, descriptor revision, Actor
 authority-owner generation, or Location authority store version.
 
+For DEALER/ROUTER request-reply, one logical peer owns an Application and a
+Completion transport connection. Core validates their pair ID, pair generation,
+lane, and peer identity before it releases Application writes. Failure of one
+lane terminates both lanes. Ordinary messages and requests use the Application
+lane; replies use the Completion lane. This keeps request completion available
+when Application ingress is backpressured.
+
+Each lane retains payload only in its directional network pipe. Core does not
+place received application payload in a hidden PAIR queue and does not copy
+reply payload into a completion deque. The remaining completion control queue
+contains only callback metadata for payloadless terminal outcomes.
+
 ## Transport-liveness boundary
 
 TCP and WebSocket engines deliver orderly disconnects, read/write failures, and

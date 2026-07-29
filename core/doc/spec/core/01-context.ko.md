@@ -62,7 +62,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | 자동 HWM(High-Water Mark) 정책 사용 여부 (`0` = 비활성, `1` = 활성) |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | 연결 변화가 이어질 때 자동 HWM 재계산을 다시 실행하기 전에 기다리는 최소 debounce 시간 (ms, `>= 0`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | 자동 HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). 알 수 없는 값은 `EINVAL`로 실패 |
-| `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 18 | 자동 HWM 계산에서 쓰는 context 수준 메시지 단위 (바이트 단위). `0`은 소켓 타입 기본값 사용, 음수는 `EINVAL`로 실패 |
+| `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 18 | 자동 byte HWM을 계산할 때 쓰는 context 수준 planning unit (`uint64_t`, byte 단위). `0`은 소켓 타입 기본값 사용. `zlink_ctx_set_data()`와 `zlink_ctx_get_data()`로 설정하고 조회 |
 
 > **참고:** `ZLINK_SOCKET_LIMIT`과 `ZLINK_THREAD_PRIORITY`는 enum 값 `3`을
 > 공유합니다. 현재 공개 C ABI의 옵션 조회는 값 `3`을 읽기 전용
@@ -79,7 +79,7 @@ typedef enum zlink_auto_hwm_profile_t
 #define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
 #define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
-#define ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT 0
+#define ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT ((uint64_t) 0)
 ```
 
 | 상수 | 값 | 설명 |
@@ -215,8 +215,13 @@ ZLINK_EXPORT zlink_config_result_t zlink_ctx_set_data(void *context_,
                                          size_t optvallen_);
 ```
 
-공개 바인딩 타입이 `int`가 아닌 context 옵션에 사용합니다. 주된 사용 사례는
-`ZLINK_THREAD_NAME_PREFIX`이며, null 종료 문자열을 `optval_`로 전달하고
+공개 바인딩 타입이 `int`가 아닌 context 옵션에 사용합니다.
+`ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 정확히 `sizeof(uint64_t)` byte를
+받습니다. 이 값은 관찰한 평균 message 크기가 아니라 byte HWM을 계산하는
+planning input입니다. `0`은 소켓 타입 기본값을 선택합니다. 이전 4-byte 값은
+`ZLINK_CONFIG_INVALID_ARGUMENT`로 실패합니다.
+
+`ZLINK_THREAD_NAME_PREFIX`에는 null 종료 문자열을 `optval_`로 전달하고
 `strlen(prefix) + 1`을 `optvallen_`으로 전달합니다. 접두사는 플랫폼 스레드
 이름 제한에 맞춰 최대 16바이트(`optvallen_ <= 16`)로 제한됩니다.
 
@@ -228,7 +233,35 @@ ZLINK_EXPORT zlink_config_result_t zlink_ctx_set_data(void *context_,
 
 **스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다.
 
-**참고:** `zlink_ctx_set`, `zlink_ctx_get`
+**참고:** `zlink_ctx_set`, `zlink_ctx_get_data`, `zlink_ctx_get`
+
+---
+
+### zlink_ctx_get_data
+
+호출자가 제공한 저장 공간으로 context 옵션을 조회합니다.
+
+```c
+ZLINK_EXPORT zlink_config_result_t zlink_ctx_get_data(void *context_,
+                                         zlink_ctx_option_t option_,
+                                         void *optval_,
+                                         size_t *optvallen_);
+```
+
+`ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`에는 `uint64_t` output buffer가
+필요합니다. 호출할 때 `*optvallen_`에 buffer 용량을 넣습니다. 성공하면 이 값은
+`sizeof(uint64_t)`가 됩니다. Buffer가 작으면 값을 잘라 쓰지 않고 실패합니다.
+
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값.
+`zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
+
+**에러:**
+- `EINVAL` -- 알 수 없는 option 또는 잘못된 output 크기.
+- `EFAULT` -- 유효하지 않은 context handle 또는 output pointer.
+
+**스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다.
+
+**참고:** `zlink_ctx_set_data`, `zlink_ctx_get`
 
 ---
 
@@ -255,7 +288,7 @@ Context 옵션의 현재 값을 가져옵니다. `ZLINK_SOCKET_LIMIT` 및 `ZLINK
 
 **스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다.
 
-**참고:** `zlink_ctx_set`
+**참고:** `zlink_ctx_set`, `zlink_ctx_get_data`
 
 ---
 

@@ -205,7 +205,8 @@ int zlink::stream_t::stream_dispatch_send_current_msg_from_io (msg_t *msg_, int 
     }
 
     if (dispatch_pipe) {
-        direct_out->refresh_write_credit (dispatch_pipe->get_msgs_read ());
+        direct_out->refresh_write_credit (dispatch_pipe->get_msgs_read (),
+                                          dispatch_pipe->get_bytes_read ());
         if (direct_out->write_single_message_and_flush_no_recursive_hwm_check (msg_)) {
             const int init_rc = msg_->init ();
             errno_assert (init_rc == 0);

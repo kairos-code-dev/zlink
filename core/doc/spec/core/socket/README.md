@@ -431,10 +431,27 @@ They apply to raw sockets and discovery.
 | `ZLINK_OPT_RECOVERY_IVL` | Multicast recovery interval in milliseconds (`int`) |
 | `ZLINK_OPT_SNDBUF` | Kernel transmit buffer size in bytes (`int`; -1 = keep OS default, >=0 = request size from OS) |
 | `ZLINK_OPT_RCVBUF` | Kernel receive buffer size in bytes (`int`; -1 = keep OS default, >=0 = request size from OS) |
-| `ZLINK_OPT_SNDHWM` | Send high water mark (`int`; 0 = unlimited) |
-| `ZLINK_OPT_RCVHWM` | Receive high water mark (`int`; 0 = unlimited) |
-| `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | Message-unit size in bytes used by automatic HWM planning (`int`; 0 = socket-type default, negative values fail with `EINVAL`) |
+| `ZLINK_OPT_SNDHWM` | Directional send high water mark in accounted bytes (`uint64_t`; default `4,096,000`; `0` = unlimited) |
+| `ZLINK_OPT_RCVHWM` | Directional receive high water mark in accounted bytes (`uint64_t`; default `4,096,000`; `0` = unlimited) |
+| `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | Planning unit in bytes used to calculate the automatic byte HWM (`uint64_t`; `0` = socket-type default) |
 | `ZLINK_OPT_MAXMSGSIZE` | Maximum inbound message size in bytes (`int64_t`; -1 = unlimited) |
+
+The three `uint64_t` options require exactly `sizeof(uint64_t)` bytes in
+`zlink_set_option()` and `zlink_get_option()`. A four-byte value is rejected
+with `ZLINK_CONFIG_INVALID_ARGUMENT`; it is not interpreted as the former
+message-count contract. The automatic planning unit is not the observed
+message size. It multiplies the profile and connection-bucket slot result to
+produce the planned byte HWM. Pipe admission accounts the actual retained
+bytes.
+
+HWM is applied to each directional pipe. Once the accounted bytes reach the
+limit, further writes wait until the receiver returns enough byte credit. An
+empty pipe may admit one message whose accounted size is larger than its HWM,
+so a finite HWM does not reject every legal large message. The message must
+still satisfy `ZLINK_OPT_MAXMSGSIZE`. This exception admits at most one such
+message before further writes wait. Core returns credit at
+`ceil(hwm_bytes / 2)`; this pipe threshold is fixed and is independent of a
+Framework receive-resume threshold.
 
 ##### Timing
 
@@ -645,12 +662,15 @@ ZLINK_EXPORT zlink_config_result_t zlink_set_option (void *handle_,
 Configures a common option. `handle_` may be a raw socket or discovery. The `option_` parameter identifies
 the option (e.g. `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_LINGER`). The `optval_`
 pointer supplies the value and `optvallen_` specifies its size in bytes.
+`ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, and
+`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` require an exact `uint64_t` value.
 
 Configuration timing for raw sockets and discovery follows each option contract.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
-**Errors:** `EINVAL` if the option is unknown or the value is out of range.
+**Errors:** `EINVAL` if the option is unknown, its value is out of range, or a
+byte-count option does not use the exact required size.
 `ETERM` if the context was terminated.
 
 **See also:** `zlink_get_option`
@@ -669,7 +689,9 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_option (void *handle_,
 ```
 
 Retrieves the current value of a common option. `handle_` may be a raw socket or
-discovery.
+discovery. The three HWM byte-count options require a `uint64_t` output buffer
+and set `*optvallen_` to `sizeof(uint64_t)`. A smaller or legacy-sized buffer
+fails instead of truncating the value.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 

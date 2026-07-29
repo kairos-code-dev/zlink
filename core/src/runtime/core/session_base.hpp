@@ -61,6 +61,9 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     const endpoint_uri_pair_t &get_endpoint () const;
     void set_peer_routing_id (const unsigned char *data_, size_t size_);
     const blob_t &peer_routing_id () const;
+    int set_peer_transport_pair (transport_lane_t lane_,
+                                 uint64_t pair_id_,
+                                 uint64_t generation_);
 
   protected:
     session_base_t (zlink::io_thread_t *io_thread_,
@@ -74,6 +77,8 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     void start_connecting (bool wait_);
 
     void reconnect ();
+    bool is_active_transport_pair () const;
+    void start_transport_pair_reconnect (bool force_);
 
     //  Handlers for incoming commands.
     void process_plug () ZLINK_FINAL;
@@ -118,6 +123,11 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     //  Peer routing id received during handshake before the pipe exists.
     blob_t _pending_peer_routing_id;
     bool _pending_peer_routing_id_valid;
+    transport_lane_t _transport_lane;
+    uint64_t _transport_pair_id;
+    uint64_t _transport_pair_generation;
+    bool _socket_pipe_bound;
+    bool _transport_pair_reconnect_in_progress;
 
     //  I/O thread the session is living in. It will be used to plug in
     //  the engines into the same thread.

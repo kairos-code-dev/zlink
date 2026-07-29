@@ -95,15 +95,23 @@ void test_typed_raw_socket_options ()
     TEST_ASSERT_NOT_NULL (xpub);
     TEST_ASSERT_NOT_NULL (xsub);
 
-    int value = 42;
-    size_t size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (router, ZLINK_OPT_SNDHWM, &value, sizeof (value)));
-    value = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDHWM, &value, &size));
-    TEST_ASSERT_EQUAL_INT (42, value);
+    uint64_t hwm_value = 42;
+    size_t hwm_size = sizeof (hwm_value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_SNDHWM, &hwm_value, sizeof (hwm_value)));
+    hwm_value = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm_value, &hwm_size));
+    TEST_ASSERT_EQUAL_UINT64 (42, hwm_value);
 
-    value = 1;
-    size = sizeof (value);
+    const int legacy_hwm = 42;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_set_option (router, ZLINK_OPT_SNDHWM, &legacy_hwm, sizeof (legacy_hwm)));
+
+    int value = 1;
+    size_t size = sizeof (value);
+
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (stream, ZLINK_OPT_IPV6, &value, sizeof (value)));
     value = 0;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (stream, ZLINK_OPT_IPV6, &value, &size));

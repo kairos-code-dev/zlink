@@ -51,7 +51,7 @@ struct transport_lifetime_t
 //  default message_pipe_granularity is used.
 int pipepair (zlink::object_t *parents_[2],
               zlink::pipe_t *pipes_[2],
-              const int hwms_[2],
+               const uint64_t hwms_[2],
               const bool conflate_[2],
               bool session_pipe_ = false);
 
@@ -83,7 +83,7 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  This allows pipepair to create pipe objects.
     friend int pipepair (zlink::object_t *parents_[2],
                          zlink::pipe_t *pipes_[2],
-                         const int hwms_[2],
+                         const uint64_t hwms_[2],
                          const bool conflate_[2],
                          bool session_pipe_);
 
@@ -104,10 +104,16 @@ class pipe_t ZLINK_FINAL : public object_t,
     void set_peer_routing_id (const unsigned char *data_, size_t size_);
     uint64_t get_msgs_written () const;
     uint64_t get_msgs_read () const;
+    uint64_t get_bytes_written () const;
+    uint64_t get_bytes_read () const;
     uint64_t get_snd_pending_msgs () const;
     uint64_t get_rcv_pending_msgs_approx () const;
+    uint64_t get_snd_pending_bytes () const;
+    uint64_t get_rcv_pending_bytes_approx () const;
+    uint64_t get_oversize_message_admission_count () const;
+    uint64_t get_oversize_message_admission_max_bytes () const;
     uint64_t get_connected_time () const;
-    void refresh_write_credit (uint64_t peer_msgs_read_);
+    void refresh_write_credit (uint64_t peer_msgs_read_, uint64_t peer_bytes_read_);
     bool mark_stream_connect_event_emitted ();
     void reset_stream_connect_event_emitted ();
     bool mark_connection_ready_event_emitted ();
@@ -132,6 +138,13 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  failure was caused by HWM or inactive pipe state.
     pipe_write_status_t check_write_status ();
 
+    // Paired transports expose the Application route before both physical
+    // lanes finish their handshake so a blocking send can wait on EAGAIN.
+    // The existing outbound-active flag keeps those writes out of the pipe
+    // until the pair is validated.
+    void hold_writes_until_transport_pair_ready ();
+    bool release_writes_for_transport_pair ();
+
     //  Writes a message to the underlying pipe. Returns false if the
     //  message does not pass check_write. If false, the message object
     //  retains ownership of its message buffer.
@@ -140,6 +153,10 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  Writes a message assuming HWM was already checked by caller.
     //  Still validates pipe active/termination state.
     bool write_no_hwm_check (const msg_t *msg_);
+
+    // Writes the transport's routing-id setup frame even while a paired
+    // Application lane is held for Completion-lane validation.
+    bool write_routing_id_and_flush (const msg_t *msg_);
 
     //  Writes a message and flushes it downstream under the same pipe lock.
     //  Use this for final single-part send hot paths to avoid paying for
@@ -158,7 +175,7 @@ class pipe_t ZLINK_FINAL : public object_t,
 
 
     //  Remove unfinished parts of the outbound message from the pipe.
-    void rollback () const;
+    void rollback ();
 
     //  Flush the messages downstream.
     void flush ();
@@ -178,22 +195,33 @@ class pipe_t ZLINK_FINAL : public object_t,
     void terminate (bool delay_);
 
     //  Set the high water marks.
-    void set_hwms (int inhwm_, int outhwm_);
-    void set_lwm_hint (int lwm_hint_);
+    void set_hwms (uint64_t inhwm_, uint64_t outhwm_);
+    void set_lwm_hint (uint64_t lwm_hint_);
 
     //  Set the boost to high water marks, used by inproc sockets so total hwm are sum of connect and bind sockets watermarks
-    void set_hwms_boost (int inhwmboost_, int outhwmboost_);
+    void set_hwms_boost (uint64_t inhwmboost_, uint64_t outhwmboost_);
 
     // send command to peer for notify the change of hwm
-    void send_hwms_to_peer (int inhwm_, int outhwm_);
+    void send_hwms_to_peer (uint64_t inhwm_, uint64_t outhwm_);
 
     //  Returns true if HWM is not reached
     bool check_hwm () const;
+    //  Checks whether the current multipart transaction can commit with this
+    //  frame. A rejected final frame makes the pipe wait for byte credit.
+    bool check_hwm_for_message (const msg_t *msg_);
 
     void set_endpoint_pair (endpoint_uri_pair_t endpoint_pair_);
     const endpoint_uri_pair_t &get_endpoint_pair () const;
     void set_transport_connection_id (uint64_t connection_id_);
     uint64_t get_transport_connection_id () const;
+    void set_transport_pair (transport_lane_t lane_,
+                             uint64_t pair_id_,
+                             uint64_t generation_);
+    transport_lane_t get_transport_lane () const;
+    uint64_t get_transport_pair_id () const;
+    uint64_t get_transport_pair_generation () const;
+    void set_locally_initiated (bool value_);
+    bool is_locally_initiated () const;
 
     void send_disconnect_msg ();
     void set_disconnect_msg (const std::vector<unsigned char> &disconnect_);
@@ -209,11 +237,11 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     //  Command handlers.
     void process_activate_read () ZLINK_OVERRIDE;
-    void process_activate_write (uint64_t msgs_read_) ZLINK_OVERRIDE;
+    void process_activate_write (uint64_t msgs_read_, uint64_t bytes_read_) ZLINK_OVERRIDE;
     void process_hiccup (void *pipe_) ZLINK_OVERRIDE;
     void process_pipe_term () ZLINK_OVERRIDE;
     void process_pipe_term_ack () ZLINK_OVERRIDE;
-    void process_pipe_hwm (int inhwm_, int outhwm_) ZLINK_OVERRIDE;
+    void process_pipe_hwm (uint64_t inhwm_, uint64_t outhwm_) ZLINK_OVERRIDE;
 
     //  Handler for delimiter read from the pipe.
     void process_delimiter ();
@@ -222,17 +250,21 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  coupled outbound invariants that future `_out_sync` refactors must
     //  preserve: `_out_pipe` lifetime, `_state`, `_out_active`, and
     //  `_peers_msgs_read` move together across write/flush/terminate paths.
-    void write_message_unlocked (const msg_t *msg_);
-    void rollback_unlocked () const;
+    bool write_message_unlocked (const msg_t *msg_, bool enforce_hwm_);
+    void rollback_unlocked ();
     void flush_unlocked ();
+    uint64_t frame_accounted_bytes (const msg_t *msg_) const;
+    bool append_outbound_frame_bytes_unlocked (const msg_t *msg_);
+    bool can_commit_bytes_unlocked (uint64_t message_bytes_) const;
+    void account_inbound_frame (const msg_t *msg_);
 
     //  Constructor is private. Pipe can only be created using
     //  pipepair function.
     pipe_t (object_t *parent_,
             upipe_t *inpipe_,
             upipe_t *outpipe_,
-            int inhwm_,
-            int outhwm_,
+            uint64_t inhwm_,
+            uint64_t outhwm_,
             bool conflate_,
             bool session_pipe_,
             const std::shared_ptr<transport_lifetime_t> &transport_lifetime_);
@@ -254,27 +286,38 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  Can the pipe be read from / written to?
     bool _in_active;
     bool _out_active;
+    bool _transport_pair_write_held;
 
     //  High watermark for the outbound pipe.
-    int _hwm;
+    uint64_t _hwm;
 
     //  Low watermark for the inbound pipe.
-    int _lwm;
-    int _inhwm;
-    int _lwm_hint;
+    uint64_t _lwm;
+    uint64_t _inhwm;
+    uint64_t _lwm_hint;
 
     // boosts for high and low watermarks, used with inproc sockets so hwm are sum of send and recv hmws on each side of pipe
-    int _in_hwm_boost;
-    int _out_hwm_boost;
+    uint64_t _in_hwm_boost;
+    uint64_t _out_hwm_boost;
+    bool _in_hwm_boost_set;
+    bool _out_hwm_boost_set;
 
     //  Number of messages read and written so far.
     uint64_t _msgs_read;
     uint64_t _msgs_written;
+    uint64_t _bytes_read;
+    uint64_t _bytes_written;
+    uint64_t _last_credit_bytes_read;
+    uint64_t _in_incomplete_bytes;
+    uint64_t _out_incomplete_bytes;
+    uint64_t _oversize_message_admission_count;
+    uint64_t _oversize_message_admission_max_bytes;
     uint64_t _connected_time;
 
     //  Last received peer's msgs_read. The actual number in the peer
     //  can be higher at the moment.
     uint64_t _peers_msgs_read;
+    uint64_t _peers_bytes_read;
 
     //  The pipe object on the other side of the pipepair.
     pipe_t *_peer;
@@ -324,8 +367,10 @@ class pipe_t ZLINK_FINAL : public object_t,
     static bool is_delimiter (const msg_t &msg_);
 
     //  Computes appropriate low watermark from the given high watermark.
-    static int compute_lwm (int hwm_);
-    static int apply_lwm_hint (int hwm_, int lwm_, int lwm_hint_);
+    static uint64_t compute_lwm (uint64_t hwm_);
+    static uint64_t apply_lwm_hint (uint64_t hwm_,
+                                    uint64_t lwm_,
+                                    uint64_t lwm_hint_);
     bool check_hwm_unlocked () const;
 
     const bool _conflate;
@@ -337,6 +382,10 @@ class pipe_t ZLINK_FINAL : public object_t,
     // The endpoints of this pipe.
     endpoint_uri_pair_t _endpoint_pair;
     std::shared_ptr<transport_lifetime_t> _transport_lifetime;
+    transport_lane_t _transport_lane;
+    uint64_t _transport_pair_id;
+    uint64_t _transport_pair_generation;
+    bool _locally_initiated;
 
     // Disconnect msg
     msg_t _disconnect_msg;

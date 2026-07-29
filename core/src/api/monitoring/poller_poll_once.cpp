@@ -6,7 +6,6 @@
 
 #include "api/core/config_result_internal.hpp"
 #include "api/monitoring/poller_api_internal.hpp"
-#include "api/socket/socket_request_reply_internal.hpp"
 
 int zlink_poll (zlink_pollitem_t *items_,
                 int nitems_,
@@ -26,9 +25,6 @@ int zlink_poll (zlink_pollitem_t *items_,
     }
 
     zlink::socket_poller_t poller;
-    std::vector<std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>>
-      receive_states;
-    int native_capacity = nitems_;
     for (int i = 0; i < nitems_; ++i) {
         items_[i].revents = 0;
         void *index_user_data = poller_index_user_data (static_cast<size_t> (i));
@@ -44,53 +40,10 @@ int zlink_poll (zlink_pollitem_t *items_,
                     *error_out_ = ZLINK_CONFIG_INVALID_ARGUMENT;
                 return -1;
             }
-            short physical_events = items_[i].events;
-            std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
-              request_state;
-            bool dispatch_installed = false;
-            if (socket_type (handle) == ZLINK_CORE_SOCKET_DEALER) {
-                request_state =
-                  (items_[i].events & ZLINK_POLLIN) != 0
-                    ? zlink::socket_reqrep_internal::find_or_create_request_reply_state (handle)
-                    : zlink::socket_reqrep_internal::find_request_reply_state (handle);
-                if ((items_[i].events & ZLINK_POLLIN) != 0
-                    && (!request_state
-                        || zlink::socket_reqrep_internal::ensure_internal_dispatch_installed (
-                             request_state)
-                             != 0)) {
-                    if (error_out_)
-                        *error_out_ = zlink::config_result_internal::from_errno (errno);
-                    return -1;
-                }
-                if (request_state) {
-                    std::lock_guard<std::mutex> lock (request_state->mutex);
-                    dispatch_installed = request_state->internal_dispatch_installed;
-                }
-                if (dispatch_installed)
-                    physical_events = static_cast<short> (physical_events & ~ZLINK_POLLIN);
-            }
-            if (poller.add (handle.socket, index_user_data, physical_events) != 0) {
+            if (poller.add (handle.socket, index_user_data, items_[i].events) != 0) {
                 if (error_out_)
                     *error_out_ = zlink::config_result_internal::from_errno (errno);
                 return -1;
-            }
-            if (socket_type (handle) == ZLINK_CORE_SOCKET_DEALER
-                && (items_[i].events & ZLINK_POLLIN) != 0) {
-                std::shared_ptr<
-                  zlink::socket_reqrep_internal::socket_request_reply_state_t> state =
-                  request_state;
-                if (dispatch_installed
-                    && poller.add (state->recv_queue.rx_socket (), index_user_data,
-                                   ZLINK_POLLIN)
-                         != 0) {
-                    if (error_out_)
-                        *error_out_ = zlink::config_result_internal::from_errno (errno);
-                    return -1;
-                }
-                if (dispatch_installed) {
-                    receive_states.push_back (state);
-                    ++native_capacity;
-                }
             }
         } else if (poller.add_fd (items_[i].fd, index_user_data, items_[i].events) != 0) {
             if (error_out_)
@@ -100,8 +53,8 @@ int zlink_poll (zlink_pollitem_t *items_,
     }
 
     std::vector<zlink::socket_poller_t::event_t> events (
-      static_cast<size_t> (native_capacity));
-    const int rc = poller.wait (events.data (), native_capacity, timeout_);
+      static_cast<size_t> (nitems_));
+    const int rc = poller.wait (events.data (), nitems_, timeout_);
     if (rc < 0) {
         if (error_out_)
             *error_out_ = zlink::config_result_internal::from_errno (errno);

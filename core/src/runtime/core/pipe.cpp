@@ -32,7 +32,7 @@ void pipe_debug_log (
 
 int zlink::pipepair (object_t *parents_[2],
                      pipe_t *pipes_[2],
-                     const int hwms_[2],
+                     const uint64_t hwms_[2],
                      const bool conflate_[2],
                      bool session_pipe_)
 {
@@ -95,9 +95,8 @@ void zlink::send_routing_id (pipe_t *pipe_, const options_t &options_)
     errno_assert (rc == 0);
     memcpy (id.data (), options_.routing_id, options_.routing_id_size);
     id.set_flags (zlink::msg_t::routing_id);
-    const bool written = pipe_->write (&id);
+    const bool written = pipe_->write_routing_id_and_flush (&id);
     zlink_assert (written);
-    pipe_->flush ();
 }
 
 void zlink::send_hello_msg (pipe_t *pipe_, const options_t &options_)
@@ -161,8 +160,8 @@ void zlink::pipe_stream_packet_state_t::reset ()
 zlink::pipe_t::pipe_t (object_t *parent_,
                        upipe_t *inpipe_,
                        upipe_t *outpipe_,
-                       int inhwm_,
-                       int outhwm_,
+                       uint64_t inhwm_,
+                       uint64_t outhwm_,
                        bool conflate_,
                        bool session_pipe_,
                        const std::shared_ptr<transport_lifetime_t> &transport_lifetime_) :
@@ -171,16 +170,27 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _out_pipe (outpipe_),
     _in_active (true),
     _out_active (true),
+    _transport_pair_write_held (false),
     _hwm (outhwm_),
     _lwm (compute_lwm (inhwm_)),
     _inhwm (inhwm_),
     _lwm_hint (0),
-    _in_hwm_boost (-1),
-    _out_hwm_boost (-1),
+    _in_hwm_boost (0),
+    _out_hwm_boost (0),
+    _in_hwm_boost_set (false),
+    _out_hwm_boost_set (false),
     _msgs_read (0),
     _msgs_written (0),
+    _bytes_read (0),
+    _bytes_written (0),
+    _last_credit_bytes_read (0),
+    _in_incomplete_bytes (0),
+    _out_incomplete_bytes (0),
+    _oversize_message_admission_count (0),
+    _oversize_message_admission_max_bytes (0),
     _connected_time (0),
     _peers_msgs_read (0),
+    _peers_bytes_read (0),
     _peer (NULL),
     _sink (NULL),
     _state (active),
@@ -192,7 +202,11 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _release_after_command_refs (false),
     _conflate (conflate_),
     _session_pipe (session_pipe_),
-    _transport_lifetime (transport_lifetime_)
+    _transport_lifetime (transport_lifetime_),
+    _transport_lane (transport_lane_application),
+    _transport_pair_id (0),
+    _transport_pair_generation (0),
+    _locally_initiated (false)
 {
     _disconnect_msg.init ();
 }
@@ -230,8 +244,10 @@ void zlink::pipe_t::release_command_ref ()
 
 void zlink::pipe_t::set_event_sink (i_pipe_events *sink_)
 {
-    // Sink can be set once only.
-    zlink_assert (!_sink);
+    // A paired transport assigns the socket-side sink before handshake so a
+    // failed, not-yet-attached lane can still complete pipe termination. The
+    // later validated bind may assign the same sink again.
+    zlink_assert (!_sink || _sink == sink_);
     _sink = sink_;
 }
 
@@ -280,6 +296,16 @@ uint64_t zlink::pipe_t::get_msgs_read () const
     return _msgs_read;
 }
 
+uint64_t zlink::pipe_t::get_bytes_written () const
+{
+    return _bytes_written;
+}
+
+uint64_t zlink::pipe_t::get_bytes_read () const
+{
+    return _bytes_read;
+}
+
 uint64_t zlink::pipe_t::get_snd_pending_msgs () const
 {
     scoped_optional_fast_lock_t lock (const_cast<fast_mutex_t *> (&_out_sync));
@@ -299,19 +325,53 @@ uint64_t zlink::pipe_t::get_rcv_pending_msgs_approx () const
     return peer_written - _msgs_read;
 }
 
+uint64_t zlink::pipe_t::get_snd_pending_bytes () const
+{
+    scoped_optional_fast_lock_t lock (const_cast<fast_mutex_t *> (&_out_sync));
+    if (_bytes_written <= _peers_bytes_read)
+        return 0;
+    return _bytes_written - _peers_bytes_read;
+}
+
+uint64_t zlink::pipe_t::get_rcv_pending_bytes_approx () const
+{
+    if (!_peer)
+        return 0;
+
+    const uint64_t peer_written = _peer->get_bytes_written ();
+    if (peer_written <= _bytes_read)
+        return 0;
+    return peer_written - _bytes_read;
+}
+
+uint64_t zlink::pipe_t::get_oversize_message_admission_count () const
+{
+    scoped_optional_fast_lock_t lock (const_cast<fast_mutex_t *> (&_out_sync));
+    return _oversize_message_admission_count;
+}
+
+uint64_t zlink::pipe_t::get_oversize_message_admission_max_bytes () const
+{
+    scoped_optional_fast_lock_t lock (const_cast<fast_mutex_t *> (&_out_sync));
+    return _oversize_message_admission_max_bytes;
+}
+
 uint64_t zlink::pipe_t::get_connected_time () const
 {
     return _connected_time;
 }
 
-void zlink::pipe_t::refresh_write_credit (uint64_t peer_msgs_read_)
+void zlink::pipe_t::refresh_write_credit (uint64_t peer_msgs_read_, uint64_t peer_bytes_read_)
 {
     scoped_fast_lock_t lock (_out_sync);
 
     if (peer_msgs_read_ > _peers_msgs_read)
         _peers_msgs_read = peer_msgs_read_;
+    if (peer_bytes_read_ > _peers_bytes_read)
+        _peers_bytes_read = peer_bytes_read_;
 
-    if (!_out_active && _state == active && check_hwm_unlocked ())
+    if (!_transport_pair_write_held && !_out_active && _state == active
+        && check_hwm_unlocked ())
         _out_active = true;
 }
 
@@ -418,6 +478,7 @@ bool zlink::pipe_t::read (msg_t *msg_)
 
         //  If this is a credential, ignore it and receive next message.
         if (unlikely (msg_->is_credential ())) {
+            account_inbound_frame (msg_);
             const int rc = msg_->close ();
             zlink_assert (rc == 0);
         } else {
@@ -431,11 +492,7 @@ bool zlink::pipe_t::read (msg_t *msg_)
         return false;
     }
 
-    if (!(msg_->flags () & msg_t::more) && !msg_->is_routing_id ())
-        _msgs_read++;
-
-    if (_lwm > 0 && _msgs_read % _lwm == 0)
-        send_activate_write (_peer, _msgs_read);
+    account_inbound_frame (msg_);
 
     return true;
 }
@@ -466,6 +523,25 @@ zlink::pipe_write_status_t zlink::pipe_t::check_write_status ()
     return pipe_write_ready;
 }
 
+void zlink::pipe_t::hold_writes_until_transport_pair_ready ()
+{
+    scoped_fast_lock_t lock (_out_sync);
+    _transport_pair_write_held = true;
+    _out_active = false;
+}
+
+bool zlink::pipe_t::release_writes_for_transport_pair ()
+{
+    scoped_fast_lock_t lock (_out_sync);
+    if (!_transport_pair_write_held)
+        return false;
+    _transport_pair_write_held = false;
+    if (_state != active || !check_hwm_unlocked ())
+        return false;
+    _out_active = true;
+    return true;
+}
+
 bool zlink::pipe_t::write (const msg_t *msg_)
 {
     // Hot path: PAIR/DEALER steady-state send reaches this path for every
@@ -481,9 +557,7 @@ bool zlink::pipe_t::write (const msg_t *msg_)
         return false;
     }
 
-    write_message_unlocked (msg_);
-
-    return true;
+    return write_message_unlocked (msg_, true);
 }
 
 bool zlink::pipe_t::write_no_hwm_check (const msg_t *msg_)
@@ -492,8 +566,22 @@ bool zlink::pipe_t::write_no_hwm_check (const msg_t *msg_)
     if (unlikely (!_out_active || _state != active))
         return false;
 
-    write_message_unlocked (msg_);
+    return write_message_unlocked (msg_, false);
+}
 
+bool zlink::pipe_t::write_routing_id_and_flush (const msg_t *msg_)
+{
+    if (!msg_ || !msg_->is_routing_id ()) {
+        errno = EINVAL;
+        return false;
+    }
+
+    scoped_fast_lock_t lock (_out_sync);
+    if (_state != active)
+        return false;
+    if (!write_message_unlocked (msg_, false))
+        return false;
+    flush_unlocked ();
     return true;
 }
 
@@ -510,12 +598,10 @@ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
     }
 
     const bool more = (msg_->flags () & msg_t::more) != 0;
-    _out_pipe->write (*msg_, more);
-    if (!more) {
-        if (!msg_->is_routing_id ())
-            _msgs_written++;
+    if (!write_message_unlocked (msg_, true))
+        return false;
+    if (!more)
         flush_unlocked ();
-    }
 
     return true;
 }
@@ -531,9 +617,7 @@ bool zlink::pipe_t::write_no_recursive_hwm_check (const msg_t *msg_)
         return false;
     }
 
-    write_message_unlocked (msg_);
-
-    return true;
+    return write_message_unlocked (msg_, true);
 }
 
 bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
@@ -548,12 +632,10 @@ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
     }
 
     const bool more = (msg_->flags () & msg_t::more) != 0;
-    _out_pipe->write (*msg_, more);
-    if (!more) {
-        if (!msg_->is_routing_id ())
-            _msgs_written++;
+    if (!write_message_unlocked (msg_, true))
+        return false;
+    if (!more)
         flush_unlocked ();
-    }
 
     return true;
 }
@@ -569,15 +651,15 @@ bool zlink::pipe_t::write_single_message_and_flush_no_recursive_hwm_check (const
         return false;
     }
 
-    _out_pipe->write (*msg_, false);
-    _msgs_written++;
+    if (!write_message_unlocked (msg_, true))
+        return false;
     flush_unlocked ();
     return true;
 }
 
-void zlink::pipe_t::rollback () const
+void zlink::pipe_t::rollback ()
 {
-    scoped_optional_fast_lock_t lock (const_cast<fast_mutex_t *> (&_out_sync));
+    scoped_optional_fast_lock_t lock (&_out_sync);
     rollback_unlocked ();
 }
 
@@ -602,7 +684,7 @@ void zlink::pipe_t::process_activate_read ()
         _sink->read_activated (this);
 }
 
-void zlink::pipe_t::process_activate_write (uint64_t msgs_read_)
+void zlink::pipe_t::process_activate_write (uint64_t msgs_read_, uint64_t bytes_read_)
 {
     bool notify = false;
     {
@@ -610,8 +692,10 @@ void zlink::pipe_t::process_activate_write (uint64_t msgs_read_)
 
         //  Remember the peer's message sequence number.
         _peers_msgs_read = msgs_read_;
+        _peers_bytes_read = bytes_read_;
 
-        if (!_out_active && _state == active) {
+        if (!_transport_pair_write_held && !_out_active && _state == active
+            && check_hwm_unlocked ()) {
             _out_active = true;
             notify = true;
         }
@@ -632,21 +716,35 @@ void zlink::pipe_t::process_hiccup (void *pipe_)
         zlink_assert (_out_pipe);
         _out_pipe->flush ();
         msg_t msg;
+        uint64_t drained_message_bytes = 0;
         while (_out_pipe->read (&msg)) {
-            if (!(msg.flags () & msg_t::more))
+            const uint64_t frame_bytes = frame_accounted_bytes (&msg);
+            drained_message_bytes =
+              UINT64_MAX - drained_message_bytes < frame_bytes
+                ? UINT64_MAX
+                : drained_message_bytes + frame_bytes;
+            if (!(msg.flags () & msg_t::more) && !msg.is_routing_id ()
+                && !msg.is_credential () && !msg.is_delimiter ()) {
                 _msgs_written--;
+                _bytes_written =
+                  _bytes_written > drained_message_bytes
+                    ? _bytes_written - drained_message_bytes
+                    : 0;
+                drained_message_bytes = 0;
+            }
             const int rc = msg.close ();
             errno_assert (rc == 0);
         }
+        _out_incomplete_bytes = 0;
         LIBZLINK_DELETE (_out_pipe);
 
         //  Plug in the new outpipe.
         zlink_assert (pipe_);
         _out_pipe = static_cast<upipe_t *> (pipe_);
-        _out_active = true;
+        _out_active = !_transport_pair_write_held;
 
         //  If appropriate, notify the user about the hiccup.
-        notify = (_state == active);
+        notify = (_state == active && !_transport_pair_write_held);
     }
 
     if (notify)
@@ -773,7 +871,7 @@ void zlink::pipe_t::process_pipe_term_ack ()
         zlink::release_heap_owned (this);
 }
 
-void zlink::pipe_t::process_pipe_hwm (int inhwm_, int outhwm_)
+void zlink::pipe_t::process_pipe_hwm (uint64_t inhwm_, uint64_t outhwm_)
 {
     set_hwms (inhwm_, outhwm_);
 }
@@ -860,7 +958,7 @@ bool zlink::pipe_t::is_delimiter (const msg_t &msg_)
     return msg_.is_delimiter ();
 }
 
-int zlink::pipe_t::compute_lwm (int hwm_)
+uint64_t zlink::pipe_t::compute_lwm (uint64_t hwm_)
 {
     //  Compute the low water mark. Following point should be taken
     //  into consideration:
@@ -878,17 +976,17 @@ int zlink::pipe_t::compute_lwm (int hwm_)
     //  Given the 3. it would be good to keep HWM and LWM as far apart as
     //  possible to reduce the thread switching overhead to almost zero.
     //  Let's make LWM 1/2 of HWM.
-    const int result = (hwm_ + 1) / 2;
-
-    return result;
+    return hwm_ / 2 + hwm_ % 2;
 }
 
-int zlink::pipe_t::apply_lwm_hint (int hwm_, int lwm_, int lwm_hint_)
+uint64_t zlink::pipe_t::apply_lwm_hint (uint64_t hwm_,
+                                       uint64_t lwm_,
+                                       uint64_t lwm_hint_)
 {
     if (hwm_ <= 0 || lwm_hint_ <= 0)
         return lwm_;
 
-    int hinted = lwm_hint_;
+    uint64_t hinted = lwm_hint_;
     if (hinted >= hwm_)
         hinted = hwm_ - 1;
     if (hinted <= 0)
@@ -942,17 +1040,28 @@ void zlink::pipe_t::hiccup ()
     send_hiccup (_peer, _in_pipe);
 }
 
-void zlink::pipe_t::set_hwms (int inhwm_, int outhwm_)
+void zlink::pipe_t::set_hwms (uint64_t inhwm_, uint64_t outhwm_)
 {
-    int in = inhwm_ + std::max (_in_hwm_boost, 0);
-    int out = outhwm_ + std::max (_out_hwm_boost, 0);
+    uint64_t in = inhwm_;
+    uint64_t out = outhwm_;
 
-    // if either send or recv side has hwm <= 0 it means infinite so we should set hwms infinite
-    if (inhwm_ <= 0 || _in_hwm_boost == 0)
-        in = 0;
+    if (_in_hwm_boost_set) {
+        if (inhwm_ == 0 || _in_hwm_boost == 0)
+            in = 0;
+        else
+            in = UINT64_MAX - inhwm_ < _in_hwm_boost
+                   ? UINT64_MAX
+                   : inhwm_ + _in_hwm_boost;
+    }
 
-    if (outhwm_ <= 0 || _out_hwm_boost == 0)
-        out = 0;
+    if (_out_hwm_boost_set) {
+        if (outhwm_ == 0 || _out_hwm_boost == 0)
+            out = 0;
+        else
+            out = UINT64_MAX - outhwm_ < _out_hwm_boost
+                    ? UINT64_MAX
+                    : outhwm_ + _out_hwm_boost;
+    }
 
     _inhwm = in;
     _lwm = compute_lwm (in);
@@ -960,32 +1069,69 @@ void zlink::pipe_t::set_hwms (int inhwm_, int outhwm_)
     _hwm = out;
 }
 
-void zlink::pipe_t::set_lwm_hint (int lwm_hint_)
+void zlink::pipe_t::set_lwm_hint (uint64_t lwm_hint_)
 {
     _lwm_hint = lwm_hint_ > 0 ? lwm_hint_ : 0;
     _lwm = compute_lwm (_inhwm);
     _lwm = apply_lwm_hint (_inhwm, _lwm, _lwm_hint);
 }
 
-void zlink::pipe_t::set_hwms_boost (int inhwmboost_, int outhwmboost_)
+void zlink::pipe_t::set_hwms_boost (uint64_t inhwmboost_, uint64_t outhwmboost_)
 {
     _in_hwm_boost = inhwmboost_;
     _out_hwm_boost = outhwmboost_;
+    _in_hwm_boost_set = true;
+    _out_hwm_boost_set = true;
 }
 
 bool zlink::pipe_t::check_hwm () const
 {
     scoped_optional_fast_lock_t lock (const_cast<fast_mutex_t *> (&_out_sync));
-    return check_hwm_unlocked ();
+    return _out_active && _state == active && check_hwm_unlocked ();
+}
+
+bool zlink::pipe_t::check_hwm_for_message (const msg_t *msg_)
+{
+    if (!msg_) {
+        errno = EFAULT;
+        return false;
+    }
+
+    scoped_optional_fast_lock_t lock (&_out_sync);
+    if (!_out_active || _state != active || !check_hwm_unlocked ())
+        return false;
+    if ((msg_->flags () & msg_t::more) != 0 || msg_->is_delimiter ())
+        return true;
+
+    const uint64_t frame_bytes = frame_accounted_bytes (msg_);
+    if (frame_bytes == UINT64_MAX
+        || UINT64_MAX - _out_incomplete_bytes < frame_bytes) {
+        errno = EMSGSIZE;
+        return false;
+    }
+    if (!can_commit_bytes_unlocked (_out_incomplete_bytes + frame_bytes)) {
+        _out_active = false;
+        errno = EAGAIN;
+        return false;
+    }
+    return true;
 }
 
 bool zlink::pipe_t::check_hwm_unlocked () const
 {
-    const bool full = _hwm > 0 && _msgs_written - _peers_msgs_read >= uint64_t (_hwm);
+    //  Auxiliary routing and credential frames may already occupy bytes
+    //  before the first application message is committed. They must not
+    //  consume the empty-pipe liveness exception.
+    if (_msgs_written <= _peers_msgs_read)
+        return true;
+
+    const uint64_t in_flight =
+      _bytes_written > _peers_bytes_read ? _bytes_written - _peers_bytes_read : 0;
+    const bool full = _hwm > 0 && in_flight >= _hwm;
     return !full;
 }
 
-void zlink::pipe_t::send_hwms_to_peer (int inhwm_, int outhwm_)
+void zlink::pipe_t::send_hwms_to_peer (uint64_t inhwm_, uint64_t outhwm_)
 {
     pipe_t *peer = NULL;
     {
@@ -1030,6 +1176,40 @@ uint64_t zlink::pipe_t::get_transport_connection_id () const
              : _endpoint_pair.connection_id;
 }
 
+void zlink::pipe_t::set_transport_pair (transport_lane_t lane_,
+                                        uint64_t pair_id_,
+                                        uint64_t generation_)
+{
+    _transport_lane = lane_;
+    _transport_pair_id = pair_id_;
+    _transport_pair_generation = generation_;
+}
+
+zlink::transport_lane_t zlink::pipe_t::get_transport_lane () const
+{
+    return _transport_lane;
+}
+
+uint64_t zlink::pipe_t::get_transport_pair_id () const
+{
+    return _transport_pair_id;
+}
+
+uint64_t zlink::pipe_t::get_transport_pair_generation () const
+{
+    return _transport_pair_generation;
+}
+
+void zlink::pipe_t::set_locally_initiated (bool value_)
+{
+    _locally_initiated = value_;
+}
+
+bool zlink::pipe_t::is_locally_initiated () const
+{
+    return _locally_initiated;
+}
+
 void zlink::pipe_t::send_disconnect_msg ()
 {
     scoped_fast_lock_t lock (_out_sync);
@@ -1037,7 +1217,8 @@ void zlink::pipe_t::send_disconnect_msg ()
         // Rollback any incomplete message in the pipe, and push the disconnect message.
         rollback_unlocked ();
 
-        _out_pipe->write (_disconnect_msg, false);
+        const bool written = write_message_unlocked (&_disconnect_msg, false);
+        zlink_assert (written);
         flush_unlocked ();
         _disconnect_msg.init ();
     }
@@ -1058,21 +1239,124 @@ void zlink::pipe_t::send_hiccup_msg (const std::vector<unsigned char> &hiccup_)
         const int rc = msg.init_buffer (&hiccup_[0], hiccup_.size ());
         errno_assert (rc == 0);
 
-        _out_pipe->write (msg, false);
+        const bool written = write_message_unlocked (&msg, false);
+        zlink_assert (written);
         flush_unlocked ();
     }
 }
 
-void zlink::pipe_t::write_message_unlocked (const msg_t *msg_)
+uint64_t zlink::pipe_t::frame_accounted_bytes (const msg_t *msg_) const
 {
-    const bool more = (msg_->flags () & msg_t::more) != 0;
-    const bool is_routing_id = msg_->is_routing_id ();
-    _out_pipe->write (*msg_, more);
-    if (!more && !is_routing_id)
-        _msgs_written++;
+    const uint64_t metadata_bytes = static_cast<uint64_t> (sizeof (msg_t));
+    if (msg_->is_delimiter () || msg_->is_join () || msg_->is_leave ())
+        return metadata_bytes;
+    const uint64_t payload_bytes = static_cast<uint64_t> (msg_->size ());
+    return UINT64_MAX - payload_bytes < metadata_bytes
+             ? UINT64_MAX
+             : payload_bytes + metadata_bytes;
 }
 
-void zlink::pipe_t::rollback_unlocked () const
+bool zlink::pipe_t::append_outbound_frame_bytes_unlocked (const msg_t *msg_)
+{
+    const uint64_t frame_bytes = frame_accounted_bytes (msg_);
+    if (frame_bytes == UINT64_MAX
+        || UINT64_MAX - _out_incomplete_bytes < frame_bytes) {
+        errno = EMSGSIZE;
+        return false;
+    }
+    _out_incomplete_bytes += frame_bytes;
+    return true;
+}
+
+bool zlink::pipe_t::can_commit_bytes_unlocked (uint64_t message_bytes_) const
+{
+    if (_hwm == 0)
+        return true;
+
+    const uint64_t in_flight =
+      _bytes_written > _peers_bytes_read ? _bytes_written - _peers_bytes_read : 0;
+    if (_msgs_written <= _peers_msgs_read)
+        return true;
+    if (UINT64_MAX - in_flight < message_bytes_)
+        return false;
+    return in_flight + message_bytes_ <= _hwm;
+}
+
+bool zlink::pipe_t::write_message_unlocked (const msg_t *msg_, bool enforce_hwm_)
+{
+    if (!append_outbound_frame_bytes_unlocked (msg_))
+        return false;
+
+    const bool more = (msg_->flags () & msg_t::more) != 0;
+    const bool commits_bytes = !more && !msg_->is_delimiter ();
+    if (commits_bytes && enforce_hwm_
+        && !can_commit_bytes_unlocked (_out_incomplete_bytes)) {
+        _out_active = false;
+        return false;
+    }
+
+    _out_pipe->write (*msg_, more);
+    if (commits_bytes) {
+        const uint64_t message_bytes = _out_incomplete_bytes;
+        const uint64_t in_flight =
+          _bytes_written > _peers_bytes_read ? _bytes_written - _peers_bytes_read : 0;
+        if (enforce_hwm_ && _hwm > 0 && _msgs_written <= _peers_msgs_read
+            && (message_bytes > _hwm
+                || (UINT64_MAX - in_flight < message_bytes
+                    || in_flight + message_bytes > _hwm))) {
+            ++_oversize_message_admission_count;
+            _oversize_message_admission_max_bytes =
+              std::max (_oversize_message_admission_max_bytes, message_bytes);
+        }
+        if (_conflate) {
+            _bytes_written =
+              UINT64_MAX - _peers_bytes_read < message_bytes
+                ? UINT64_MAX
+                : _peers_bytes_read + message_bytes;
+            if (!msg_->is_routing_id () && !msg_->is_credential ())
+                _msgs_written = _peers_msgs_read + 1;
+        } else {
+            _bytes_written =
+              UINT64_MAX - _bytes_written < message_bytes
+                ? UINT64_MAX
+                : _bytes_written + message_bytes;
+            if (!msg_->is_routing_id () && !msg_->is_credential ())
+                ++_msgs_written;
+        }
+        _out_incomplete_bytes = 0;
+    }
+    return true;
+}
+
+void zlink::pipe_t::account_inbound_frame (const msg_t *msg_)
+{
+    const uint64_t frame_bytes = frame_accounted_bytes (msg_);
+    _in_incomplete_bytes =
+      frame_bytes == UINT64_MAX || UINT64_MAX - _in_incomplete_bytes < frame_bytes
+        ? UINT64_MAX
+        : _in_incomplete_bytes + frame_bytes;
+
+    if ((msg_->flags () & msg_t::more) != 0)
+        return;
+
+    _bytes_read =
+      UINT64_MAX - _bytes_read < _in_incomplete_bytes
+        ? UINT64_MAX
+        : _bytes_read + _in_incomplete_bytes;
+    if (!msg_->is_routing_id () && !msg_->is_credential ())
+        ++_msgs_read;
+    _in_incomplete_bytes = 0;
+
+    const uint64_t credit_delta = _bytes_read - _last_credit_bytes_read;
+    const bool drained_visible_input = _in_pipe && !_in_pipe->check_read ();
+    if (credit_delta > 0
+        && ((_lwm > 0 && credit_delta >= _lwm) || drained_visible_input)) {
+        _last_credit_bytes_read = _bytes_read;
+        send_activate_write (_peer, _msgs_read, _bytes_read);
+    }
+}
+
+void zlink::pipe_t::rollback_unlocked ()
 {
     //  Remove incomplete message from the outbound pipe.
     msg_t msg;
@@ -1083,6 +1367,7 @@ void zlink::pipe_t::rollback_unlocked () const
             errno_assert (rc == 0);
         }
     }
+    _out_incomplete_bytes = 0;
 }
 
 void zlink::pipe_t::flush_unlocked ()

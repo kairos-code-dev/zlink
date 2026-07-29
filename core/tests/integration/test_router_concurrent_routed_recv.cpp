@@ -180,7 +180,7 @@ void monitor_ready_handler (const zlink_monitor_event_t *event_, void *userdata_
         std::lock_guard<std::mutex> lock (state->sync);
         switch (event_->event) {
             case ZLINK_EVENT_CONNECTION_READY:
-                ++state->ready_count;
+                state->ready_count = static_cast<int> (event_->value);
                 break;
             case ZLINK_EVENT_BIND_FAILED:
             case ZLINK_EVENT_ACCEPT_FAILED:
@@ -249,6 +249,24 @@ bool wait_ready_count (ready_monitor_t *monitor_, int expected_count_, int timeo
                                                     || monitor_->state->error_code != 0;
                                          })
            && monitor_->state->error_code == 0 && monitor_->state->ready_count >= expected_count_;
+}
+
+bool wait_ready_count_equal (ready_monitor_t *monitor_,
+                             int expected_count_,
+                             int timeout_ms_)
+{
+    if (!monitor_ || !monitor_->state)
+        return false;
+
+    std::unique_lock<std::mutex> lock (monitor_->state->sync);
+    return monitor_->state->cv.wait_for (
+             lock, std::chrono::milliseconds (timeout_ms_),
+             [monitor_, expected_count_] {
+                 return monitor_->state->ready_count == expected_count_
+                        || monitor_->state->error_code != 0;
+             })
+           && monitor_->state->error_code == 0
+           && monitor_->state->ready_count == expected_count_;
 }
 
 void close_ready_monitor (ready_monitor_t *monitor_)
@@ -548,7 +566,7 @@ void test_router_routed_send_during_peer_close_does_not_touch_destroyed_pipe ()
           zlink_set_routing_id (dealer, dealer_name, std::strlen (dealer_name)));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
 
-        TEST_ASSERT_TRUE (wait_ready_count (&router_monitor, round + 1, 5000));
+        TEST_ASSERT_TRUE (wait_ready_count (&router_monitor, 1, 5000));
         TEST_ASSERT_TRUE (send_single_part (dealer, NULL, "ready"));
 
         zlink_routing_id_t peer_rid;
@@ -578,6 +596,7 @@ void test_router_routed_send_during_peer_close_does_not_touch_destroyed_pipe ()
         TEST_ASSERT_FALSE_MESSAGE (sender_result.failed.load (), sender_result.detail.c_str ());
         TEST_ASSERT_EQUAL_INT_MESSAGE (0, sender_result.errno_value.load (),
                                        sender_result.detail.c_str ());
+        TEST_ASSERT_TRUE (wait_ready_count_equal (&router_monitor, 0, 5000));
     }
 
     close_ready_monitor (&router_monitor);
@@ -593,7 +612,7 @@ void run_router_recv_serializes_fq_with_pipe_termination (bool routed_recv_)
     zlink::router_t *router = static_cast<zlink::router_t *> (router_handle);
     zlink::object_t *parents[2] = {router, router};
     zlink::pipe_t *pipes[2] = {NULL, NULL};
-    const int hwms[2] = {4, 4};
+    const uint64_t hwms[2] = {4, 4};
     const bool conflates[2] = {false, false};
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::pipepair (parents, pipes, hwms, conflates, true));

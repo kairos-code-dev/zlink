@@ -37,7 +37,7 @@ void test_inproc_pubsub_alternating_does_not_timeout ()
 
     const int linger = 0;
     const int timeout_ms = 1000;
-    const int hwm = 1000;
+    const uint64_t hwm = 1000u * (1u + sizeof (zlink_msg_t));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (pub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (sub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));

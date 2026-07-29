@@ -46,6 +46,18 @@ Core connection identity는 physical lifetime을 구분하는 raw 관측 값이�
 generation, descriptor revision, Actor authority owner generation이나 Location authority store version으로
 해석하지 않는다.
 
+DEALER/ROUTER request-reply에서 하나의 logical peer는 Application과 Completion transport
+connection을 가진다. Core는 Application write를 허용하기 전에 두 connection의 pair ID,
+pair generation, lane과 peer identity를 검증한다. 한 lane이 실패하면 두 lane을 모두
+종료한다. 일반 message와 request는 Application lane을 사용하고 reply는 Completion
+lane을 사용한다. 따라서 Application ingress가 backpressure로 중단되어도 이미 보낸
+request를 완료할 수 있다.
+
+각 lane의 payload는 directional network pipe에만 보관한다. 수신한 application payload를
+숨은 PAIR queue로 옮기지 않으며 reply payload를 completion deque로 복사하지 않는다.
+남은 completion control queue에는 payload가 없는 terminal 결과의 callback metadata만
+보관한다.
+
 ## Transport liveness 경계
 
 TCP와 WebSocket engine은 orderly disconnect, read·write failure와 protocol failure를 session에 전달한다. Session은

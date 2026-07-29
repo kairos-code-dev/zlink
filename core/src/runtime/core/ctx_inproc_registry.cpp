@@ -214,8 +214,8 @@ void zlink::ctx_inproc_registry_t::connect_inproc_sockets (
                                                     pending_connection_.endpoint.options.sndhwm);
         pending_connection_.bind_pipe->set_hwms (bind_options_.rcvhwm, bind_options_.sndhwm);
     } else {
-        pending_connection_.connect_pipe->set_hwms (-1, -1);
-        pending_connection_.bind_pipe->set_hwms (-1, -1);
+        pending_connection_.connect_pipe->set_hwms (0, 0);
+        pending_connection_.bind_pipe->set_hwms (0, 0);
     }
 
     if (side_ == bind_side) {

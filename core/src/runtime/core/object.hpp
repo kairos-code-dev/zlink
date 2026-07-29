@@ -68,11 +68,13 @@ class object_t
                       zlink::i_engine *engine_,
                       bool inc_seqnum_ = true);
     void send_activate_read (zlink::pipe_t *destination_);
-    void send_activate_write (zlink::pipe_t *destination_, uint64_t msgs_read_);
+    void send_activate_write (zlink::pipe_t *destination_,
+                              uint64_t msgs_read_,
+                              uint64_t bytes_read_);
     void send_hiccup (zlink::pipe_t *destination_, void *pipe_);
     void send_pipe_term (zlink::pipe_t *destination_);
     void send_pipe_term_ack (zlink::pipe_t *destination_);
-    void send_pipe_hwm (zlink::pipe_t *destination_, int inhwm_, int outhwm_);
+    void send_pipe_hwm (zlink::pipe_t *destination_, uint64_t inhwm_, uint64_t outhwm_);
     void send_term_req (zlink::own_t *destination_, zlink::own_t *object_);
     void send_term (zlink::own_t *destination_, int linger_);
     void send_term_ack (zlink::own_t *destination_);
@@ -91,11 +93,11 @@ class object_t
     virtual void process_attach (zlink::i_engine *engine_);
     virtual void process_bind (zlink::pipe_t *pipe_);
     virtual void process_activate_read ();
-    virtual void process_activate_write (uint64_t msgs_read_);
+    virtual void process_activate_write (uint64_t msgs_read_, uint64_t bytes_read_);
     virtual void process_hiccup (void *pipe_);
     virtual void process_pipe_term ();
     virtual void process_pipe_term_ack ();
-    virtual void process_pipe_hwm (int inhwm_, int outhwm_);
+    virtual void process_pipe_hwm (uint64_t inhwm_, uint64_t outhwm_);
     virtual void process_term_req (zlink::own_t *object_);
     virtual void process_term (int linger_);
     virtual void process_term_ack ();

@@ -4,6 +4,7 @@
 
 #include <limits.h>
 
+#include "core/auto_hwm_policy.hpp"
 #include "core/options_dispatch_internal.hpp"
 
 namespace
@@ -16,23 +17,27 @@ int zlink::options_setsockopt_core_socket (
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_SNDHWM:
-            if (is_int_ && value_ >= 0) {
-                self_->sndhwm = value_;
+            if (optvallen_ == sizeof (uint64_t)) {
+                memcpy (&self_->sndhwm, optval_, sizeof (self_->sndhwm));
                 return 0;
             }
             break;
 
         case ZLINK_INTERNAL_OPT_RCVHWM:
-            if (is_int_ && value_ >= 0) {
-                self_->rcvhwm = value_;
+            if (optvallen_ == sizeof (uint64_t)) {
+                memcpy (&self_->rcvhwm, optval_, sizeof (self_->rcvhwm));
                 return 0;
             }
             break;
 
         case ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            if (is_int_ && value_ >= 0) {
-                self_->auto_hwm_msg_unit_bytes = value_;
-                return 0;
+            if (optvallen_ == sizeof (uint64_t)) {
+                uint64_t value = 0;
+                memcpy (&value, optval_, sizeof (value));
+                if (value <= auto_hwm_max_message_unit_bytes) {
+                    self_->auto_hwm_msg_unit_bytes = value;
+                    return 0;
+                }
             }
             break;
 
@@ -158,20 +163,24 @@ int zlink::options_getsockopt_core_socket (
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_SNDHWM:
-            if (is_int_) {
-                *value_ = self_->sndhwm;
+            if (*optvallen_ == sizeof (uint64_t)) {
+                memcpy (optval_, &self_->sndhwm, sizeof (self_->sndhwm));
+                *optvallen_ = sizeof (self_->sndhwm);
                 return 0;
             }
             break;
         case ZLINK_INTERNAL_OPT_RCVHWM:
-            if (is_int_) {
-                *value_ = self_->rcvhwm;
+            if (*optvallen_ == sizeof (uint64_t)) {
+                memcpy (optval_, &self_->rcvhwm, sizeof (self_->rcvhwm));
+                *optvallen_ = sizeof (self_->rcvhwm);
                 return 0;
             }
             break;
         case ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES:
-            if (is_int_) {
-                *value_ = self_->auto_hwm_msg_unit_bytes;
+            if (*optvallen_ == sizeof (uint64_t)) {
+                memcpy (optval_, &self_->auto_hwm_msg_unit_bytes,
+                        sizeof (self_->auto_hwm_msg_unit_bytes));
+                *optvallen_ = sizeof (self_->auto_hwm_msg_unit_bytes);
                 return 0;
             }
             break;

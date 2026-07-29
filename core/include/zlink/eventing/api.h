@@ -24,6 +24,8 @@ typedef void (*zlink_monitor_handler_fn) (const zlink_monitor_event_t *event_, v
 typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 typedef zlink_monitor_handler_fn zlink_socket_monitor_handler_fn;
 
+#define ZLINK_MONITOR_STATUS_ABI_VERSION 2u
+
 typedef struct zlink_socket_monitor_open_options_t
 {
     zlink_socket_monitor_event_mask_t events;
@@ -40,6 +42,12 @@ ZLINK_EXPORT void zlink_monitor_ignore_handler (const zlink_monitor_event_t *eve
 
 typedef struct zlink_monitor_status_t
 {
+    /* Snapshot ABI version. Equals ZLINK_MONITOR_STATUS_ABI_VERSION. */
+    uint32_t abi_version;
+
+    /* Size of this snapshot structure in bytes. */
+    uint32_t struct_size;
+
     /* Snapshot source kind: raw socket. */
     zlink_monitor_source_kind_t source_kind;
 
@@ -94,11 +102,17 @@ typedef struct zlink_monitor_status_t
     /* Message size in bytes used by the automatic HWM calculation. */
     uint64_t auto_hwm_effective_message_bytes;
 
-    /* Current send HWM applied to the socket. */
-    int32_t auto_hwm_applied_sndhwm;
+    /* Send HWM selected by the current plan, in accounted bytes. */
+    uint64_t auto_hwm_planned_sndhwm_bytes;
 
-    /* Current receive HWM applied to the socket. */
-    int32_t auto_hwm_applied_rcvhwm;
+    /* Receive HWM selected by the current plan, in accounted bytes. */
+    uint64_t auto_hwm_planned_rcvhwm_bytes;
+
+    /* Current send HWM applied to the socket, in accounted bytes. */
+    uint64_t auto_hwm_applied_sndhwm_bytes;
+
+    /* Current receive HWM applied to the socket, in accounted bytes. */
+    uint64_t auto_hwm_applied_rcvhwm_bytes;
 
     /* Current send buffer size applied to the socket, in bytes. */
     int32_t auto_hwm_effective_sndbuf;
@@ -115,11 +129,32 @@ typedef struct zlink_monitor_status_t
     /* Ratio of send attempts blocked by backpressure, in ppm. */
     uint32_t auto_hwm_send_blocked_ratio_ppm;
 
-    /* Target send HWM while shrink is deferred, or -1 when none. */
-    int32_t auto_hwm_deferred_sndhwm;
+    /* Target send HWM while shrink is deferred, in accounted bytes. */
+    uint64_t auto_hwm_deferred_sndhwm_bytes;
 
-    /* Target receive HWM while shrink is deferred, or -1 when none. */
-    int32_t auto_hwm_deferred_rcvhwm;
+    /* Target receive HWM while shrink is deferred, in accounted bytes. */
+    uint64_t auto_hwm_deferred_rcvhwm_bytes;
+
+    /* Non-zero when auto_hwm_deferred_sndhwm_bytes is valid. */
+    uint32_t auto_hwm_deferred_sndhwm_valid;
+
+    /* Non-zero when auto_hwm_deferred_rcvhwm_bytes is valid. */
+    uint32_t auto_hwm_deferred_rcvhwm_valid;
+
+    /* Current bytes retained by outbound pipe directions. */
+    uint64_t snd_bytes_in_flight;
+
+    /* Current bytes retained by inbound pipe directions. */
+    uint64_t rcv_bytes_in_flight;
+
+    /* Minimum accounted charge for one Core frame. */
+    uint64_t minimum_core_message_charge_bytes;
+
+    /* Number of messages admitted by the empty-pipe oversize rule. */
+    uint64_t oversize_message_admission_count;
+
+    /* Largest accounted message admitted by the empty-pipe oversize rule. */
+    uint64_t oversize_message_admission_max_bytes;
 } zlink_monitor_status_t;
 
 /**

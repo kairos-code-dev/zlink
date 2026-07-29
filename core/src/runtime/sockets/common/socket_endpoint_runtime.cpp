@@ -11,7 +11,11 @@ void zlink::socket_endpoint_runtime_t::attach_pipe (pipe_t *pipe_)
 
 void zlink::socket_endpoint_runtime_t::detach_pipe (pipe_t *pipe_)
 {
-    attached_pipes.erase (pipe_);
+    // A paired transport can terminate before both lanes finish their
+    // handshake. Its socket-side pipe has an event sink but has not yet been
+    // added to attached_pipes, so termination must tolerate that state.
+    if (attached_pipes.contains (pipe_))
+        attached_pipes.erase (pipe_);
 }
 
 size_t zlink::socket_endpoint_runtime_t::attached_pipe_count () const

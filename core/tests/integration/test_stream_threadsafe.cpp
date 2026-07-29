@@ -1123,7 +1123,7 @@ void test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe ()
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
 
-    const int hwm = 10;
+    const uint64_t hwm = 10u * (payload_size + sizeof (zlink_msg_t));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
 
@@ -1189,7 +1189,7 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe (
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
 
-    const int hwm = 10;
+    const uint64_t hwm = 10u * (payload_size + sizeof (zlink_msg_t));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
 
@@ -1253,7 +1253,7 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
 
-    const int hwm = 10;
+    const uint64_t hwm = 10u * (payload_size + sizeof (zlink_msg_t));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
 

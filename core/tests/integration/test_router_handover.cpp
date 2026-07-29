@@ -94,6 +94,12 @@ void test_without_handover ()
 
 namespace
 {
+bool should_run_router_handover_test (const char *name_)
+{
+    const char *selected = getenv ("ZLINK_TEST_CASE");
+    return !selected || !*selected || strcmp (selected, name_) == 0;
+}
+
 std::atomic<bool> reply_completed (false);
 
 void ignore_reply (zlink_request_result_t, zlink_msg_t *, size_t, void *)
@@ -447,12 +453,19 @@ int main ()
 {
     setup_test_environment ();
 
+#define RUN_SELECTED(test_)                                                        \
+    do {                                                                           \
+        if (should_run_router_handover_test (#test_))                               \
+            RUN_TEST (test_);                                                       \
+    } while (false)
+
     UNITY_BEGIN ();
-    RUN_TEST (test_with_handover);
-    RUN_TEST (test_without_handover);
-    RUN_TEST (test_callback_dispatch_same_direction_reconnect_handover);
-    RUN_TEST (test_callback_dispatch_cross_direction_duplicate_converges);
-    RUN_TEST (test_repeated_cross_direction_reconnect_uses_current_endpoint);
-    RUN_TEST (test_async_handshake_preserves_outgoing_direction);
+    RUN_SELECTED (test_with_handover);
+    RUN_SELECTED (test_without_handover);
+    RUN_SELECTED (test_callback_dispatch_same_direction_reconnect_handover);
+    RUN_SELECTED (test_callback_dispatch_cross_direction_duplicate_converges);
+    RUN_SELECTED (test_repeated_cross_direction_reconnect_uses_current_endpoint);
+    RUN_SELECTED (test_async_handshake_preserves_outgoing_direction);
+#undef RUN_SELECTED
     return UNITY_END ();
 }

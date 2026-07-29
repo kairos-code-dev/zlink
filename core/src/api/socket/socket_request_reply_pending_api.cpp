@@ -62,7 +62,8 @@ int reqrep::ensure_socket_pending_request (
 
     std::shared_ptr<reqrep::socket_request_reply_state_t> state =
       reqrep::find_or_create_request_reply_state (handle_);
-    if (reqrep::ensure_internal_dispatch_installed (state) != 0)
+    if (!state || !handle_.socket
+        || handle_.socket->ensure_completion_processing () != 0)
         return -1;
 
     reqrep::pending_key_t key;

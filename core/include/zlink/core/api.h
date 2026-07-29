@@ -48,7 +48,7 @@ ZLINK_EXPORT void zlink_version (int *major_, int *minor_, int *patch_);
 #define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT 1
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
 #define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
-#define ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT 0
+#define ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT ((uint64_t) 0)
 
 /**
  * @brief Create a new zlink context.
@@ -85,7 +85,8 @@ ZLINK_EXPORT zlink_close_result_t zlink_ctx_shutdown (void *context_);
  * @brief Set a context option.
  * @param context_  Context handle.
  * @param option_   Option name (ZLINK_IO_THREADS, ZLINK_MAX_SOCKETS, etc.).
- * @param optval_   Option value.
+ * @param optval_   Option value. `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`
+ *                  is not an int option; use zlink_ctx_set_data().
  * @return 0 on success, -1 on failure (errno is set).
  */
 ZLINK_EXPORT zlink_config_result_t zlink_ctx_set (void *context_,
@@ -95,8 +96,9 @@ ZLINK_EXPORT zlink_config_result_t zlink_ctx_set (void *context_,
 /**
  * @brief Set a context option from a byte buffer.
  *
- * This is used for context options whose public binding type is not an int,
- * such as ZLINK_THREAD_NAME_PREFIX.
+ * This is used for context options whose public binding type is not an int.
+ * `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` requires an exact `uint64_t`
+ * byte value. `0` selects the socket-type planning-unit default.
  *
  * @param context_    Context handle.
  * @param option_     Option name.
@@ -110,10 +112,29 @@ ZLINK_EXPORT zlink_config_result_t zlink_ctx_set_data (void *context_,
                                                        size_t optvallen_);
 
 /**
+ * @brief Get a context option into a caller-provided byte buffer.
+ *
+ * `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` requires a `uint64_t` output
+ * buffer. The function writes the required size to @p optvallen_.
+ *
+ * @param context_    Context handle.
+ * @param option_     Option name.
+ * @param optval_     Output buffer.
+ * @param optvallen_  Input capacity and output value size.
+ * @return ZLINK_CONFIG_OK on success, otherwise a zlink_config_result_t error.
+ */
+ZLINK_EXPORT zlink_config_result_t zlink_ctx_get_data (void *context_,
+                                                       zlink_ctx_option_t option_,
+                                                       void *optval_,
+                                                       size_t *optvallen_);
+
+/**
  * @brief Get a context option.
  * @param context_  Context handle.
  * @param option_   Option name.
  * @return Option value, or -1 on failure (errno is set).
+ * `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` is not available through this
+ * function; use zlink_ctx_get_data().
  */
 ZLINK_EXPORT int
 zlink_ctx_get (void *context_, zlink_ctx_option_t option_, zlink_config_result_t *error_out_);

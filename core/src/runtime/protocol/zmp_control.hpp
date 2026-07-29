@@ -72,11 +72,10 @@ struct hello_receive_result_t
     const char *error_reason;
 };
 
-inline void build_hello_ready_frames (const options_t &options_,
-                                      unsigned char *hello_send_,
-                                      size_t hello_send_capacity_,
-                                      size_t *hello_send_size_out_,
-                                      std::vector<unsigned char> &ready_send_)
+inline void build_hello_frame (const options_t &options_,
+                               unsigned char *hello_send_,
+                               size_t hello_send_capacity_,
+                               size_t *hello_send_size_out_)
 {
     zlink_assert (hello_send_);
     zlink_assert (hello_send_size_out_);
@@ -98,24 +97,39 @@ inline void build_hello_ready_frames (const options_t &options_,
                 identity_len);
 
     *hello_send_size_out_ = zmp_header_size + body_len;
-    ready_send_.clear ();
-    ready_send_.reserve (*hello_send_size_out_ + zmp_header_size + 1);
-    ready_send_.insert (ready_send_.end (), hello_send_, hello_send_ + *hello_send_size_out_);
+}
 
+inline void build_ready_frame (const options_t &options_,
+                               std::vector<unsigned char> &ready_frame_)
+{
     std::vector<unsigned char> ready_body;
     ready_body.push_back (zmp_control_ready);
     if (options_.zmp_metadata)
         zmp_metadata::add_basic_properties (options_, ready_body);
 
-    std::vector<unsigned char> ready_frame;
-    ready_frame.resize (zmp_header_size + ready_body.size ());
-    ready_frame[0] = zmp_magic;
-    ready_frame[1] = zmp_version;
-    ready_frame[2] = zmp_flag_control;
-    ready_frame[3] = 0;
-    put_uint32 (&ready_frame[4], static_cast<uint32_t> (ready_body.size ()));
-    memcpy (&ready_frame[zmp_header_size], &ready_body[0], ready_body.size ());
+    ready_frame_.resize (zmp_header_size + ready_body.size ());
+    ready_frame_[0] = zmp_magic;
+    ready_frame_[1] = zmp_version;
+    ready_frame_[2] = zmp_flag_control;
+    ready_frame_[3] = 0;
+    put_uint32 (&ready_frame_[4], static_cast<uint32_t> (ready_body.size ()));
+    memcpy (&ready_frame_[zmp_header_size], &ready_body[0], ready_body.size ());
+}
 
+inline void build_hello_ready_frames (const options_t &options_,
+                                      unsigned char *hello_send_,
+                                      size_t hello_send_capacity_,
+                                      size_t *hello_send_size_out_,
+                                      std::vector<unsigned char> &ready_send_)
+{
+    build_hello_frame (
+      options_, hello_send_, hello_send_capacity_, hello_send_size_out_);
+    std::vector<unsigned char> ready_frame;
+    build_ready_frame (options_, ready_frame);
+    ready_send_.clear ();
+    ready_send_.reserve (*hello_send_size_out_ + ready_frame.size ());
+    ready_send_.insert (
+      ready_send_.end (), hello_send_, hello_send_ + *hello_send_size_out_);
     ready_send_.insert (ready_send_.end (), ready_frame.begin (), ready_frame.end ());
 }
 

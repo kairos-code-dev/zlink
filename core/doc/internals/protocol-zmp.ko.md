@@ -82,6 +82,33 @@ routing ID 길이(1바이트), routing ID(0~255바이트) 순서로 구성한다
 `Routing-Id` metadata property는 `ZLINK_OPT_ZMP_METADATA`를 활성화했을 때만
 추가한다. 이 option의 기본값은 비활성화다.
 
+### 3.1 Request-reply transport pair
+
+Request-reply를 사용하는 하나의 logical DEALER/ROUTER peer는 두 physical transport
+connection을 사용한다.
+
+| Lane | 전달하는 traffic |
+|---|---|
+| Application | 일반 application message와 request |
+| Completion | 이미 보낸 request를 완료하는 reply |
+
+두 connection의 READY frame에는 `Zlink-Pair-Id`, `Zlink-Pair-Generation`,
+`Zlink-Lane`이 들어간다. Pair ID와 generation은 unsigned 64-bit big-endian 값이다.
+Lane은 한 byte이며 Application은 `0`, Completion은 `1`이다. 세 property는 항상
+함께 있어야 한다. 두 connection의 pair ID, generation과 peer routing identity가
+모두 일치해야 한다.
+
+Application write는 두 lane의 검증이 끝날 때까지 대기한다. 이전 generation에서
+수신한 data를 새 pair에 연결하지 않는다. 한 lane에서 protocol error, identity
+mismatch, fence timeout 또는 terminal failure가 발생하면 pair 전체를 종료한다.
+Reconnect는 새 generation을 만들고 두 lane을 다시 검증한 뒤 Application write를
+재개한다.
+
+FIFO 순서는 각 lane 안에서만 보장한다. 두 lane 사이의 순서는 보장하지 않는다.
+Application ingress가 backpressure로 중단되어도 Completion reply를 처리할 수 있다.
+Relocation, session binding과 그 밖의 상위 protocol은 두 connection 사이의 순서에
+의존하지 않고 자체 generation fence를 사용해야 한다.
+
 ## 4. request-reply envelope
 
 request-reply 는 payload 앞에 4개 control part 를 붙인다.
@@ -151,7 +178,12 @@ topology나 stateful object protocol을 포함하지 않는다.
 1. 첫 4개 part 가 request-reply envelope 인지 검사한다.
 2. `message_type`, `request_seq` 를 읽는다.
 3. request 면 request handler 로 넘긴다.
-4. reply 면 pending map 에서 `request_seq` 또는 `source_node_rid + request_seq` 로 찾는다.
+4. Completion lane에서 받은 reply는 pending map에서 `request_seq` 또는
+   `source_node_rid + request_seq`로 찾는다.
+
+Reply payload는 Completion pipe에서 등록 callback으로 바로 이동한다. 숨은 PAIR
+receive queue나 두 번째 completion payload deque에 보관하지 않는다. Timeout,
+shutdown과 같은 terminal callback에는 payload가 없는 작은 control queue만 유지한다.
 
 ## 7. pending 과 완료 규칙
 

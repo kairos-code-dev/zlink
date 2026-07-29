@@ -68,7 +68,7 @@ int zlink::ctx_t::auto_hwm_recalculate_now ()
 {
     bool enabled = false;
     zlink_auto_hwm_profile_t profile = ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
-    int message_unit_bytes = ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT;
+    uint64_t message_unit_bytes = ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT;
     {
         scoped_lock_t locker (_opt_sync);
         const ctx_auto_hwm_options_t options = _auto_hwm.options ();
@@ -143,7 +143,7 @@ bool zlink::ctx_t::auto_hwm_enabled () const
     return _auto_hwm.enabled ();
 }
 
-int zlink::ctx_t::auto_hwm_msg_unit_bytes () const
+uint64_t zlink::ctx_t::auto_hwm_msg_unit_bytes () const
 {
     scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));
     return _auto_hwm.msg_unit_bytes ();

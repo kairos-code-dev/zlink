@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <atomic>
+#include <memory>
 
 #include "utils/atomic_ptr.hpp"
 #include "stddef.h"
@@ -27,6 +29,69 @@
 
 namespace zlink
 {
+enum transport_lane_t
+{
+    transport_lane_application = 0,
+    transport_lane_completion = 1
+};
+
+struct transport_pair_state_t
+{
+    transport_pair_state_t () :
+        generation (1),
+        ready_lanes (0),
+        reset_active (false),
+        reconnect_enabled (true)
+    {
+    }
+
+    uint64_t begin_reset ()
+    {
+        bool expected = false;
+        if (reset_active.compare_exchange_strong (expected, true,
+                                                  std::memory_order_acq_rel)) {
+            uint64_t current = generation.load (std::memory_order_relaxed);
+            uint64_t next = current == UINT64_MAX ? 1 : current + 1;
+            generation.store (next, std::memory_order_release);
+            ready_lanes.store (0, std::memory_order_release);
+            return next;
+        }
+        return generation.load (std::memory_order_acquire);
+    }
+
+    uint64_t current_generation () const
+    {
+        return generation.load (std::memory_order_acquire);
+    }
+
+    void mark_ready (transport_lane_t lane_, uint64_t generation_)
+    {
+        if (generation_ != current_generation ())
+            return;
+        const unsigned int lane_bit =
+          lane_ == transport_lane_completion ? 2u : 1u;
+        const unsigned int ready =
+          ready_lanes.fetch_or (lane_bit, std::memory_order_acq_rel) | lane_bit;
+        if (ready == 3u)
+            reset_active.store (false, std::memory_order_release);
+    }
+
+    void disable_reconnect ()
+    {
+        reconnect_enabled.store (false, std::memory_order_release);
+    }
+
+    bool can_reconnect () const
+    {
+        return reconnect_enabled.load (std::memory_order_acquire);
+    }
+
+    std::atomic<uint64_t> generation;
+    std::atomic<unsigned int> ready_lanes;
+    std::atomic<bool> reset_active;
+    std::atomic<bool> reconnect_enabled;
+};
+
 struct options_t
 {
     options_t ();
@@ -34,12 +99,12 @@ struct options_t
     int setsockopt (int option_, const void *optval_, size_t optvallen_);
     int getsockopt (int option_, void *optval_, size_t *optvallen_) const;
 
-    //  High-water marks for message pipes.
-    int sndhwm;
-    int rcvhwm;
+    //  High-water marks for message pipes, in bytes. 0 is unlimited.
+    uint64_t sndhwm;
+    uint64_t rcvhwm;
 
-    // Raw auto-HWM message unit override. 0 means socket-type default.
-    int auto_hwm_msg_unit_bytes;
+    // Raw auto-HWM planning-unit byte override. 0 means socket-type default.
+    uint64_t auto_hwm_msg_unit_bytes;
 
     //  I/O thread affinity.
     uint64_t affinity;
@@ -161,6 +226,13 @@ struct options_t
 
     //  Enable READY properties for ZMP (default: false)
     bool zmp_metadata;
+
+    // Internal request/reply connection-pair metadata.
+    transport_lane_t transport_lane;
+    uint64_t transport_pair_id;
+    uint64_t transport_pair_generation;
+    bool transport_pair_initiator;
+    std::shared_ptr<transport_pair_state_t> transport_pair_state;
 
     //  ID of the socket.
     int socket_id;

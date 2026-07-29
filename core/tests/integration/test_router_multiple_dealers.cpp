@@ -184,12 +184,16 @@ void test_weighted_dealer_preserves_peer_weight_after_backpressure ()
     void *router1 = create_sync_socket (ZLINK_SOCKET_ROUTER);
     void *router2 = create_sync_socket (ZLINK_SOCKET_ROUTER);
 
-    const int hwm = 1;
+    const uint64_t hwm = 64u + sizeof (zlink_msg_t);
     const int timeout = 0;
     const int weight1 = 25;
     const int weight2 = 100;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (dealer, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router1, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router2, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (dealer, ZLINK_OPT_SNDTIMEO, &timeout, sizeof (timeout)));
     TEST_ASSERT_EQUAL_INT (
@@ -286,7 +290,7 @@ void test_weighted_lb_reactivation_keeps_configured_weight ()
     void *owner_handle = create_sync_socket (ZLINK_SOCKET_PAIR);
     zlink::object_t *owner = static_cast<zlink::object_t *> (owner_handle);
     zlink::object_t *parents[] = {owner, owner};
-    const int hwms[] = {1, 1};
+    const uint64_t hwms[] = {1, 1};
     const bool conflate[] = {false, false};
     zlink::pipe_t *first_pair[2];
     zlink::pipe_t *second_pair[2];
@@ -322,8 +326,8 @@ void test_weighted_lb_reactivation_keeps_configured_weight ()
     // must remain available when the pipe reports fresh write credit.
     TEST_ASSERT_EQUAL_UINT32 (25, lb.weight (first_pair[0]));
     TEST_ASSERT_EQUAL_UINT32 (100, lb.weight (second_pair[0]));
-    first_pair[0]->refresh_write_credit (1);
-    second_pair[0]->refresh_write_credit (1);
+    first_pair[0]->refresh_write_credit (1, first_pair[0]->get_bytes_written ());
+    second_pair[0]->refresh_write_credit (1, second_pair[0]->get_bytes_written ());
     lb.activated (first_pair[0]);
     lb.activated (second_pair[0]);
     TEST_ASSERT_SUCCESS_ERRNO (lb.send (&message));

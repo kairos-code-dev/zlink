@@ -103,12 +103,15 @@ int zlink::socket_base_t::socket_set_msg_handler_with_userdata (
     dispatch_runtime ().socket_msg_handler.store (handler_, std::memory_order_release);
     dispatch_runtime ().socket_msg_handler_subject.store (subject_, std::memory_order_release);
     dispatch_runtime ().socket_msg_handler_userdata.store (userdata_, std::memory_order_release);
-    if (start_async_mailbox_processing (io_thread) != 0) {
+    const bool async_already_active =
+      lifecycle_coordinator ().is_async_mailbox_active ();
+    if (!async_already_active && start_async_mailbox_processing (io_thread) != 0) {
         dispatch_runtime ().socket_msg_handler.store (NULL, std::memory_order_release);
         dispatch_runtime ().socket_msg_handler_subject.store (NULL, std::memory_order_release);
         dispatch_runtime ().socket_msg_handler_userdata.store (NULL, std::memory_order_release);
         return -1;
     }
+    _completion_async_owned = false;
 
     lifecycle_coordinator ().wait_async_started (1000);
 
@@ -119,6 +122,58 @@ int zlink::socket_base_t::socket_set_msg_handler_with_userdata (
     // message after installing the handler.
     xdispatch_io ();
     return 0;
+}
+
+int zlink::socket_base_t::ensure_completion_processing ()
+{
+    if (_completion_poller_refs.load (std::memory_order_acquire) != 0)
+        return 0;
+    if (lifecycle_coordinator ().is_async_mailbox_active ())
+        return 0;
+    io_thread_t *io_thread = choose_io_thread (options.affinity);
+    if (!io_thread) {
+        errno = EAGAIN;
+        return -1;
+    }
+    if (start_async_mailbox_processing (io_thread) != 0)
+        return -1;
+    lifecycle_coordinator ().wait_async_started (1000);
+    _completion_async_owned = true;
+    return 0;
+}
+
+void zlink::socket_base_t::release_completion_processing ()
+{
+    if (!_completion_async_owned)
+        return;
+    if (lifecycle_coordinator ().is_async_mailbox_active ()) {
+        stop_async_mailbox_processing ();
+        wait_async_quiesced (10000);
+    }
+    _completion_async_owned = false;
+}
+
+void zlink::socket_base_t::acquire_completion_poller ()
+{
+    const uint32_t previous =
+      _completion_poller_refs.fetch_add (1, std::memory_order_acq_rel);
+    if (previous == 0)
+        release_completion_processing ();
+}
+
+void zlink::socket_base_t::release_completion_poller ()
+{
+    const uint32_t previous =
+      _completion_poller_refs.fetch_sub (1, std::memory_order_acq_rel);
+    zlink_assert (previous > 0);
+    if (previous == 1)
+        resume_completion_processing_if_needed ();
+}
+
+void zlink::socket_base_t::notify_request_completion ()
+{
+    _request_completion_pending.store (true, std::memory_order_release);
+    static_cast<mailbox_t *> (_mailbox)->signal ();
 }
 
 int zlink::socket_base_t::socket_msg_dispatch_stop ()

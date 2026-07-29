@@ -37,6 +37,7 @@ class asio_zmp_engine_t ZLINK_FINAL : public asio_engine_t
     void error (error_reason_t reason_) ZLINK_OVERRIDE;
     int decode_and_push (msg_t *msg_) ZLINK_OVERRIDE;
     int process_command_message (msg_t *msg_) ZLINK_OVERRIDE;
+    bool prepare_deferred_handshake_output () ZLINK_OVERRIDE;
     bool build_gather_header (const msg_t &msg_,
                               unsigned char *buffer_,
                               size_t buffer_size_,
@@ -50,6 +51,10 @@ class asio_zmp_engine_t ZLINK_FINAL : public asio_engine_t
     int process_ready_message (msg_t *msg_);
     int process_error_message (msg_t *msg_);
     int push_one_then_decode (msg_t *msg_);
+    bool paired_transport () const;
+    void schedule_ready_reply (transport_lane_t lane_,
+                               uint64_t pair_id_,
+                               uint64_t generation_);
     void set_last_error (uint8_t code_, const char *reason_);
     void send_error_frame (uint8_t code_, const char *reason_);
 
@@ -64,6 +69,11 @@ class asio_zmp_engine_t ZLINK_FINAL : public asio_engine_t
     unsigned char _hello_send[272];
     size_t _hello_send_size;
     std::vector<unsigned char> _ready_send;
+    std::vector<unsigned char> _deferred_ready_send;
+    bool _deferred_ready_pending;
+    transport_lane_t _negotiated_transport_lane;
+    uint64_t _negotiated_transport_pair_id;
+    uint64_t _negotiated_transport_pair_generation;
     unsigned char _peer_routing_id[256];
     size_t _peer_routing_id_size;
 

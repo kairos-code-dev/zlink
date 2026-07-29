@@ -19,9 +19,9 @@ namespace
 {
 const int kTimeoutMs = 10000;
 const int kSpotTimeoutMs = 30000;
-const int kSmallHwm = 1;
-const int kLargeHwm = 10000;
 const int kPayloadSize = 1024;
+const uint64_t kSmallHwm = kPayloadSize + sizeof (zlink_msg_t);
+const uint64_t kLargeHwm = 10000u * (kPayloadSize + sizeof (zlink_msg_t));
 const int kSocketBufferBytes = 4096;
 const char kTopic[] = "bp.matrix";
 const int kHwmBuckets[] = {1, 10, 100, 1000, 10000};
@@ -165,7 +165,7 @@ static void bind_endpoint (
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (socket_, endpoint_));
 }
 
-static void configure_sender_socket (void *socket_, int sndhwm_)
+static void configure_sender_socket (void *socket_, uint64_t sndhwm_)
 {
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
@@ -179,7 +179,7 @@ static void configure_sender_socket (void *socket_, int sndhwm_)
                                                  sizeof (kSocketBufferBytes)));
 }
 
-static void configure_receiver_socket (void *socket_, int rcvhwm_)
+static void configure_receiver_socket (void *socket_, uint64_t rcvhwm_)
 {
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
@@ -621,7 +621,8 @@ static void close_pubsub_case (pubsub_case_t *pubsub_)
 
 
 static void setup_raw_case (
-  raw_pattern_t pattern_, const char *transport_, int sndhwm_, int rcvhwm_, raw_case_t *out_)
+  raw_pattern_t pattern_, const char *transport_, uint64_t sndhwm_,
+  uint64_t rcvhwm_, raw_case_t *out_)
 {
     int sender_type = ZLINK_SOCKET_DEALER;
     int receiver_type = ZLINK_SOCKET_DEALER;
@@ -699,8 +700,8 @@ static void setup_raw_case (
         prime_raw_case (out_, pattern_);
 }
 
-static void
-setup_pubsub_case (const char *transport_, int sndhwm_, int rcvhwm_, pubsub_case_t *out_)
+static void setup_pubsub_case (
+  const char *transport_, uint64_t sndhwm_, uint64_t rcvhwm_, pubsub_case_t *out_)
 {
     out_->pub = test_context_socket (ZLINK_SOCKET_XPUB);
     out_->sub = test_context_socket (ZLINK_SOCKET_SUB);
@@ -755,7 +756,10 @@ static void verify_raw_progress_matrix ()
             std::vector<size_t> counts;
             for (size_t i = 0; i < sizeof (kHwmBuckets) / sizeof (kHwmBuckets[0]); ++i) {
                 raw_case_t raw;
-                setup_raw_case (pattern, transport, kHwmBuckets[i], kLargeHwm, &raw);
+                const uint64_t hwm_bytes =
+                  static_cast<uint64_t> (kHwmBuckets[i])
+                  * (kPayloadSize + sizeof (zlink_msg_t));
+                setup_raw_case (pattern, transport, hwm_bytes, kLargeHwm, &raw);
                 counts.push_back (
                   measure_send_window_raw (raw.sender, raw.has_target_rid ? &raw.target_rid : NULL,
                                            static_cast<size_t> (kHwmBuckets[i]) + 1, NULL));
@@ -866,7 +870,10 @@ static void verify_pubsub_matrix ()
         std::vector<size_t> counts;
         for (size_t i = 0; i < sizeof (kHwmBuckets) / sizeof (kHwmBuckets[0]); ++i) {
             pubsub_case_t pubsub;
-            setup_pubsub_case (transport, kHwmBuckets[i], kLargeHwm, &pubsub);
+            const uint64_t hwm_bytes =
+              static_cast<uint64_t> (kHwmBuckets[i])
+              * (kPayloadSize + sizeof (zlink_msg_t));
+            setup_pubsub_case (transport, hwm_bytes, kLargeHwm, &pubsub);
             counts.push_back (measure_send_window_pubsub (
               pubsub.pub, static_cast<size_t> (kHwmBuckets[i]) + 1, NULL));
             close_pubsub_case (&pubsub);

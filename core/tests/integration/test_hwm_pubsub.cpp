@@ -11,20 +11,20 @@
 
 SETUP_TEARDOWN_TESTCONTEXT
 
-void test_default_socket_hwm_is_1000 ()
+void test_default_socket_hwm_is_byte_budget ()
 {
     void *socket = test_context_socket (ZLINK_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (socket);
 
-    int sndhwm = 0;
+    uint64_t sndhwm = 0;
     size_t sndhwm_size = sizeof (sndhwm);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (socket, ZLINK_OPT_SNDHWM, &sndhwm, &sndhwm_size));
-    TEST_ASSERT_EQUAL_INT (4, sndhwm);
+    TEST_ASSERT_EQUAL_UINT64 (256ull * 4096ull, sndhwm);
 
-    int rcvhwm = 0;
+    uint64_t rcvhwm = 0;
     size_t rcvhwm_size = sizeof (rcvhwm);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (socket, ZLINK_OPT_RCVHWM, &rcvhwm, &rcvhwm_size));
-    TEST_ASSERT_EQUAL_INT (4, rcvhwm);
+    TEST_ASSERT_EQUAL_UINT64 (256ull * 4096ull, rcvhwm);
 
     test_context_socket_close (socket);
 }
@@ -32,17 +32,19 @@ void test_default_socket_hwm_is_1000 ()
 int test_defaults (int send_hwm_, int msg_cnt_, const char *endpoint_)
 {
     char pub_endpoint[SOCKET_STRING_LEN];
+    const uint64_t hwm_bytes =
+      static_cast<uint64_t> (send_hwm_) * (13u + sizeof (zlink_msg_t));
 
     // Set up and bind XPUB socket
     void *pub_socket = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (pub_socket, ZLINK_OPT_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
+      zlink_set_option (pub_socket, ZLINK_OPT_SNDHWM, &hwm_bytes, sizeof (hwm_bytes)));
     test_bind (pub_socket, endpoint_, pub_endpoint, sizeof pub_endpoint);
 
     // Set up and connect SUB socket
     void *sub_socket = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &send_hwm_, sizeof (send_hwm_)));
+      zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &hwm_bytes, sizeof (hwm_bytes)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_socket, ""));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, pub_endpoint));
 
@@ -99,17 +101,19 @@ int receive (void *socket_, int *is_termination_)
 int test_blocking (int send_hwm_, int msg_cnt_, const char *endpoint_)
 {
     char pub_endpoint[SOCKET_STRING_LEN];
+    const uint64_t hwm_bytes =
+      static_cast<uint64_t> (send_hwm_) * sizeof (zlink_msg_t);
 
     // Set up bind socket
     void *pub_socket = test_context_socket (ZLINK_SOCKET_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (pub_socket, ZLINK_OPT_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
+      zlink_set_option (pub_socket, ZLINK_OPT_SNDHWM, &hwm_bytes, sizeof (hwm_bytes)));
     test_bind (pub_socket, endpoint_, pub_endpoint, sizeof pub_endpoint);
 
     // Set up connect socket
     void *sub_socket = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &send_hwm_, sizeof (send_hwm_)));
+      zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &hwm_bytes, sizeof (hwm_bytes)));
     int wait = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_pub_option (pub_socket, ZLINK_PUB_OPT_NODROP, &wait, sizeof (wait)));
@@ -175,7 +179,7 @@ void test_reset_hwm ()
 {
     const int first_count = 9999;
     const int second_count = 1100;
-    int hwm = 11024;
+    const uint64_t hwm = 11024u * sizeof (zlink_msg_t);
     char my_endpoint[SOCKET_STRING_LEN];
 
     // Set up bind socket
@@ -282,7 +286,7 @@ int main ()
 
     UNITY_BEGIN ();
 
-    RUN_TEST (test_default_socket_hwm_is_1000);
+    RUN_TEST (test_default_socket_hwm_is_byte_budget);
     RUN_REGULAR_TEST_CASES (tcp);
     RUN_REGULAR_TEST_CASES (inproc);
 

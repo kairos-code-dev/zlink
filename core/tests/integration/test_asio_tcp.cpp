@@ -327,9 +327,10 @@ void test_hwm_behavior ()
     void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     //  Set low HWM
-    int hwm = 5;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client, ZLINK_OPT_RCVHWM, &hwm, sizeof (int)));
+    const int hwm_message_count = 5;
+    const uint64_t hwm = hwm_message_count * (32u + sizeof (zlink_msg_t));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -339,7 +340,7 @@ void test_hwm_behavior ()
     msleep (SETTLE_TIME);
 
     //  Simple test: send and receive within HWM
-    for (int i = 0; i < hwm; i++) {
+    for (int i = 0; i < hwm_message_count; i++) {
         char msg[32];
         snprintf (msg, sizeof (msg), "HWM msg %d", i);
         send_string_expect_success (server, msg, 0);

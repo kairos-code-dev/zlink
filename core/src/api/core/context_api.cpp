@@ -127,7 +127,8 @@ zlink_close_result_t zlink_ctx_shutdown (void *ctx_)
 
 zlink_config_result_t zlink_ctx_set (void *ctx_, zlink_ctx_option_t option_, int optval_)
 {
-    if (!is_public_ctx_set_option (option_)) {
+    if (!is_public_ctx_set_option (option_)
+        || option_ == ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES) {
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
@@ -144,6 +145,29 @@ zlink_ctx_set_data (void *ctx_, zlink_ctx_option_t option_, const void *optval_,
     }
     return zlink::config_result_internal::from_rc (
       zlink_ctx_set_ext (ctx_, option_, optval_, optvallen_));
+}
+
+zlink_config_result_t
+zlink_ctx_get_data (void *ctx_, zlink_ctx_option_t option_, void *optval_, size_t *optvallen_)
+{
+    if (!is_public_ctx_get_option (option_)
+        || option_ != ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES || !optval_ || !optvallen_) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    if (*optvallen_ != sizeof (uint64_t)) {
+        *optvallen_ = sizeof (uint64_t);
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    const int rc = (static_cast<zlink::ctx_t *> (ctx_))->get (option_, optval_, optvallen_);
+    if (rc == 0)
+        *optvallen_ = sizeof (uint64_t);
+    return zlink::config_result_internal::from_rc (rc);
 }
 
 int zlink_ctx_set_ext (void *ctx_, int option_, const void *optval_, size_t optvallen_)
@@ -166,7 +190,8 @@ int zlink_ctx_set_ext (void *ctx_, int option_, const void *optval_, size_t optv
 
 int zlink_ctx_get (void *ctx_, zlink_ctx_option_t option_, zlink_config_result_t *error_out_)
 {
-    if (!is_public_ctx_get_option (option_)) {
+    if (!is_public_ctx_get_option (option_)
+        || option_ == ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES) {
         errno = EINVAL;
         if (error_out_)
             *error_out_ = ZLINK_CONFIG_INVALID_ARGUMENT;

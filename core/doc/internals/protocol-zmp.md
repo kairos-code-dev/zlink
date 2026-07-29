@@ -78,6 +78,34 @@ sequenceDiagram
 
 **READY frame**: the READY control byte is always sent; the `Socket-Type` and `Routing-Id` metadata properties are attached only when `ZLINK_OPT_ZMP_METADATA` is enabled (default off)
 
+### 3.1 Paired request-reply transports
+
+One logical DEALER/ROUTER peer uses two physical transport connections when
+request-reply is active:
+
+| Lane | Traffic |
+|---|---|
+| Application | Ordinary application messages and requests |
+| Completion | Replies that complete an already submitted request |
+
+Both READY frames carry `Zlink-Pair-Id`, `Zlink-Pair-Generation`, and
+`Zlink-Lane`. Pair ID and generation are unsigned 64-bit big-endian values.
+Lane is one byte: `0` for Application and `1` for Completion. All three
+properties must be present together. Pair ID, generation, and peer routing
+identity must agree across both connections.
+
+Application writes remain held until both lanes have completed validation.
+Data received for an older generation is not attached to the new pair. A
+protocol error, identity mismatch, fence timeout, or terminal failure on one
+lane terminates the whole pair. Reconnect creates a new generation and
+revalidates both lanes before releasing Application writes.
+
+FIFO order is defined within one lane only. There is no cross-lane ordering
+contract. A Completion reply can be processed while Application ingress is
+backpressured. Relocation, session binding, and other higher-level protocols
+must use their own generation fence instead of relying on order between the
+two connections.
+
 ## 4. Request-Reply Envelope
 
 Request-reply prepends **4 control parts** before the payload.
@@ -144,8 +172,13 @@ Receive:
 1. Validate that the first four parts form a request-reply envelope.
 2. Read `message_type` and `request_seq`.
 3. Dispatch a request to the request handler.
-4. For a reply, find the pending entry by `request_seq` or by
-   `source_node_rid + request_seq`.
+4. For a reply received on the Completion lane, find the pending entry by
+   `request_seq` or by `source_node_rid + request_seq`.
+
+The reply payload moves directly from the Completion pipe to the registered
+callback. Core does not retain it in a hidden PAIR receive queue or a second
+completion payload deque. A small payloadless control queue remains for
+timeout, shutdown, and similar terminal callbacks.
 
 ## 7. Pending and Completion Rules
 

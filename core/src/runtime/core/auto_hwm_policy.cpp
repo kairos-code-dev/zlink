@@ -4,6 +4,7 @@
 
 #include "core/auto_hwm_policy.hpp"
 #include "core/internal_defs.hpp"
+#include "utils/err.hpp"
 #include "zlink.h"
 
 #include <algorithm>
@@ -47,11 +48,6 @@ const uint32_t connection_bucket_count =
 uint32_t clamp_size_to_u32 (size_t value_)
 {
     return value_ > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t> (value_);
-}
-
-int clamp_u64_to_int (uint64_t value_)
-{
-    return value_ > static_cast<uint64_t> (INT_MAX) ? INT_MAX : static_cast<int> (value_);
 }
 
 zlink_auto_hwm_profile_t normalize_profile (zlink_auto_hwm_profile_t profile_)
@@ -234,10 +230,10 @@ uint32_t connection_bucket_index_with_hysteresis (uint32_t connections_,
     return previous_bucket_index_;
 }
 
-uint64_t effective_message_bytes (int socket_type_, int override_)
+uint64_t effective_message_bytes (int socket_type_, uint64_t override_)
 {
     if (override_ > 0)
-        return static_cast<uint64_t> (override_);
+        return override_;
     return socket_type_ == ZLINK_CORE_SOCKET_STREAM ? auto_hwm_stream_message_bytes
                                                     : auto_hwm_message_bytes;
 }
@@ -276,6 +272,7 @@ zlink::auto_hwm_socket_plan_t::auto_hwm_socket_plan_t () :
     unit_budget_bytes (0),
     size_cap (0),
     pending_messages (0),
+    pending_bytes (0),
     connection_bucket_enabled (false),
     connection_bucket_count (1),
     connection_bucket_hwm_4k (0),
@@ -406,7 +403,7 @@ zlink::auto_hwm_policy_class_t zlink::auto_hwm_policy_class_for_role (auto_hwm_r
 void zlink::auto_hwm_context_plan_make (bool enabled_,
                                         zlink_auto_hwm_profile_t profile_,
                                         auto_hwm_context_plan_t *out_,
-                                        int message_unit_bytes_)
+                                        uint64_t message_unit_bytes_)
 {
     if (!out_)
         return;
@@ -414,7 +411,7 @@ void zlink::auto_hwm_context_plan_make (bool enabled_,
     *out_ = auto_hwm_context_plan_t ();
     out_->enabled = enabled_;
     out_->profile = normalize_profile (profile_);
-    out_->message_unit_bytes = message_unit_bytes_ > 0 ? message_unit_bytes_ : 0;
+    out_->message_unit_bytes = message_unit_bytes_;
 }
 
 void zlink::auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
@@ -422,7 +419,7 @@ void zlink::auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
                                           size_t managed_connections_,
                                           size_t active_hwm_connections_,
                                           auto_hwm_socket_plan_t *out_,
-                                          int message_unit_bytes_,
+                                          uint64_t message_unit_bytes_,
                                           int sndbuf_,
                                           int rcvbuf_,
                                           bool manual_sndbuf_,
@@ -478,9 +475,6 @@ void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
     for (size_t i = 0; i != plan_count_; ++i) {
         auto_hwm_socket_plan_t &plan = plans_[i];
         const uint32_t basis_hwm = basis_hwm_for_class (context_->profile, plan.policy_class);
-        const uint64_t basis_message_bytes = stream_policy_class (plan.policy_class)
-                                               ? auto_hwm_stream_message_bytes
-                                               : auto_hwm_message_bytes;
         uint32_t budget_hwm = basis_hwm;
         plan.connection_bucket_hwm_4k = 0;
         plan.connection_bucket_index = auto_hwm_connection_bucket_none;
@@ -497,7 +491,16 @@ void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
               connection_bucket_hwm_4k_by_index (context_->profile, bucket_index);
             budget_hwm = std::min<uint32_t> (basis_hwm, plan.connection_bucket_hwm_4k);
         }
-        plan.unit_budget_bytes = static_cast<uint64_t> (budget_hwm) * basis_message_bytes;
+        const uint64_t planning_unit_bytes =
+          plan.effective_message_bytes > 0
+            ? plan.effective_message_bytes
+            : (stream_policy_class (plan.policy_class) ? auto_hwm_stream_message_bytes
+                                                       : auto_hwm_message_bytes);
+        zlink_assert (
+          budget_hwm == 0
+          || planning_unit_bytes <= UINT64_MAX / static_cast<uint64_t> (budget_hwm));
+        plan.unit_budget_bytes =
+          static_cast<uint64_t> (budget_hwm) * planning_unit_bytes;
         plan.size_cap = size_cap_for_class (context_->profile, plan.policy_class);
         if (!plan.manual_sndbuf) {
             plan.requested_sndbuf = -1;
@@ -507,11 +510,11 @@ void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
             plan.requested_rcvbuf = -1;
             plan.effective_rcvbuf = plan.requested_rcvbuf;
         }
-        plan.socket_message_slots = ceil_div (plan.unit_budget_bytes, plan.effective_message_bytes);
+        plan.socket_message_slots =
+          clamp_hwm_to_cap (static_cast<uint64_t> (budget_hwm), plan.size_cap);
 
-        const uint64_t final_hwm = clamp_hwm_to_cap (plan.socket_message_slots, plan.size_cap);
-        plan.sndhwm = clamp_u64_to_int (final_hwm);
-        plan.rcvhwm = clamp_u64_to_int (final_hwm);
+        plan.sndhwm = plan.unit_budget_bytes;
+        plan.rcvhwm = plan.unit_budget_bytes;
     }
 }
 
@@ -521,7 +524,7 @@ void zlink::auto_hwm_socket_plan_for_role (const auto_hwm_context_plan_t &contex
                                            size_t managed_connections_,
                                            size_t active_hwm_connections_,
                                            auto_hwm_socket_plan_t *out_,
-                                           int message_unit_bytes_,
+                                           uint64_t message_unit_bytes_,
                                            int sndbuf_,
                                            int rcvbuf_,
                                            bool manual_sndbuf_,

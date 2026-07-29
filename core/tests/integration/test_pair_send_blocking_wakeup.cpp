@@ -12,11 +12,11 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
-const int kPipeHwm = 100;
-const int kSocketHwm = kPipeHwm / 2;
-const int kLwm = (kPipeHwm + 1) / 2;
 const int kSendTimeoutMs = 2000;
 const size_t kMsgSize = 64;
+const uint64_t kPipeHwm = 100u * (kMsgSize + sizeof (zlink_msg_t));
+const uint64_t kSocketHwm = kPipeHwm / 2;
+const int kLwmMessages = 50;
 const char *kEndpoint = "inproc://pair_send_blocking_wakeup";
 const char *kTimeoutEndpoint = "inproc://pair_send_blocking_timeout";
 
@@ -64,7 +64,7 @@ void test_pair_blocking_send_wakes_only_after_lwm_reads ()
 
     std::this_thread::sleep_for (std::chrono::milliseconds (100));
 
-    for (int i = 0; i < kLwm - 1; ++i) {
+    for (int i = 0; i < kLwmMessages - 1; ++i) {
         const int rc = zlink_recv (receiver, recv_buf, kMsgSize, 0);
         TEST_ASSERT_EQUAL_INT (static_cast<int> (kMsgSize), rc);
     }

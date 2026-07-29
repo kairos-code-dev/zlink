@@ -359,7 +359,9 @@ void test_matrix_tls ()
 
 int main ()
 {
-    setup_test_environment (); //  Use default 60 second timeout
+    // DEALER/ROUTER now establish two physical transport connections. The
+    // encrypted matrix therefore performs twice as many TLS handshakes.
+    setup_test_environment (120);
 
     UNITY_BEGIN ();
     RUN_TEST (test_matrix_tcp);

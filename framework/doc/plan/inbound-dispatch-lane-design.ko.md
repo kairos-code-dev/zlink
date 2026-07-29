@@ -1,12 +1,11 @@
 # 수신 backpressure 목표 설계와 적용 계획
 
-> 상태: 최종 승인 전 목표 설계안. 현재 구현에는 적용하지 않음
+> 상태: 적용 승인. C-01부터 BP-03까지 순차 진행
 >
-> 두 connection 구조, byte 기준 HWM과 수신 permit을 후속 구현의 목표 구조로 사용한다.
-> 적용 버전과 일정은 정하지 않았으며, 작성자가 최종 승인하기 전에는 구현하거나 정식
-> 계약에 반영하지 않는다.
+> 두 connection 구조, byte 기준 HWM과 수신 permit을 구현 기준으로 사용한다.
+> C-01부터 BP-03까지의 Core·bindings 작업과 검증은 이 문서만 단일 기준으로 사용한다.
 >
-> 이 문서는 최종 승인 전 설계 초안이며 정식 공개 계약이나 구현 계획이 아니다.
+> Framework 적용은 F-01부터 별도 지시가 있을 때 시작한다.
 
 ## 1. 이 문서가 정하는 결과
 
@@ -20,18 +19,19 @@ Application message와 request는 memory 여유가 없을 때 수신을 중단�
 reply와 처리를 계속하기 위해 필요한 runtime control은 별도 Completion connection으로
 수신한다. 이 구조로 application backlog가 completion 진행을 막는 순환 의존성을 제거한다.
 
-적용 버전과 일정은 작성자가 별도로 결정한다. 최종 승인 전에는 이 문서의 계산식, 목표 값과
-구조를 현재 계약이나 구현 근거로 사용하지 않는다.
+이번 승인 범위는 C-01부터 BP-03까지다. Framework F-01 이후 작업은 이번 범위에 포함하지
+않는다.
 
 ### 1.1 목표 결과
 
-- 최종 승인 전에는 Framework, Core와 bindings에 새 public API를 추가하지 않는다.
-- 최종 승인 전에는 wire protocol과 Core HWM 동작을 변경하지 않는다.
-- 두 connection, byte HWM, 수신 permit과 내부 queue 제거를 목표 구조로 유지한다.
-- 정확한 기본값과 protocol 세부 사항은 최종 승인 뒤 정식 draft와 spec에서 확정한다.
+- Core와 bindings는 C-01부터 BP-03까지 이 문서의 순서와 gate를 따라 변경한다.
+- 두 connection, byte HWM과 내부 queue 제거를 Core 목표 구조로 적용한다.
+- Framework 수신 permit과 application memory budget은 F-01 이후 별도 지시 전까지 적용하지
+  않는다.
+- 정확한 public contract는 이 문서, C header, 정식 spec과 contract test에서 같은 의미로
+  유지한다.
 
-기존 구현의 명백한 버그는 별도로 수정할 수 있다. 그러나 이 문서에 기록한 문제를 근거로
-최종 승인 없이 runtime 구조를 변경하지 않는다.
+범위 밖 public API나 호환 계층은 추가하지 않는다.
 
 ### 1.2 각 계층의 책임
 
@@ -78,10 +78,10 @@ Target의 처리 속도보다 source의 송신 속도가 빠르면 수신 대기
 - 양방향 nested request와 두 connection의 순서 역전이 영구 교착이나 stale control 적용으로
   이어지지 않아야 한다.
 
-## 3. 최종 승인 뒤 정식 계약에서 정할 값
+## 3. 구현하면서 정식 계약에 고정할 값
 
-이 문서는 목표 구조와 계산 방법을 정하지만 아직 적용 승인을 받지 않았다. 작성자가 최종
-승인한 뒤에도 다음 값과 protocol 세부 사항을 정식 spec에서 확정해야 한다.
+목표 구조와 계산 방법은 승인되었다. 다음 값과 protocol 세부 사항은 C-01부터 C-08까지
+구현·측정하고 C header, 정식 spec과 contract test에 같은 의미로 고정한다.
 
 - 언어별 `minimumMessageChargeBytes`와 memory amplification 측정값
 - Framework Application HWM과 Completion connection HWM의 production 기본값
@@ -96,8 +96,8 @@ Target의 처리 속도보다 source의 송신 속도가 빠르면 수신 대기
 
 ## 4. Framework는 application memory를 어떻게 제한하는가
 
-> 이 절은 최종 승인 전 목표 설계안이다. 수치, 계산식과 `receivePermitBytes` 방식은
-> 승인 전 검토 대상이며 구현과 정식 계약에 사용하지 않는다.
+> 이 절은 F-01 이후 Framework 구현 기준이다. 이번 C-01부터 BP-03 범위에서는 Core와
+> bindings가 요구하는 경계만 구현한다.
 
 Framework HWM은 connection, MeshNode, Channel, Spot이나 Actor마다 따로 계산하지 않는다.
 한 Framework host가 보관하는 application message 전체에 하나의 byte HWM을 적용한다.
@@ -785,7 +785,7 @@ nested timeout 수와 timeout 뒤 budget 회복 시간을 관측한다.
 
 ## 5. Core C HWM 계약은 어떻게 바뀌는가
 
-> 이 절도 작성자가 최종 승인하기 전까지 현재 Core C 계약이나 구현을 변경하지 않는다.
+> 이 절은 C-01부터 C-08까지의 Core 구현과 B-01부터 B-05까지의 bindings 계약 기준이다.
 
 Core HWM을 message count에서 byte로 바꾸는 것은 `pipe_t` 내부 구현만의 변경이 아니다.
 현재 C API가 HWM option의 값과 단위를 공개하므로 public contract, ABI에 전달하는 값의
@@ -830,8 +830,8 @@ zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
 - 이전 binary가 전달하는 4-byte HWM 값은 명시적인 configuration error로 실패한다.
 
 따라서 HWM은 모든 public API, 내부 admission과 monitoring에서 byte 한 단위만 사용한다.
-작성자가 최종 승인하면 이 breaking contract를 정식 Core draft에 먼저 기록하고 같은
-release에서 Core header, 모든 bindings와 Framework를 함께 변경한다.
+이 breaking contract는 이 문서에 먼저 고정하고 같은 작업에서 Core header와 모든 bindings를
+변경한다. Framework public contract 적용은 F-01 이후 별도 범위다.
 
 ### 5.3 기존 option의 새 타입과 기본값은 무엇인가
 
@@ -1018,7 +1018,7 @@ HWM option은 local pipe admission 설정이므로 byte accounting 자체는 net
 | Bindings perf smoke | Bindings clean review를 통과한 candidate에서도 같은 C single·multi smoke가 통과하는지 다시 확인한다. |
 | Framework | Host budget owner, owner-local attribution, receive permit, completion send permit과 nested overload 관측을 구현한다. |
 | Benchmark와 test | 기존 HWM 환경 변수와 fixture를 count에서 byte로 바꾸고 migration 값을 기록한다. |
-| Spec과 guide | Core draft, 정식 socket option, monitoring, bindings와 migration 문서를 함께 갱신한다. |
+| Spec과 guide | 이 문서, 정식 socket option, monitoring, bindings와 migration 문서를 함께 갱신한다. |
 
 C++ binding처럼 현재 HWM을 `message_count_t`로 표현하는 binding은 값 타입 이름도
 `byte_count_t` 또는 byte 전용 타입으로 바꿔야 한다. 단순히 내부 정수만 크게 만들어서는
@@ -1097,8 +1097,7 @@ bindings clean review, bindings perf smoke, Framework 적용의 일곱 단계로
 이 단계의 결과는 C header, Core runtime과 test가 message count가 아닌 byte 하나의 단위로
 HWM을 처리하고, peer마다 Application·Completion connection pair를 제공하는 것이다.
 
-1. 구현 전에 [`core/doc/spec/draft/`](../../../core/doc/spec/draft/)에 별도 Core draft를
-   만들고 breaking contract를 기록한다. 기존 `ZLINK_OPT_SNDHWM`과
+1. 이 문서와 C header에 breaking contract를 함께 반영한다. 기존 `ZLINK_OPT_SNDHWM`과
    `ZLINK_OPT_RCVHWM`은 유지하되 값 타입을 `uint64_t`, 단위를 byte로 바꾼다. `0`은
    무제한으로 유지하고 4-byte 기존 값은 명시적인 configuration error로 거부한다.
 2. 수동 기본값, Auto HWM planning unit, profile·connection bucket 계산과
@@ -1124,12 +1123,11 @@ HWM을 처리하고, peer마다 Application·Completion connection pair를 제�
 9. C unit·integration test, transport별 fixture, wire fixture와 benchmark로 §7의 Core 관련
    항목을 검증한다.
 10. 구현과 test가 완료되면 Core의 정식 socket option, monitoring, 오류와 내부 구조 문서를
-    실제 C header와 동작에 맞춘다. Draft의 목표 계약을 정식 문서로 옮긴 뒤 draft를 현재
-    계약처럼 남겨 두지 않는다.
+    실제 C header와 동작에 맞춘다.
 
 1단계는 다음 조건을 모두 만족해야 완료된다.
 
-- C header와 Core draft가 동일한 64-bit byte 계약을 정의한다.
+- 이 문서와 C header가 동일한 64-bit byte 계약을 정의한다.
 - TCP, IPC와 inproc의 byte HWM, Auto HWM, monitoring, multipart와 runtime HWM test가
   통과한다.
 - Application·Completion connection의 pair 생성, 종료, reconnect와 stale generation
@@ -1151,7 +1149,7 @@ Review coordinator는 각 round를 시작하기 전에 candidate commit SHA와 �
 고정한다. 두 reviewer에게 같은 범위, severity 기준과 질문을 제공하며 한 reviewer의 결과를
 다른 reviewer에게 미리 제공하지 않는다. 다음 자료를 전체 범위로 검토한다.
 
-- 이 설계 문서와 1단계에서 만든 Core draft·정식 spec
+- 이 설계 문서와 1단계에서 갱신한 Core 정식 spec
 - `AGENTS.md`, [spec 작성 지침](../../../doc/principal/documentation/spec-writing-guide.ko.md),
   [source comment 원칙](../../../doc/principal/source-comment-principles.ko.md)과
   [software design 원칙](../../../doc/principal/software-design-principles.ko.md)
@@ -1354,21 +1352,31 @@ application backlog를 제한하고, application 수신이 중단되어도 reque
 
 ## 9. 진행표
 
-상태는 `승인 대기`, `진행 중`, `완료`, `차단` 가운데 하나를 사용한다. 현재는 작성자의 최종
-승인 전이므로 모든 항목을 `승인 대기`로 둔다. 작업을 시작한 뒤에는 완료 증거에 test 명령,
-결과 log, contract 문서, commit 또는 artifact 위치를 기록한다. 본문 설명을 진행표에 다시
-복사하지 않고 해당 절과 검증 번호를 가리킨다.
+상태는 `승인 대기`, `진행 중`, `완료`, `차단`, `범위 밖` 가운데 하나를 사용한다. 이번 승인
+범위는 C-01부터 BP-03까지다. 완료 증거에는 test 명령, 결과 log, contract 문서, commit 또는
+artifact 위치를 기록한다. F-01 이후 Framework 항목은 별도 지시 전까지 `범위 밖`으로 둔다.
+
+2026-07-30 기준으로 C-01부터 C-06까지의 Core 구현과 C-08 정식 문서 동기화를 완료했다.
+64-bit byte HWM, Auto HWM, monitoring ABI v2, Application·Completion pair와 숨은 payload
+queue 제거가 반영되었다. `cmake --build core/build -j 6`과
+`ctest --test-dir core/build --output-on-failure -j 1`을 실행해 Core test 80/80이
+통과했다. 여기에는 public surface contract, TCP·IPC·inproc transport, request/reply,
+pair reconnect, byte backpressure와 monitoring 회귀가 포함된다. `test_connect_rid` 20회
+반복과 동시 connect·disconnect case도 통과했고, 동시 case는 Valgrind error 0건을
+확인했다. C-07의 기존 count HWM 대비 memory·throughput·tail latency 비교가 남았으므로
+Core 1단계 전체는 아직 완료하지 않았다. Clean review, perf smoke와 bindings 작업도
+시작하지 않았다.
 
 | ID | 단계 | 작업 | 완료 증거 | 상태 |
 |---|---|---|---|---|
-| C-01 | Core | Core draft와 C header의 64-bit byte HWM 계약 확정 | §8.1과 검증 1~3 결과 | 승인 대기 |
-| C-02 | Core | `pipe_t` byte accounting, admission과 credit 반환 | §8.1과 검증 4~7 결과 | 승인 대기 |
-| C-03 | Core | Auto HWM, 기본값과 runtime HWM 변경 | 검증 2, 3, 6 결과 | 승인 대기 |
-| C-04 | Core | Monitoring ABI version과 byte field 적용 | Core C ABI·monitoring test 결과 | 승인 대기 |
-| C-05 | Core | Application·Completion connection pair와 handshake | 검증 10, 12 결과 | 승인 대기 |
-| C-06 | Core | 내부 PAIR receive queue와 completion deque 제거 | 검증 11 결과 | 승인 대기 |
-| C-07 | Core | Core memory·성능·wire regression 검증 | 검증 4~7, 9~13 결과와 benchmark log | 승인 대기 |
-| C-08 | Core | Core 정식 spec·monitoring·오류 문서 갱신 | C header·test와 문서 대조 결과 | 승인 대기 |
+| C-01 | Core | 이 문서와 C header의 64-bit byte HWM 계약 확정 | 64-bit option·4-byte 거부·기본값 test와 Core 80/80 통과 | 완료 |
+| C-02 | Core | `pipe_t` byte accounting, admission과 credit 반환 | Byte admission·credit·multipart·transport 회귀를 포함한 Core 80/80 통과 | 완료 |
+| C-03 | Core | Auto HWM, 기본값과 runtime HWM 변경 | Context·typed option·runtime HWM test를 포함한 Core 80/80 통과 | 완료 |
+| C-04 | Core | Monitoring ABI version과 byte field 적용 | Monitoring ABI v2 header·snapshot·contract test 통과 | 완료 |
+| C-05 | Core | Application·Completion connection pair와 handshake | Request/reply·handover·reconnect·transport matrix를 포함한 Core 80/80 통과 | 완료 |
+| C-06 | Core | 내부 PAIR receive queue와 completion deque 제거 | Payload queue source 제거와 request/reply 전체 회귀 통과 | 완료 |
+| C-07 | Core | Core memory·성능·wire regression 검증 | Core 80/80, targeted 20회와 Valgrind error 0건. 비교 benchmark·memory 측정 대기 | 진행 중 |
+| C-08 | Core | Core 정식 spec·monitoring·오류 문서 갱신 | Socket·context·polling·monitoring 정식 spec과 internals 동기화, public surface contract 통과 | 완료 |
 | CR-01 | Core review | Candidate SHA, 비교 기준과 공통 review 입력 고정 | §8.2 입력 manifest | 승인 대기 |
 | CR-02 | Core review | Codex 5.6 High 독립 전체 review | Model·prompt 정보와 finding report | 승인 대기 |
 | CR-03 | Core review | Claude Fable 독립 전체 review | Model·prompt 정보와 finding report | 승인 대기 |
@@ -1392,21 +1400,21 @@ application backlog를 제한하고, application 수신이 중단되어도 reque
 | BP-01 | Bindings perf smoke | Candidate package와 `core/build` runtime provenance 확인 | Package manifest와 runtime SHA-256 | 승인 대기 |
 | BP-02 | Bindings perf smoke | C single 전체 64B smoke 재실행 | 검증 28의 `status=complete` report | 승인 대기 |
 | BP-03 | Bindings perf smoke | C multi 전체 64B smoke 재실행 | 검증 28의 `status=complete` report | 승인 대기 |
-| F-01 | Framework | 공통 spec과 다섯 언어 exact interface 확정 | Contract review와 문서 검증 결과 | 승인 대기 |
-| F-02 | Framework | 6단계 통과 binding package version 적용 | 언어별 중앙 dependency 변경과 restore log | 승인 대기 |
-| F-03 | Framework | 두 connection poll과 직접 Application `Recv` 적용 | 검증 11, 12, 15 결과 | 승인 대기 |
-| F-04 | Framework | Application HWM, receive permit과 Auto 계산 적용 | 검증 14, 17, 23, 25, 26 결과 | 승인 대기 |
-| F-05 | Framework | Completion reserve, send permit과 pending 상한 적용 | 검증 16, 17, 21, 22 결과 | 승인 대기 |
-| F-06 | Framework | Owner별 byte 귀속과 monitoring 적용 | 검증 8, 20 결과 | 승인 대기 |
-| F-07 | Framework | 다섯 언어 public contract와 E2E parity 확인 | 언어별 contract test와 공통 E2E 결과 | 승인 대기 |
-| F-08 | Framework | Memory·성능·다중 MeshNode 통합 검증 | 검증 17~19과 benchmark log | 승인 대기 |
-| F-09 | Framework | 정식 spec, guide와 운영 문서 갱신 | 문서 검증 결과와 최종 review | 승인 대기 |
+| F-01 | Framework | 공통 spec과 다섯 언어 exact interface 확정 | Contract review와 문서 검증 결과 | 범위 밖 |
+| F-02 | Framework | 6단계 통과 binding package version 적용 | 언어별 중앙 dependency 변경과 restore log | 범위 밖 |
+| F-03 | Framework | 두 connection poll과 직접 Application `Recv` 적용 | 검증 11, 12, 15 결과 | 범위 밖 |
+| F-04 | Framework | Application HWM, receive permit과 Auto 계산 적용 | 검증 14, 17, 23, 25, 26 결과 | 범위 밖 |
+| F-05 | Framework | Completion reserve, send permit과 pending 상한 적용 | 검증 16, 17, 21, 22 결과 | 범위 밖 |
+| F-06 | Framework | Owner별 byte 귀속과 monitoring 적용 | 검증 8, 20 결과 | 범위 밖 |
+| F-07 | Framework | 다섯 언어 public contract와 E2E parity 확인 | 언어별 contract test와 공통 E2E 결과 | 범위 밖 |
+| F-08 | Framework | Memory·성능·다중 MeshNode 통합 검증 | 검증 17~19과 benchmark log | 범위 밖 |
+| F-09 | Framework | 정식 spec, guide와 운영 문서 갱신 | 문서 검증 결과와 최종 review | 범위 밖 |
 
 ## 10. 언제 적용할 수 있는가
 
-이 문서의 내용은 작성자가 최종 승인을 명시한 뒤에만 1단계를 시작한다. 특정 버전, 일정,
-측정 결과나 리뷰 완료만으로 자동 적용하지 않는다. 최종 승인 전에는 Core, bindings,
-Framework, wire protocol, public header와 정식 spec을 변경하지 않는다.
+작성자가 C-01부터 BP-03까지의 적용을 승인했으므로 1단계부터 순서대로 진행한다. 각 clean
+review와 perf smoke gate를 건너뛰지 않는다. Framework F-01 이후 작업은 별도 지시가 있을
+때까지 시작하지 않는다.
 
 1단계가 완료되기 전에 Core review를 시작하지 않는다. 2단계에서 두 reviewer가 같은 Core
 candidate를 `CLEAN`으로 판정하고 3단계 C perf smoke가 통과하기 전에는 binding을 새 의미로

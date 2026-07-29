@@ -60,7 +60,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | Whether automatic HWM policy is enabled (`0` = disabled, `1` = enabled) |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | Minimum debounce window in milliseconds before connection churn triggers another automatic HWM recalculation (`>= 0`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | Automatic HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). Invalid values fail with `EINVAL`. |
-| `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 18 | Context-level message-unit size in bytes used by automatic HWM planning (`0` = socket-type default, negative values fail with `EINVAL`). |
+| `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 18 | Context-level planning unit in bytes used to calculate the automatic byte HWM (`uint64_t`; `0` = socket-type default). Use `zlink_ctx_set_data()` and `zlink_ctx_get_data()`. |
 
 > **Note:** `ZLINK_SOCKET_LIMIT` and `ZLINK_THREAD_PRIORITY` share the enum
 > value `3`. In the current public C ABI the option lookup resolves value `3`
@@ -77,7 +77,7 @@ typedef enum zlink_auto_hwm_profile_t
 #define ZLINK_CTX_AUTO_HWM_ENABLE_DFLT  1
 #define ZLINK_CTX_AUTO_HWM_RECALC_DEBOUNCE_MS_DFLT 3000
 #define ZLINK_CTX_AUTO_HWM_PROFILE_DFLT ZLINK_AUTO_HWM_PROFILE_BALANCED
-#define ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT 0
+#define ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT ((uint64_t) 0)
 ```
 
 | Constant | Value | Description |
@@ -215,11 +215,16 @@ ZLINK_EXPORT zlink_config_result_t zlink_ctx_set_data(void *context_,
                                          size_t optvallen_);
 ```
 
-Used for context options whose public binding type is not an `int`. The
-primary use case is `ZLINK_THREAD_NAME_PREFIX`, which takes a
-null-terminated string. Pass the string pointer as `optval_` and
-`strlen(prefix) + 1` as `optvallen_`. The prefix is bounded to at most 16
-bytes (`optvallen_ <= 16`) to fit the platform thread-name limit.
+Used for context options whose public binding type is not an `int`.
+`ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` requires exactly `sizeof(uint64_t)`
+bytes. The value is a planning input rather than an observed average message
+size; `0` selects the socket-type default. Four-byte legacy values fail with
+`ZLINK_CONFIG_INVALID_ARGUMENT`.
+
+`ZLINK_THREAD_NAME_PREFIX` takes a null-terminated string. Pass the string
+pointer as `optval_` and `strlen(prefix) + 1` as `optvallen_`. The prefix is
+bounded to at most 16 bytes (`optvallen_ <= 16`) to fit the platform
+thread-name limit.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -229,7 +234,36 @@ bytes (`optvallen_ <= 16`) to fit the platform thread-name limit.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_ctx_set`, `zlink_ctx_get`
+**See also:** `zlink_ctx_set`, `zlink_ctx_get_data`, `zlink_ctx_get`
+
+---
+
+### zlink_ctx_get_data
+
+Get a context option into caller-provided storage.
+
+```c
+ZLINK_EXPORT zlink_config_result_t zlink_ctx_get_data(void *context_,
+                                         zlink_ctx_option_t option_,
+                                         void *optval_,
+                                         size_t *optvallen_);
+```
+
+`ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` requires a `uint64_t` output buffer.
+On input, `*optvallen_` is the available capacity. On success, it is
+`sizeof(uint64_t)`. A smaller buffer fails instead of truncating the value.
+
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a
+`zlink_config_result_t` value. `zlink_errno()` retains the detailed internal
+errno for diagnostics.
+
+**Errors:**
+- `EINVAL` -- unknown option or invalid output size.
+- `EFAULT` -- invalid context handle or output pointer.
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_ctx_set_data`, `zlink_ctx_get`
 
 ---
 
@@ -257,7 +291,7 @@ the detailed internal errno for diagnostics.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_ctx_set`
+**See also:** `zlink_ctx_set`, `zlink_ctx_get_data`
 
 ---
 

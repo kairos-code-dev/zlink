@@ -37,13 +37,19 @@ internal static class SmB0ActorManagerLifecycleScenario
                 && existing.Actor is not null
                 && found.Actor is not null,
                 "SM-B0 Actor manager terminal states did not converge.");
+            var createdActor = created.Actor
+                ?? throw new InvalidOperationException("SM-B0 Created result has no Actor.");
+            var existingActor = existing.Actor
+                ?? throw new InvalidOperationException("SM-B0 Existing result has no Actor.");
+            var foundActor = found.Actor
+                ?? throw new InvalidOperationException("SM-B0 Found result has no Actor.");
             ZlinkStreamAssert.Ensure(
-                SameIdentity(created.Actor, existing.Actor)
-                && SameIdentity(created.Actor, found.Actor),
+                SameIdentity(createdActor, existingActor)
+                && SameIdentity(createdActor, foundActor),
                 "SM-B0 Create, GetOrCreate, and Find returned different Actor identities.");
             ZlinkStreamAssert.Ensure(
-                created.Actor.NodeRid.StartsWith("play-a-", StringComparison.Ordinal),
-                $"SM-B0 Actor was not placed on play-a: '{created.Actor.NodeRid}'.");
+                createdActor.NodeRid.StartsWith("play-a-", StringComparison.Ordinal),
+                $"SM-B0 Actor was not placed on play-a: '{createdActor.NodeRid}'.");
 
             AssertFactoryDelta(beforeA, await EvidenceAsync(playA), actorId, 1, "play-a lifecycle");
             AssertFactoryDelta(beforeB, await EvidenceAsync(playB), actorId, 0, "play-b lifecycle");

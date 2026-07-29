@@ -1008,7 +1008,7 @@ async function meshSnapshot(
   readonly peers: readonly {
     readonly rid: string;
     readonly endpoint: string;
-    readonly admissionState: string;
+    readonly state: string;
     readonly ready: boolean;
     readonly lastFailure?: string;
   }[];
@@ -1034,7 +1034,7 @@ async function meshSnapshot(
     peers: snapshot.peers.map(peer => ({
       rid: String(peer.rid),
       endpoint: peer.endpoint,
-      admissionState: peer.admissionState,
+      state: String(peer.state),
       ready: peer.ready,
       lastFailure: peer.lastFailure
     })),

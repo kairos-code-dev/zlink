@@ -9,7 +9,7 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 | `ST-A1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: local admission accept와 callback 순서. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-A2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: local admission reject의 무효과. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-A3` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: joined callback 완료 전 packet dispatch 차단. Track A~E 로그: `log/20260710-152609-2661347`. |
-| `ST-B1` | 구현 | Public object placement로 source와 다른 target Spot을 선택하고 `defer` handler의 정상 reply 뒤 native transfer를 실행한다. Lazy Entry Actor·User Spot authority를 exact generation과 owner fence로 materialize하고, target admission·state restore·`Joined`·Location commit·durable commit ACK·`onJoinCompleted(Accepted)` 뒤 packet request가 새 owner에서 처리되는 것을 실제 process로 검증했다. 증거: `log/20260725-092511-2310951`. |
+| `ST-B1` | 부분 구현 | Public object placement로 source와 다른 target Spot을 선택하고 native deferred Join을 실행한다. Target admission·state restore·`Joined`·durable commit ACK·`onJoinCompleted(Accepted)`와 새 owner의 packet request를 확인한다. Join 완료 뒤 public `ActorManager.find`로 target authority와 보존된 object generation도 확인한다. 최신 증거: `log/20260729-165435-3693511`. 공통 시나리오가 요구하는 accepted journal staging·replay와 모든 recovery 단계의 exact order evidence는 아직 없다. |
 | `ST-B2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: commit 뒤 source cleanup. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-B3` | 전환 필요 | 현재 runner는 transfer adapter가 없는 actor의 기본 빈 state transfer 성공과 target 기본 state를 확인한다. 그러나 `joined -> location_committed`를 성공 순서로 단언해, 공통 시나리오의 `location_committed -> joined` 순서와 다르다. 이 순서를 정렬하기 전에는 기존 Track A~E 로그를 완료 증거로 사용하지 않는다. |
 | `ST-B4` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: custom empty state transfer. Track A~E 로그: `log/20260710-152609-2661347`. |
@@ -63,9 +63,9 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
   실행한다. 두 시나리오는 application metadata나 DTO에 operation ID·ActorRef·owner RID를 노출하지
   않고, runtime construction에 주입한 delivery gate로 resolve와 submit 사이만 지연한다.
 - ActorNode는 actor-local handler registry 대신 Nest의 Spot·Entry Spot handler registration을
-  사용하고, 제거된 Location row event monitoring을 더 이상 참조하지 않는다. 기존
-  `location_committed` assertion은 public evidence source를 정한 뒤 다시 연결해야 하며,
-  assertion을 삭제하거나 다른 callback marker로 대체해 통과시키지 않는다.
+  사용하고, 제거된 Location row event monitoring을 더 이상 참조하지 않는다. ST-B1은 Join 완료 뒤
+  public `ActorManager.find` 결과로 target authority와 보존된 object generation을 확인한다. Exact
+  authority commit 시점과 accepted journal 순서는 별도 internal conformance evidence를 연결해야 한다.
 - Redis Store는 첫 병렬 사용을 하나의 connection attempt로 직렬화하고 `isReady` 뒤 command를
   제출한다. Location·Relocation Store는 같은 Redis deployment에서 `:location`과 `:relocation`
   prefix를 사용한다. Authority·object generation·node capacity·creation terminal은 각각 독립 key로

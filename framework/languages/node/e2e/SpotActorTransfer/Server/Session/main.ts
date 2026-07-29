@@ -160,7 +160,7 @@ async function main(): Promise<void> {
           peers: snapshot.peers.map(peer => ({
             rid: String(peer.rid),
             endpoint: peer.endpoint,
-            admissionState: peer.admissionState,
+            state: String(peer.state),
             ready: peer.ready,
             lastFailure: peer.lastFailure
           })),

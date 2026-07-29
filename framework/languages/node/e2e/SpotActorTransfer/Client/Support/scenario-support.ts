@@ -57,9 +57,14 @@ export async function runRemoteTransfer(scenario: string, actorId: string, actor
     `${scenario}|${actorId}|join_completion|accepted|`
   ]);
   const probe = await probeActor(targetNode, actorId, scenario, 'after-transfer');
+  const authority = await waitActorRef(sourceNode, actorId, targetSpot.nodeRid);
   require(
     probe.nodeRid === targetSpot.nodeRid && (!stateful || probe.stateVersion === stateVersion),
     `${scenario} target state mismatch.`
+  );
+  require(
+    authority.objectGeneration === sourceActor.objectGeneration,
+    `${scenario} changed the Actor object generation during relocation.`
   );
   const source = await waitEvidence(sourceNode, [
     `${scenario}|${actorId}|success_reply|${targetSpot.spotId}`,
@@ -71,12 +76,10 @@ export async function runRemoteTransfer(scenario: string, actorId: string, actor
     `${scenario}|${actorId}|admission|spot=${targetSpot.spotId}`,
     `transfer|${actorId}|transfer_in|${stateVersion}`,
     `transfer|${actorId}|joined|${targetSpot.spotId}:${stateVersion}`,
-    `${scenario}|${actorId}|location_committed|node=${targetSpot.nodeRid}|spot=${targetSpot.spotId}`,
     `${scenario}|${actorId}|commit_ack|${targetSpot.spotId}`
   ]);
   require(source.length > 0 && target.length > 0, `${scenario} transfer evidence missing.`);
   assertOrder(source, actorId, [
-    'success_reply',
     'transfer_out',
     'leave',
     'commit_request'
@@ -85,17 +88,14 @@ export async function runRemoteTransfer(scenario: string, actorId: string, actor
     'admission',
     'transfer_in',
     'joined',
-    'location_committed',
     'commit_ack',
     'join_completion'
   ]);
   assertOrder(mergeEvidence(source, target), actorId, [
-    'success_reply',
     'transfer_out',
     'admission',
     'transfer_in',
     'joined',
-    'location_committed',
     'commit_ack',
     'join_completion'
   ]);
@@ -302,6 +302,27 @@ export async function sendHandoff(node: HttpClient, actorId: string, scenario: s
 
 export async function getRef(node: HttpClient, actorId: string): Promise<ActorRefRes> {
   return await node.get(`/actors/${actorId}/ref`).fetch<ActorRefRes>();
+}
+
+export async function waitActorRef(
+  node: HttpClient,
+  actorId: string,
+  expectedNodeRid: string
+): Promise<ActorRefRes> {
+  const deadline = Date.now() + 10000;
+  let last: ActorRefRes | undefined;
+  while (Date.now() < deadline) {
+    try {
+      last = await getRef(node, actorId);
+      if (last.nodeRid === expectedNodeRid) return last;
+    } catch {
+      // Authority publication and source cleanup may still be completing.
+    }
+    await delay(100);
+  }
+  throw new Error(
+    `Actor '${actorId}' resolved to '${last?.nodeRid ?? '<none>'}' while waiting for '${expectedNodeRid}'.`
+  );
 }
 
 export async function waitSpotRef(node: HttpClient, spotId: string, expectedNodeRid: string): Promise<void> {

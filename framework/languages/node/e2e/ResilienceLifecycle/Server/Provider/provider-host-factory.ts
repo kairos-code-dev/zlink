@@ -21,6 +21,7 @@ import { RESILIENCE_OPTIONS, createResilienceConfigurationModule } from '../../c
 import { createProviderEndpoints } from './Endpoints/provider-endpoints';
 import {
   EvidenceDispatchErrorObserver,
+  EvidenceRuntimeErrorSink,
   PayloadRequestHandler,
   ProfileCommandHandler,
   ProfileRequestHandler,
@@ -76,6 +77,7 @@ function createProviderModule(): Function {
           builder
             .configureDispatch()
               .setMessageFlowObserver(EvidenceDispatchErrorObserver)
+              .setRuntimeErrorSink(EvidenceRuntimeErrorSink)
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
@@ -111,6 +113,7 @@ function createProviderModule(): Function {
       } },
       FaultState,
       EvidenceDispatchErrorObserver,
+      EvidenceRuntimeErrorSink,
       PayloadRequestHandler,
       ProfileCommandHandler,
       ProfileRequestHandler,

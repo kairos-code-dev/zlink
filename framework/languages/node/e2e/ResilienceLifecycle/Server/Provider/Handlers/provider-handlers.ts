@@ -4,6 +4,8 @@ import type {
   ZLinkMessageFlowObserver,
   ZLinkMessageContext,
   ZLinkRequestHandler,
+  ZLinkRuntimeErrorEvent,
+  ZLinkRuntimeErrorSink,
   ZLinkSendHandler
 } from '@zlink-systems/framework';
 import type {
@@ -94,6 +96,22 @@ export class EvidenceDispatchErrorObserver implements ZLinkMessageFlowObserver {
     if (this.fault.mode === 'observer-throws') {
       throw new Error('dispatch observer failure');
     }
+  }
+}
+
+@Injectable()
+export class EvidenceRuntimeErrorSink implements ZLinkRuntimeErrorSink {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  onRuntimeError(error: ZLinkRuntimeErrorEvent): void {
+    this.evidence.add(
+      'runtime-error'
+      + `|event_id=${error.eventId}`
+      + `|kind=${error.kind}`
+      + `|source=${error.source}`
+      + `|reason=${error.reason}`
+      + `|fields=${Object.keys(error).sort().join(',')}`
+    );
   }
 }
 

@@ -28,7 +28,7 @@
 | RL-C3 | `Client/Scenarios/RlC3NodePauseRecoveryScenario.cs` | `Client/Scenarios/rl-c3-node-pause-recovery-scenario.ts` | done | node down/recovery simulation. PASS: `logs/20260703-211853-78546` |
 | RL-C4 | `Client/Scenarios/RlC4RegistryOutageScenario.cs` | `Client/Scenarios/rl-c4-store-outage-scenario.ts` | done | Redis location store outage and recovery. PASS: `logs/20260703-211853-78546` |
 | RL-D1 | `Client/Scenarios/RlD1HighFanoutScenario.cs` | `Client/Scenarios/rl-d1-high-fanout-scenario.ts` | done | 8 subscriber × 120 event fanout. PASS: `logs/20260715-075646-2279409` |
-| RL-D2 | `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/Scenarios/rl-d2-observer-fault-scenario.ts` | done | observer failure isolation. PASS: `logs/20260703-211853-78546` |
+| RL-D2 | `Client/Scenarios/RlD2ObserverFaultScenario.cs` | `Client/Scenarios/rl-d2-observer-fault-scenario.ts` | done | observer failure isolation과 public runtime error sink의 정확한 1회 event를 검증했다. PASS: `log/20260729-162800-3166911` |
 | RL-D3 | `Client/Scenarios/RlD3DispatchErrorEvidenceScenario.cs` | `Client/Scenarios/rl-d3-dispatch-error-evidence-scenario.ts` | done | dispatch-error evidence. PASS: `logs/20260703-211853-78546` |
 | RL-D4 | `Client/Scenarios/RlD4MissingRequestHandlerScenario.cs` | `Client/Scenarios/rl-d4-missing-request-handler-scenario.ts` | done | decoded error round-trip + raw Error/Response header gate. PASS: `logs/20260715-080129-2299877` |
 | RL-D5 | `Client/Scenarios/RlD5MixedBurstScenario.cs` | `Client/Scenarios/rl-d5-mixed-burst-scenario.ts` | done | 8 client, 120초 mixed soak + latency/cleanup observation. PASS: `logs/20260715-082358-2399471` |

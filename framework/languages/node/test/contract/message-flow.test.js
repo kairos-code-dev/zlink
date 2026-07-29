@@ -23,11 +23,17 @@ const {
   ZLinkMessageFlowTracer,
   createDiagnosticsContext,
   createMessageFlowModeCell,
-  ZLinkMessageFlowOutcome,
-  ZLinkMessageFlowLogMode,
-  ZLinkDispatchErrorSurface,
-  ZLinkDispatchMessageKind
+  ZLinkMessageFlowLogMode
 } = framework;
+
+const ZLinkMessageFlowOutcome = {
+  Received: 'received',
+  Dispatched: 'dispatched',
+  Replied: 'replied',
+  Dropped: 'dropped'
+};
+const ZLinkDispatchErrorSurface = { Channel: 'channel' };
+const ZLinkDispatchMessageKind = { Request: 'request' };
 
 function silentSink() {
   return { reportRuntimeTaskException() {} };
@@ -120,7 +126,8 @@ test('MFLOW-004 observer offload delivers the event asynchronously', async () =>
   assert.equal(events.length, 0, 'observer is offloaded, not synchronous');
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(events.length, 1);
-  assert.equal(events[0].outcome, ZLinkMessageFlowOutcome.Received);
+  assert.equal(events[0].outcome, 'succeeded');
+  assert.equal(events[0].phase, 'received');
   assert.equal(events[0].correlationId, 'corr-1');
   void tracer;
 });
@@ -151,6 +158,51 @@ test('MFLOW-004b success-path observer failures use message-flow-observer task',
   assert.equal(failures[0].taskName, 'message-flow-observer');
   assert.equal(failures[0].error.message, 'success observer failed');
   assert.equal(tracer.observerFailureCount, 1);
+});
+
+test('MFLOW-004c observer failure emits one bounded public runtime error event', async () => {
+  const events = [];
+  class ThrowingObserver {
+    onMessageFlow() {
+      throw new Error('observer failed');
+    }
+  }
+  class RuntimeErrorSink {
+    onRuntimeError(event) {
+      events.push(event);
+    }
+  }
+  const providerResolver = {
+    get(type) {
+      return type === RuntimeErrorSink ? new RuntimeErrorSink() : undefined;
+    }
+  };
+  const dispatch = { diagnostics: diagnostics(ZLinkMessageFlowLogMode.KeyTransitions) };
+  const cell = createMessageFlowModeCell(dispatch);
+  const ctx = {
+    ...createDiagnosticsContext(dispatch, providerResolver, cell),
+    messageFlowObserverType: ThrowingObserver,
+    runtimeErrorSinkType: RuntimeErrorSink
+  };
+  const tracer = new ZLinkMessageFlowTracer(ctx, silentSink());
+
+  tracer.trace(receivedEvent());
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(tracer.observerFailureCount, 1);
+  assert.equal(events.length, 1);
+  assert.deepEqual(Object.keys(events[0]).sort(), [
+    'eventId',
+    'kind',
+    'reason',
+    'source',
+    'timestamp'
+  ]);
+  assert.equal(events[0].eventId, 'zlink.runtime_error');
+  assert.equal(events[0].kind, 'observer_failed');
+  assert.equal(events[0].source, 'message_flow_observer');
+  assert.equal(events[0].reason, 'Error: observer failed');
+  assert.equal(events[0].timestamp instanceof Date, true);
 });
 
 test('MFLOW-009 live-mode cell toggles every reader without rebuilding the tracer', () => {

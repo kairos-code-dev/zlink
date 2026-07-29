@@ -201,7 +201,10 @@ export class ZLinkDeferredJoinAcceptedJournal {
         throw new Error(`Actor '${actorRef.actorId}' lost its deferred Join completion root.`);
       }
       requireSameOperation(current, root.operationId, actorRef);
-      if (current.cursor === 'delivered') return current;
+      if (current.cursor === 'delivered') {
+        await this.releaseDelivered(current, signal);
+        return current;
+      }
       if (current.cursor !== 'committed') {
         throw new Error(`Actor '${actorRef.actorId}' Join completion is not committed.`);
       }

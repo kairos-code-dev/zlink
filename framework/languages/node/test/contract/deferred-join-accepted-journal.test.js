@@ -358,6 +358,42 @@ test('Delivered cursor CAS conflict is reconciled without invoking the callback 
   assert.equal(callbacks, 1);
 });
 
+test('Delivered reference release CAS conflict is retried without invoking the callback twice', async () => {
+  const { journal } = harness({ conflictOnCompareExchangeCalls: [4] });
+  const sourceActorRef = {
+    nodeRid: 'node-a',
+    actorId: 'actor-a',
+    objectGeneration: 17n,
+    meshName: 'game'
+  };
+  const targetActorRef = {
+    ...sourceActorRef,
+    nodeRid: 'node-b'
+  };
+  const committed = await journal.markCommitted(await journal.prepare(
+    sourceActorRef.actorId,
+    { high: 70n, low: 80n },
+    sourceActorRef,
+    Buffer.alloc(0)
+  ), targetActorRef);
+  let callbacks = 0;
+
+  await journal.deliver(
+    committed,
+    {
+      actorId: targetActorRef.actorId,
+      async onJoinCompleted() {
+        callbacks++;
+      }
+    },
+    targetActorRef,
+    operation => operation()
+  );
+
+  assert.equal(await journal.recover(targetActorRef.actorId), undefined);
+  assert.equal(callbacks, 1);
+});
+
 test('a delivered Join completion can be replaced by the next Join for the same Actor generation', async () => {
   const { journal, roots } = harness();
   const sourceActorRef = {

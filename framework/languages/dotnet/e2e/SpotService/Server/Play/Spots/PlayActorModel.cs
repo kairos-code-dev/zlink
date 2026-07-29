@@ -104,13 +104,22 @@ internal sealed class ScenarioEntrySpot(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnDisconnectActorAsync(
+    public async ValueTask OnDisconnectActorAsync(
         ScenarioActor actor,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"entry-disconnect-started|rid={evidence.Rid}|actor={actor.ActorId}");
+        if (actor.ActorId.Contains("sm-d5-race", StringComparison.Ordinal))
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
         evidence.Add($"entry-disconnected|rid={evidence.Rid}|actor={actor.ActorId}");
-        return ValueTask.CompletedTask;
+        if (actor.ActorId.Contains("sm-d5-fail", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("SM-D5 injected disconnect callback failure.");
+        }
     }
 }
 

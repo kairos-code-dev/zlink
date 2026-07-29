@@ -76,7 +76,12 @@ await (options.OperationGroup switch
             options.PlayBTransportProxyAdmin,
             options.SessionATransportProxyAdmin
         ]),
-    "sm-d5" => SmD5ExplicitDisconnectNotificationScenario.RunAsync(playA, sessionA, options.SessionAStreamEndpoint),
+    "sm-d5" => SmD5ExplicitDisconnectNotificationScenario.RunAsync(
+        gateway,
+        playA,
+        playB,
+        sessionA,
+        options.SessionAStreamEndpoint),
     "sm-d5a" => SmD5ALogicalDisconnectScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-d6" => SmD6BoundSessionPushTargetingScenario.RunAsync(options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
     "sm-d7" => SmD7StreamAuthenticationDispatchScenario.RunAsync(options.SessionAStreamEndpoint),

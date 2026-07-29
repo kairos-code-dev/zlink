@@ -7514,3 +7514,39 @@ fixture 정렬 전까지 남은 gap이다.
 - Capacity·startup focused contract: 62/62
 - Backend·public contract: 66/66
 - Hang한 `nestjs-module.test.js` 실행은 종료했고 증거에서 제외했다.
+
+## 2026-07-29 .NET SM-D5 physical disconnect checkpoint
+
+Config 2 `SM-D5`의 실제 process selector를 단일 Actor 확인에서 current binding 전체
+검증으로 확장했다. Session host에 local Actor를 만들고 Play host에 remote Actor를
+만든 뒤 같은 STREAM connection에 bind한다. Remote Actor의 logical disconnect callback이
+실행 중일 때 physical connection을 종료해 두 notification이 같은 exact binding
+identity를 두 번 처리하지 않는지 확인한다.
+
+Local Actor callback은 evidence를 기록한 뒤 의도적으로 실패한다. Physical cleanup은
+실패와 관계없이 remote callback과 두 binding cleanup을 all-settled로 완료한다. Bind
+뒤에는 두 Actor의 Location Store read를 차단한다. Callback이 각각 한 번만 실행되고
+matching read가 `0`이며, 종료 뒤 Actor의 `ObjectGeneration`, owner와 Entry Spot
+membership이 유지되는지 확인한다.
+
+- Client·Session·Play E2E project build: 통과
+- `SessionActorCoordinatorTests`: 36/36
+- Actual `SM-D5`: 통과
+  (`framework/languages/dotnet/e2e/SpotService/logs/20260729-153632-1814746`)
+- Scoped `git diff --check`: 통과
+
+이 증거로 .NET SpotService feature map의 `SM-D5`를 구현으로 전환했다.
+
+## 2026-07-29 Node wildcard listener identity checkpoint
+
+Node RouteMesh와 ClientServer listener는 wildcard BindHost를 사용할 때 remote가
+연결할 AdvertiseHost를 startup 전에 반드시 요구한다. Raw TCP endpoint로
+`0.0.0.0` 또는 `::`를 지정한 경우도 같은 규칙을 적용한다. AdvertiseHost 자체에
+wildcard를 지정하는 구성도 startup configuration error로 거부한다. Non-wildcard
+BindHost는 AdvertiseHost를 생략하면 기존처럼 같은 host를 사용한다.
+
+- Node production/browser build: 통과
+- `startup-validation.test.js`: 16/16
+- Backend·ClientServer focused contract: 56/56
+- 전체 contract 실행은 기존 `nestjs-module.test.js` 장기 대기로 종료했으며 완료
+  증거에는 포함하지 않았다.

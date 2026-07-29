@@ -141,6 +141,13 @@ internal static class SessionHostFactory
                             "The Location Store read probe requires Redis.");
             return Results.Ok(probe.Snapshot());
         });
+        app.MapPost("/placement-weight", (
+            PlacementWeightReq request,
+            IZLinkRouteMeshRuntimeOptions runtimeOptions) =>
+        {
+            runtimeOptions.Mesh(SpotServiceNames.SpotChannel).PlacementWeight = request.Weight;
+            return Results.Ok(new PlacementWeightRes(request.Weight));
+        });
         app.MapGet("/channel/spot-peer-ready/{targetRid}", (
             string targetRid,
             IZLinkRouteMeshRuntime meshRuntime) =>

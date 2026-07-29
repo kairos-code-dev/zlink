@@ -86,6 +86,61 @@ test('RouteMesh listener uses separate bind and advertised hosts with Core-resol
   assert.equal(router.port, 0);
 });
 
+test('Node listener rejects wildcard bind without a connectable advertise host', () => {
+  assert.throws(
+    () => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
+      builder.addRouteMesh('game')
+        .setBindHost('0.0.0.0')
+        .listen();
+    })),
+    /must define an advertise host when its bind host is a wildcard address/
+  );
+
+  assert.throws(
+    () => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
+      builder.addRouteMesh('game')
+        .listen('tcp://[::]:0');
+    })),
+    /must define an advertise host when its bind host is a wildcard address/
+  );
+
+  assert.throws(
+    () => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
+      builder.addRouteMesh('game')
+        .setBindHost('127.0.0.1')
+        .setAdvertiseHost('0.0.0.0')
+        .listen();
+    })),
+    /advertise host must identify a connectable host/
+  );
+});
+
+test('ClientServer listener applies the same wildcard advertise-host validation', () => {
+  class NoticeHandler {}
+
+  assert.throws(
+    () => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
+      builder.addClientServerChannel('orders')
+        .server()
+        .setBindHost('0.0.0.0')
+        .listen(9401)
+        .addSendHandler(NoticeHandler);
+    })),
+    /must define an advertise host when its bind host is a wildcard address/
+  );
+
+  const registration = framework.createFrameworkRegistration(
+    framework.createFrameworkOptions((builder) => {
+      builder.addClientServerChannel('orders')
+        .server()
+        .setBindHost('127.0.0.1')
+        .listen(9401)
+        .addSendHandler(NoticeHandler);
+    })
+  );
+  assert.equal(registration.channels.get('orders').server.bind, 'tcp://127.0.0.1:9401');
+});
+
 test('Object Client RouteMesh rejects application Node-direct handlers', () => {
   class NodeNotice {}
   assert.throws(

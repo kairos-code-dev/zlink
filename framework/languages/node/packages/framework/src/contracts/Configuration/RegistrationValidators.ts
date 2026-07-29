@@ -217,6 +217,12 @@ function validateChannelCapabilities(
   for (const [channelName, channel] of Object.entries(channels ?? {})) {
     if (channel.server !== undefined) {
       requireEndpoint(`channel '${channelName}' server`, channel.server.bind);
+      validateListenerNetworkIdentity(
+        `channel '${channelName}' server`,
+        channel.server.bind,
+        channel.server.bindHost,
+        channel.server.advertiseHost
+      );
       if (channel.server.routingId !== undefined) {
         requireName(`channel '${channelName}' server routingId`, channel.server.routingId);
       }
@@ -297,6 +303,14 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
       );
     }
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' router`, spotNode.router);
+    if (spotNode.router !== undefined) {
+      validateListenerNetworkIdentity(
+        `SpotNode '${spotNodeName}' router`,
+        spotNode.router.bind,
+        spotNode.router.bindHost,
+        spotNode.router.advertiseHost
+      );
+    }
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' pubSub`, spotNode.pubSub);
     requireValidSendTimeoutMs(
       `SpotNode '${spotNodeName}' publisher sendTimeoutMs`,
@@ -361,6 +375,40 @@ function validateSpotNodeCapability(
   if (capability.routingId !== undefined && (capability.routingId.trim().length === 0 || capability.routingId.trim() !== capability.routingId)) {
     throw new ZLinkConfigurationException(`${capabilityName} routingId must not be empty or padded.`);
   }
+}
+
+function validateListenerNetworkIdentity(
+  capabilityName: string,
+  bindEndpoint: string | undefined,
+  configuredBindHost: string | undefined,
+  advertiseHost: string | undefined
+): void {
+  const bindHost = configuredBindHost ?? tcpEndpointHost(bindEndpoint);
+  if (advertiseHost !== undefined) {
+    requireName(`${capabilityName} advertise host`, advertiseHost);
+    if (isWildcardHost(advertiseHost)) {
+      throw new ZLinkConfigurationException(
+        `${capabilityName} advertise host must identify a connectable host, not a wildcard address.`
+      );
+    }
+  }
+  if (bindHost !== undefined && isWildcardHost(bindHost) && advertiseHost === undefined) {
+    throw new ZLinkConfigurationException(
+      `${capabilityName} must define an advertise host when its bind host is a wildcard address.`
+    );
+  }
+}
+
+function tcpEndpointHost(endpoint: string | undefined): string | undefined {
+  const match = /^tcp:\/\/(\[[^\]]+\]|[^:]+):\d+$/.exec(endpoint ?? '');
+  return match?.[1];
+}
+
+function isWildcardHost(host: string): boolean {
+  const normalized = host.startsWith('[') && host.endsWith(']')
+    ? host.slice(1, -1)
+    : host;
+  return normalized === '0.0.0.0' || normalized === '::';
 }
 
 function validateManualConnections(capabilityName: string, manualConnections: readonly string[] | undefined): void {

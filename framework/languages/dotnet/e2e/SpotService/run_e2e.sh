@@ -1174,6 +1174,7 @@ elif [[ "$SCENARIO_SET" == "all" || "$SCENARIO_SET" == "default-batch" ]]; then
   run_client sm-e1-f4
   run_client sm-e2-e3
   run_client sm-a7-a8-c4
+  run_client sm-a11
   run_client sm-a3-a6-b4-b7
   run_client sm-a5
   run_client sm-a1-a2-a4-f1-f2

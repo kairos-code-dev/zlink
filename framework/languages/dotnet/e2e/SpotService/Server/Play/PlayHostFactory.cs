@@ -40,6 +40,7 @@ internal static class PlayHostFactory
         builder.Services.AddSingleton(evidence);
         builder.Services.AddSingleton(new NodeOptions(options.Rid));
         builder.Services.AddSingleton<ApplicationJoinCoordinator>();
+        LocationStoreOperationProbe? locationStoreOperationProbe = null;
         builder.Services.AddSingleton(new E2eMessageFlowListener(
             Path.Combine(options.LogDir, $"{options.Rid}-flow.log"),
             options.Rid,
@@ -58,8 +59,10 @@ internal static class PlayHostFactory
         {
             if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
             {
-                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."); }));
+                locationStoreOperationProbe = new LocationStoreOperationProbe(
+                    new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix
+                                      ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."); }));
+                framework.AddLocationStore(locationStoreOperationProbe);
                 framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = $"{options.RedisKeyPrefix}:relocation"; }));
                 // Crash-recovery scenarios re-claim actors from a killed
                 // node; a short owner lease keeps that takeover window
@@ -111,6 +114,9 @@ internal static class PlayHostFactory
                     SpotServiceNames.ActorType, factory => factory.RecreateOnRelocation())
                 .AddSpotFactory<ScenarioUserSpot>(
                     SpotServiceNames.UserSpotType, factory => factory.DisableRelocation())
+                .AddInstanceSpotFactory<ScenarioInstanceSpot>(
+                    SpotServiceNames.InstanceSpotType,
+                    factory => factory.DisableRelocation())
                 .AddSpotFactory<ScenarioAlternateSpot>(
                     SpotServiceNames.AlternateSpotType, factory => factory.DisableRelocation())
                 .AddSpotFactory<MultiNodeSpotA>(
@@ -125,6 +131,8 @@ internal static class PlayHostFactory
                     .AddSendHandler<ChannelNotifyHandler>();
             }
         });
+        if (locationStoreOperationProbe is not null)
+            builder.Services.AddSingleton(locationStoreOperationProbe);
 
         var app = builder.Build();
         OperationalEndpoints.MapOperationalEndpoints(app, options);

@@ -24,6 +24,7 @@ public static class SpotServiceNames
     public const string MultiRouteChannelB = "multi-route-b";
     public const string ActorType = "scenario-player";
     public const string UserSpotType = "scenario-user-spot";
+    public const string InstanceSpotType = "scenario-instance-spot";
     public const string AlternateSpotType = "scenario-alternate-spot";
     public const string SpotOnlyUserSpotType = "spot-only-user-spot";
     public const string MultiSpotTypeA = "multi-spot-a";
@@ -48,6 +49,16 @@ public sealed record ScenarioActorCreateReq(string DisplayName);
 public sealed record StateReq(string Operation, int Delta);
 
 public sealed record StateRes(string SpotRid, string NodeRid, int Value);
+
+public sealed record ReservedSpotIdProbeReq(string SpotId);
+
+public sealed record ReservedSpotIdProbeRes(
+    string UserSpotErrorKind,
+    string InstanceSpotErrorKind,
+    long LocationStoreReads,
+    long LocationStoreWrites,
+    int UserSpotFactoryCalls,
+    int InstanceSpotFactoryCalls);
 
 public sealed record StateMsg(string Marker);
 

@@ -7537,6 +7537,28 @@ membership이 유지되는지 확인한다.
 
 이 증거로 .NET SpotService feature map의 `SM-D5`를 구현으로 전환했다.
 
+## 2026-07-29 .NET SM-A11 reserved Entry Spot ID checkpoint
+
+Config 2 `SM-A11`을 .NET actual process selector에 추가했다. Framework가 발급하는
+형식의 Entry Spot ID를 User Spot `GetOrCreate`와 Instance Spot request에 caller가
+직접 지정한다. 두 호출은 production의 caller-provided Spot ID validation에서
+`InvalidOperation`으로 끝난다.
+
+Play host의 E2E provider wrapper는 해당 Spot ID가 포함된 Location Store key의 read와
+write만 센다. User·Instance Spot factory는 initialize evidence로 센다. 따라서
+background descriptor 갱신과 구분하면서 validation 뒤 side effect가 없음을 직접
+확인한다.
+
+- Play E2E project build: warning·error 0
+- `SpotIdValidationTests`: 1/1
+- Actual `SM-A11`: 통과
+  (`framework/languages/dotnet/e2e/SpotService/logs/20260729-154511-1994689`)
+- User·Instance error: `InvalidOperation` 2/2
+- Matching Location Store read·write: 0/0
+- User·Instance factory call: 0/0
+
+이 증거로 .NET SpotService feature map의 `SM-A11`을 구현으로 전환했다.
+
 ## 2026-07-29 Node wildcard listener identity checkpoint
 
 Node RouteMesh와 ClientServer listener는 wildcard BindHost를 사용할 때 remote가
@@ -7550,3 +7572,29 @@ BindHost는 AdvertiseHost를 생략하면 기존처럼 같은 host를 사용한�
 - Backend·ClientServer focused contract: 56/56
 - 전체 contract 실행은 기존 `nestjs-module.test.js` 장기 대기로 종료했으며 완료
   증거에는 포함하지 않았다.
+
+## 2026-07-29 C++ deferred Join 오류 completion 재감사
+
+`V11-M6-DEFERRED-JOIN-CPP`의 이전 증거에 남아 있던 “Rejected·Failed completion을
+runtime이 생성하지 않는다”는 설명을 현재 production source와 다시 대조했다. 해당
+gap은 이미 해소되어 있다.
+
+- Remote admission 거절과 commit 거절은 같은 128-bit operation ID를 보존한
+  `actor_join_rejected_t`를 source Actor mailbox에 전달한다.
+- Route resolve, admission, transfer-out, source leave와 commit 실패는
+  `actor_join_failed_t`를 전달한다. 분류하지 못한 실패는
+  `request_failed`, `retryable=false`로 수렴한다.
+- Completion callback adapter는 Accepted·Rejected·Failed 세 variant를 모두
+  보존한다.
+- 같은 operation ID의 중복 전달은 한 번만 실행하며, callback 자체가 실패한 경우만
+  같은 completion을 다시 시도할 수 있다.
+
+Fresh build 뒤 다음 focused binary가 모두 통과했다.
+
+- `test_cpp_framework_execution`
+- `test_cpp_framework_actor_gateway`
+- `test_cpp_framework_m6b_runtime`
+
+따라서 오류 관찰 축은 더 이상 C++ deferred Join의 남은 gap이 아니다. Durable
+completion의 aggregate recovery와 실제 process crash·replay 증거는 별도 완료 조건으로
+계속 유지한다.

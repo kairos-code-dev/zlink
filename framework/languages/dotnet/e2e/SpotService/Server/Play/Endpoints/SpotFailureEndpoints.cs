@@ -1,6 +1,7 @@
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Spots;
 
 using Zlink.Framework.Contracts.Locations;
@@ -13,6 +14,55 @@ internal static class SpotFailureEndpoints
 {
     public static void MapSpotFailureEndpoints(WebApplication app)
     {
+        app.MapPost("/spot/reserved-id/probe", async (
+            IZLinkSpotManager spots,
+            IZLinkSpotClient spotClient,
+            EvidenceStore evidence,
+            IServiceProvider services,
+            ReservedSpotIdProbeReq request,
+            CancellationToken cancellationToken) =>
+        {
+            var locationProbe = services.GetRequiredService<LocationStoreOperationProbe>();
+            locationProbe.Reset(request.SpotId);
+            var before = evidence.Snapshot();
+            var userError = await CaptureKindAsync(async () =>
+                await spots
+                    .GetOrCreate(request.SpotId, SpotServiceNames.UserSpotType)
+                    .Async(cancellationToken));
+            var instanceError = await CaptureKindAsync(async () =>
+                await spotClient
+                    .RequestToSpot(request.SpotId, new StateReq("noop", 0))
+                    .InstanceSpot(SpotServiceNames.InstanceSpotType)
+                    .Async<StateRes>(cancellationToken));
+            var after = evidence.Snapshot();
+            var store = locationProbe.Snapshot();
+            return Results.Ok(new ReservedSpotIdProbeRes(
+                userError,
+                instanceError,
+                store.Reads,
+                store.Writes,
+                CountNew(
+                    after,
+                    before,
+                    $"spot-initialize|rid={evidence.Rid}|spot={request.SpotId}"),
+                CountNew(
+                    after,
+                    before,
+                    $"instance-initialize|rid={evidence.Rid}|spot={request.SpotId}")));
+
+            static async Task<string> CaptureKindAsync(Func<Task> operation)
+            {
+                try
+                {
+                    await operation();
+                    return string.Empty;
+                }
+                catch (ZLinkFrameworkException error)
+                {
+                    return error.Kind.ToString();
+                }
+            }
+        });
         app.MapPost("/spot/missing-handler/request", async (
             IZLinkSpotClient routes,
             EvidenceStore evidence,

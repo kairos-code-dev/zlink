@@ -14,7 +14,7 @@
 | SM-A8 | 구현 | worker offload marker가 있다. |
 | SM-A9 | 미구현 | User Spot factory·initialize 뒤 Location Store publication barrier와 concurrent caller 합류 E2E가 없다. |
 | SM-A10 | 미구현 | Framework 발급 Entry Spot ID 형식과 lifecycle별 새 ID E2E가 없다. |
-| SM-A11 | 미구현 | 예약된 Entry Spot ID 형식의 caller 지정 거부 E2E가 없다. |
+| SM-A11 | 구현 | 예약된 Entry Spot ID를 User Spot `GetOrCreate`와 Instance Spot request에 제출하고 두 호출이 모두 `InvalidOperation`으로 끝나는지 확인한다. 해당 ID와 일치하는 Location Store read·write와 User·Instance Spot factory 실행은 모두 0이다. `./run_e2e.sh sm-a11` 증거는 `logs/20260729-154511-1994689/`에 있다. |
 | SM-A12 | 미구현 | User Spot automatic ID의 첫 collision 즉시 실패 E2E가 없다. |
 | SM-A13 | 미구현 | SpotId UTF-8 string 경계와 legacy binary Spot RID 거부 E2E가 없다. |
 | SM-B0 | 미구현 | explicit type global create와 existing-only find E2E가 없다. |

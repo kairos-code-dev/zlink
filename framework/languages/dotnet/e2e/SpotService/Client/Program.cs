@@ -34,6 +34,7 @@ await (options.OperationGroup switch
     "sm-a6" => SmA6SpotInitializeCloseLifecycleScenario.RunAsync(playA),
     "sm-a7" => SmA7SpotTypeMismatchScenario.RunAsync(playA),
     "sm-a8" => SmA8WorkerOffloadScenario.RunAsync(playA),
+    "sm-a11" => SmA11ReservedEntrySpotIdScenario.RunAsync(playA),
     "sm-b1" => SmB1LocalActorJoinScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-b2" => SmB2RemoteActorJoinScenario.RunAsync(playB, options.SessionAStreamEndpoint),
     "sm-b3" => SmB3RequestMessageFidelityScenario.RunAsync(playA, options.SessionAStreamEndpoint),

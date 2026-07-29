@@ -330,9 +330,12 @@ export class ZLinkSpotNodeRuntimeManager {
         rid: status.routingId,
         lifecycleGeneration: status.lifecycleGeneration,
         descriptorRevision: (current?.descriptorRevision ?? 0n) + 1n,
-        // Core resolves wildcard/port-zero binds before status publication.
-        // The resolved local endpoint is the address peers can connect to.
-        endpoint: status.localEndpoint,
+        // Core resolves port zero. The configured advertise host replaces only
+        // the host component; peers still use Core's resolved port.
+        endpoint: advertisedMeshEndpoint(
+          status.localEndpoint,
+          registration.router?.advertiseHost
+        ),
         objectRole: effectiveObjectRole(registration),
         entrySpotId: this.entrySpotId(meshName, registration),
         placementWeight: this.placementWeight(meshName),
@@ -1138,6 +1141,23 @@ export class ZLinkSpotNodeRuntimeManager {
     }
     this.activePublishes.clear();
   }
+}
+
+function advertisedMeshEndpoint(
+  boundEndpoint: string,
+  advertiseHost: string | undefined
+): string {
+  if (advertiseHost === undefined) return boundEndpoint;
+  const match = /^tcp:\/\/(?:\[[^\]]+\]|[^:]+):(\d+)$/.exec(boundEndpoint);
+  if (match === null) {
+    throw new ZLinkConfigurationException(
+      `RouteMesh advertise host requires a TCP endpoint, received '${boundEndpoint}'.`
+    );
+  }
+  const host = advertiseHost.includes(':') && !advertiseHost.startsWith('[')
+    ? `[${advertiseHost}]`
+    : advertiseHost;
+  return `tcp://${host}:${match[1]}`;
 }
 
 function runtimeShutdownError(): ZLinkFrameworkException {

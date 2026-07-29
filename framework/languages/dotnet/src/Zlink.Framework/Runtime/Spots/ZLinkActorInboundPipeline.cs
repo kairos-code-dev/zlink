@@ -556,7 +556,7 @@ internal sealed class ZLinkActorInboundPipeline(
                         await ZLinkActorBoundSessionRelay.SendReplyAsync(
                                 runtime,
                                 actor.Context.ActorId,
-                                frame.ReplyActor,
+                                frame.Actor,
                                 frame.SourceNodeRid,
                                 frame.SourceSessionRid,
                                 frame.RequestId,
@@ -574,7 +574,7 @@ internal sealed class ZLinkActorInboundPipeline(
                                 ct => ZLinkActorBoundSessionRelay.SendReplyAsync(
                                     runtime,
                                     actor.Context.ActorId,
-                                    frame.ReplyActor,
+                                    frame.Actor,
                                     frame.SourceNodeRid,
                                     frame.SourceSessionRid,
                                     frame.RequestId,

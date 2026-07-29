@@ -107,6 +107,9 @@ export interface ZLinkMeshNodeSocketConfig {
 export interface ZLinkMeshNodeBuilder {
   channel(channelName: string): ZLinkMeshChannelBuilder;
   listen(endpoint: string): this;
+  listen(port?: number): this;
+  setBindHost(bindHost: string): this;
+  setAdvertiseHost(advertiseHost: string): this;
   routingId(routingId: RoutingId): this;
   setRoutingIdPrefix(prefix: string): this;
   setPlacementWeight(weight: number): this;

@@ -55,6 +55,7 @@ NEED_SESSION_NODES=1
 NEED_SESSION_B=0
 NEED_PLAY_B=1
 NEED_TLS_STREAM=0
+NEED_MESSAGE_FOLLOW_PROXY=0
 
 scenario_selector_contains() {
   local expected="$1"
@@ -100,12 +101,16 @@ case "$SCENARIO_SET" in
     NEED_SESSION_NODES=0
     NEED_PLAY_B=0
     ;;
-  sm-d1-d6|sm-d4a|sm-d10|sm-d12|sm-g1)
+  sm-d1-d6|sm-d4a|sm-d4b|sm-d10|sm-d12|sm-g1)
     NEED_SESSION_B=1
+    if [[ "$SCENARIO_SET" == "sm-d4b" ]]; then
+      NEED_MESSAGE_FOLLOW_PROXY=1
+    fi
     ;;
   default-batch)
     NEED_SESSION_B=1
     NEED_TLS_STREAM=1
+    NEED_MESSAGE_FOLLOW_PROXY=1
     ;;
   track-g)
     NEED_SESSION_B=1
@@ -114,6 +119,7 @@ esac
 if scenario_selector_contains sm-d1-d6 \
   || scenario_selector_contains sm-d10 \
   || scenario_selector_contains sm-d4a \
+  || scenario_selector_contains sm-d4b \
   || scenario_selector_contains sm-d12 \
   || scenario_selector_contains sm-g1; then
   NEED_SESSION_B=1
@@ -178,6 +184,7 @@ if [[ "$SCENARIO_SET" == "all" && "$ALL_CHILD" != "1" ]]; then
 fi
 
 PIDS=()
+AUX_PIDS=()
 
 cleanup() {
   set +e
@@ -189,6 +196,11 @@ cleanup() {
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
   for pid in "${PIDS[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -INT "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
+    fi
+  done
+  for pid in "${AUX_PIDS[@]}"; do
     if kill -0 "$pid" 2>/dev/null; then
       kill -INT "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
     fi
@@ -205,6 +217,12 @@ cleanup() {
     sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
   for pid in "${PIDS[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "-$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
+    fi
+    wait "$pid" 2>/dev/null || true
+  done
+  for pid in "${AUX_PIDS[@]}"; do
     if kill -0 "$pid" 2>/dev/null; then
       kill -9 "-$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
     fi
@@ -244,15 +262,18 @@ read -r -a PORTS <<<"$PORT_LIST"
 PLAY_A_HTTP="http://127.0.0.1:${PORTS[3]}"
 PLAY_A_CONTROL="tcp://127.0.0.1:${PORTS[4]}"
 PLAY_A_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[5]}"
+PLAY_A_SPOT_ROUTER_BIND="$PLAY_A_SPOT_ROUTER"
 PLAY_A_SPOT_PUB="tcp://127.0.0.1:${PORTS[6]}"
 PLAY_A_EXTERNAL_SPOT="tcp://127.0.0.1:${PORTS[19]}"
 PLAY_B_HTTP="http://127.0.0.1:${PORTS[7]}"
 PLAY_B_CONTROL="tcp://127.0.0.1:${PORTS[8]}"
 PLAY_B_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[9]}"
+PLAY_B_SPOT_ROUTER_BIND="$PLAY_B_SPOT_ROUTER"
 PLAY_B_SPOT_PUB="tcp://127.0.0.1:${PORTS[10]}"
 PLAY_B_EXTERNAL_SPOT="tcp://127.0.0.1:${PORTS[26]}"
 SESSION_A_HTTP="http://127.0.0.1:${PORTS[11]}"
 SESSION_A_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[12]}"
+SESSION_A_SPOT_ROUTER_BIND="$SESSION_A_SPOT_ROUTER"
 SESSION_A_STREAM="tcp://127.0.0.1:${PORTS[13]}"
 SESSION_A_TLS_STREAM="tls://127.0.0.1:${PORTS[25]}"
 SESSION_A_CONTROL="tcp://127.0.0.1:${PORTS[14]}"
@@ -275,6 +296,14 @@ CLIENT_MULTI_ROUTE_B="tcp://127.0.0.1:${PORTS[34]}"
 MULTI_B_HTTP="http://127.0.0.1:${PORTS[35]}"
 GATEWAY_HTTP="http://127.0.0.1:${PORTS[36]}"
 GATEWAY_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[37]}"
+PLAY_A_TRANSPORT_PROXY_ADMIN="http://127.0.0.1:${PORTS[39]}"
+PLAY_B_TRANSPORT_PROXY_ADMIN="http://127.0.0.1:${PORTS[40]}"
+SESSION_A_TRANSPORT_PROXY_ADMIN="http://127.0.0.1:${PORTS[41]}"
+if [[ "$NEED_MESSAGE_FOLLOW_PROXY" == "1" ]]; then
+  PLAY_A_SPOT_ROUTER_BIND="tcp://127.0.0.2:${PORTS[5]}"
+  PLAY_B_SPOT_ROUTER_BIND="tcp://127.0.0.3:${PORTS[9]}"
+  SESSION_A_SPOT_ROUTER_BIND="tcp://127.0.0.4:${PORTS[12]}"
+fi
 WAIT_SOURCE_PORT_INDEX=38
 WAIT_ROLE_PID=""
 
@@ -521,6 +550,22 @@ start_server() {
   PIDS+=("$!")
 }
 
+start_transport_proxy() {
+  local name="$1"
+  local listen_port="$2"
+  local upstream_host="$3"
+  local upstream_port="$4"
+  local admin_port="$5"
+  setsid python3 "$SCRIPT_DIR/../SpotActorTransfer/Support/stream_marker_proxy.py" \
+    --listen-port "$listen_port" \
+    --upstream-host "$upstream_host" \
+    --upstream-port "$upstream_port" \
+    --admin-port "$admin_port" \
+    9>&- \
+    >>"$LOG_DIR/$name.stdout.log" 2>>"$LOG_DIR/$name.stderr.log" &
+  AUX_PIDS+=("$!")
+}
+
 assert_servers_alive() {
   local phase="$1"
   local index pid role
@@ -582,7 +627,7 @@ start_named_server() {
         --redis-key-prefix "$REDIS_KEY_PREFIX"
         --control-endpoint "$SESSION_A_CONTROL"
         --control-peer-a-endpoint "$PLAY_A_CONTROL"
-        --spot-router-endpoint "$SESSION_A_SPOT_ROUTER"
+        --spot-router-endpoint "$SESSION_A_SPOT_ROUTER_BIND"
         --spot-peer-a-endpoint "$PLAY_A_SPOT_ROUTER"
         --stream-endpoint "$SESSION_A_STREAM"
         --evidence-file "$LOG_DIR/session-a.evidence.log"
@@ -594,6 +639,9 @@ start_named_server() {
           --tls-cert-path "$TLS_CERT"
           --tls-key-path "$TLS_KEY"
         )
+      fi
+      if [[ "$NEED_MESSAGE_FOLLOW_PROXY" == "1" ]]; then
+        SESSION_A_ARGS+=(--spot-router-advertise-host 127.0.0.1)
       fi
       if [[ "$NEED_PLAY_B" == "1" && "$SCENARIO_SET" != "sm-g2" ]]; then
         SESSION_A_ARGS+=(
@@ -626,32 +674,50 @@ start_named_server() {
       start_server session-b "$SESSION_DLL" "${SESSION_B_ARGS[@]}"
       ;;
     play-a)
-      start_server play-a "$PLAY_DLL" \
+      PLAY_A_ARGS=(
         --rid play-a \
         --http-url "$PLAY_A_HTTP" \
         --redis-endpoint "$REDIS_ENDPOINT" \
         --redis-key-prefix "$REDIS_KEY_PREFIX" \
         --control-endpoint "$PLAY_A_CONTROL" \
-        --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
+        --spot-router-endpoint "$PLAY_A_SPOT_ROUTER_BIND" \
         --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
         --client-spot-pub-endpoint "$CLIENT_SPOT_PUB" \
         --external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
         --evidence-file "$LOG_DIR/play-a.evidence.log" \
         --log-dir "$LOG_DIR"
+      )
+      if [[ "$NEED_MESSAGE_FOLLOW_PROXY" == "1" ]]; then
+        PLAY_A_ARGS+=(
+          --spot-router-advertise-host 127.0.0.1
+          --message-follow-duration-milliseconds 7000
+          --owner-lease-ttl-milliseconds 30000
+        )
+      fi
+      start_server play-a "$PLAY_DLL" "${PLAY_A_ARGS[@]}"
       ;;
     play-b)
-      start_server play-b "$PLAY_DLL" \
+      PLAY_B_ARGS=(
         --rid play-b \
         --http-url "$PLAY_B_HTTP" \
         --redis-endpoint "$REDIS_ENDPOINT" \
         --redis-key-prefix "$REDIS_KEY_PREFIX" \
         --control-endpoint "$PLAY_B_CONTROL" \
-        --spot-router-endpoint "$PLAY_B_SPOT_ROUTER" \
+        --spot-router-endpoint "$PLAY_B_SPOT_ROUTER_BIND" \
         --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
         --client-spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
         --external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
         --evidence-file "$LOG_DIR/play-b.evidence.log" \
         --log-dir "$LOG_DIR"
+      )
+      if [[ "$NEED_MESSAGE_FOLLOW_PROXY" == "1" ]]; then
+        PLAY_B_ARGS+=(
+          --spot-router-advertise-host 127.0.0.1
+          --message-follow-duration-milliseconds 7000
+          --owner-lease-ttl-milliseconds 30000
+        )
+      fi
+      start_server play-b "$PLAY_DLL" "${PLAY_B_ARGS[@]}"
       ;;
     multi-node-a)
       MULTI_NODE_A_ARGS=(
@@ -707,7 +773,7 @@ wait_named_server() {
     session-a)
       wait_health session-a "$SESSION_A_HTTP"
       wait_port session-a-control "$SESSION_A_CONTROL"
-      wait_port session-a-spot-router "$SESSION_A_SPOT_ROUTER"
+      wait_port session-a-spot-router "$SESSION_A_SPOT_ROUTER_BIND"
       wait_port session-a-stream "$SESSION_A_STREAM"
       if [[ "$NEED_TLS_STREAM" == "1" ]]; then
         wait_port session-a-tls-stream "$SESSION_A_TLS_STREAM"
@@ -722,13 +788,13 @@ wait_named_server() {
     play-a)
       wait_health play-a "$PLAY_A_HTTP"
       wait_port play-a-control "$PLAY_A_CONTROL"
-      wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
+      wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_BIND"
       wait_port play-a-external-spot "$PLAY_A_EXTERNAL_SPOT"
       ;;
     play-b)
       wait_health play-b "$PLAY_B_HTTP"
       wait_port play-b-control "$PLAY_B_CONTROL"
-      wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER"
+      wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_BIND"
       wait_port play-b-external-spot "$PLAY_B_EXTERNAL_SPOT"
       ;;
     multi-node-a)
@@ -780,6 +846,19 @@ zlink_redis_start_scoped_assign \
   "$LOG_DIR"
 REDIS_KEY_PREFIX="spotservice-e2e:$$:"
 zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
+
+if [[ "$NEED_MESSAGE_FOLLOW_PROXY" == "1" ]]; then
+  start_transport_proxy play-a-transport-proxy "${PORTS[5]}" \
+    127.0.0.2 "${PORTS[5]}" "${PORTS[39]}"
+  start_transport_proxy play-b-transport-proxy "${PORTS[9]}" \
+    127.0.0.3 "${PORTS[9]}" "${PORTS[40]}"
+  start_transport_proxy session-a-transport-proxy "${PORTS[12]}" \
+    127.0.0.4 "${PORTS[12]}" "${PORTS[41]}"
+  WAIT_ROLE_PID=""
+  wait_health play-a-transport-proxy "$PLAY_A_TRANSPORT_PROXY_ADMIN"
+  wait_health play-b-transport-proxy "$PLAY_B_TRANSPORT_PROXY_ADMIN"
+  wait_health session-a-transport-proxy "$SESSION_A_TRANSPORT_PROXY_ADMIN"
+fi
 
 SERVER_ROLES=()
 if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
@@ -906,6 +985,9 @@ run_client() {
     --sm-c6-pause-ack-file "$LOG_DIR/sm-c6-paused" \
     --sm-c6-resume-ack-file "$LOG_DIR/sm-c6-resumed" \
     --sm-c6-blocking-pause-ack-file "$LOG_DIR/sm-c6-blocking-paused" \
+    --play-a-transport-proxy-admin "$PLAY_A_TRANSPORT_PROXY_ADMIN" \
+    --play-b-transport-proxy-admin "$PLAY_B_TRANSPORT_PROXY_ADMIN" \
+    --session-a-transport-proxy-admin "$SESSION_A_TRANSPORT_PROXY_ADMIN" \
     --operation-group "$operation_group"
   if [[ "$operation_group" == "sm-g1" ]]; then
     local first_line client_pid client_status next_line
@@ -1073,6 +1155,7 @@ elif [[ "$SCENARIO_SET" == "all" || "$SCENARIO_SET" == "default-batch" ]]; then
   run_client sm-d3
   run_client sm-d4
   run_client sm-d4a
+  run_client sm-d4b
   run_client sm-d5
   run_client sm-d5a
   run_client sm-d7

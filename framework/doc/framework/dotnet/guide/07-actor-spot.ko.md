@@ -18,22 +18,26 @@ membership은 유지된다. Session binding은 [다음 문서](08-actor-session.
 Object Server에 Entry Spot과 Actor factory를 함께 등록한다. `actorType`을 등록한 `Serving` node가
 생성 후보가 된다.
 
+아래는 [Bingo 샘플](../../common/sample/bingo/README.ko.md)의 Play 서버 등록이다.
+
 ```csharp
 mesh.Objects().Server()
-    .AddEntrySpot<PlayEntrySpot>()
+    .AddEntrySpot<BingoEntrySpot>()
     .AddActorFactory<PlayerActor, PlayerActorFactory>(
-        "player",
+        SampleNames.PlayerActorType,
         factory => factory
             .PreserveStateWith<PlayerActorRelocationAdapter>());
 ```
 
-Relocation policy는 다음 중 하나다.
+Relocation policy는 factory 등록에서 정확히 하나를 고정하며 실행 중에는 바꾸지 않는다.
+Actor가 다른 node의 Spot으로 join할 때와 host `Relocate`로 이전할 때 모두 이 policy를
+따른다.
 
 | policy | 다른 node에서 만드는 방법 |
-|---|---|
-| `DisableRelocation()` | cross-node 이동을 시작하기 전에 거절한다. |
-| `RecreateOnRelocation()` | 같은 logical identity로 새 instance를 만들고 application state는 복원하지 않는다. |
-| `PreserveStateWith<TAdapter>()` | adapter가 저장한 `byte[]`를 새 instance에 복원한다. |
+| --- | --- |
+| `DisableRelocation()` | Cross-node 이동을 시작하기 전에 거절한다. 이 대상이 남아 있으면 host relocation을 완료할 수 없다. |
+| `RecreateOnRelocation()` | 같은 logical identity로 새 instance를 만든다. 대기 중이던 message와 timer는 유지하지만 application state는 복원하지 않는다. |
+| `PreserveStateWith<TAdapter>()` | adapter가 저장한 `byte[]`를 새 instance에 복원한다. Framework queue와 timer도 함께 유지한다. |
 
 ## 2. Actor 만들기
 

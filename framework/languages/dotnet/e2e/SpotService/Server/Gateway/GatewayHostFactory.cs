@@ -291,6 +291,17 @@ internal static class GatewayHostFactory
                 return Results.Ok(new ActorRequestRes(false, "Timeout", null));
             }
         });
+        app.MapPost("/actor/join-spot", async (
+            JoinUserSpotActorReq request,
+            IZLinkActorClient actors,
+            CancellationToken cancellationToken) =>
+        {
+            var reply = await actors
+                .RequestToActor(request.ActorId, request)
+                .Timeout(TimeSpan.FromSeconds(15))
+                .Async<JoinUserSpotActorRes>(cancellationToken);
+            return Results.Ok(reply);
+        });
         app.MapPost("/actor/destroy-ref", async (
             ActorRefDestroyReq request,
             IZLinkActorManager actors,

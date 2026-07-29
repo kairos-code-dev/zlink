@@ -14,6 +14,9 @@ internal sealed record ClientOptions(
     string SmC6PauseAckFile,
     string SmC6ResumeAckFile,
     string SmC6BlockingPauseAckFile,
+    string PlayATransportProxyAdmin,
+    string PlayBTransportProxyAdmin,
+    string SessionATransportProxyAdmin,
     string OperationGroup)
 {
     public static ClientOptions Parse(string[] args)

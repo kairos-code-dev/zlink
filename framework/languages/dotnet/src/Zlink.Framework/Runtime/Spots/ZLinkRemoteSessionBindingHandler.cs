@@ -52,7 +52,7 @@ internal static class ZLinkRemoteSessionBindingHandler
         await ZLinkActorBoundSessionRelay.SendReplyAsync(
                 runtime,
                 actor.Context.ActorId,
-                frame.ReplyActor,
+                frame.Actor,
                 frame.SourceNodeRid,
                 frame.SourceSessionRid,
                 frame.RequestId,

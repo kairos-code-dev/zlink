@@ -121,6 +121,44 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 첫 relocation commit 전 failure는 source queue와 admission을 복원할 수 있다. 첫 commit 뒤에는 source로
 rollback하지 않고 target recovery를 계속하며 deadline을 넘기면 `ForceStopped`로 끝낸다.
 
+### 2.1 이전 단위는 execution mode가 정한다
+
+같은 host 안에서도 무엇을 하나의 단위로 묶어 옮기는지가 Spot 종류와 execution mode에
+따라 다르다. `SpotWide` User Spot은 Spot과 member Actor가 하나의 aggregate이므로 함께
+commit한다. Entry Spot과 `PerActor` User Spot은 Actor가 각각 독립된 단위이므로 Actor별로
+이전하며, 이때 Spot instance는 state를 옮기지 않는 shell이다.
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+flowchart LR
+  subgraph AGG["SpotWide User Spot — aggregate 하나로 이전"]
+    direction TB
+    subgraph AG1["User Spot &quot;room-42&quot;"]
+      G1(("actor P")):::unit
+      G2(("actor Q")):::unit
+    end
+  end
+  subgraph PER["Entry Spot · PerActor User Spot — Actor별로 이전"]
+    direction TB
+    subgraph PS1["Spot shell"]
+      U1(("actor R")):::unit
+      U2(("actor S")):::unit
+    end
+  end
+  AG1 ==>|"commit 1회<br/>Spot state + member Actor"| AGGT["target node"]
+  U1 ==>|"commit"| PERT["target node"]
+  U2 ==>|"commit"| PERT
+  classDef unit fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  style AGG fill:#eceff1,stroke:#546e7a,stroke-width:2px,color:#000000
+  style PER fill:#eceff1,stroke:#546e7a,stroke-width:2px,color:#000000
+  style AG1 fill:#ffffff,stroke:#1565c0,stroke-width:2px,color:#000000
+  style PS1 fill:#ffffff,stroke:#1565c0,stroke-width:2px,color:#000000
+```
+
+따라서 `PerActor` User Spot의 factory relocation 방식은 `RecreateOnRelocation()`만
+사용할 수 있다. Member Actor의 policy는 각 Actor factory가 따로 정한다. Instance Spot은
+Actor가 없으므로 Spot 하나가 그대로 이전 단위다.
+
 ## 3. Shutdown — relocation 없는 bounded cleanup
 
 Hosting stop은 `ShutdownAsync(...)`를 호출한다. `Shutdown`은 새 relocation을 시작하지 않고 진행 중인 work를

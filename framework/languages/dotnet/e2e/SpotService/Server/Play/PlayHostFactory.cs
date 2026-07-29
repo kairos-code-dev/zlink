@@ -66,8 +66,18 @@ internal static class PlayHostFactory
                 // within the scenario's patience.
                 var locations = framework.ConfigureLocations();
                 locations.OwnerLeaseRenewInterval = TimeSpan.FromSeconds(1);
-                locations.OwnerLeaseTtl = TimeSpan.FromSeconds(10);
+                locations.OwnerLeaseTtl =
+                    options.OwnerLeaseTtlMilliseconds is > 0
+                        ? TimeSpan.FromMilliseconds(
+                            options.OwnerLeaseTtlMilliseconds.Value)
+                        : TimeSpan.FromSeconds(10);
                 locations.PollingInterval = TimeSpan.FromMilliseconds(500);
+                if (options.MessageFollowDurationMilliseconds is > 0)
+                {
+                    locations.MessageFollowDuration = TimeSpan.FromMilliseconds(
+                        options.MessageFollowDurationMilliseconds.Value);
+                    locations.RouteCacheMaxAge = TimeSpan.FromSeconds(1);
+                }
             }
             framework.AddHandlersFromAssemblyOf(typeof(Program));
             framework.ConfigureDispatch().Diagnostics
@@ -91,6 +101,10 @@ internal static class PlayHostFactory
             var spot = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingIdPrefix(options.Rid);
+            if (!string.IsNullOrWhiteSpace(options.SpotRouterAdvertiseHost))
+            {
+                spot.SetAdvertiseHost(options.SpotRouterAdvertiseHost);
+            }
             spot.Objects().Server()
                 .AddEntrySpot<ScenarioEntrySpot>()
                 .AddActorFactory<ScenarioActor, ScenarioActorFactory>(

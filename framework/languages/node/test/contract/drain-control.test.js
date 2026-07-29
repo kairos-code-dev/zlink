@@ -185,6 +185,57 @@ test('RouteMesh snapshot projects typed population and activation capacity from 
   assert.equal(snapshot.applicationVersion, 9n);
 });
 
+test('RouteMesh observer reports typed placement capacity changes', async () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  let descriptor = {
+    objectRole: framework.ZLinkObjectRole.Server,
+    placementWeight: 100,
+    populationCapacity: {
+      actors: { active: 1, reserved: 0, limit: 100 },
+      spots: { active: 1, reserved: 0, limit: 20 },
+      spotTypes: []
+    },
+    activationConcurrency: { active: 1, limit: 64 },
+    applicationVersion: 1n,
+    objectCapabilities: []
+  };
+  const runtime = createRuntime(gate, {
+    meshNodeDescriptor: () => descriptor
+  });
+  const events = runtime.observe('game', 4)[Symbol.asyncIterator]();
+
+  descriptor = {
+    ...descriptor,
+    populationCapacity: {
+      actors: { active: 2, reserved: 1, limit: 100 },
+      spots: { active: 1, reserved: 0, limit: 20 },
+      spotTypes: [{
+        objectKind: 'user_spot',
+        stableType: 'room',
+        active: 1,
+        reserved: 0,
+        limit: 10
+      }]
+    },
+    activationConcurrency: { active: 2, limit: 64 }
+  };
+
+  const observed = await Promise.race([
+    events.next(),
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error('placement change event was not observed')),
+      1000
+    ))
+  ]);
+  await events.return();
+
+  assert.equal(observed.done, false);
+  assert.equal(observed.value.identifier, 'zlink.runtime.object.placement_changed');
+  assert.equal(observed.value.reason, 'updated');
+  assert.deepEqual(observed.value.populationCapacity, descriptor.populationCapacity);
+  assert.deepEqual(observed.value.activationConcurrency, descriptor.activationConcurrency);
+});
+
 test('RouteMesh snapshot keeps NotRequired distinct from NotConnected', () => {
   const gate = new framework.ZLinkRuntimeAdmissionGate();
   const node = {

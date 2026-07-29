@@ -387,6 +387,9 @@ export interface ZLinkSpotActorRequestHandlerRegistration {
 
 export interface ZLinkSpotRouterCapabilityOptions {
   readonly bind?: string;
+  readonly bindHost?: string;
+  readonly advertiseHost?: string;
+  readonly port?: number;
   readonly manualConnections?: readonly string[];
   readonly manualPeerConnections?: readonly ZLinkSpotRouterPeerConnectionOptions[];
   readonly routingId?: string;

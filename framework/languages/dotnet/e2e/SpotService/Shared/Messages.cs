@@ -1,3 +1,5 @@
+using Zlink.Framework.Contracts.Handlers;
+
 namespace SpotService.Shared;
 
 public static class SpotServiceNames
@@ -156,6 +158,9 @@ public sealed record JoinAdmittedUserSpotActorRes(
 
 public sealed record ActorPingReq(string Value);
 
+[ZLinkPacket("UserActorPingReq")]
+public sealed record UserActorPingReq(string Value);
+
 public sealed record SlowActorPingReq(string Value, int DelayMs);
 
 public sealed record ActorPingRes(string ActorId, string NodeRid, string SpotRid, string Value, int Seen);
@@ -223,6 +228,15 @@ public sealed record StaleBindingProbeRes(
     string ErrorKind,
     string RetryAdvice,
     bool DisconnectCompleted);
+
+public sealed record LocationStoreReadProbeReq(
+    string[] ActorIds,
+    bool Blocked);
+
+public sealed record LocationStoreReadProbeSnapshot(
+    long MatchingReads,
+    bool Blocked,
+    string[] ActorIds);
 
 public sealed record NotifyBoundActorDisconnectedReq(string ActorId);
 

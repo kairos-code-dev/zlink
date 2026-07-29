@@ -139,6 +139,7 @@ internal sealed record ServerOptions(
     string? RedisKeyPrefix = null,
     string? ControlEndpoint = null,
     string? SpotRouterEndpoint = null,
+    string? SpotRouterAdvertiseHost = null,
     string? SpotPubEndpoint = null,
     string? ExternalSpotEndpoint = null,
     string? ClientSpotPubEndpoint = null,
@@ -149,7 +150,9 @@ internal sealed record ServerOptions(
     string? MultiRouteAEndpoint = null,
     string? MultiRouteBEndpoint = null,
     string? MultiSpotRouterAEndpoint = null,
-    string? MultiSpotRouterBEndpoint = null)
+    string? MultiSpotRouterBEndpoint = null,
+    int? MessageFollowDurationMilliseconds = null,
+    int? OwnerLeaseTtlMilliseconds = null)
 {
     public static ServerOptions Parse(string[] args, string defaultRole)
         => E2eConfiguration.Load<ServerOptions>(args) with { Role = defaultRole };

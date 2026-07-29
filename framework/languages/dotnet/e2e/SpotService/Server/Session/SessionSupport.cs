@@ -113,6 +113,7 @@ internal sealed record ServerOptions(
     string? ControlPeerAEndpoint = null,
     string? ControlPeerBEndpoint = null,
     string? SpotRouterEndpoint = null,
+    string? SpotRouterAdvertiseHost = null,
     string? SpotPeerAEndpoint = null,
     string? SpotPeerBEndpoint = null,
     string? SpotPubEndpoint = null,

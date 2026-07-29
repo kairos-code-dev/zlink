@@ -2,7 +2,7 @@
 
 > 대상: framework 공통 spec 담당
 > 제기: `dotnet/guide/03-concepts.ko.md` 정비 중 발견
-> 기준 revision: working tree (2026-07-29)
+> 확인 revision: `edb0461448` (`fix framework handler activation ownership`)
 > 관련 spec: [06-framework-api §8.1](../framework/common/spec/06-framework-api.ko.md)
 > 상태: 완료
 
@@ -90,7 +90,19 @@ Spec은 Spot scope와 Actor scope를 분리한다. Actor가 Spot에 들어오거
 
 ## 5. 제안하는 방향
 
-### 5.1 Handler가 처리하는 객체의 activation에 수명을 맞춘다
+Handler 수명을 정하는 방식은 세 가지를 비교했다.
+
+| 대안 | 장점 | 문제 |
+| --- | --- | --- |
+| 모든 dispatch마다 새로 만든다 | 호출 사이에 mutable state를 공유하지 않는다 | Spot·Actor activation과 handler 수명이 달라지고 생성·정리 비용이 매번 발생한다 |
+| hosting Spot scope에서 공유한다 | 구현이 단순하다 | `PerActor`와 Entry Spot에서 여러 Actor가 handler와 scoped dependency를 공유한다 |
+| 처리 대상 activation이 소유한다 | Spot·Actor의 실행·relocation·정리 경계와 handler 수명이 일치한다 | Framework가 Spot과 Actor scope를 각각 관리해야 한다 |
+
+세 번째 대안을 선택한다. Handler가 처리하는 객체와 같은 owner를 사용하면
+execution mode에 따라 lifetime 의미가 바뀌지 않고, 서로 다른 Actor가 mutable
+dependency를 공유하지 않는다.
+
+### 5.2 Handler가 처리하는 객체의 activation에 수명을 맞춘다
 
 Execution mode나 handler별 option으로 lifetime을 선택하지 않는다. Handler가 직접
 처리하는 객체를 기준으로 세 규칙을 사용한다.
@@ -118,7 +130,7 @@ C++는 Actor handler를 별도 class가 아니라 Spot member function으로 표
 경우 새 handler object를 만들지 않고 Actor별 state와 실행 resource만 Actor activation이
 소유한다. Spot member에는 Actor별 mutable state를 저장하지 않는다.
 
-### 5.2 캐싱에 따라오는 제약을 함께 규정한다
+### 5.3 캐싱에 따라오는 제약을 함께 규정한다
 
 수명만 정하고 끝내면 captive dependency 문제가 남는다. 다음을 같은 절에 명시한다.
 
@@ -137,13 +149,13 @@ C++는 Actor handler를 별도 class가 아니라 Spot member function으로 표
 - Handler가 현재 dispatch 안에서 종료 operation을 시작해도 자기 dispatch가 끝나기를
   기다리는 순환 대기가 발생하지 않는다.
 
-### 5.3 `06-framework-api` §8.1의 적용 범위를 명확히 한다
+### 5.4 `06-framework-api` §8.1의 적용 범위를 명확히 한다
 
 "root singleton으로 여러 dispatch에서 공유하지 않는다"는 문장이 Channel handler·filter
-범위임을 밝히고, Spot·Actor handler는 5.1의 별도 규칙을 따른다고 연결한다. 지금은 이
+범위임을 밝히고, Spot·Actor handler는 5.2의 별도 규칙을 따른다고 연결한다. 지금은 이
 문장이 전체 handler에 적용되는 것처럼 읽힌다.
 
-### 5.4 Entry Spot actor packet 경로를 정렬한다
+### 5.5 Entry Spot actor packet 경로를 정렬한다
 
 Entry Spot 자체의 direct handler는 Entry Spot activation 수명을 사용한다. Entry Spot에
 속한 Actor handler는 Entry Spot과 공유하지 않고 Actor activation 수명을 사용한다.

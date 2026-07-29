@@ -55,6 +55,8 @@ interface ZLinkMeshDrainState {
 
 export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
   private readonly states = new Map<string, ZLinkMeshDrainState>();
+  private readonly placementFingerprints = new Map<string, string>();
+  private placementObserver?: ReturnType<typeof setInterval>;
   private hostOperation?: Promise<ZLinkMeshDrainResult>;
   private hostRetiringPrepared = false;
 
@@ -150,8 +152,13 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
   observe(meshName: string, capacity = 64, signal?: AbortSignal): AsyncIterable<ZLinkMeshRuntimeEvent> {
     const state = this.requireState(meshName);
     if (!Number.isInteger(capacity) || capacity <= 0) throw new RangeError('Observer capacity must be positive.');
-    const queue = new ZLinkMeshEventQueue(capacity, signal, () => state.observers.delete(queue));
+    if (state.observers.size === 0) this.seedPlacementFingerprint(meshName);
+    const queue = new ZLinkMeshEventQueue(capacity, signal, () => {
+      state.observers.delete(queue);
+      this.stopPlacementObserverIfIdle();
+    });
     state.observers.add(queue);
+    this.startPlacementObserver();
     return queue;
   }
 
@@ -345,6 +352,53 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     if (next === ZLinkTopologyState.Stopped || next === ZLinkTopologyState.Failed) {
       for (const observer of state.observers) observer.close();
       state.observers.clear();
+      this.stopPlacementObserverIfIdle();
+    }
+  }
+
+  private seedPlacementFingerprint(meshName: string): void {
+    const descriptor = this.options.meshNodeDescriptor?.(meshName);
+    if (descriptor !== undefined) {
+      this.placementFingerprints.set(meshName, placementFingerprint(descriptor));
+    }
+  }
+
+  private startPlacementObserver(): void {
+    if (this.placementObserver !== undefined) return;
+    this.placementObserver = setInterval(() => this.observePlacementChanges(), 100);
+    this.placementObserver.unref();
+  }
+
+  private stopPlacementObserverIfIdle(): void {
+    if ([...this.states.values()].some((state) => state.observers.size > 0)) return;
+    if (this.placementObserver !== undefined) clearInterval(this.placementObserver);
+    this.placementObserver = undefined;
+  }
+
+  private observePlacementChanges(): void {
+    for (const [meshName, state] of this.states) {
+      if (state.observers.size === 0) continue;
+      const descriptor = this.options.meshNodeDescriptor?.(meshName);
+      if (descriptor === undefined) continue;
+      const fingerprint = placementFingerprint(descriptor);
+      const previous = this.placementFingerprints.get(meshName);
+      this.placementFingerprints.set(meshName, fingerprint);
+      if (previous === undefined || previous === fingerprint) continue;
+
+      state.sequence += 1n;
+      const nodeStatus = this.options.meshNode(meshName)?.status();
+      const event: ZLinkMeshRuntimeEvent = {
+        identifier: 'zlink.runtime.object.placement_changed',
+        sequence: state.sequence,
+        timestamp: new Date(),
+        meshName,
+        sourceRid: String(nodeStatus?.routingId ?? '') as RoutingId,
+        descriptorRevision: nodeStatus?.descriptorRevision,
+        populationCapacity: descriptor.populationCapacity,
+        activationConcurrency: descriptor.activationConcurrency,
+        reason: 'updated'
+      };
+      for (const observer of state.observers) observer.push(event);
     }
   }
 
@@ -353,6 +407,27 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     if (state !== undefined) return state;
     throw routeNotFound(meshName);
   }
+}
+
+function placementFingerprint(descriptor: ZLinkMeshNodeDescriptor): string {
+  const spotTypes = [...descriptor.populationCapacity.spotTypes]
+    .sort((left, right) => {
+      const kind = left.objectKind.localeCompare(right.objectKind);
+      return kind !== 0 ? kind : left.stableType.localeCompare(right.stableType);
+    })
+    .map((entry) => [
+      entry.objectKind,
+      entry.stableType,
+      entry.active,
+      entry.reserved,
+      entry.limit
+    ]);
+  return JSON.stringify([
+    descriptor.populationCapacity.actors,
+    descriptor.populationCapacity.spots,
+    spotTypes,
+    descriptor.activationConcurrency
+  ]);
 }
 
 export class ZLinkRetiringRollbackError extends Error {

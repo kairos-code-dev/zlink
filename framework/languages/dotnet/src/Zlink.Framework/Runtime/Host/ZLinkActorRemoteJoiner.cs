@@ -758,12 +758,11 @@ internal sealed class ZLinkActorRemoteJoiner(
                 actorState,
                 CancellationToken.None)
             .ConfigureAwait(false);
-        if (!prepared.Envelope.CanonicalLogicalStream.IsEmpty)
-            await progress.PublishAdmissionReadyAuthorityAsync(
-                    prepared.Envelope,
-                    targetOwner,
-                    CancellationToken.None)
-                .ConfigureAwait(false);
+        await progress.PublishAdmissionReadyAuthorityAsync(
+                prepared.Envelope,
+                targetOwner,
+                CancellationToken.None)
+            .ConfigureAwait(false);
         actorState.Handoff.CommitMessageFollow(
             registration.Locations.Options.MessageFollowDuration);
         await ReconcileCommittedSourceHandoffAsync(

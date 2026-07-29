@@ -209,17 +209,134 @@ var placed = await client
 
 ## 1. channel 종류
 
-| 등록 메서드 | 논리 구성 | 용도 |
-|-------------|-----------|------|
-| `AddRouteMesh` + `ChannelName` | MeshNode + channel membership | request, send, RID direct route |
-| `AddFanoutChannel` | 독립 fanout channel | event fan-out |
+"channel"이라는 이름을 쓰는 등록은 셋이다. 모두 `ChannelName`을 사용하지만, 지원하는
+메시징 방식과 소켓을 공유하는지가 다르다.
+
+| 종류 | 등록 | 소켓 | 연결 패턴 |
+| --- | --- | --- | --- |
+| route mesh channel | `mesh.Channel(name).Server()`/`.Client()` | 이미 열려있는 MeshNode 소켓을 공유한다 | `ChannelName` select-one으로 request/send, Spot 간 publish(Logical Multicast) — RID를 직접 지정하는 Node direct는 별도([§9](#9-route-mesh--관리-대상-노드-직접-호출)) |
+| ClientServer channel | `AddClientServerChannel(name)` | MeshNode와 별개인 자기 소켓을 연다(`.Listen()`, 연결은 수동 `.Connect()` 또는 자동 discovery) | Client가 시작한 request/send만 — Server는 그 reply 말고는 먼저 보낼 수 없다 |
+| fanout channel | `AddFanoutChannel(name)` | 독자적인 PUB/SUB 소켓을 연다 | publisher → 다수 subscriber |
+
+앞의 둘은 특히 구분하기 쉽지 않다. **route mesh channel은 MeshNode 연결을 공유하는
+논리 이름**이고, **ClientServer channel은 다른 channel과 transport를 공유하지 않는
+독립 연결 단위**다.
+
+### 1.1 route mesh channel — 연결은 한 번, channel은 그 위의 이름
+
+MeshNode 소켓 하나로 mesh에 연결하고, channel 이름은 그 위에서 "이 요청을 누가
+받는가"를 가르는 논리 묶음이다.
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+flowchart LR
+  subgraph ORD["channel: orders"]
+    direction TB
+    A1["node A1"]:::server
+    A2["node A2"]:::server
+  end
+  B["node B<br/>orders Client<br/>billing Client<br/>MeshNode 소켓 1개"]:::client
+  subgraph BIL["channel: billing"]
+    direction TB
+    C1["node C1"]:::server
+    C2["node C2"]:::server
+  end
+  B <-->|"MeshNode 소켓"| A1
+  B <-->|"MeshNode 소켓"| A2
+  B <-->|"MeshNode 소켓"| C1
+  B <-->|"MeshNode 소켓"| C2
+  classDef server fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+  classDef client fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+```
+
+node B는 소켓 하나로 mesh에 연결되어 있고, 그 위에서 `orders`와 `billing`을 둘 다
+호출한다. `orders`를 호출하면 select-one이 그 상자 안의 A1·A2 중 하나를, `billing`을
+호출하면 C1·C2 중 하나를 선택한다. 상자는 소켓이 아니라 이름으로 묶인 그룹이므로,
+channel을 열 개 더 등록해도 B의 소켓은 하나다.
+
+### 1.2 ClientServer channel — channel별 독립 runtime
+
+ClientServer channel은 RouteMesh transport를 공유하지 않는다. Channel마다 독립
+runtime을 만들고, 그 runtime이 Ready Server별 연결을 관리한다.
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+flowchart LR
+  subgraph AUTH["channel: auth"]
+    direction TB
+    Y1["process Y"]:::server
+    Z1["process Z"]:::server
+  end
+  X["process X<br/>auth Client<br/>report Client<br/>channel별 runtime"]:::client
+  subgraph REP["channel: report"]
+    direction TB
+    Z2["process Z"]:::server
+    W2["process W"]:::server
+  end
+  X -->|"auth connection"| Y1
+  X -->|"auth connection"| Z1
+  X -->|"report connection"| Z2
+  X -->|"report connection"| W2
+  classDef server fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+  classDef client fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+```
+
+Server가 둘이면 channel runtime은 두 Server connection을 유지하고 select-one으로
+하나를 고른다. `auth`와 `report`는 연결 대상과 수명을 서로 공유하지 않는다. 같은
+process Z가 양쪽 channel에 모두 참여해도 각 channel runtime이 Z와의 연결을 따로
+관리한다.
+
+방향도 고정이라 Server는 Client가 시작한 요청에만 응답할 수 있다. Server가 먼저 알림을
+보내야 한다면 ClientServer가 아니라 RouteMesh를 사용한다. TicTacToe에서 로그인 인증
+(`tictactoe.api` ClientServer channel)을 Game Spot 생성(MeshNode의 Object role)과
+분리하는 이유다([02-getting-started §7](02-getting-started.ko.md)).
+
+### 1.3 pub/sub은 두 갈래다
+
+route mesh channel 위에서 Spot끼리 이벤트를 주고받는 것을 **Logical Multicast**라 한다.
+§1.1의 다이어그램처럼 이미 연결된 mesh 소켓을 그대로 사용하므로 별도 소켓이 없고,
+받는 쪽은 그 channel에서 같은 topic을 구독한 Spot으로 한정된다.
+
+```csharp
+// 발행 — TicTacToeGame spot 안에서.
+await Context.Outbound
+    .Publish(SampleTopics.PlayerMilestoneChannel,   // 전달 범위를 정하는 ChannelName.
+             SampleTopics.PlayerMilestone,          // 그 안에서 받을 Spot을 고르는 topic.
+             milestoneEvent)
+    .Async(cancellationToken);
+
+// 구독 — PlayEntrySpot이 시작할 때.
+Context.Handlers.AddSubscribe<PlayerWinMilestoneEventHandler>(
+    SampleTopics.PlayerMilestoneChannel,            // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
+    SampleTopics.PlayerMilestone);
+```
+
+Spot 밖에서 발행해야 하면 `IZLinkSpotPublisherClient`를 주입받아 같은 방식으로 보낸다.
+
+반대로 **fanout channel**(스펙에서는 **Classic fanout**)은 그 자체로 독립된 PUB/SUB
+소켓 쌍을 연다. Spot이나 MeshNode와 무관하게 발행자 하나가 연결된 구독자 전원에게
+전달한다.
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+graph LR
+    P["publisher"] --> S1["subscriber A"]
+    P --> S2["subscriber B"]
+    P --> S3["subscriber C"]
+```
+
+둘 다 **발행 완료가 전달을 보장하지는 않는다.** 발행 호출이 완료됐다는 것은 전송
+준비가 로컬에서 접수됐다는 의미이며, 구독자가 그 이벤트를 처리했다는 확인이 아니다.
+저장·재전송·ack도 제공하지 않는다.
+
+차이는 **대상 범위**다. Logical Multicast는 그 mesh 안에서 같은 channel·topic을 구독한
+Spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된 구독자 전체로 전달된다.
 
 이 챕터 §2~§7은 RouteMesh의 ChannelName request/send와 독립 fanout(pub/sub)을
 다룬다. 수평 확장은 같은 MeshName의 peer를 연결하거나 location store 자동 연결
 ([10-location](10-location.ko.md))을 사용해서 처리한다. RID direct route는 대상
 `RoutingId`를 함께 지정하므로 `IZLinkRouteClient`와 route 전용 handler를 쓴다.
-[§8](#8-channelname-수평-확장)·[§9](#9-route-mesh--주소-라우팅)에서 따로 다룬다.
-소켓 구조 그림은 [03-concepts §1](03-concepts.ko.md#1-channel--서버-간-연결).
+[§8](#8-channelname-수평-확장)·[§9](#9-route-mesh--관리-대상-노드-직접-호출)에서 따로 다룬다.
 
 ## 2. handler 작성
 

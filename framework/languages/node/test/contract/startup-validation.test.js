@@ -61,14 +61,29 @@ test('Node registration rejects incomplete MeshNode capabilities before startup'
     /must enable router or pubSub capability/
   );
 
+  const missingBind = nestjs.zlinkFramework();
+  missingBind.addRouteMesh('missing-bind').peerConnections();
   await assertNestStartupRejects(
-    nestjs.zlinkFramework()
-      .addRouteMesh('missing-bind')
-        .listen(undefined)
-      .build(),
+    missingBind.build(),
     /router must define a bind endpoint/
   );
 
+});
+
+test('RouteMesh listener uses separate bind and advertised hosts with Core-resolved port zero', () => {
+  const options = framework.createFrameworkOptions((builder) => {
+    builder.addRouteMesh('game')
+      .setBindHost('0.0.0.0')
+      .setAdvertiseHost('game.internal')
+      .listen();
+  });
+  const registration = framework.createFrameworkRegistration(options);
+  const router = registration.spotNodes.get('game').router;
+
+  assert.equal(router.bind, 'tcp://0.0.0.0:0');
+  assert.equal(router.bindHost, '0.0.0.0');
+  assert.equal(router.advertiseHost, 'game.internal');
+  assert.equal(router.port, 0);
 });
 
 test('Object Client RouteMesh rejects application Node-direct handlers', () => {

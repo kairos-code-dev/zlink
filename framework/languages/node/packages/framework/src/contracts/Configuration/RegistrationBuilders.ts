@@ -707,10 +707,36 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
     return this.channel(channelName).server();
   }
 
-  listen(endpoint: string): this {
-    requireRegistrationName(endpoint, 'RouteMesh listen endpoint');
+  listen(endpointOrPort: string | number = 0): this {
     this.node.router ??= {};
-    this.node.router.bind = endpoint;
+    if (typeof endpointOrPort === 'string') {
+      requireRegistrationName(endpointOrPort, 'RouteMesh listen endpoint');
+      this.node.router.bind = endpointOrPort;
+      this.node.router.port = undefined;
+      return this;
+    }
+    if (!Number.isInteger(endpointOrPort) || endpointOrPort < 0 || endpointOrPort > 65_535) {
+      throw new ZLinkConfigurationException(
+        `RouteMesh '${this.name}' port must be between 0 and 65535.`
+      );
+    }
+    this.node.router.port = endpointOrPort;
+    this.updateBind();
+    return this;
+  }
+
+  setBindHost(bindHost: string): this {
+    requireRegistrationName(bindHost, `RouteMesh '${this.name}' bind host`);
+    this.node.router ??= {};
+    this.node.router.bindHost = bindHost;
+    if (this.node.router.port !== undefined) this.updateBind();
+    return this;
+  }
+
+  setAdvertiseHost(advertiseHost: string): this {
+    requireRegistrationName(advertiseHost, `RouteMesh '${this.name}' advertise host`);
+    this.node.router ??= {};
+    this.node.router.advertiseHost = advertiseHost;
     return this;
   }
 
@@ -788,6 +814,15 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
     return this;
   }
 
+  private updateBind(): void {
+    const router = this.node.router;
+    if (router?.port === undefined) return;
+    const bindHost = router.bindHost ?? '127.0.0.1';
+    const host = bindHost.includes(':') && !bindHost.startsWith('[')
+      ? `[${bindHost}]`
+      : bindHost;
+    router.bind = `tcp://${host}:${router.port}`;
+  }
 }
 
 class DefaultMeshObjectRoleBuilder implements ZLinkMeshObjectRoleBuilder {
@@ -1409,6 +1444,9 @@ interface MutableMeshChannelOptions {
 
 interface MutableSpotRouterCapabilityOptions {
   bind?: string;
+  bindHost?: string;
+  advertiseHost?: string;
+  port?: number;
   manualConnections?: string[];
   manualPeerConnections?: ZLinkSpotRouterPeerConnectionOptions[];
   routingId?: string;

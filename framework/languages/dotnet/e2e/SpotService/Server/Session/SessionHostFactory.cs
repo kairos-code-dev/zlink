@@ -10,6 +10,7 @@ using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Errors;
 
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.E2E.Diagnostics;
@@ -51,12 +52,20 @@ internal static class SessionHostFactory
                     + $"|packet={flow.PacketName ?? "<null>"}");
             }));
 
+        LocationStoreReadProbe? locationStoreReadProbe = null;
         builder.Services.AddZLinkFramework(framework =>
         {
             if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
             {
-                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."); }));
+                locationStoreReadProbe = new LocationStoreReadProbe(
+                    new ZLinkRedisLocationStore(redis =>
+                    {
+                        redis.ConnectionString = options.RedisEndpoint;
+                        redis.KeyPrefix = options.RedisKeyPrefix
+                                          ?? throw new InvalidOperationException(
+                                              "Shared.RedisKeyPrefix is required.");
+                    }));
+                framework.AddLocationStore(locationStoreReadProbe);
                 framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => { redis.ConnectionString = options.RedisEndpoint; redis.KeyPrefix = $"{options.RedisKeyPrefix}:relocation"; }));
                 // Crash-recovery scenarios re-claim actors from a killed
                 // node; a short owner lease keeps that takeover window
@@ -83,6 +92,10 @@ internal static class SessionHostFactory
                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingIdPrefix(options.Rid)
                 .SetPlacementWeight(0);
+            if (!string.IsNullOrWhiteSpace(options.SpotRouterAdvertiseHost))
+            {
+                mesh22.SetAdvertiseHost(options.SpotRouterAdvertiseHost);
+            }
             mesh22.Objects().Server()
                 .AddEntrySpot<ScenarioEntrySpot>()
                 .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
@@ -112,6 +125,22 @@ internal static class SessionHostFactory
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
+        app.MapPost("/location-store/read-probe/configure", (
+            LocationStoreReadProbeReq request) =>
+        {
+            var probe = locationStoreReadProbe
+                        ?? throw new InvalidOperationException(
+                            "The Location Store read probe requires Redis.");
+            probe.Configure(request.ActorIds, request.Blocked);
+            return Results.Ok(probe.Snapshot());
+        });
+        app.MapGet("/location-store/read-probe", () =>
+        {
+            var probe = locationStoreReadProbe
+                        ?? throw new InvalidOperationException(
+                            "The Location Store read probe requires Redis.");
+            return Results.Ok(probe.Snapshot());
+        });
         app.MapGet("/channel/spot-peer-ready/{targetRid}", (
             string targetRid,
             IZLinkRouteMeshRuntime meshRuntime) =>
@@ -125,6 +154,46 @@ internal static class SessionHostFactory
                 : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
         });
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
+        app.MapPost("/actor/request", async (
+            ActorRequestReq request,
+            IZLinkActorClient actors,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                var reply = await actors
+                    .RequestToActor(
+                        request.ActorId,
+                        new UserActorPingReq(request.Value))
+                    // This E2E-only marker lets the transport proxy hold one
+                    // already-resolved request without holding control frames.
+                    .Metadata("x-zlink-e2e-transport-gate", request.Value)
+                    .Timeout(TimeSpan.FromMilliseconds(
+                        Math.Clamp(
+                            request.TimeoutMilliseconds,
+                            1,
+                            30000)))
+                    .Async<ActorPingRes>(cancellationToken);
+                return Results.Ok(new ActorRequestRes(
+                    true,
+                    string.Empty,
+                    reply));
+            }
+            catch (ZLinkFrameworkException error)
+            {
+                return Results.Ok(new ActorRequestRes(
+                    false,
+                    error.Kind.ToString(),
+                    null));
+            }
+            catch (TimeoutException)
+            {
+                return Results.Ok(new ActorRequestRes(
+                    false,
+                    "Timeout",
+                    null));
+            }
+        });
         app.MapPost("/evidence/wait", async (
             EvidenceWaitReq request,
             EvidenceStore evidence,

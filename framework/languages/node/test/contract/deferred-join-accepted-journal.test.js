@@ -174,6 +174,7 @@ test('cross-node Accepted root preserves identity, reply and cursor across mailb
   assert.equal(root.cursor, 'delivered');
   assert.equal(root.reference.value, references[2]);
   assert.equal(roots.has(references[1]), false);
+  assert.equal(roots.has(references[2]), false);
 
   await journal.deliver(
     root,
@@ -190,7 +191,9 @@ test('cross-node Accepted root preserves identity, reply and cursor across mailb
     `delete:${references[0]}`,
     `put:${references[2]}`,
     'authority-cas',
-    `delete:${references[1]}`
+    `delete:${references[1]}`,
+    'authority-cas',
+    `delete:${references[2]}`
   ]);
 });
 
@@ -284,17 +287,7 @@ test('a replacement runtime replays backlog before Accepted callback and does no
 
   const secondReplacement = restartJournal();
   const alreadyDelivered = await secondReplacement.recover(targetActorRef.actorId);
-  await secondReplacement.deliver(
-    alreadyDelivered,
-    {
-      actorId: targetActorRef.actorId,
-      async onJoinCompleted() {
-        callbacks++;
-      }
-    },
-    targetActorRef,
-    operation => operation()
-  );
+  assert.equal(alreadyDelivered, undefined);
   assert.equal(callbacks, 1);
 });
 
@@ -361,7 +354,7 @@ test('Delivered cursor CAS conflict is reconciled without invoking the callback 
   );
 
   assert.equal(delivered.cursor, 'delivered');
-  assert.equal((await journal.recover(targetActorRef.actorId)).cursor, 'delivered');
+  assert.equal(await journal.recover(targetActorRef.actorId), undefined);
   assert.equal(callbacks, 1);
 });
 

@@ -197,6 +197,7 @@ export class ZLinkDeferredJoinAcceptedJournal {
     return await submitMailbox(async () => {
       const current = await this.recover(actorRef.actorId, signal);
       if (current === undefined) {
+        if (root.cursor === 'delivered') return root;
         throw new Error(`Actor '${actorRef.actorId}' lost its deferred Join completion root.`);
       }
       requireSameOperation(current, root.operationId, actorRef);
@@ -216,12 +217,53 @@ export class ZLinkDeferredJoinAcceptedJournal {
       let delivered = current;
       for (let attempt = 0; attempt < 3; attempt++) {
         delivered = await this.markDelivered(delivered, signal);
-        if (delivered.cursor === 'delivered') return delivered;
+        if (delivered.cursor === 'delivered') {
+          await this.releaseDelivered(delivered, signal);
+          return delivered;
+        }
       }
       throw new Error(
         `Actor '${actorRef.actorId}' Join completion callback ran but its Delivered cursor could not be stored.`
       );
     });
+  }
+
+  private async releaseDelivered(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const key = encodeAuthorityKey('actor', root.actor.actorId);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const read = await this.authority.readAuthority(key, signal);
+      if (read.kind !== 'snapshot') return;
+      const current = await this.readPublished(read, signal);
+      if (current === undefined) return;
+      requireSameOperation(current, root.operationId, root.actor);
+      if (current.cursor !== 'delivered') {
+        throw new Error(
+          `Actor '${root.actor.actorId}' Join completion root is not Delivered.`
+        );
+      }
+      const publication = decodeAuthorityPublication(read.payload);
+      if (publication === undefined) return;
+      const result = await this.authority.compareExchangeAuthority(
+        key,
+        read.storeVersion,
+        {
+          kind: 'put',
+          generationTransition: 'preserve',
+          payload: publication.applicationPayload
+        },
+        signal
+      );
+      if (result.kind === 'stored') {
+        await this.deleteBestEffort(current.reference);
+        return;
+      }
+    }
+    throw new Error(
+      `Actor '${root.actor.actorId}' Delivered Join completion could not be released.`
+    );
   }
 
   private async moveCursor(

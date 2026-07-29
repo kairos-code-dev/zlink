@@ -147,6 +147,12 @@ Actor가 함께 변경하는 상태와 Spot-level schedule은 Redis나 database 
 저장소에 둔다. Factory relocation 방식은 `RecreateOnRelocation()`만 사용할 수 있다.
 **Entry Spot도 같은 모델**이므로 같은 제약을 받는다.
 
+직렬 실행은 스레드 하나를 계속 점유한다는 뜻이 아니다. Handler가 `await`에 도달하면
+실행 스레드는 다른 일을 처리할 수 있지만, 해당 turn은 handler가 완료될 때까지 유지된다.
+`SpotWide`에서는 그동안 같은 Spot의 다음 callback을 시작하지 않는다. 오래 걸리는 I/O를
+기다리는 동안 다음 turn을 실행해야 한다면
+[Timer와 worker](#6-timer와-worker)의 `Yield` 계약을 사용한다.
+
 Execution mode는 factory 등록에서 고정하며 실행 중에는 변경하지 않는다.
 
 ## 3. User Spot 만들기
@@ -193,6 +199,16 @@ if (current is { } exact)
 ```
 
 ## 4. Spot 작성
+
+Spot handler는 [05-channel-messaging](05-channel-messaging.ko.md)의 channel handler와
+작성 규칙이 다르다. 주소·수명·실행·상태 네 가지가 모두 갈린다.
+
+| 구분 | channel handler | spot handler |
+| --- | --- | --- |
+| 주소 | `ChannelName` — 처리할 수 있는 node 중 하나 | spot id — 그 상태를 가진 객체 하나 |
+| handler 수명 | message dispatch마다 새로 만든다 | Spot activation 동안 같은 instance를 재사용한다 |
+| 실행 | 서로 다른 dispatch는 동시에 실행될 수 있다 | 같은 실행 queue의 작업은 한 번에 하나씩 실행한다 |
+| application state | handler field에 보관하지 않는다 | Spot 또는 member Actor가 소유한다 |
 
 `Configure()`에서 handler를 등록하고 lifecycle callback에서 초기화와 정리를 수행한다.
 

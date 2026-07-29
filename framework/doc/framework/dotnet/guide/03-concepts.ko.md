@@ -11,7 +11,7 @@
 ZLink framework는 **다섯 가지 핵심 개념**을 제공한다:
 **channel · spot · actor · stream · location**. 나머지 챕터는 전부 이 다섯의 변주다.
 아래에서 차례로 보고, 중간에 actor·spot이 다른 node로 옮겨가는
-[relocation](#4-relocation--다른-node로-옮겨가기)을, 마지막에 이들을 받치는
+[relocation](#5-relocation--다른-node로-옮겨가기)을, 마지막에 이들을 받치는
 [실행·구성 모델](#7-보조--실행구성-모델)을 다룬다.
 
 ## 1. channel — 서버 간 연결
@@ -119,13 +119,6 @@ flowchart LR
 spot은 MeshNode의 **Object role**에 등록한다. 같은 MeshNode의 Channel role과는
 별개 표면이다.
 
-| | channel handler | spot handler |
-| --- | --- | --- |
-| 주소 | `ChannelName` — 처리할 수 있는 node 중 하나 | spot id — 그 상태를 가진 객체 하나 |
-| 수명 | 요청마다 새로 만들고 버린다 | 생성된 뒤 닫힐 때까지 유지된다 |
-| 실행 | 서로 다른 요청은 동시에 실행 | 같은 queue의 작업은 한 번에 하나씩 |
-| 상태 | handler에 두지 않는다 | spot이 직접 소유한다 |
-
 spot은 만들어지는 시점에 따라 **Entry Spot · User Spot · Instance Spot** 세 종류로
 나뉘고, 어떤 작업이 동시에 실행되는지는 **execution mode**가 정한다. 세 종류의 차이,
 execution mode 선택, 등록·lifecycle·timer·outbound는 [06-spot](06-spot.ko.md)이 다룬다.
@@ -134,7 +127,7 @@ execution mode 선택, 등록·lifecycle·timer·outbound는 [06-spot](06-spot.k
 
 actor는 **ID로 식별되는 상태 보유 객체**다. 같은 ID로 온 메시지는 늘 같은
 인스턴스가 처리한다. actor는 항상 어떤 spot에 속하며, 외부 client 연결과 묶는 방법은
-[stream](#5-stream--외부-client-연결)에서 이어진다.
+[다음 절](#4-stream--외부-client-연결)에서 이어진다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -148,13 +141,42 @@ graph LR
 
 상세는 [07-actor-spot](07-actor-spot.ko.md).
 
-## 4. relocation — 다른 node로 옮겨가기
+## 4. stream — 외부 client 연결
+
+stream은 모바일·게임 같은 **외부 client와의 연결 지향 양방향 채널**이다. 서버
+간 [channel](#1-channel--서버-간-연결)과 달리 서버가 연결 수명·heartbeat를 관리하고,
+연결 하나가 서버 측 **session** 객체에 대응한다. 연결이 끊긴 뒤 다시 연결하는 동작은
+client connector가 담당한다.
+
+session을 [actor](#3-actor--id로-식별되는-상태-객체)에 **bind**하면, 그 연결로 들어온
+메시지를 session이 직접 처리하지 않고 bind된 actor로 relay한다. 반대 방향도 같아서
+actor가 보내는 push는 그 actor에 bind된 session을 통해 client로 나간다.
+
+```mermaid
+%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
+flowchart LR
+  C["모바일·게임<br/>client"]:::client <-->|"연결<br/>(heartbeat 관리)"| SE["session<br/>연결 1개 = 객체 1개"]
+  SE -->|"packet relay"| A(("actor")):::actor
+  A -.->|"push"| SE
+  classDef actor fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+  classDef client fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+```
+
+그래서 **연결을 받는 node와 도메인 로직을 실행하는 node를 나눌 수 있다.** session은
+gateway node에 두고 actor는 다른 node에 두어도, relay 경로는 framework가 유지한다.
+actor가 [relocation](#5-relocation--다른-node로-옮겨가기)으로 옮겨가도 같은 session이
+새 위치로 이어진다.
+
+상세는 [09-stream](09-stream.ko.md), session과 actor를 bind하는 방법은
+[08-actor-session](08-actor-session.ko.md)이 다룬다.
+
+## 5. relocation — 다른 node로 옮겨가기
 
 actor나 spot이 지금 owner node를 떠나 다른 node에서 계속 실행되는 것을 relocation이라
 한다. 서로 다른 두 계기로 시작된다.
 
-actor는 spot 안에, spot은 node 안에 있다. relocation은 이 담김 관계를 유지한 채
-소속만 다른 node로 바뀌는 것이다.
+actor는 spot에 속하고, spot은 node에 속한다. relocation은 이 소속 관계를 그대로
+유지한 채 실행되는 node만 바뀌는 것이다.
 
 **actor가 다른 node의 spot에 join할 때.** actor가 어떤 User Spot에 join을 요청했는데
 그 spot이 다른 node에 있으면, join이 받아들여지는 순간 actor가 상태와 대기 중인 작업을
@@ -185,9 +207,11 @@ flowchart LR
   style RB fill:#ffffff,stroke:#1565c0,stroke-width:2px,color:#000000
 ```
 
-호출에 적는 것은 **spot id뿐**이다. `room-42`가 지금 node B에 있다는 사실은 코드에
-없고 framework가 찾는다. 이동이 끝나면 actor P는 node B의 `room-42` spot에 속한
-member가 되어 Q·R와 같은 실행 규칙을 따른다.
+join 호출이 지정하는 것은 **`room-42`라는 spot id뿐**이고, 대상 node를 지정하는 인자는
+없다. 그 spot을 지금 어느 node가 가지고 있는지는 framework가 location store에서 찾아
+actor P를 그 node로 옮긴다. 그래서 node A와 node B라는 이름은 application 코드 어디에도
+나타나지 않는다. 이동이 끝나면 actor P는 node B의 `room-42` spot에 소속되어 Q·R와 같은
+실행 규칙을 따른다.
 
 **무중단 점검·배포로 host를 옮길 때.** 운영자가 한 host의 spot과 actor를 다른 host로
 옮긴다. application이 개별 join을 요청하지 않아도 framework가 처리하며, 완료된 뒤
@@ -231,8 +255,8 @@ flowchart TB
   style SB2 fill:#ffffff,stroke:#1565c0,stroke-width:2px,color:#000000
 ```
 
-이것이 relocation의 핵심 쓸모다. 상태를 들고 있는 서버는 보통 그 상태 때문에 함부로
-내릴 수 없어서, 점검이나 배포를 하려면 접속을 끊고 기다리게 만들어야 한다. Host
+상태를 들고 있는 서버는 그 상태 때문에 함부로 내릴 수 없어서, 점검이나 배포를 하려면
+연결을 끊고 기다리게 만드는 것이 보통이다. Host
 Relocate는 spot과 actor의 state를 그대로 유지하면서 다른 node로 옮겨 node A를 비운다.
 호출하는 쪽은 여전히 `room-42`라는 같은 id로 요청하므로 이전 사실을 알 필요가 없다.
 결과적으로 **stateful 서비스를 stateless 서비스처럼 무중단으로 교체**할 수 있다.
@@ -244,35 +268,6 @@ Relocate는 spot과 actor의 state를 그대로 유지하면서 다른 node로 �
 policy 종류와 선택 기준은 [07-actor-spot §1](07-actor-spot.ko.md), actor join 호출과
 완료 결과 수신은 [07-actor-spot §5](07-actor-spot.ko.md), 무중단 점검·배포로서의
 Host Relocate와 이전 단위 구분은 [12-operations §2](12-operations.ko.md)가 다룬다.
-
-## 5. stream — 외부 client 연결
-
-stream은 모바일·게임 같은 **외부 client와의 연결 지향 양방향 채널**이다. 서버
-간 [channel](#1-channel--서버-간-연결)과 달리 서버가 연결 수명·heartbeat를 관리하고,
-연결 하나가 서버 측 **session** 객체에 대응한다. 연결이 끊긴 뒤 다시 연결하는 동작은
-client connector가 담당한다.
-
-session을 [actor](#3-actor--id로-식별되는-상태-객체)에 **bind**하면, 그 연결로 들어온
-메시지를 session이 직접 처리하지 않고 bind된 actor로 relay한다. 반대 방향도 같아서
-actor가 보내는 push는 그 actor에 bind된 session을 통해 client로 나간다.
-
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-flowchart LR
-  C["모바일·게임<br/>client"]:::client <-->|"연결<br/>(heartbeat 관리)"| SE["session<br/>연결 1개 = 객체 1개"]
-  SE -->|"packet relay"| A(("actor")):::actor
-  A -.->|"push"| SE
-  classDef actor fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
-  classDef client fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
-```
-
-그래서 **연결을 받는 node와 도메인 로직을 실행하는 node를 나눌 수 있다.** session은
-gateway node에 두고 actor는 다른 node에 두어도, relay 경로는 framework가 유지한다.
-actor가 [relocation](#4-relocation--다른-node로-옮겨가기)으로 옮겨가도 같은 session이
-새 위치로 이어진다.
-
-상세는 [09-stream](09-stream.ko.md), session과 actor를 bind하는 방법은
-[08-actor-session](08-actor-session.ko.md)이 다룬다.
 
 ## 6. location — 주소 해석
 

@@ -1,8 +1,6 @@
-import {
-  ZLinkLocationAutoConnectType,
-  ZLinkLocationRole,
-  type ZLinkChannelClient,
-  type ZLinkLocationRuntimeQuery
+import type {
+  ZLinkLocationRuntimeQuery,
+  ZLinkRouteClient
 } from '@zlink-systems/framework';
 import {
   MissingProfileMsg,
@@ -19,7 +17,7 @@ import type { HttpRoute } from '../Support/http-server';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
 
 export function createConsumerEndpoints(
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   locationQuery: ZLinkLocationRuntimeQuery,
   evidence: EvidenceStore,
   requestWithNewClient: (request: ProfileReq) => Promise<ProfileRes>,
@@ -31,16 +29,12 @@ export function createConsumerEndpoints(
       method: 'GET',
       path: '/location/peers',
       handle: async () => {
-        const rows = await locationQuery.listPeerLocations({
-          autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
-          meshName: 'profile',
-          role: ZLinkLocationRole.Router
-        });
-        return rows.map((row) => ({
+        const page = await locationQuery.listMeshNodeDescriptors('profile');
+        return page.items.map((row) => ({
           channelName: row.meshName,
-          serviceRole: row.role,
-          routingId: String(row.nodeRid),
-          rid: String(row.nodeRid),
+          serviceRole: 'router',
+          routingId: String(row.rid),
+          rid: String(row.rid),
           endpoint: row.endpoint
         }));
       }
@@ -82,7 +76,7 @@ export function createConsumerEndpoints(
   ];
 }
 
-async function batchRequest(channel: ZLinkChannelClient, requests: readonly ProfileReq[]): Promise<ProfileRes[]> {
+async function batchRequest(channel: ZLinkRouteClient, requests: readonly ProfileReq[]): Promise<ProfileRes[]> {
   const replies: ProfileRes[] = [];
   for (const request of requests) {
     replies.push(await requestProfile(channel, request, 5000));
@@ -91,7 +85,7 @@ async function batchRequest(channel: ZLinkChannelClient, requests: readonly Prof
 }
 
 export async function requestProfile(
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   request: ProfileReq,
   timeoutMs: number
 ): Promise<ProfileRes> {
@@ -102,7 +96,7 @@ export async function requestProfile(
 }
 
 async function requestProfileOnce(
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   request: ProfileReq,
   timeoutMs: number
 ): Promise<ProfileRes> {
@@ -113,7 +107,7 @@ async function requestProfileOnce(
 }
 
 async function requestProfileTimeout(
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   request: ProfileReq,
   timeoutMs: number
 ): Promise<TimeoutRes> {
@@ -128,14 +122,14 @@ async function requestProfileTimeout(
   }
 }
 
-async function requestPayload(channel: ZLinkChannelClient, request: PayloadReq): Promise<PayloadRes> {
+async function requestPayload(channel: ZLinkRouteClient, request: PayloadReq): Promise<PayloadRes> {
   return await channel
     .requestToChannel('profile', request)
     .timeout(10000)
     .submit<PayloadRes>();
 }
 
-function sendProfile(channel: ZLinkChannelClient, command: ProfileMsg): { readonly status: string } {
+function sendProfile(channel: ZLinkRouteClient, command: ProfileMsg): { readonly status: string } {
   channel
     .sendToChannel('profile', command)
     .submit();
@@ -143,7 +137,7 @@ function sendProfile(channel: ZLinkChannelClient, command: ProfileMsg): { readon
 }
 
 async function requestProfileFailure(
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   request: ProfileReq,
   timeoutMs: number
 ): Promise<RequestFailureRes> {
@@ -159,7 +153,7 @@ async function requestProfileFailure(
   }
 }
 
-async function requestMissingProfile(channel: ZLinkChannelClient, request: MissingProfileReq): Promise<RequestFailureRes> {
+async function requestMissingProfile(channel: ZLinkRouteClient, request: MissingProfileReq): Promise<RequestFailureRes> {
   try {
     await channel
       .requestToChannel('profile', request)
@@ -190,7 +184,7 @@ function toPayloadReq(value: unknown): PayloadReq {
   return new PayloadReq(request.marker, request.payload);
 }
 
-function submitProfileUnderPressure(channel: ZLinkChannelClient, command: ProfileMsg): string {
+function submitProfileUnderPressure(channel: ZLinkRouteClient, command: ProfileMsg): string {
   channel
     .sendToChannel('profile', command)
     .submit();

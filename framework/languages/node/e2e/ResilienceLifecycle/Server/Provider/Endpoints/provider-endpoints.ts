@@ -1,4 +1,8 @@
-import type { ZLinkChannelClient, ZLinkChannelRuntimeOptions, ZLinkFanoutClient } from '@zlink-systems/framework';
+import type {
+  ZLinkFanoutClient,
+  ZLinkRouteClient,
+  ZLinkRouteMeshRuntimeOptions
+} from '@zlink-systems/framework';
 import {
   LoadEvent,
   ProfileMsg,
@@ -15,9 +19,9 @@ import type { HttpRoute } from '../Support/http-server';
 export function createProviderEndpoints(
   evidence: EvidenceStore,
   fault: FaultState,
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   fanout: ZLinkFanoutClient,
-  runtimeOptions: ZLinkChannelRuntimeOptions,
+  runtimeOptions: ZLinkRouteMeshRuntimeOptions,
   stop: () => void
 ): HttpRoute[] {
   return [
@@ -97,7 +101,7 @@ export function createProviderEndpoints(
       method: 'POST',
       path: '/admin/drain',
       handle: () => {
-        runtimeOptions.clientServerChannel('profile').configureServerSocket().weight = 0;
+        runtimeOptions.channel('profile').weight = 0;
         evidence.add(`admin|rid=${evidence.rid}|action=drain|weight=0`);
         return { status: 'drained', weight: 0 };
       }
@@ -106,7 +110,7 @@ export function createProviderEndpoints(
       method: 'POST',
       path: '/admin/restore',
       handle: () => {
-        runtimeOptions.clientServerChannel('profile').configureServerSocket().weight = 100;
+        runtimeOptions.channel('profile').weight = 100;
         evidence.add(`admin|rid=${evidence.rid}|action=restore|weight=100`);
         return { status: 'restored', weight: 100 };
       }
@@ -115,7 +119,7 @@ export function createProviderEndpoints(
       method: 'GET',
       path: '/admin/weight',
       handle: () => ({
-        weight: runtimeOptions.clientServerChannel('profile').configureServerSocket().weight
+        weight: runtimeOptions.channel('profile').weight
       })
     },
     {
@@ -144,13 +148,13 @@ export function createProviderEndpoints(
 }
 
 async function waitForWeight(
-  runtimeOptions: ZLinkChannelRuntimeOptions,
+  runtimeOptions: ZLinkRouteMeshRuntimeOptions,
   request: WeightWaitReq
 ): Promise<{ readonly weight: number }> {
   const timeout = Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000));
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    const weight = runtimeOptions.clientServerChannel('profile').configureServerSocket().weight;
+    const weight = runtimeOptions.channel('profile').weight;
     if (weight === request.expected) {
       return { weight };
     }
@@ -160,7 +164,7 @@ async function waitForWeight(
 }
 
 async function requestProfile(
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   channelName: string,
   request: ProfileReq
 ): Promise<ProfileRes> {
@@ -171,7 +175,7 @@ async function requestProfile(
 }
 
 async function sendProfile(
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   channelName: string,
   command: ProfileMsg
 ): Promise<void> {

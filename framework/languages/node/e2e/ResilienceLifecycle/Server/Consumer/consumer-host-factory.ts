@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLINK_CHANNEL_CLIENT, ZLINK_LOCATION_RUNTIME_QUERY, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
-import type { ZLinkChannelClient, ZLinkLocationRuntimeQuery } from '@zlink-systems/framework';
+import { ZLINK_LOCATION_RUNTIME_QUERY, ZLINK_ROUTE_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import type { ZLinkLocationRuntimeQuery, ZLinkRouteClient } from '@zlink-systems/framework';
 import type { ProfileRes, ProfileReq } from '../../Shared/messages';
 import { PacketNames, ResilienceNames } from '../../Shared/messages';
 import { validateConsumerOptions } from './Configuration/consumer-options';
@@ -20,7 +20,7 @@ export async function startConsumerHost(): Promise<void> {
   const ConsumerModule = createConfiguredConsumerModule();
   const app = await NestFactory.createApplicationContext(ConsumerModule, { logger: false, abortOnError: false });
   const options = app.get(RESILIENCE_OPTIONS, { strict: false }) as ConsumerOptions;
-  const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
+  const channel = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
   const locationQuery = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
   const evidence = app.get(EvidenceStore, { strict: false });
   const server = await startHttpServer(
@@ -67,7 +67,7 @@ async function requestWithNewClient(options: ConsumerOptions, request: ProfileRe
   const ConsumerModule = createConsumerModule(options, traceLabel);
   const app = await NestFactory.createApplicationContext(ConsumerModule, { logger: false, abortOnError: false });
   try {
-    const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
+    const channel = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
     return await requestProfile(channel, request, 5000);
   } finally {
     // Each storm iteration owns a complete runtime. Do not start the next one
@@ -95,7 +95,10 @@ function buildFramework(options: ConsumerOptions, traceLabel = options.traceLabe
     .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
     .traceLogFile(`${options.logDir}/${traceLabel}-flow.log`)
     .traceLabel(traceLabel);
-  const profile = builder.addRouteMesh('profile');
+  const profile = builder.addRouteMesh('profile')
+    .listen('tcp://127.0.0.1:0')
+    .routingId(options.rid);
+  profile.channel('profile').client();
   if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
     builder.addLocationStore(createRedisLocationStore({ redisEndpoint: options.redisEndpoint, redisKeyPrefix: options.redisKeyPrefix }));
     Object.assign(builder.configureLocations(), resilienceLocationOptions());

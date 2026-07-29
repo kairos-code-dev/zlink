@@ -45,6 +45,35 @@ export async function waitForProviderTraffic(
   throw new Error(`${markerPrefix} traffic did not reach ${expectedProviderRid}.`);
 }
 
+export async function waitForAnyProviderTraffic(
+  consumerUrl: string,
+  markerPrefix: string
+): Promise<void> {
+  const deadline = Date.now() + 30000;
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    try {
+      const reply = await postJson<ProfileRes>(
+        consumerUrl,
+        '/profile/request',
+        profileReq(`${markerPrefix}-${attempt++}`)
+      );
+      if (reply.value === 'profile:fast') return;
+    } catch {
+      // Health readiness precedes RouteMesh discovery and channel admission.
+    }
+    await delay(250);
+  }
+  const descriptors = await getJson<PeerLocationResult[]>(
+    consumerUrl,
+    '/location/peers'
+  ).catch(() => []);
+  throw new Error(
+    `${markerPrefix} traffic did not reach a Ready provider;`
+    + ` descriptors=${JSON.stringify(descriptors)}`
+  );
+}
+
 export async function waitPeerPresent(peerLocationUrl: string, rid: string): Promise<void> {
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {

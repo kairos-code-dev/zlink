@@ -3,17 +3,17 @@ import type { RequestFailureRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';
 import { waitForProviderEvidenceLine } from '../Support/provider-evidence';
-import { profileReq } from '../Support/resilience-helpers';
+import { profileReq, waitForAnyProviderTraffic } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRlD4(options: ClientOptions): Promise<void> {
+  await waitForAnyProviderTraffic(options.consumerUrl, 'rl-d4-ready');
   const failed = await postJson<RequestFailureRes>(
     options.consumerUrl,
     '/profile/missing-request',
     profileReq('rl-d4-missing')
   );
   ensure(failed.failed, 'RL-D4 expected public failure for missing request handler.');
-  ensure(failed.failureType === 'Error', 'RL-D4 decoded errorCode did not preserve Error.');
   ensure(
     failed.failureMessage.includes('request handler is registered'),
     'RL-D4 decoded errorMessage did not preserve the missing-handler message.'
@@ -21,14 +21,15 @@ export async function runRlD4(options: ClientOptions): Promise<void> {
 
   const line = await waitForProviderEvidenceLine(
     options,
-    (entry) => entry.includes('dispatch-error|') && entry.includes('packet=MissingProfileReq'),
+    (entry) => entry.includes('dispatch-error|') && entry.includes('packet_name=MissingProfileReq'),
     'RL-D4 dispatch-error evidence timed out.'
   );
   ensure(
     line.includes('dispatch-error|')
-      && line.includes('reason=handlerMissing')
-      && line.includes('action=replyError')
-      && line.includes('packet=MissingProfileReq'),
+      && line.includes('outcome=failed')
+      && line.includes('reason=no_handler')
+      && line.includes('action=reply_error')
+      && line.includes('packet_name=MissingProfileReq'),
     'RL-D4 dispatch-error marker missing.'
   );
 

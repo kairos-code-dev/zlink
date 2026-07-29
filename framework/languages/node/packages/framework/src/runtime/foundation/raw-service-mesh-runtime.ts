@@ -136,6 +136,7 @@ export class RawServiceMeshRuntime {
       router.bind(this.descriptor.advertisedEndpoint);
       const next = {
         ...this.descriptor,
+        advertisedEndpoint: router.localEndpoint(),
         descriptorRevision: this.descriptor.descriptorRevision + 1n,
         state: 'serving' as const
       };

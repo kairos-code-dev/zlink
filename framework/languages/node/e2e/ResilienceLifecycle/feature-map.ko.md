@@ -25,8 +25,8 @@
 | RL-C4 | 구현 | Redis location store outage 중 기존 channel request가 계속 성공하는지 확인하고, store 복구 뒤 topology 재조회와 follow-up evidence를 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-D1 | 구현 | Redis location row로 연결한 subscriber 8개에 fanout event 120개를 발행하고, 각 subscriber가 같은 순서를 누락·중복 없이 수신하는지 검증했다. 로그: `logs/20260715-075646-2279409` |
 | RL-D2 | 전환 필요 | observer fault 격리에 더해 public `ZLinkRuntimeErrorSink`가 `zlink.runtime_error`/`observer_failed`/`message_flow_observer` event를 한 번 받는지 검증해야 한다. |
-| RL-D3 | 전환 필요 | provider dispatch-error evidence를 `outcome=failed`, `reason=no_handler`, `action=reply_error`, `packet_name`으로 재정렬해야 한다. |
-| RL-D4 | 전환 필요 | raw wire gate는 있지만 server observer evidence의 이전 handler-missing/reply-error 표현을 공통 `no_handler`/`reply_error`로 전환해야 한다. |
+| RL-D3 | 구현 | provider observer와 client assertion이 `outcome=failed`, `reason=no_handler`, `action=reply_error`, `packet_name`을 검증한다. Dynamic port의 실제 endpoint를 descriptor에 게시한 뒤 actual run이 통과했다. 로그: `log/20260729-162011-2856469` |
+| RL-D4 | 구현 | normal client는 error message 예외를 확인하고, server observer는 wire에 포함되지 않는 `no_handler`/`reply_error`를 확인한다. 정상 follow-up Response도 통과했다. 로그: `log/20260729-162134-2885402` |
 | RL-D5 | 구현 | 8개 client가 request/send를 120초 동안 지속하고, 25,748쌍 전부 성공·tail send evidence·short-lived client 정리 후 follow-up을 확인했다. 전반/후반 p95는 모두 25ms였다. 로그: `logs/20260715-082358-2399471` |
 
 검증:
@@ -36,8 +36,10 @@
   - RL-D1 실제 fanout 단독 PASS: `logs/20260715-075646-2279409`
   - RL-D4 error wire 단독 PASS: `logs/20260715-080129-2299877`
   - RL-D5 120초 soak 단독 PASS: `logs/20260715-082358-2399471`
+  - RL-D3 actual PASS: `log/20260729-162011-2856469`
+  - RL-D4 actual PASS: `log/20260729-162134-2885402`
   - 최신 전체 순서 재검증은 RL-A1에서 별도 topology probe가 `api-b` 제거를 확인한 직후 consumer의
     두 번째 request가 제거 중인 endpoint로 전달되어 실패했다: `logs/20260715-082315-2395393`.
     RL-D5에는 도달하지 않았으며, consumer 자체 peer 수렴을 확인하지 않는 RL-A1 검증 race는 별도로 추적한다.
-- 남은 scenario: RL-B4, RL-D2, RL-D3, RL-D4. RL-A1의 consumer peer 수렴 race도 재검증해야 한다.
+- 남은 scenario: RL-B4, RL-D2. RL-A1의 consumer peer 수렴 race도 재검증해야 한다.
 - 미착수 scenario: 없음

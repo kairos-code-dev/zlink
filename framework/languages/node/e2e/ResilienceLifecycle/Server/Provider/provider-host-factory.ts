@@ -3,13 +3,17 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import {
-  ZLINK_CHANNEL_CLIENT,
-  ZLINK_CHANNEL_RUNTIME_OPTIONS,
   ZLINK_FANOUT_CLIENT,
+  ZLINK_ROUTE_CLIENT,
+  ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
   ZLinkModule,
   zlinkFramework
 } from '@zlink-systems/nestjs';
-import type { ZLinkChannelClient, ZLinkChannelRuntimeOptions, ZLinkFanoutClient } from '@zlink-systems/framework';
+import type {
+  ZLinkFanoutClient,
+  ZLinkRouteClient,
+  ZLinkRouteMeshRuntimeOptions
+} from '@zlink-systems/framework';
 import { PacketNames, ResilienceNames } from '../../Shared/messages';
 import { validateServerOptions } from './Configuration/server-options';
 import type { ServerOptions } from './Configuration/server-options';
@@ -34,9 +38,12 @@ export async function startProviderHost(): Promise<void> {
   const options = app.get(RESILIENCE_OPTIONS, { strict: false }) as ServerOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
   const fault = app.get(FaultState, { strict: false });
-  const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
+  const channel = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
   const fanout = app.get(ZLINK_FANOUT_CLIENT, { strict: false }) as ZLinkFanoutClient;
-  const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
+  const runtimeOptions = app.get(
+    ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
+    { strict: false }
+  ) as ZLinkRouteMeshRuntimeOptions;
   const server = await startHttpServer(options.httpUrl, createProviderEndpoints(
     evidence,
     fault,
@@ -85,7 +92,7 @@ function createProviderModule(): Function {
               .listen(options.channelEndpoint)
               .routingId(options.rid);
             profile.peerConnections();
-            profile.channelName('profile')
+            profile.channel('profile').server()
               .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler)
               .addRequestHandler(PacketNames.payloadReq, PayloadRequestHandler)
               .addSendHandler(PacketNames.profileMsg, ProfileCommandHandler);

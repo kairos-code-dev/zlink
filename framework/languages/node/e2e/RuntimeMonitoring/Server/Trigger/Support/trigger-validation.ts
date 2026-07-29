@@ -8,7 +8,8 @@ export async function verifyDuplicateSocketSource(): Promise<string> {
     ZLinkModule.forRoot(zlinkFramework()
       .addRouteMesh('duplicate')
       .listen('tcp://127.0.0.1:1')
-      .channelName('duplicate')
+      .channel('duplicate')
+      .server()
       .addRequestHandler('ValidationReq', ValidationRequestHandler)
       .options({
       monitoring: {
@@ -54,7 +55,8 @@ export async function verifyMissingSocketSource(): Promise<string> {
     ZLinkModule.forRoot(zlinkFramework()
       .addRouteMesh('validation.profile')
       .listen('tcp://127.0.0.1:1')
-      .channelName('validation.profile')
+      .channel('validation.profile')
+      .server()
       .addRequestHandler('ValidationReq', ValidationRequestHandler)
       .options({
       monitoring: {

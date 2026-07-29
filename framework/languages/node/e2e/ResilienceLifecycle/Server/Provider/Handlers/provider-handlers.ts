@@ -2,12 +2,10 @@ import { Injectable } from '@nestjs/common';
 import type {
   ZLinkMessageFlowEvent,
   ZLinkMessageFlowObserver,
-  ZLinkRequestContext,
+  ZLinkMessageContext,
   ZLinkRequestHandler,
-  ZLinkSendContext,
   ZLinkSendHandler
 } from '@zlink-systems/framework';
-import { ZLinkMessageFlowOutcome } from '@zlink-systems/framework';
 import type {
   PayloadRes,
   PayloadReq,
@@ -26,7 +24,7 @@ export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileReq, Pr
     private readonly fault: FaultState
   ) {}
 
-  async handle(request: ProfileReq, context: ZLinkRequestContext): Promise<ProfileRes> {
+  async handle(request: ProfileReq, context: ZLinkMessageContext): Promise<ProfileRes> {
     const marker = request.marker ?? '<none>';
     this.evidence.add(`profile-start|rid=${this.evidence.rid}|value=${request.value}|marker=${marker}|packet=${context.packetName}`);
     if (this.fault.mode === 'gray' && request.value === 'fast') {
@@ -48,7 +46,7 @@ export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileReq, Pr
 export class ProfileCommandHandler implements ZLinkSendHandler<ProfileMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(command: ProfileMsg, context: ZLinkSendContext): Promise<void> {
+  async handle(command: ProfileMsg, context: ZLinkMessageContext): Promise<void> {
     if (command.commandId.startsWith('rl-c9-slow-')) {
       await delay(1000);
     }
@@ -62,7 +60,7 @@ export class ProfileCommandHandler implements ZLinkSendHandler<ProfileMsg> {
 export class PayloadRequestHandler implements ZLinkRequestHandler<PayloadReq, PayloadRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: PayloadReq, context: ZLinkRequestContext): Promise<PayloadRes> {
+  async handle(request: PayloadReq, context: ZLinkMessageContext): Promise<PayloadRes> {
     const hash = sha256Hex(request.payload);
     this.evidence.add(
       `payload-request|rid=${this.evidence.rid}|marker=${request.marker}`
@@ -80,16 +78,17 @@ export class EvidenceDispatchErrorObserver implements ZLinkMessageFlowObserver {
   ) {}
 
   onMessageFlow(flow: ZLinkMessageFlowEvent): void {
-    if (flow.outcome !== ZLinkMessageFlowOutcome.Error) {
+    if (flow.outcome !== 'failed') {
       return;
     }
     this.evidence.add(
       'dispatch-error'
+      + '|outcome=failed'
       + `|surface=${flow.surface}`
       + `|kind=${flow.messageKind}`
-      + `|reason=${flow.errorReason}`
-      + `|action=${flow.errorAction}`
-      + `|packet=${flow.packetName ?? '<null>'}`
+      + `|reason=${flow.reason}`
+      + `|action=${flow.action}`
+      + `|packet_name=${flow.packetName ?? '<null>'}`
       + `|channel=${flow.channelName ?? '<null>'}`
     );
     if (this.fault.mode === 'observer-throws') {

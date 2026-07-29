@@ -1062,6 +1062,12 @@ export class DefaultZLinkSpotManager {
               actorRef,
               reply?.data() ?? Buffer.alloc(0)
             );
+          this.options.runtimeEventPublisher?.publish({
+            sourceName: 'zlink.framework.actor-handoff',
+            timestamp: new Date(),
+            marker: 'deferred_completion_staged',
+            actorId
+          });
         }
       }
       if (
@@ -1105,6 +1111,11 @@ export class DefaultZLinkSpotManager {
         reply === undefined ? [] : [reply.data()]
       ));
     } catch (error) {
+      if (deferredJoinRoot !== undefined) {
+        await this.options.actorTransferRuntime?.discardDeferredJoinAccepted(
+          deferredJoinRoot
+        );
+      }
       if (materialized && actor !== undefined) {
         await this.options.actorTransferRuntime?.rollbackRoutedActor(actor);
       }

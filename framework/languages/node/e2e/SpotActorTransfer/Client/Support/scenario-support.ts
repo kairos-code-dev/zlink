@@ -43,16 +43,28 @@ export const nodeA = ZLinkHttpClient.create(options.nodeAUrl).timeout(40000).bui
 export const nodeB = ZLinkHttpClient.create(options.nodeBUrl).timeout(40000).build();
 export const nodeC = ZLinkHttpClient.create(options.nodeCUrl).timeout(40000).build();
 
-export async function runRemoteTransfer(scenario: string, actorId: string, actorType: string, stateVersion: number, stateful: boolean): Promise<void> {
+export async function runRemoteTransfer(
+  scenario: string,
+  actorId: string,
+  actorType: string,
+  stateVersion: number,
+  stateful: boolean,
+  stageAcceptedBacklog = false
+): Promise<void> {
   const sourceActor = await createActor(nodeA, actorId, actorType, stateVersion);
   const sourceNode = actorNode(sourceActor.nodeRid);
   const targetSpot = await createRemoteSpot(sourceActor.nodeRid);
   const targetNode = actorNode(targetSpot.nodeRid);
   await waitSpotRef(sourceNode, targetSpot.spotId, targetSpot.nodeRid);
-  require(
-    (await joinActor(sourceNode, actorId, { scenario, targetSpotId: targetSpot.spotId })).accepted,
-    `${scenario} join submission failed.`
-  );
+  const join = joinActor(sourceNode, actorId, { scenario, targetSpotId: targetSpot.spotId });
+  if (stageAcceptedBacklog) {
+    await waitEvidence(sourceNode, [
+      `${scenario}|${actorId}|before_commit_gate|${stateVersion}`
+    ]);
+    await sendHandoff(sourceNode, actorId, scenario, 'accepted-before-seal');
+    await post(sourceNode, `/transfer-gates/${actorId}/release`, {});
+  }
+  require((await join).accepted, `${scenario} join submission failed.`);
   await waitEvidence(targetNode, [
     `${scenario}|${actorId}|join_completion|accepted|`
   ]);
@@ -74,8 +86,13 @@ export async function runRemoteTransfer(scenario: string, actorId: string, actor
   ]);
   const target = await waitEvidence(targetNode, [
     `${scenario}|${actorId}|admission|spot=${targetSpot.spotId}`,
+    `${scenario}|${actorId}|deferred_completion_staged|`,
     `transfer|${actorId}|transfer_in|${stateVersion}`,
     `transfer|${actorId}|joined|${targetSpot.spotId}:${stateVersion}`,
+    ...(stageAcceptedBacklog ? [
+      `${scenario}|${actorId}|backlog_enqueued|0`,
+      `${scenario}|${actorId}|packet_handler|accepted-before-seal`
+    ] : []),
     `${scenario}|${actorId}|commit_ack|${targetSpot.spotId}`
   ]);
   require(source.length > 0 && target.length > 0, `${scenario} transfer evidence missing.`);
@@ -86,16 +103,20 @@ export async function runRemoteTransfer(scenario: string, actorId: string, actor
   ]);
   assertOrder(target, actorId, [
     'admission',
+    'deferred_completion_staged',
     'transfer_in',
     'joined',
+    ...(stageAcceptedBacklog ? ['backlog_enqueued', 'packet_handler'] : []),
     'commit_ack',
     'join_completion'
   ]);
   assertOrder(mergeEvidence(source, target), actorId, [
     'transfer_out',
     'admission',
+    'deferred_completion_staged',
     'transfer_in',
     'joined',
+    ...(stageAcceptedBacklog ? ['backlog_enqueued', 'packet_handler'] : []),
     'commit_ack',
     'join_completion'
   ]);

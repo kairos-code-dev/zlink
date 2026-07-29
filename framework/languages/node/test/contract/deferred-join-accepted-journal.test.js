@@ -11,11 +11,12 @@ const {
   encodeActorAuthorityIdentity
 } = require('../../packages/framework/dist/runtime/actors/actor-authority-publication');
 
-function harness() {
+function harness(options = {}) {
   const roots = new Map();
   const events = [];
   const references = [];
   let authorityVersion = 1;
+  let compareExchangeCalls = 0;
   let authority = {
     kind: 'snapshot',
     storeVersion: { value: String(authorityVersion) },
@@ -53,6 +54,10 @@ function harness() {
     },
     async compareExchangeAuthority(_key, expected, mutation) {
       events.push('authority-cas');
+      compareExchangeCalls++;
+      if (options.conflictOnCompareExchangeCalls?.includes(compareExchangeCalls)) {
+        return { kind: 'conflict', current: authority };
+      }
       if (expected.value !== authority.storeVersion.value) {
         return { kind: 'conflict', current: authority };
       }
@@ -98,7 +103,8 @@ function harness() {
     events,
     references,
     roots,
-    journal: new ZLinkDeferredJoinAcceptedJournal(authorityStore, relocationStore)
+    journal: new ZLinkDeferredJoinAcceptedJournal(authorityStore, relocationStore),
+    restartJournal: () => new ZLinkDeferredJoinAcceptedJournal(authorityStore, relocationStore)
   };
 }
 
@@ -222,6 +228,141 @@ test('generation fence rejects a replacement Actor before mailbox admission', as
     /generation fence/
   );
   assert.equal(admitted, false);
+});
+
+test('a replacement runtime replays backlog before Accepted callback and does not redeliver after Delivered', async () => {
+  const { journal, restartJournal } = harness();
+  const sourceActorRef = {
+    nodeRid: 'node-a',
+    actorId: 'actor-a',
+    objectGeneration: 17n,
+    meshName: 'game'
+  };
+  const targetActorRef = {
+    ...sourceActorRef,
+    nodeRid: 'node-b'
+  };
+  const operationId = { high: 91n, low: 37n };
+  const committed = await journal.markCommitted(await journal.prepare(
+    sourceActorRef.actorId,
+    operationId,
+    sourceActorRef,
+    Buffer.from('"accepted"')
+  ), targetActorRef);
+
+  // Recreate every process-local coordinator while retaining only the two
+  // provider-backed stores.
+  const recoveredRuntime = restartJournal();
+  const recovered = await recoveredRuntime.recover(targetActorRef.actorId);
+  assert.equal(recovered.cursor, 'committed');
+  assert.deepEqual(recovered.operationId, operationId);
+  assert.equal(recovered.actor.objectGeneration, 17n);
+
+  const mailbox = new ZLinkActorDispatchMailbox();
+  const events = [];
+  let callbacks = 0;
+  const backlog = mailbox.submit(async () => {
+    events.push('backlog');
+  });
+  const delivered = await recoveredRuntime.deliver(
+    recovered,
+    {
+      actorId: targetActorRef.actorId,
+      async onJoinCompleted(completion) {
+        callbacks++;
+        events.push(`callback:${completion.operationId.high}:${completion.actor.objectGeneration}`);
+      }
+    },
+    targetActorRef,
+    operation => mailbox.submit(operation)
+  );
+  await backlog;
+
+  assert.equal(delivered.cursor, 'delivered');
+  assert.deepEqual(events, ['backlog', 'callback:91:17']);
+  assert.equal(callbacks, 1);
+
+  const secondReplacement = restartJournal();
+  const alreadyDelivered = await secondReplacement.recover(targetActorRef.actorId);
+  await secondReplacement.deliver(
+    alreadyDelivered,
+    {
+      actorId: targetActorRef.actorId,
+      async onJoinCompleted() {
+        callbacks++;
+      }
+    },
+    targetActorRef,
+    operation => operation()
+  );
+  assert.equal(callbacks, 1);
+});
+
+test('discarding a failed prepared operation restores the Actor authority for the next Join', async () => {
+  const { journal, roots } = harness();
+  const actorRef = {
+    nodeRid: 'node-a',
+    actorId: 'actor-a',
+    objectGeneration: 17n,
+    meshName: 'game'
+  };
+  const failed = await journal.prepare(
+    actorRef.actorId,
+    { high: 10n, low: 20n },
+    actorRef,
+    Buffer.from('"failed"')
+  );
+  assert.equal(roots.size, 1);
+
+  await journal.discardPrepared(failed);
+  assert.equal(roots.size, 0);
+  assert.equal(await journal.recover(actorRef.actorId), undefined);
+
+  const replacement = await journal.prepare(
+    actorRef.actorId,
+    { high: 30n, low: 40n },
+    actorRef,
+    Buffer.from('"replacement"')
+  );
+  assert.deepEqual(replacement.operationId, { high: 30n, low: 40n });
+  assert.equal(replacement.cursor, 'prepared');
+});
+
+test('Delivered cursor CAS conflict is reconciled without invoking the callback twice', async () => {
+  const { journal } = harness({ conflictOnCompareExchangeCalls: [3] });
+  const sourceActorRef = {
+    nodeRid: 'node-a',
+    actorId: 'actor-a',
+    objectGeneration: 17n,
+    meshName: 'game'
+  };
+  const targetActorRef = {
+    ...sourceActorRef,
+    nodeRid: 'node-b'
+  };
+  const committed = await journal.markCommitted(await journal.prepare(
+    sourceActorRef.actorId,
+    { high: 50n, low: 60n },
+    sourceActorRef,
+    Buffer.alloc(0)
+  ), targetActorRef);
+  let callbacks = 0;
+
+  const delivered = await journal.deliver(
+    committed,
+    {
+      actorId: targetActorRef.actorId,
+      async onJoinCompleted() {
+        callbacks++;
+      }
+    },
+    targetActorRef,
+    operation => operation()
+  );
+
+  assert.equal(delivered.cursor, 'delivered');
+  assert.equal((await journal.recover(targetActorRef.actorId)).cursor, 'delivered');
+  assert.equal(callbacks, 1);
 });
 
 test('a delivered Join completion can be replaced by the next Join for the same Actor generation', async () => {

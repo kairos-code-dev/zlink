@@ -48,6 +48,10 @@ export interface ZLinkSpotActorTransferRuntime {
     actorId: string,
     signal?: AbortSignal
   ): Promise<ZLinkDeferredJoinAcceptedRoot | undefined>;
+  discardDeferredJoinAccepted(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    signal?: AbortSignal
+  ): Promise<void>;
   commitAndDeliverDeferredJoinAccepted(
     root: ZLinkDeferredJoinAcceptedRoot,
     actor: ZLinkActor,

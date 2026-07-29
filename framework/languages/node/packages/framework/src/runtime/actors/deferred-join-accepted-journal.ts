@@ -154,6 +154,38 @@ export class ZLinkDeferredJoinAcceptedJournal {
     return this.moveCursor(root, 'delivered', undefined, signal);
   }
 
+  async discardPrepared(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const key = encodeAuthorityKey('actor', root.actor.actorId);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const read = await this.authority.readAuthority(key, signal);
+      if (read.kind !== 'snapshot') return;
+      const current = await this.readPublished(read, signal);
+      if (current === undefined) return;
+      requireSameOperation(current, root.operationId, root.actor);
+      if (current.cursor !== 'prepared') return;
+      const publication = decodeAuthorityPublication(read.payload);
+      if (publication === undefined) return;
+      const result = await this.authority.compareExchangeAuthority(
+        key,
+        read.storeVersion,
+        {
+          kind: 'put',
+          generationTransition: 'preserve',
+          payload: publication.applicationPayload
+        },
+        signal
+      );
+      if (result.kind === 'stored') {
+        await this.deleteBestEffort(current.reference);
+        return;
+      }
+    }
+    throw new Error(`Actor '${root.actor.actorId}' deferred Join preparation could not be discarded.`);
+  }
+
   async deliver(
     root: ZLinkDeferredJoinAcceptedRoot,
     actor: ZLinkActor,
@@ -181,7 +213,14 @@ export class ZLinkDeferredJoinAcceptedJournal {
           : ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(current.rawReply))
       };
       await actor.onJoinCompleted?.(completion);
-      return await this.markDelivered(current, signal);
+      let delivered = current;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        delivered = await this.markDelivered(delivered, signal);
+        if (delivered.cursor === 'delivered') return delivered;
+      }
+      throw new Error(
+        `Actor '${actorRef.actorId}' Join completion callback ran but its Delivered cursor could not be stored.`
+      );
     });
   }
 

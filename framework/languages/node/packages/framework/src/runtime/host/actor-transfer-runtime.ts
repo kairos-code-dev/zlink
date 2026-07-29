@@ -141,6 +141,13 @@ export class ZLinkActorTransferRuntime {
       .recover(actorId, signal);
   }
 
+  async discardDeferredJoinAccepted(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    signal?: AbortSignal
+  ): Promise<void> {
+    await this.requireDeferredJoinJournal().discardPrepared(root, signal);
+  }
+
   async commitAndDeliverDeferredJoinAccepted(
     root: ZLinkDeferredJoinAcceptedRoot,
     actor: ZLinkActor,

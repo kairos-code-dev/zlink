@@ -9,7 +9,7 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 | `ST-A1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: local admission accept와 callback 순서. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-A2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: local admission reject의 무효과. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-A3` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: joined callback 완료 전 packet dispatch 차단. Track A~E 로그: `log/20260710-152609-2661347`. |
-| `ST-B1` | 부분 구현 | Public object placement로 source와 다른 target Spot을 선택하고 native deferred Join을 실행한다. Target admission·state restore·`Joined`·durable commit ACK·`onJoinCompleted(Accepted)`와 새 owner의 packet request를 확인한다. Join 완료 뒤 public `ActorManager.find`로 target authority와 보존된 object generation도 확인한다. 최신 증거: `log/20260729-165435-3693511`. 공통 시나리오가 요구하는 accepted journal staging·replay와 모든 recovery 단계의 exact order evidence는 아직 없다. |
+| `ST-B1` | 부분 구현 | Public object placement로 source와 다른 target Spot을 선택하고 native deferred Join을 실행한다. Seal 중 수락한 packet을 source handoff backlog에 넣고 target mailbox에서 callback 전에 replay한다. Target admission, durable deferred-completion root staging, state restore, `Joined`, backlog handler, commit ACK, `onJoinCompleted(Accepted)`와 새 owner request 순서를 확인한다. Join 완료 뒤 public `ActorManager.find`로 target authority와 보존된 object generation도 확인한다. 최신 증거: `log/20260729-171629-4066922`. 일반 backlog와 application state를 포함하는 restart recovery manifest 및 실제 target process restart 증거는 아직 없다. |
 | `ST-B2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: commit 뒤 source cleanup. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-B3` | 전환 필요 | 현재 runner는 transfer adapter가 없는 actor의 기본 빈 state transfer 성공과 target 기본 state를 확인한다. 그러나 `joined -> location_committed`를 성공 순서로 단언해, 공통 시나리오의 `location_committed -> joined` 순서와 다르다. 이 순서를 정렬하기 전에는 기존 Track A~E 로그를 완료 증거로 사용하지 않는다. |
 | `ST-B4` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: custom empty state transfer. Track A~E 로그: `log/20260710-152609-2661347`. |
@@ -57,7 +57,9 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 - request-correlation 시나리오는 request sequence와 flags를 보존하고, caller timeout 뒤 late reply가
   다음 request를 방해하지 않는지 확인한다.
 - Focused contract test는 cross-node Accepted root의 operation ID·raw reply·target ActorRef·generation과
-  `Prepared→Committed→Delivered` cursor, callback retry·dedupe, backlog 선행 순서를 검증한다. Redis provide
+  `Prepared→Committed→Delivered` cursor, callback retry·dedupe, backlog 선행 순서를 검증한다. 새 journal
+  instance는 provider-backed committed root를 복구하고 Delivered 뒤 callback을 다시 실행하지 않는다.
+  Prepared 뒤 materialization 실패 cleanup과 callback 뒤 Delivered CAS conflict도 검증한다. Redis provide
   test는 immutable bytes, CRC32C와 provider clock 기준 expiry·renew·delete를 검증한다.
 - `run_e2e.sh all`은 일반 네 process 묶음과 세 Actor node가 필요한 `ST-F5`를 별도 fresh process로
   실행한다. 두 시나리오는 application metadata나 DTO에 operation ID·ActorRef·owner RID를 노출하지
@@ -65,7 +67,9 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 - ActorNode는 actor-local handler registry 대신 Nest의 Spot·Entry Spot handler registration을
   사용하고, 제거된 Location row event monitoring을 더 이상 참조하지 않는다. ST-B1은 Join 완료 뒤
   public `ActorManager.find` 결과로 target authority와 보존된 object generation을 확인한다. Exact
-  authority commit 시점과 accepted journal 순서는 별도 internal conformance evidence를 연결해야 한다.
+  authority commit 시점은 별도 internal conformance evidence를 연결해야 한다. 실제 process restart는
+  아직 완료 증거가 아니다. Target Actor state, transfer state와 handoff backlog가 process memory와 Join
+  wire에만 있고 startup Actor recovery coordinator가 없기 때문이다.
 - Redis Store는 첫 병렬 사용을 하나의 connection attempt로 직렬화하고 `isReady` 뒤 command를
   제출한다. Location·Relocation Store는 같은 Redis deployment에서 `:location`과 `:relocation`
   prefix를 사용한다. Authority·object generation·node capacity·creation terminal은 각각 독립 key로

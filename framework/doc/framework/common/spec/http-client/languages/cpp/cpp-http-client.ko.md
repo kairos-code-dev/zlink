@@ -8,7 +8,7 @@
 
 # Spec -- ZLink HTTP Client For C++
 
-> 사용법 중심 문서는 [사용자 가이드](../../../../../../http-client/cpp/README.ko.md)를 본다.
+> 사용법 중심 문서는 [사용자 가이드](../../../../../cpp/http-client/README.ko.md)를 본다.
 > **언어 중립 공통 계약은 [공통 spec](../../README.ko.md)이 정본**이며,
 > 이 문서는 공통 계약에 대한 C++ 고유 편차(coroutine 실행 계약, `delete_`,
 > `result_t` 봉투, OpenSSL 선택 빌드, 자체 connection pool)와 구현 상세를 기술한다.

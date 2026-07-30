@@ -21,7 +21,7 @@
 
 **웹(브라우저·WASM)으로 빌드하는 순간 언어와 무관하게 TypeScript connector를 사용한다.**
 브라우저 샌드박스에서 OS 소켓을 열 수 있는 언어가 없기 때문이다. 웹 빌드는
-[Node/TypeScript connector 가이드](../../../stream-connector/typescript/guide/INDEX.ko.md)를 본다.
+[Node/TypeScript connector 가이드](../../node/stream-connector/guide/INDEX.ko.md)를 본다.
 
 ## 배포 단위
 

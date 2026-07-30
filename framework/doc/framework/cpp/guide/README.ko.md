@@ -263,6 +263,6 @@ flowchart LR
 ## 관련 문서
 
 - HTTP **client**(요청을 보내는 쪽)는 별도 산출물이다 —
-  [zlink::http_client 사용자 가이드](../../../http-client/cpp/README.ko.md)
+  [zlink::http_client 사용자 가이드](../http-client/README.ko.md)
 - 설계 계약(초안)은 [doc/spec/](../README.ko.md)에 있다.
   가이드와 어긋나면 코드와 spec이 정답이다.

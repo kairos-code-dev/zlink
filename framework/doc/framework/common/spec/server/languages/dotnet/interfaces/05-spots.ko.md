@@ -389,7 +389,7 @@ membership commit, target의 `OnJoinedActorAsync(...)` 순서를 유지한다. E
 `SpotWide` User Spot aggregate move와 `PerActor` User Spot의 Actor relocation도
 application membership callback을 호출하지 않는다.
 
-`PerActor` User Spot은 `Recreate` Spot policy만 허용하고 Spot relocation adapter를
+`PerActor` User Spot은 `RecreateOnRelocation` Spot policy만 허용하고 Spot relocation adapter를
 등록하지 않는다. Spot field와 Spot-level application timer는 relocation 대상이
 아니다. Target Spot authority를 먼저 전환한 뒤 Actor를 독립적으로 이전하며
 `ToSpot`·Create·Join은 Spot authority, `ToActor`는 Actor별 current owner를 사용한다.

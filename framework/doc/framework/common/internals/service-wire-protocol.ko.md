@@ -244,7 +244,7 @@ application packet으로 만든 control message는 reply를 대신하지 않는�
 
 Host `Retiring` publication은 unit queue에 wire callback이 아닌 local infrastructure intent notification을 예약한다.
 Queue turn 경계에서 outbound·inbound unit, 필요한 `Capture`·`Restore` callback과 encoded byte permit을 모두 얻은
-unit만 seal하고 accepted boundary를 고정한다. Byte reservation은 Snapshot participant마다 64 MiB와 이미
+unit만 seal하고 accepted boundary를 고정한다. Byte reservation은 `PreserveStateWith` participant마다 64 MiB와 이미
 Framework가 소유한 queue·journal·timer·manifest·metadata의 deterministic encoded upper bound를 합한다. `Capture`
 뒤 permit은 actual encoded size로만 축소한다. Permit 실패는 모든 provisional permit을 반환하고 wire command를
 보내거나 queue를 seal하지 않으며 notification만 다시 예약한다. 기본 gate는 `64/64`, `8/8`, 256 MiB이고

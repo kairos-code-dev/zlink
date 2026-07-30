@@ -35,9 +35,9 @@ config에서는 Channel egress index가 그 경로를 가로채지 않는 회귀
 | 역할 | 수 | 물리 topology와 Channel 역할 |
 |---|---:|---|
 | location store | 1 | Automatic RouteMesh·ClientServer discovery와 Object Client·Server authority가 공유하는 공식 Redis Location Store. 실행마다 전용 key prefix를 사용한다. |
-| relocation store | 1 | CH-REG-02의 Snapshot Actor join에 사용하는 공식 Redis Relocation Store. Location Store와 별도 key prefix를 사용하며 `Session`·`Play` root가 등록한다. |
-| `Session` | 1 | `game` RouteMesh의 `game.session` Server, `game.play` Client, `game.api` Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode를 Object Server로 구성한다. Entry Spot과 stable Actor type `channel.player` factory를 명시적 `Snapshot` policy, Actor relocation adapter, placement weight `100`, Actor total·Spot total limit `128`, activation concurrency `32`로 제공한다. |
-| `Play` | 1 | `game` RouteMesh의 `game.play` Server, `game.session` Client, `game.api` Client, `audit` RouteMesh의 `audit.record` Client, `workflow.command` ClientServer Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode만 Object Server로 구성한다. Entry Spot, stable Actor type `channel.player`과 User Spot type `channel.room` factory를 명시적 `Snapshot` policy로 제공한다. Actor·Spot factory에는 kind에 맞는 relocation adapter를 지정하고 placement weight `100`, Actor total·Spot total limit `128`, activation concurrency `32`를 사용한다. `audit` MeshNode의 object role은 `None`이다. |
+| relocation store | 1 | CH-REG-02의 `PreserveStateWith` Actor join에 사용하는 공식 Redis Relocation Store. Location Store와 별도 key prefix를 사용하며 `Session`·`Play` root가 등록한다. |
+| `Session` | 1 | `game` RouteMesh의 `game.session` Server, `game.play` Client, `game.api` Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode를 Object Server로 구성한다. Entry Spot과 stable Actor type `channel.player` factory를 명시적 `PreserveStateWith` policy, Actor relocation adapter, placement weight `100`, Actor total·Spot total limit `128`, activation concurrency `32`로 제공한다. |
+| `Play` | 1 | `game` RouteMesh의 `game.play` Server, `game.session` Client, `game.api` Client, `audit` RouteMesh의 `audit.record` Client, `workflow.command` ClientServer Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode만 Object Server로 구성한다. Entry Spot, stable Actor type `channel.player`과 User Spot type `channel.room` factory를 명시적 `PreserveStateWith` policy로 제공한다. Actor·Spot factory에는 kind에 맞는 relocation adapter를 지정하고 placement weight `100`, Actor total·Spot total limit `128`, activation concurrency `32`를 사용한다. `audit` MeshNode의 object role은 `None`이다. |
 | `Api` | 2 | `game` RouteMesh의 `game.api` Server. 서로 다른 weight와 lifecycle generation 사용 |
 | `WorkflowClient` | 1 | `workflow.command` ClientServer Client |
 | `WorkflowServer` | 2 | 같은 `workflow.command`에 ClientServer Client와 Server를 각각 한 번 등록한다. 같은 process의 Server도 local 우선권 없이 remote Server와 같은 weight 후보가 된다. `game` RouteMesh membership은 0개다. Location Store를 등록하고 `game` MeshNode를 Object Client로 구성해 Spot·Actor direct 호출을 시작하지만 factory와 placement target은 제공하지 않는다. 서로 다른 weight와 `Draining` 상태를 사용한다. |
@@ -53,7 +53,7 @@ server descriptor를 게시하고 `WorkflowClient`는 location store에서 이�
 Object role을 지정하지 않은 `Api`, `WorkflowClient`, `Audit`의 object role은 `None`이다. Automatic
 discovery에 참여하는 역할은 object role과 무관하게 Location Store를 등록한다. CH-REG-02의 cross-node
 Actor join은 `Session` Entry Spot에서 `Play` User Spot으로 진행하며 두 Object Server의 같은 stable Actor
-type·Snapshot adapter capability와 충분한 target headroom을 사용한다. Channel egress 검증과 무관한 host에
+type·relocation adapter capability와 충분한 target headroom을 사용한다. Channel egress 검증과 무관한 host에
 object factory를 추가하지 않는다.
 
 ## 3. 공통 fixture와 관측 값
@@ -208,7 +208,7 @@ Config 12 구현과 함께 다음 회귀를 실행한다.
 | ID | 검증 범위 | 실패 조건 |
 |---|---|---|
 | `CH-REG-01` | 기존 같은 RouteMesh Channel send/request와 weighted routing | handler, weight 또는 reply 의미가 바뀐다 |
-| `CH-REG-02` | `Session`·`Play` Object Server의 Node·Spot·Actor direct, Snapshot Actor join과 bound-session push. 두 root의 Location·Relocation Store, stable factory type, adapter capability와 target capacity를 startup evidence로 먼저 확인한다. | Channel egress index가 상태 주소 route를 가로채거나 stateful prerequisite 없이 scenario를 시작한다. |
+| `CH-REG-02` | `Session`·`Play` Object Server의 Node·Spot·Actor direct, `PreserveStateWith` Actor join과 bound-session push. 두 root의 Location·Relocation Store, stable factory type, adapter capability와 target capacity를 startup evidence로 먼저 확인한다. | Channel egress index가 상태 주소 route를 가로채거나 stateful prerequisite 없이 scenario를 시작한다. |
 | `CH-REG-03` | Logical Multicast와 classic Pub/Sub | ClientServer 경로로 잘못 선택되거나 대상 수가 바뀐다 |
 | `CH-REG-04` | reply·timeout·cancellation·disconnect·Spot shutdown 경쟁 | completion이 누락·중복되거나 늦은 reply가 새 generation에 전달된다 |
 | `CH-REG-05` | 같은 endpoint의 automatic 역할 교체, 새 RID·generation과 reciprocal handover | 재연결 뒤 request가 소실되거나 이전 RID·generation을 선택한다 |

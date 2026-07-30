@@ -27,7 +27,7 @@ bound session이 연결되는 배포다. 이 구성을 한 번 시작한 뒤 spo
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. 각 노드는 `AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록하고, peer descriptor와 Spot authority를 framework lifecycle이 자동 갱신한다. |
 | relocation store | 1 | 공식 Redis relocation store extension이 사용하는 공유 Redis instance. Actor가 다른 MeshNode의 Spot으로 join하는 시나리오가 immutable state·journal payload를 저장하도록 각 play host가 `AddRelocationStore(new ZLinkRedisRelocationStore(...))`로 별도 등록한다. |
-| play(actor) 노드 | 2 (`play-a`, `play-b`) | Object role을 `Server`로 고정하고 Entry Spot, User Spot factory와 Actor factory를 등록한다. User Spot factory는 explicit `Disabled` relocation policy를 사용한다. Actor factory는 explicit `Snapshot` policy와 Actor type에 맞는 relocation adapter를 사용하며, 두 노드 모두 같은 stable type capability와 cross-node join에 필요한 Actor 전체, Spot 전체와 User Spot stable-type population capacity를 게시한다. MeshNode의 단일 ROUTER endpoint에 handler와 timer를 등록하고 `/evidence`·`/health`를 제공한다. |
+| play(actor) 노드 | 2 (`play-a`, `play-b`) | Object role을 `Server`로 고정하고 Entry Spot, User Spot factory와 Actor factory를 등록한다. User Spot factory는 explicit `DisableRelocation` policy를 사용한다. Actor factory는 explicit `PreserveStateWith` policy와 Actor type에 맞는 relocation adapter를 사용하며, 두 노드 모두 같은 stable type capability와 cross-node join에 필요한 Actor 전체, Spot 전체와 User Spot stable-type population capacity를 게시한다. MeshNode의 단일 ROUTER endpoint에 handler와 timer를 등록하고 `/evidence`·`/health`를 제공한다. |
 | session(gateway) 노드 | 2 (`session-a`, `session-b`) | Object role을 `Client`로 고정하고 Location Store를 등록한다. Stream session을 호스팅하고 인자가 없는 `EnableActorDispatch()`로 global Actor dispatch capability를 활성화한다. 각자 stream endpoint를 사용하며 업무 로직은 play 노드가 처리한다. |
 | consumer | 시나리오별 | ChannelName client + stream client. entry spot은 location store 기반으로 resolve(자기도 같은 store를 등록). |
 
@@ -342,7 +342,7 @@ Actor queue가 그 owner node에서만 실행되는가.
   순서가 evidence에 남는다.
   Target Ready와 caller success는 이 순서가 끝난 뒤에만 공개된다. 그 뒤 global Actor ID request는 `play-b`의
   Actor queue에서 처리되고 `play-a`의 old Actor queue는 실행하지 않는다.
-- 세부 동작: explicit Snapshot policy를 사용하는 cross-node Actor join과 mailbox 이동.
+- 세부 동작: explicit `PreserveStateWith` policy를 사용하는 cross-node Actor join과 mailbox 이동.
 
 #### SM-B3 요청 message 객체 충실도
 
@@ -432,7 +432,7 @@ owner와 membership을 그대로 유지하는가.
   설정한 local·remote User Spot에 각각 join한다.
 - accept 검증: Local 반복은 target `OnActorJoin` → membership CAS commit → target `OnJoinedActor` → source
   `OnLeaveActor` 순서로 완료되고 caller는 accept reply를 받는다. Remote 반복은 callback만 local 순서에
-  대입하지 않고 SM-B2의 Snapshot relocation·durable cleanup·Ready evidence를 그대로 사용한다.
+  대입하지 않고 SM-B2의 state-preserving relocation·durable cleanup·Ready evidence를 그대로 사용한다.
 - reject 절차: 별도 Actor를 source Entry Spot에 먼저 생성하고 current ActorRef·owner·membership generation을
   기록한다. Reject하도록 설정한 local·remote User Spot에 각각 join한다.
 - reject 검증: target `OnActorJoin`만 실행되고 caller는 timeout이 아닌 분류된 reject reply를 받는다. Source
@@ -883,7 +883,7 @@ messaging target이 아니다.
 #### SM-F6 같은 MeshName의 다중 MeshNode에서 원격 Spot·Actor 도달
 
 - 절차: 같은 MeshName에 속한 source와 target MeshNode를 서로 다른 프로세스로 시작한다. 두 노드는 Object
-  Server role, 같은 stable Actor type factory, explicit Snapshot policy·adapter, Relocation Store와 충분한
+  Server role, 같은 stable Actor type factory, explicit `PreserveStateWith` policy·adapter, Relocation Store와 충분한
   typed population capacity를 §2대로 구성한다. Source Entry Spot에 Actor를 먼저 생성하고 target User Spot을
   만든다. Source Spot은 global Spot ID로 target Spot에 request와 send를 제출하고, Actor는
   `JoinSpot(globalSpotId)`로 target User Spot에 join한다. 별도 Spot 전용 ROUTER나 PUB/SUB socket은 구성하지
@@ -998,7 +998,7 @@ capacity를 먼저 검사하는가.
   `10000`은 허용하고 `-1`, `10001`은 descriptor revision과 placement mutation 전에 configuration error다.
   Weight `0`은 새 placement·relocation target에서 제외하며 이미 reservation을 얻은 operation은 유지한다.
   Capacity가 소진된 high-weight node는 weight 계산 전에 제외되고 eligible low-weight node가 선택된다.
-  Snapshot 뒤 capacity race로 첫 reserve가 실패한 operation도 같은 deadline 안에서 실패한 candidate
+  Target snapshot을 고정한 뒤 capacity race로 첫 reserve가 실패한 operation도 같은 deadline 안에서 실패한 candidate
   lifecycle을 제외하고 두 번째 node에 한 번만 reservation을 만들며 factory를 중복 실행하지 않는다.
   합계는 최소 64-bit 정수로 계산해 overflow하지 않는다.
 - 세부 동작: node-wide placement weight validation, capacity-first selection과 runtime revision ordering.

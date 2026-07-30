@@ -372,7 +372,7 @@ member와 기본값을 함께 보여 준다. 다른 언어의 이름은 해당 �
 | 동시에 실행하는 `Restore` callback | `MaxConcurrentRelocationRestores` | 8 |
 
 Callback 동시 실행 수는 unit 수와 payload byte 제한에서 따로 계산한다. 이동을
-시작하기 전에 Snapshot object
+시작하기 전에 `PreserveStateWith` object
 하나의 최대 64 MiB와 queue, journal, timer, 목록 정보와 framing의 최대 저장 크기를
 합산해 memory를 확보한다. Application에서 예상 크기를 받지 않는다. `Capture` 뒤
 실제 크기가 작으면 확보량을 줄일 수 있지만 늘릴 수 없다. Adapter가 64 MiB를

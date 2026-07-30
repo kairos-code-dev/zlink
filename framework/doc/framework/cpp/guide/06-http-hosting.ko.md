@@ -9,7 +9,7 @@
 라우트에 매핑만 하면 된다.
 
 요청을 **보내는** 쪽(client)은 별도 산출물이다 —
-[zlink::http_client 가이드](../../../http-client/cpp/README.ko.md).
+[zlink::http_client 가이드](../http-client/README.ko.md).
 
 ## 2. 라우트 매핑
 

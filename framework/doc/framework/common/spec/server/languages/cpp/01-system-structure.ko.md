@@ -53,7 +53,7 @@ framework가 제공해야 하는 것:
 |---|---|---|
 | `zlink_framework` | **`zlink::framework`** (STATIC) | Framework core를 제공하며 C++20(`cxx_std_20`)이 필요하다. |
 
-**client connector는 별도 제품군이다** — [C++ Stream Connector 가이드](../../../../../../stream-connector/cpp/guide/INDEX.ko.md)가
+**client connector는 별도 제품군이다** — [C++ Stream Connector 가이드](../../../../../cpp/stream-connector/guide/INDEX.ko.md)가
 소유한다. 서버 framework와 상호 의존하지 않는다.
 
 ## 3. Application Host

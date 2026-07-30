@@ -461,6 +461,12 @@ JoinConversationRes {
   State: ConversationState
 }
 
+JoinConversationFailedNotify {
+  ConversationId: string
+  Error: string
+  IsRetriable: bool
+}
+
 SendChatMessageReq {
   Text: string
 }
@@ -482,7 +488,9 @@ CloseConversationRes {
 `Scheduled = true`는 membership commit 완료가 아니다. Client는
 `ParticipantJoinedNotify(..., Active)`로 Join 완료를 확인한다. Reconnect처럼 actor가 이미
 같은 conversation Spot에 속하면 새 Join을 예약하지 않고 `Scheduled = false`와 현재 state를
-반환한다.
+반환한다. 예약한 Join이 거절되거나 실행에 실패하면 actor는 bound session에
+`JoinConversationFailedNotify`를 보낸다. Framework 오류로 실패한 경우에는 오류 종류와 retry 가능
+여부를 그대로 전달한다.
 
 client stream one-way send (결과 payload 없음. `ConversationId`는 metadata — §9.2):
 

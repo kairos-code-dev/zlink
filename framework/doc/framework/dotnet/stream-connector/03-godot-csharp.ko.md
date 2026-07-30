@@ -10,8 +10,8 @@ connector를 그대로 쓰고, Godot main thread에서 `Dispatch.Async()`를 호
 실행한다.
 
 > **C++ GDExtension을 쓰는 Godot 프로젝트는 이 문서가 아니라
-> [C++ 가이드 09 — 엔진 어댑터](../../../stream-connector/cpp/guide/09-engine-adapters.ko.md)를 본다.**
-> **Web 빌드는 [Node/TypeScript connector 가이드](../../../stream-connector/typescript/guide/01-overview.ko.md)를 본다.**
+> [C++ 가이드 09 — 엔진 어댑터](../../cpp/stream-connector/guide/09-engine-adapters.ko.md)를 본다.**
+> **Web 빌드는 [Node/TypeScript connector 가이드](../../node/stream-connector/guide/01-overview.ko.md)를 본다.**
 
 ## 기본 원칙
 

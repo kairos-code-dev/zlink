@@ -11,7 +11,7 @@ Unity 전용 connector package는 따로 두지 않는다. Unity도 일반 `.NET
 > **WebGL 빌드는 이 문서의 대상이 아니다.** Unity WebGL은 브라우저 샌드박스에서 실행되므로
 > OS 소켓을 열 수 없고, `.NET` connector를 사용할 수 없다. WebGL은 TypeScript connector를
 > jslib interop으로 호출한다.
-> [Node/TypeScript connector 가이드](../../../stream-connector/typescript/guide/01-overview.ko.md)를 본다.
+> [Node/TypeScript connector 가이드](../../node/stream-connector/guide/01-overview.ko.md)를 본다.
 
 ## 기본 원칙
 

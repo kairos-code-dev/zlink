@@ -19,9 +19,9 @@ Java와 Kotlin은 JVM service runtime 하나를 검증한다. Java public ABI와
 - `ApplicationVersion`은 non-negative Java/Kotlin `long`이며 target eligibility 비교가 공통 계약과 같다.
 - `Retire`와 `Shutdown`의 effective intent, outcome과 reason wire 값이 공통 fixture와 같다.
 - `Preparing`·`Error`의 `Retire`는 `Blocked/RuntimeNotReady`이며 admission을 바꾸지 않는다.
-- `Disabled` participant나 target capability가 없는 `Retire`는 `Blocked/RelocationDisabled`다.
-- `Recreate`와 `Snapshot`은 같은 Location authority CAS와 Relocation Store publication 순서를 사용한다.
-- `Snapshot` adapter는 opaque `byte[]` application state만 받고 owner token, relocation reference와 phase를 받지 않는다.
+- `DisableRelocation` participant나 target capability가 없는 `Relocate`는 `Blocked/RelocationDisabled`다.
+- `RecreateOnRelocation`과 `PreserveStateWith`는 같은 Location authority CAS와 Relocation Store publication 순서를 사용한다.
+- `PreserveStateWith` adapter는 opaque `byte[]` application state만 받고 owner token, relocation reference와 phase를 받지 않는다.
 - Instance Spot public local-only create와 existing-only resolve는 hidden remote `GetOrCreate`를 시작하지 않는다.
 - Deadline, disconnect, reply와 shutdown 경쟁에서 terminal completion은 하나다.
 

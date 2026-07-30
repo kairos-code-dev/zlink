@@ -695,7 +695,7 @@ target joined, source leave 또는 별도 relocation callback을 호출하지 �
 일반 same-node·remote User·Entry Spot join만 기존 `on_actor_join(...)`,
 `on_actor_joined(...)`와 source `on_leave_actor(...)` 계약을 사용한다. `SpotWide`
 User Spot aggregate와 `PerActor` User Spot의 Actor relocation에서는 member Actor의
-membership callback을 호출하지 않는다. `PerActor` Spot policy는 `Recreate`만
+membership callback을 호출하지 않는다. `PerActor` Spot policy는 `RecreateOnRelocation`만
 허용하고 Spot adapter를 등록하지 않는다. Spot field와 Spot-level schedule은
 이전하지 않는다. 유지해야 하는 shared state와 schedule은 application의
 Redis·database·service 같은 외부 저장소에 둔다.

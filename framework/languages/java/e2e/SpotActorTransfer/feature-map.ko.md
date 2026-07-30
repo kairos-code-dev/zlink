@@ -60,7 +60,7 @@
 | ST-H4B | 미구현 | Join 뒤 Yield, awaited cycle과 reply terminal E2E가 없다. |
 | ST-H5 | 미구현 | MessageContext와 Actor handler signature parity를 실제 transport로 검증하는 E2E가 없다. |
 | ST-I1 | 미구현 | 실제 encoded Actor·Spot payload profile과 경계·초과 크기 E2E가 없다. |
-| ST-I2 | 미구현 | 다량 Recreate·Snapshot Actor relocation의 처리 시간과 Actor·control service 연속성 E2E가 없다. |
+| ST-I2 | 미구현 | 다량 `RecreateOnRelocation`·`PreserveStateWith` Actor relocation의 처리 시간과 Actor·control service 연속성 E2E가 없다. |
 | ST-I3 | 미구현 | 다량 Instance Spot·SpotWide relocation의 처리 시간과 Spot·Actor·control service 연속성 E2E가 없다. |
 | ST-I4 | 미구현 | Actor·Spot × one-way·request × commit 전·후 Message Follow matrix가 없다. |
 | ST-I5 | 미구현 | Message Follow 기간 종료, duplicate, deadline, generation, loop와 bound E2E가 없다. |

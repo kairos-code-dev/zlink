@@ -22,7 +22,7 @@ C++에서 갖는 **정확한 public 표면**을 고정한다.
 **내부 runtime 구조는 공개 계약이 아니다** —
 [internals/runtime-architecture](../../../../../cpp/internals/runtime-architecture.ko.md)가 소유한다.
 
-client connector는 [C++ Stream Connector 가이드](../../../../../../stream-connector/cpp/guide/INDEX.ko.md)와
+client connector는 [C++ Stream Connector 가이드](../../../../../cpp/stream-connector/guide/INDEX.ko.md)와
 [Stream Connector 공통 스펙](../../../stream-connector/32-stream-connector.ko.md)이 소유한다.
 
 ## 취소 인자

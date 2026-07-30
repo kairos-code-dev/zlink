@@ -148,7 +148,7 @@ API는 player level을 bounded bucket으로 바꾸고
 `bingo-matchmaker-level-<bucket>` SpotId에 request를 보낸다. Missing Spot이면
 `InstanceSpot("bingo.matchmaker")`와 `InMesh("bingo.matchmaking")` intent로 자동 생성한다.
 Instance Spot은 같은 bucket 요청을 turn 단위로 처리하고 Redis의 open room reservation을
-선택하거나 새로 만든다. 실제 state는 Redis가 소유하며 Instance Spot은 `Recreate` policy를
+선택하거나 새로 만든다. 실제 state는 Redis가 소유하며 Instance Spot은 `RecreateOnRelocation` policy를
 사용한다. Idle timer가 만료되면 Spot 내부에서 `Context.CloseAsync()`를 호출한다.
 
 Redis match reservation은 stable RoomId와 같은 RoomSettings를 소유한다. 첫 요청과 동시에 들어온

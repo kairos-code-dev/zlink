@@ -36,7 +36,7 @@ Instance Spot 밖에서 공통 call type의 `Yield`를 호출하면 operation을
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 쓰는 공유 Redis. 실행마다 전용 key prefix. 각 노드는 `AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록한다. |
-| play 노드 | 2 (`play-a`, `play-b`) | Location Store와 Relocation Store를 등록한 Object Server. Entry Spot, `SpotWide`와 `PerActor` stable User Spot type, stable Actor type의 factory를 제공한다. `PerActor` Spot factory는 `Recreate`, 이 config에서 이동하지 않는 나머지 factory는 `Disabled` policy를 사용한다. Placement weight `100`, Actor limit `128`, Spot limit `32`, activation concurrency `32`를 고정한다. `TurnProbeSpot` + actor mailbox + timer + worker를 실행하고 descriptor와 Spot·Actor location row를 자동 게시한다. |
+| play 노드 | 2 (`play-a`, `play-b`) | Location Store와 Relocation Store를 등록한 Object Server. Entry Spot, `SpotWide`와 `PerActor` stable User Spot type, stable Actor type의 factory를 제공한다. `PerActor` Spot factory는 `RecreateOnRelocation`, 이 config에서 이동하지 않는 나머지 factory는 `DisableRelocation` policy를 사용한다. Placement weight `100`, Actor limit `128`, Spot limit `32`, activation concurrency `32`를 고정한다. `TurnProbeSpot` + actor mailbox + timer + worker를 실행하고 descriptor와 Spot·Actor location row를 자동 게시한다. |
 | delay service | 2 (`delay-a`, `delay-b`) | ChannelName request를 받아 지정한 시간 뒤 reply한다. handler가 기다릴 **framework request** 역할이다. |
 | **external API** | 1 (`ext-api`) | **framework 밖의 순수 HTTP 서버.** 지정한 시간 뒤 JSON을 돌려준다. framework HTTP client가 호출할 **외부·레거시 API** 역할이다. zlink channel이 아니다. |
 | session gateway | 2 (`session-a`, `session-b`) | Location Store를 등록한 Object Client. stream session을 받고 global Actor·Spot address로 play 노드에 시나리오 packet을 relay하며 factory와 placement target은 제공하지 않는다. |
@@ -47,7 +47,7 @@ Instance Spot 밖에서 공통 call type의 `Yield`를 호출하면 operation을
 mailbox id, 실행 순서, 처리 노드를 evidence로 남긴다.
 
 Track E의 Entry Spot, User Spot A·B와 Actor는 모두 `play-a`에 배치해 same-node join을 검증한다. 따라서
-`Disabled` policy가 join을 막지 않으며 Relocation Store와 relocation adapter가 필요하지 않다. `play-b`는
+`DisableRelocation` policy가 join을 막지 않으며 Relocation Store와 relocation adapter가 필요하지 않다. `play-b`는
 TD-F1의 remote Spot request target으로만 사용하고 이 config에서 cross-node object relocation을 시작하지 않는다.
 
 **`TurnProbeSpot`은 공유 counter 하나를 갖는다.** `async`가 turn을 유지하는지 검증할 때

@@ -10,7 +10,7 @@ capacity, aggregate와 relocation state machine은 Framework가 opaque record로
 해당 domain type이나 처리 단계를 알지 않는다.
 
 Store primitive와 abstract Store class는 opt-in CMake target
-`zlink-framework-provider-abstractions`가 소유한다. Provider 구현은 이 target만 link해 Store를 구현할 수
+`zlink::framework_provider_abstractions`가 소유한다. Provider 구현은 이 target만 link해 Store를 구현할 수
 있으며 Actor·Spot application target에 의존하지 않는다. C++ namespace는 기존
 `zlink::framework`를 유지한다.
 
@@ -302,65 +302,6 @@ template <typename T>
 struct location_page_t {
     std::vector<T> items;
     std::optional<std::string> continuation_token;
-};
-
-enum class placement_object_kind_t {
-    actor = 1,
-    user_spot = 2,
-    instance_spot = 3
-};
-
-enum class maintenance_policy_kind_t {
-    disabled = 1,
-    recreate = 2,
-    snapshot = 3
-};
-
-struct object_capability_t {
-    placement_object_kind_t object_kind;
-    std::string stable_type;
-    maintenance_policy_kind_t policy;
-    bool has_snapshot_adapter = false;
-    std::int32_t spot_limit = 0;
-};
-
-struct capacity_usage_t {
-    std::uint64_t active = 0;
-    std::uint64_t reserved = 0;
-    std::int32_t limit = 0;
-};
-
-struct spot_type_capacity_t {
-    placement_object_kind_t object_kind;
-    std::string stable_type;
-    capacity_usage_t usage;
-};
-
-struct placement_capacity_t {
-    capacity_usage_t actors;
-    capacity_usage_t spots;
-    std::vector<spot_type_capacity_t> spot_types;
-};
-
-struct mesh_node_descriptor_t {
-    std::string mesh_name;
-    zlink::routing_id_t rid;
-    std::uint64_t lifecycle_generation = 0;
-    std::uint64_t descriptor_revision = 0;
-    std::string endpoint;
-    std::optional<spot_id_t> entry_spot_id;
-    std::map<std::string, int> channel_weights;
-    std::int64_t application_version = 0;
-    std::vector<object_capability_t> object_capabilities;
-    object_role_t object_role = object_role_t::none;
-    int placement_weight = 100;
-    placement_capacity_t capacity{};
-    std::optional<std::string> maintenance_wave;
-    framework_runtime_state_t state;
-    std::string security_identity;
-    std::string owner_id;
-    std::int64_t lease_generation = 0;
-    std::chrono::system_clock::time_point updated_at{};
 };
 
 class location_readiness_t {

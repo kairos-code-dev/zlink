@@ -188,7 +188,7 @@ process memory를 복구 근거로 사용하지 않는다.
 waiting room 선택과 actor reservation을 하나의 결정으로 처리해야 한다. 샘플 전용 in-memory
 fallback으로 성공시키면 안 된다.
 
-Instance Spot은 `Recreate` policy를 사용한다. State는 Redis에서 다시 읽으므로 Snapshot
+Instance Spot은 `RecreateOnRelocation` policy를 사용한다. State는 Redis에서 다시 읽으므로 application state
 payload를 만들지 않는다. 처리할 waiting room과 진행 중 request가 없으면 internal idle
 timer가 `IZLinkInstanceSpotContext.CloseAsync()`를 호출한다. 외부 caller나 SpotManager가
 Instance Spot을 닫지 않는다.
@@ -247,8 +247,7 @@ options.AddRouteMesh("bingo.matchmaking")
     .Server()
     .AddInstanceSpotFactory<BingoMatchmaker>(
         "bingo.matchmaker",
-        new ZLinkInstanceSpotFactoryOptions(),
-        ZLinkRelocationPolicy<BingoMatchmaker>.Recreate);
+        factory => factory.RecreateOnRelocation());
 
 // Play: Room·Actor provider다. Matchmaker factory를 등록하지 않는다.
 options.AddRouteMesh("bingo.play")
@@ -257,24 +256,29 @@ options.AddRouteMesh("bingo.play")
     .AddEntrySpot<BingoEntrySpot>()
     .AddSpotFactory<BingoRoom>(
         "bingo.room",
-        new ZLinkUserSpotFactoryOptions
-        {
-            ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide,
-            RelocationReadiness =
-                ZLinkSpotRelocationReadinessMode.ApplicationSignaled
-        },
-        ZLinkRelocationPolicy<BingoRoom>
-            .Snapshot<BingoRoomRelocationAdapter>())
+        factory => factory
+            .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+            .RelocationReadiness(
+                ZLinkSpotRelocationReadinessMode.ApplicationSignaled)
+            .PreserveStateWith<BingoRoomRelocationAdapter>())
     .AddActorFactory<PlayerActor, PlayerActorFactory>(
         "bingo.player",
-        new ZLinkActorFactoryOptions(),
-        ZLinkRelocationPolicy<PlayerActor>
-            .Snapshot<PlayerActorRelocationAdapter>());
+        factory => factory
+            .PreserveStateWith<PlayerActorRelocationAdapter>());
 ```
 
 모든 역할에서 fixed `SetRoutingId(...)`를 사용하지 않는다. Sample topology는 fixed
 RID field를 두지 않고 endpoint만 유지한다. 자동 발급한 RID는 connection과
 관측에만 사용하며 Actor·Spot의 위치나 업무 identity로 해석하지 않는다.
+
+Room은 game 진행 중 임의의 turn에서 relocation하지 않는다. 승부가 끝나 결과와
+Logical Multicast event를 제출한 turn, 또는 observer의 membership·event 처리가 끝난
+turn에서 `Context.RelocationReady().Defer()`를 호출한다. Framework는 실제 relocation
+대상 여부를 확인한 뒤 `OnRelocationReadyCompletedAsync(...)`를 항상 한 번 호출한다.
+Application이 다음 round를 시작해야 하는 경우에는 이 callback이 끝난 뒤 시작해야 한다.
+Room state adapter는 game·observer application state만 저장한다. Actor participant,
+대기 중인 message, accepted journal과 logical timer는 Framework가 보존하므로 adapter에
+중복 저장하지 않는다.
 
 Location Store와 reservation Redis가 같은 Redis instance를 사용하더라도 책임은 합치지 않는다.
 공식 Location Store가 owner lease와 generation을 관리하고, Matchmaking adapter는
@@ -313,7 +317,7 @@ relocation 계약을 따른다.
 | `Bingo.Api` | player record store(프로세스 메모리) | player 전적 조회(`GetPlayerRecordReq`)와 경기 결과 기록(`ReportBingoResultReq`)을 소유한다. room Spot은 이 값을 계산하지 않고 join/leave에서 `yield`로 물어본다(§7.1). |
 | `Bingo.Api` | `bingo.matchmaking` Object Client | level bucket Matchmaker Instance Spot에 reservation을 요청한다. |
 | `Bingo.Api` | `bingo.play` Object Client | reservation의 `RoomId`로 Room User Spot `GetOrCreate`를 호출하고 Ready를 기다린다. |
-| `Bingo.Matchmaking` | `BingoMatchmaker` Instance Spot | Redis에서 waiting room과 actor reservation을 결정한다. `Recreate` policy와 internal idle close를 사용한다. |
+| `Bingo.Matchmaking` | `BingoMatchmaker` Instance Spot | Redis에서 waiting room과 actor reservation을 결정한다. `RecreateOnRelocation` policy와 internal idle close를 사용한다. |
 | `Bingo.Session` | stream server | client 연결, 인증 packet, actor binding, actor relay를 처리한다. |
 | `Bingo.Session` | `bingo.play` Object Client | actor 생성·lookup, session relay와 bound session push 수신을 담당한다. |
 | `Bingo.Session` | 독립 `bingo.api` ClientServer Client | 인증과 matching API request를 보낸다. |
@@ -1253,7 +1257,7 @@ evidence를 남겨야 한다.
 - `bingo.play`와 `bingo.matchmaking` RouteMesh를 분리하고 공유 Location Store로 peer를 발견한다.
 - API는 두 RouteMesh에 Object Client를 각각 등록한다. Play에 Matchmaker factory를 등록하지 않는다.
 - 독립 `bingo.api` ClientServer Channel로 Session·Play의 API request를 처리한다.
-- Matchmaker Instance Spot은 level bucket별 SpotId, `Recreate` policy, Redis source of truth와
+- Matchmaker Instance Spot은 level bucket별 SpotId, `RecreateOnRelocation` policy, Redis source of truth와
   internal idle timer `CloseAsync`를 사용한다.
 - Redis reservation은 matching state 공유에만 사용하고, Spot owner lookup과 Logical Multicast peer
   discovery를 대신하지 않는다.

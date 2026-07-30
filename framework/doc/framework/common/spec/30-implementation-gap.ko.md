@@ -260,10 +260,10 @@ immutable relocation root와 replay cursor로 처리를 이어 가도록 요구�
 
 목표 exact interface는 Actor·Instance phase별 Store를 공개하지 않는다. Root에 등록한 Location provider가
 opaque payload의 exact read와 expected Store version 기반 atomic batch를 제공한다. Framework coordinator만
-relocation phase, source·target identity, object fence와 recovery lease를 해석한다. `Recreate` 또는 `Snapshot`
+relocation phase, source·target identity, object fence와 recovery lease를 해석한다. `RecreateOnRelocation` 또는 `PreserveStateWith`
 policy가 하나라도 있거나 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 하나라도 있는 host는 accepted journal, application state와
 recovery payload를 보존할 Relocation Store도 정확히 하나 등록한다. Instance Spot [factory](01-glossary.ko.md#factory)가 없고 모든 factory가
-`Disabled`인 same-node 구성에서만 Relocation Store를 생략할 수 있다.
+`DisableRelocation`인 same-node 구성에서만 Relocation Store를 생략할 수 있다.
 
 `.NET`은 opaque authority CAS, immutable relocation root, aggregate publication과 target replay를 production
 scheduler에 연결했다. Accepted request handler가 끝나면 successor root에 replay cursor와 terminal completion을
@@ -401,7 +401,7 @@ infrastructure connection을 종료하지 않으며, 이후 `shutdown`이 별도
 `Relocate`와 `Shutdown`으로 고정하고, 구현 상세 상태 기계는 runtime 내부에 둔다. 다음 항목은 아직
 완료되지 않았다.
 
-- Actor와 Instance Spot factory에 연결하는 typed relocation policy와 Snapshot state adapter
+- Actor와 Instance Spot factory에 연결하는 typed relocation policy와 state-preserving adapter
 - opaque authority CAS와 Relocation Store capability
 - Framework runtime maintenance snapshot과 event
 
@@ -563,7 +563,7 @@ bounded cleanup한다.
   result를 소유하는 목표 계약과 다르다.
 - `SpotWide` User Spot과 member Actor는 하나의 aggregate permit·root·commit
   generation으로 이전해야 한다.
-- `.NET`은 `PerActor` User Spot의 `Recreate` shell과 Actor별 owner를 production
+- `.NET`은 `PerActor` User Spot의 `RecreateOnRelocation` shell과 Actor별 owner를 production
   scheduler에 연결했다. Spot authority를 먼저 target으로 바꾸고 Actor를 독립적으로
   이전한다. `ST-G3` fresh process는 Actor 100개의 generation 유지, Capture·Restore
   payload 일치, Actor별 `transfer_in` 1회와 이동 뒤 Actor·Spot dispatch를 확인했다.
@@ -993,7 +993,7 @@ process scenario에 연결하지 않았다. Empty optional `SourceSpotId`를 abs
 wire 오류는 수정했지만, 위 activation과 relocation blocker가 남아 있으므로 I1 완료 증거가 아니다.
 
 `ST-I2`, `ST-I3-INSTANCE`, `ST-I3-SPOTWIDE`에는 정본 workload와 scale 환경변수를
-연결했다. 정본 기본값은 Recreate Actor 10,000개, Snapshot Actor 1,000개,
+연결했다. 정본 기본값은 `RecreateOnRelocation` Actor 10,000개, `PreserveStateWith` Actor 1,000개,
 Instance Spot 1,000개, SpotWide 100개와 Spot별 Actor 100개다. .NET production host lifecycle은
 mode/options를 받는 `RelocateAsync(...)`와 별도 `ShutdownAsync(...)`를 DI에서 제공한다.
 Relocation 성공 뒤에는 infrastructure를 종료하지 않고 `Relocated` 상태를 유지한다.
@@ -1006,11 +1006,11 @@ relocation에 동일하게 적용한다. `PlannedMaintenance`는 source와 같�
 끝난다. Focused relocation test 159/159와 최신 전체 .NET Unit test 1,077/1,077이 통과했다.
 축소 process smoke는 scenario 경로와 새로운 production gap을 확인했다.
 
-- `logs/20260728-000226-1408117`: Recreate Actor 4개와 Snapshot Actor 2개를 만든 뒤
+- `logs/20260728-000226-1408117`: `RecreateOnRelocation` Actor 4개와 `PreserveStateWith` Actor 2개를 만든 뒤
   control Actor·Spot request와 one-way baseline은 오류 0으로 통과했다. Host relocation은
-  target admission 없이 Snapshot Actor Capture를 반복하고 terminal을 반환하지 않았다.
-- `logs/20260728-005525-2344250`, `logs/20260728-010329-2556033`: Recreate Actor 1개와
-  Snapshot Actor 1개에서도 같은 nonterminal을 재현했다. Target preflight는 완료됐지만
+  target admission 없이 `PreserveStateWith` Actor Capture를 반복하고 terminal을 반환하지 않았다.
+- `logs/20260728-005525-2344250`, `logs/20260728-010329-2556033`: `RecreateOnRelocation` Actor 1개와
+  `PreserveStateWith` Actor 1개에서도 같은 nonterminal을 재현했다. Target preflight는 완료됐지만
   source relocation 내부에서 target Restore·admission은 0이었다. 동시에 remote workload
   reply가 reply capability를 보존하지 못해 retry됐다. 이 reply terminal과 source
   relocation 정지의 인과를 분리해 수정해야 한다.

@@ -135,8 +135,8 @@ message wrapper, authority, relocation reference, relocation phase와 operation 
 
 Framework는 `preserve_state_with<TAdapter>()`의 cross-node Actor materialization에서만 adapter를 호출한다. 여기에는 maintenance
 이관, remote User·Entry Spot join과 whole User Spot relocation의 각 Actor participant가 포함된다. Same-node join과
-relocation에서는 adapter를 호출하지 않으며 Disabled cross-node operation은 `capture(...)` 전에 거부한다. Recreate
-policy도 application payload를 capture하거나 restore하지 않는다. Whole User Spot relocation에서는 Spot root에
+relocation에서는 adapter를 호출하지 않으며 `DisableRelocation` cross-node operation은 `capture(...)` 전에 거부한다.
+`RecreateOnRelocation` policy도 application payload를 capture하거나 restore하지 않는다. Whole User Spot relocation에서는 Spot root에
 `spot_relocation_adapter_t<TSpot>`를 사용하고 각 Actor participant에는 이 Actor adapter를 사용한다.
 
 `capture(...)` 결과는 최대 64 MiB이며 빈 vector는 유효하다. 반환한 byte vector의 소유권은 Framework로 이동하고,

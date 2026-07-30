@@ -2,9 +2,13 @@
 
 [인터페이스 목차](README.ko.md) · [Java monitoring](../../java/interfaces/monitoring.ko.md)
 
-Kotlin은 Java의 RouteMesh, ClientServer, automatic fanout과 host runtime snapshot·event·lifecycle 타입을
-사용한다. `Flow` projection은 Java publisher를 coroutine cancellation에 연결할 뿐 별도 state 또는 event value를
-정의하지 않는다.
+Kotlin은 Java의 RouteMesh, ClientServer, automatic fanout과 host runtime status type을 사용한다.
+`Flow` projection은 Java publisher를 coroutine cancellation에 연결할 뿐 별도 status나 event value를
+정의하지 않는다. 각 항목은 일부 field만 담은 event가 아니라 변경 뒤의 완전한 status다.
+
+Endpoint, lifecycle generation과 descriptor source는 Framework가 stale descriptor와 connection을
+판정할 때만 유지한다. Admission·claim·reservation, pending work와 connection intent도 Kotlin
+projection에 추가하지 않는다.
 
 RouteMesh peer는 Java `ZLinkPeerState`를 그대로 사용한다. `NOT_CONNECTED`는 연결이
 필요하지만 ready connection이 없는 상태이고, `NOT_REQUIRED`는 두 Object Client 모두 RouteMesh
@@ -16,24 +20,26 @@ Channel Server membership이 없어 연결이 필요하지 않은 정상 상태�
 Topology runtime은 Java `ZLinkFrameworkRuntime`의 `routeMeshRuntime()`, `clientServerRuntime()`과
 `fanoutRuntime()`을 그대로 사용한다. Kotlin wrapper accessor를 추가하지 않으며 Spring에서 주입받은 topology
 bean은 해당 Java accessor의 반환값과 reference identity가 같다.
-Java monitoring 계약과 마찬가지로 MeshNode snapshot과 runtime event에는 Logical Multicast 통계,
-publish target 수 또는 target별 수락·실패 field가 없다. Kotlin 전용 projection으로 이를 추가하지 않는다.
+Java monitoring 계약과 마찬가지로 MeshNode status에는 Logical Multicast 통계, publish target 수 또는
+target별 수락·실패 field가 없다. Kotlin 전용 projection으로 이를 추가하지 않는다.
 
-ClientServer server 상태는 Java `ZLinkClientServerServerState`, fanout publisher 연결 상태는
-`ZLinkFanoutPublisherConnectionState`를 그대로 사용한다. Host의 `ZLinkFrameworkRuntimeState`나 MeshNode의
-`ZLinkTopologyState`를 이 두 connection 상태에 대신 사용하지 않는다.
+ClientServer target과 fanout publisher는 Java `ZLinkPeerState`와 `ZLinkTopologyReason`을 그대로
+사용한다. Kotlin 전용 connection 상태 enum을 만들지 않는다.
 같은 ChannelName에 Client와 Server를 함께 등록한 [snapshot](../../../../01-glossary.ko.md#snapshot)의 local role은 Java
 `ZLinkClientServerRole.CLIENT_AND_SERVER`로 나타낸다. 이는 별도 role registration 두 개의 aggregate
 projection일 뿐 builder role이나 registration key가 아니다. Kotlin 전용 enum이나 변환 값을 만들지 않는다.
 
-Fanout ready 의미도 Java 계약을 그대로 사용한다. Publisher 전용 SUB socket의 native-ready만으로 [ready](../../../../01-glossary.ko.md#ready)가
-되지 않으며, 같은 socket에서 첫 valid application record 또는 liveness beacon까지 받아야 한다. 15초 inbound
-timeout은 해당 publisher entry만 `DISCONNECTED`로 바꾼다.
+Fanout ready 의미도 Java 계약을 그대로 사용한다. Publisher 전용 SUB socket의 native-ready만으로
+[ready](../../../../01-glossary.ko.md#ready)가 되지 않으며, 같은 socket에서 첫 valid application
+record 또는 liveness beacon까지 받아야 한다. 15초 inbound timeout은 해당 publisher의 peer state를
+`NOT_CONNECTED`로 바꾼다.
 
-[RouteMesh](../../../../01-glossary.ko.md#routemesh) object placement snapshot은 node-wide placement weight, active object 수와 상한, pending activation
-수와 상한을 Java의 typed numeric field로 제공한다. Channel [weight](../../../../01-glossary.ko.md#weight)와 같은 field로 합치지 않는다. Object
-location snapshot은 global ActorId 또는 SpotId, stable type, object generation, MeshName과 NodeRid를 제공한다.
-전체 object directory나 process-local handle은 monitoring surface에 포함하지 않는다.
+[RouteMesh](../../../../01-glossary.ko.md#routemesh) placement status는 새 object 수락 가능 여부와
+현재 process의 active Actor·Spot 수만 제공한다. Node-wide placement weight, stable type별 capacity,
+pending activation과 reservation failure는 내부 배치 판단 값이므로 공개하지 않는다.
+`isAvailable`은 host가 `SERVING`이고 Object Server이며, placement weight가 양수이고, Actor 또는
+Spot capacity와 activation concurrency에 모두 여유가 있을 때만 `true`다. Activation의 현재 값과
+limit은 Kotlin projection에도 추가하지 않는다.
 
 ## Framework 오류 값
 
@@ -76,7 +82,7 @@ fun ZLinkDispatchOptions.onMessageFlow(
 ): ZLinkDispatchOptions
 ```
 
-Java `Publisher` event stream을 Kotlin `Flow`로 읽을 때는
+Java `Publisher` status stream을 Kotlin `Flow`로 읽을 때는
 [Location과 maintenance](location-maintenance.ko.md)가 소유하는 공통 `asFlow()` bridge를 사용한다.
 이 bridge의 cancellation은 해당 subscriber 등록만 해제한다. 공유 runtime, monitoring publisher
 또는 이미 시작한 host operation을 취소하지 않는다. `onMessageFlow` generated JVM member는

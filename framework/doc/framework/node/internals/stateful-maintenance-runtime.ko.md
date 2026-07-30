@@ -92,8 +92,8 @@ Relocation payload는 다음 section을 deterministic binary stream으로 기록
 
 Application이 byte format, version, compatibility와 migration을 소유한다. Framework는 state contract ID,
 serializer ID, generic state type과 relocation codec을 제공하거나 descriptor·metric에 싣지 않는다.
-`Disabled`는 cross-node relocation을 capture 전에 거부한다. `Recreate`는 application state section만 비워 두고
-queue·journal·timer를 포함한 complete envelope을 기록한다. `Snapshot`만 adapter의 `Capture` 결과를 application
+`DisableRelocation`은 cross-node relocation을 capture 전에 거부한다. `RecreateOnRelocation`은 application state section만 비워 두고
+queue·journal·timer를 포함한 complete envelope을 기록한다. `PreserveStateWith`만 adapter의 `Capture` 결과를 application
 state section에 넣는다. Participant별 captured application state는 최대 64 MiB다.
 
 Framework는 participant별 capture 상한과 Framework-owned section의 deterministic upper bound로 byte permit을

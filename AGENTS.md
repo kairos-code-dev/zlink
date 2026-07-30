@@ -53,9 +53,11 @@
 - stream connector 패키지 계약: `framework/doc/framework/common/spec/stream-connector/` (+ `stream-connector/languages/<lang>/`)
 - 언어별 사용 안내: `framework/doc/framework/<lang>/` — `guide/`(서버), `http-client/`,
   `stream-connector/`, `internals/`. **계약은 패키지로, 사용 안내는 언어로 나눈다.**
-- `.NET`만 이 구조로 합쳤다. 나머지 언어의 HTTP client·connector 가이드는 아직
-  `framework/doc/http-client/<lang>/`와 `framework/doc/stream-connector/<lang>/`에 있으며 **낡았다.**
-  `.NET` 가이드가 완성되면 삭제하고 그것을 기준으로 다시 쓴다.
+- 언어별 HTTP client와 stream connector 사용 안내는
+  `framework/doc/framework/<lang>/http-client/`와
+  `framework/doc/framework/<lang>/stream-connector/`에서 관리한다.
+- `framework/doc/http-client/`와 `framework/doc/stream-connector/`에는 공통 안내와 계획만 두고,
+  언어별 사용 안내를 추가하지 않는다.
 
 새 언어별 문서를 `framework/languages/<lang>/doc/` 아래에 추가하지 않는다. 기존 문서를 수정해야
 하면 `framework/doc/` 아래의 대응 위치로 옮기거나 그 위치에서 갱신한다.

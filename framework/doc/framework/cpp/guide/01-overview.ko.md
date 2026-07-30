@@ -356,7 +356,7 @@ flowchart LR
 | 네임스페이스 | `zlink::framework` |
 
 HTTP **요청을 보내는** 쪽은 별도 산출물 `zlink::http_client`다 —
-[http-client 가이드](../../../http-client/cpp/README.ko.md).
+[http-client 가이드](../http-client/README.ko.md).
 
 ## 5. 이름 표기 규칙
 

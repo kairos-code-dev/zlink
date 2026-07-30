@@ -2,9 +2,9 @@
 
 [C++ exact interface 목차](README.ko.md)
 
-Monitoring에 표시하는 Channel, ClientServer와 placement weight는 configuration과
-descriptor가 사용하는 값과 같다. C++에서는 signed `int`의 `0..10000` 범위로
-표현하며 `std::uint8_t`처럼 범위가 더 좁은 타입으로 바꾸지 않는다.
+Endpoint, lifecycle generation과 descriptor source는 Framework가 stale 등록 정보와
+connection을 판정할 때만 사용한다. Admission·claim·reservation, pending work와
+connection intent도 public status에 포함하지 않는다.
 
 ## 1. Host lifecycle 관측
 
@@ -45,27 +45,87 @@ public:
 readiness를 판단하는 데 필요한 값만 제공한다. Relocation unit 수, queue, barrier와 Store 내부 상태는
 포함하지 않는다.
 
-### 1.1 MeshNode placement capacity
+### 1.1 RouteMesh 상태
 
-`mesh_node_snapshot_t`의 exact declaration은
-[Channel messaging](03-channel-messaging.ko.md)에 있다. Snapshot에서 사용하는
-`capacity_usage_t`, `spot_type_capacity_t`와 `placement_capacity_t`는
-[Location Store interface](07-location-store.ko.md)가 정의한다.
+```cpp
+enum class mesh_node_state_t {
+    starting,
+    ready,
+    degraded,
+    stopping,
+    stopped,
+    failed
+};
 
-Actor 전체, Spot 전체와 Spot stable type별 capacity는 각각 현재 사용 중인 수,
-생성을 위해 예약한 수와 설정한 limit을 분리해서 보여 준다. Actor 집계에는 Entry
-Spot과 User Spot의 Actor를 모두 포함한다. Spot 전체와 stable type별 집계에는
-User·Instance Spot을 포함하고 Entry Spot은 제외한다. 같은 stable type 이름을
-사용하더라도 User Spot과 Instance Spot은 `object_kind`로 구분한다.
+enum class topology_reason_t {
+    runtime_not_ready,
+    no_ready_peer,
+    no_ready_target,
+    location_unavailable,
+    capacity_exceeded,
+    draining,
+    internal_failure
+};
 
-`activation_concurrency`는 현재 factory·initialization 실행 수와 양수 limit을
-별도로 보여 준다. 이 수를 population capacity의 `reserved`에 합치지 않는다.
-이 값은 Location Store의 authoritative counter를 관측용으로 복사한 snapshot이다.
-Descriptor나 runtime snapshot 갱신이 늦을 수 있으므로 새 배치를 수락할 수 있는지
-판정하는 API로 사용하지 않는다. Capacity reservation 실패는
-`placement_reservation_failure_count`와
-`last_placement_reservation_failure`에 기록하며 application factory나 handler
-exception으로 바꾸지 않는다.
+enum class peer_state_t {
+    connecting,
+    ready,
+    draining,
+    not_connected,
+    not_required
+};
+
+struct mesh_peer_snapshot_t {
+    zlink::routing_id_t node_rid;
+    peer_state_t state;
+    std::optional<topology_reason_t> unavailable_reason;
+};
+
+struct mesh_channel_snapshot_t {
+    std::string channel_name;
+    bool is_ready;
+    std::uint32_t ready_target_count;
+};
+
+struct mesh_placement_snapshot_t {
+    bool is_available;
+    std::uint32_t active_actor_count;
+    std::uint32_t active_spot_count;
+    std::optional<topology_reason_t> unavailable_reason;
+};
+
+struct mesh_node_snapshot_t {
+    std::string mesh_name;
+    mesh_node_state_t state;
+    bool is_ready;
+    std::uint32_t ready_peer_count;
+    std::vector<mesh_channel_snapshot_t> channels;
+    std::vector<mesh_peer_snapshot_t> peers;
+    mesh_placement_snapshot_t placement;
+    std::uint64_t sequence;
+    std::chrono::system_clock::time_point observed_at;
+};
+
+class route_mesh_runtime_t {
+public:
+    virtual mesh_node_snapshot_t snapshot(std::string mesh_name) const = 0;
+    virtual std::unique_ptr<mesh_runtime_observation_t> observe(
+      std::string mesh_name,
+      std::size_t capacity,
+      std::function<void(const mesh_node_snapshot_t &)> observer) = 0;
+    virtual bool is_ready(std::string mesh_name) const = 0;
+};
+```
+
+`observe(...)`는 nullable field를 조합한 범용 event가 아니라 변경 뒤의 완전한
+snapshot을 전달한다. Peer 상태는 Node RID, 현재 상태와 사용할 수 없는 이유만
+제공한다. Placement는 새 object 수락 가능 여부와 현재 process의 active Actor·Spot
+수만 제공한다. Stable type별 capacity, activation concurrency와 reservation failure는
+Framework 내부 배치 판단 값이다.
+
+`mesh_placement_snapshot_t::is_available`은 Actor 또는 Spot capacity와 activation
+concurrency에 모두 여유가 있을 때만 `true`다. Activation concurrency의 현재 값과
+limit은 snapshot에 별도 field로 노출하지 않는다.
 
 ## 2. 메시지 흐름 관측
 
@@ -266,13 +326,7 @@ enum class socket_event_kind_t {
     connection_ready = 1,
     disconnected = 2,
     handshake_failed = 3,
-    peer_admission_changed = 4,
-    closed = 5
-};
-enum class location_event_kind_t {
-    status_changed = 0,
-    topology_changed = 1,
-    service_summary_changed = 2
+    closed = 4
 };
 enum class spot_event_kind_t {
     timer_handler_failed = 0,
@@ -290,7 +344,6 @@ enum class actor_event_kind_t {
     relay_failed = 2,
     session_disconnected = 3
 };
-
 struct runtime_event_base_t {
     std::string source_name;
     std::chrono::system_clock::time_point timestamp =
@@ -303,15 +356,6 @@ struct runtime_event_base_t {
 
 struct socket_event_payload_t : runtime_event_base_t {
     socket_event_kind_t event = socket_event_kind_t::connected;
-    std::string local_address;
-    std::string remote_address;
-};
-
-struct location_event_payload_t : runtime_event_base_t {
-    location_event_kind_t event = location_event_kind_t::status_changed;
-    std::optional<location_runtime_status_t> status;
-    std::vector<location_topology_entry_t> topology;
-    std::vector<location_service_summary_t> service_summary;
 };
 
 struct spot_timer_diagnostic_t {
@@ -344,7 +388,6 @@ struct actor_event_payload_t : runtime_event_base_t {
     std::string session_id;
     std::string message;
 };
-
 class monitoring_builder_t {
 public:
     monitoring_builder_t();
@@ -373,6 +416,11 @@ public:
 Application은 `monitoring_builder_t::on<TEvent>(...)`으로 Framework가 발행한 event를
 관찰한다. 임의 runtime event를 주입하는 publisher는 공개하지 않는다. Event 생성과 발행은
 Framework runtime의 내부 책임이다.
+
+Peer admission 단계, socket의 local·remote endpoint, Location Store topology payload와
+drain state event는 public event DTO로 제공하지 않는다. Peer·Channel 변화는
+`route_mesh_runtime_t::observe(...)`가 전달하는 완전한 snapshot으로 확인한다. Host
+종료 상태는 `framework_runtime_t`의 status와 observation으로 확인한다.
 
 **source별로 표면을 나누는 근거는 [runtime-monitoring §2](../../../../24-runtime-monitoring.ko.md)가
 소유한다.** Spot 상태·peer·subject 목록은 별도 polling source로 공개하지 않고

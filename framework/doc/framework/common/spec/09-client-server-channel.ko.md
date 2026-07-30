@@ -380,9 +380,9 @@ request를 거부하면 무한히 기다리지 않고 유한한 rejected 결과�
 
 ## 8. Server 재시작
 
-같은 Server identity가 다시 시작하면 lifecycle generation을 증가시킨다. Endpoint가
-같아도 이전 generation의 연결과 ClientServer Server descriptor를 새 target으로
-사용하지 않는다.
+같은 Server identity가 다시 시작하면 이전 값과 다른 lifecycle generation을
+발급한다. 이 값은 숫자 크기로 순서를 판단하지 않는다. Endpoint가 같아도 이전
+generation의 연결과 ClientServer Server descriptor를 새 target으로 사용하지 않는다.
 
 Client는 다음 순서로 교체한다.
 

@@ -21,12 +21,12 @@ replay·completion count를 한 expected-version transaction domain에서 관리
 accepted journal, participant별 state·journal과 replay payload를 immutable root로 관리한다. 두 provider 사이에는
 distributed transaction과 2PC가 없고 같은 Redis deployment 또는 서로 다른 Redis를 사용할 수 있다.
 
-Object Server factory에 `Recreate` 또는 `Snapshot`이 하나라도 있거나 Instance Spot factory가 하나라도 있으면
-startup snapshot은 Relocation Store가 정확히 하나인지 socket bind 전에 검증한다. `Disabled` cross-node 이동은
+Object Server factory에 `RecreateOnRelocation` 또는 `PreserveStateWith`가 하나라도 있거나 Instance Spot factory가 하나라도 있으면
+startup snapshot은 Relocation Store가 정확히 하나인지 socket bind 전에 검증한다. `DisableRelocation` cross-node 이동은
 capture 전에 거부한다. Same-node Actor join은 Location membership transaction만 사용하고 Relocation Store를
 호출하지 않는다. Actor·User Spot의 generic create는 creation intent를 Location reservation domain에 두며
 ZLIA root나 durable activation inbox를 만들지 않는다. Target-owned Instance cold activation만 complete first-message
-envelope를 Relocation Store에 저장하므로 relocation policy가 `Disabled`여도 Store 등록 조건을 만든다.
+envelope를 Relocation Store에 저장하므로 relocation policy가 `DisableRelocation`이어도 Store 등록 조건을 만든다.
 
 ## 2. Host maintenance barrier
 
@@ -189,8 +189,8 @@ Reversible seal이 participant별 accepted boundary를 고정하면 source lifet
 
 Coordinator는 seal 시점에 실행하지 않은 application message queue, accepted journal, timer logical
 registration·pending tick, optional application state, manifest와 Framework metadata를 deterministic relocation
-stream으로 encode한다. Snapshot state는 adapter가 반환한 opaque bytes이며 Framework는 byte count와 checksum만
-검증한다. `Recreate`도 application state section만 없는 complete relocation envelope을 만든다. Native timer
+stream으로 encode한다. Preserved application state는 adapter가 반환한 opaque bytes이며 Framework는 byte count와 checksum만
+검증한다. `RecreateOnRelocation`도 application state section만 없는 complete relocation envelope을 만든다. Native timer
 handle과 callback continuation은 포함하지 않는다.
 
 Seal 뒤 ingress는 frozen payload에 추가하지 않고 bounded source hold에 둔다. Precommit abort 뒤 steady source

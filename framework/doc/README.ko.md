@@ -12,8 +12,8 @@
 | 컴포넌트 | 디렉토리 | 진입점 | 내용 |
 |---------|----------|--------|------|
 | **Framework adapter** | `framework/` | [공통 스펙](framework/common/README.ko.md) | 메시징·SPOT·actor·stream 프레임워크 본체 |
-| **HTTP Client** | `http-client/` | [언어별 문서](framework/dotnet/http-client/README.ko.md) | fluent HTTP/JSON client |
-| **Stream Connector** | `stream-connector/` | [README](stream-connector/README.ko.md) | client 측 STREAM 접속 라이브러리(C++ · `.NET` · TypeScript) |
+| **HTTP Client** | `framework/<lang>/http-client/` | [언어별 문서](framework/dotnet/http-client/README.ko.md) | fluent HTTP/JSON client |
+| **Stream Connector** | `framework/<lang>/stream-connector/` | [언어별 문서](framework/cpp/stream-connector/README.ko.md) | client 측 STREAM 접속 라이브러리 |
 
 정식 언어: `.NET` · `Java/Kotlin` · `Node.js` · `C++`.
 
@@ -72,7 +72,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 언어별 typed binding 
 
 ---
 
-## 2. HTTP Client (`http-client/`)
+## 2. HTTP Client (`framework/<lang>/http-client/`)
 
 fluent HTTP/JSON client. 다섯 언어가 동일한 13장 골격을 공유한다. Kotlin은
 coroutine `suspend` 표면으로 같은 기능을 제공한다.
@@ -80,10 +80,10 @@ coroutine `suspend` 표면으로 같은 기능을 제공한다.
 | 언어 | 진입점 |
 |------|--------|
 | `.NET` | [http-client/dotnet](framework/dotnet/http-client/README.ko.md) |
-| `Java` | [http-client/java](http-client/java/README.ko.md) |
-| `Kotlin` | [http-client/kotlin](http-client/kotlin/README.ko.md) |
-| `Node.js` | [http-client/node](http-client/node/README.ko.md) |
-| `C++` | [http-client/cpp](http-client/cpp/README.ko.md) |
+| `Java` | [framework/java/http-client](framework/java/http-client/README.ko.md) |
+| `Kotlin` | [framework/kotlin/http-client](framework/kotlin/http-client/README.ko.md) |
+| `Node.js` | [framework/node/http-client](framework/node/http-client/README.ko.md) |
+| `C++` | [framework/cpp/http-client](framework/cpp/http-client/README.ko.md) |
 
 장 구성: 01 개요 · 02 시작하기 · 03 client 설정 · 04 요청 보내기 · 05 request body ·
 06 응답 처리 · 07 async/coroutine · 08 streaming · 09 인증/TLS · 10 redirect/retry/cookie ·
@@ -91,34 +91,34 @@ coroutine `suspend` 표면으로 같은 기능을 제공한다.
 
 ---
 
-## 3. Stream Connector (`stream-connector/`)
+## 3. Stream Connector (`framework/<lang>/stream-connector/`)
 
 client 측에서 STREAM 서버에 접속하는 별도 라이브러리. 게임 엔진 adapter 포함.
 
-[문서 트리 README](stream-connector/README.ko.md) — **어떤 connector를 쓰는지는 언어가 아니라
-"엔진 × 빌드 타깃"이 결정한다.** 웹(브라우저·WASM)으로 빌드하면 언어와 무관하게 TypeScript
-connector를 사용한다.
+**어떤 connector를 쓰는지는 언어가 아니라 "엔진 × 빌드 타깃"이 결정한다.**
+웹(브라우저·WASM)으로 빌드하면 언어와 무관하게 TypeScript connector를 사용한다.
 
 | 언어 | 대상 | 가이드 |
 |------|------|--------|
-| C++ | Unreal, Godot(GDExtension), Axmol, 일반 C++, 서버 e2e/perf | [INDEX](stream-connector/cpp/guide/INDEX.ko.md) |
+| C++ | Unreal, Godot(GDExtension), Axmol, 일반 C++, 서버 e2e/perf | [INDEX](framework/cpp/stream-connector/guide/INDEX.ko.md) |
 | `.NET` | Unity(네이티브), Godot C#, 데스크톱·서버 | [INDEX](framework/dotnet/stream-connector/INDEX.ko.md) |
-| TypeScript | 브라우저 계열(웹·Unity WebGL·Cocos web·Godot Web) | [INDEX](stream-connector/typescript/guide/INDEX.ko.md) |
+| Java | JVM application·도구·E2E client·봇 | [가이드](framework/java/stream-connector/README.ko.md) |
+| Kotlin | JVM application·도구·E2E client·봇 | [가이드](framework/kotlin/stream-connector/README.ko.md) |
+| Node.js/TypeScript | 브라우저 계열(웹·Unity WebGL·Cocos web·Godot Web) | [INDEX](framework/node/stream-connector/guide/INDEX.ko.md) |
 
 | 영역 | 문서 |
 |------|------|
-| C++ 가이드 | [01 개요](stream-connector/cpp/guide/01-overview.ko.md) · [02 시작하기](stream-connector/cpp/guide/02-getting-started.ko.md) · [03 옵션](stream-connector/cpp/guide/03-connector-options.ko.md) · [04 송신](stream-connector/cpp/guide/04-sending.ko.md) · [05 수신](stream-connector/cpp/guide/05-receiving.ko.md) · [06 lifecycle](stream-connector/cpp/guide/06-lifecycle.ko.md) · [07 에러 처리](stream-connector/cpp/guide/07-error-handling.ko.md) · [08 e2e client](stream-connector/cpp/guide/08-e2e-client.ko.md) · [09 engine adapter](stream-connector/cpp/guide/09-engine-adapters.ko.md) · [10 packaging](stream-connector/cpp/guide/10-packaging.ko.md) · [11 성능](stream-connector/cpp/guide/11-performance.ko.md) |
-| C++ core | [async runtime](stream-connector/cpp/core/guide/async-runtime.ko.md) |
-| C++ e2e-client | [coroutine client](stream-connector/cpp/e2e-client/guide/coroutine-client.ko.md) |
+| C++ 가이드 | [01 개요](framework/cpp/stream-connector/guide/01-overview.ko.md) · [02 시작하기](framework/cpp/stream-connector/guide/02-getting-started.ko.md) · [03 옵션](framework/cpp/stream-connector/guide/03-connector-options.ko.md) · [04 송신](framework/cpp/stream-connector/guide/04-sending.ko.md) · [05 수신](framework/cpp/stream-connector/guide/05-receiving.ko.md) · [06 lifecycle](framework/cpp/stream-connector/guide/06-lifecycle.ko.md) · [07 에러 처리](framework/cpp/stream-connector/guide/07-error-handling.ko.md) · [08 e2e client](framework/cpp/stream-connector/guide/08-e2e-client.ko.md) · [09 engine adapter](framework/cpp/stream-connector/guide/09-engine-adapters.ko.md) · [10 packaging](framework/cpp/stream-connector/guide/10-packaging.ko.md) · [11 성능](framework/cpp/stream-connector/guide/11-performance.ko.md) |
+| C++ core | [async runtime](framework/cpp/stream-connector/core/guide/async-runtime.ko.md) |
+| C++ e2e-client | [coroutine client](framework/cpp/stream-connector/e2e-client/guide/coroutine-client.ko.md) |
 | `.NET` 가이드 | [01 개요](framework/dotnet/stream-connector/01-overview.ko.md) · [02 Unity](framework/dotnet/stream-connector/02-unity.ko.md) · [03 Godot C#](framework/dotnet/stream-connector/03-godot-csharp.ko.md) |
-| TypeScript 가이드 | [01 개요](stream-connector/typescript/guide/01-overview.ko.md) · [02 브라우저](stream-connector/typescript/guide/02-browser.ko.md) |
+| Node.js/TypeScript 가이드 | [01 개요](framework/node/stream-connector/guide/01-overview.ko.md) · [02 브라우저](framework/node/stream-connector/guide/02-browser.ko.md) |
 
 계약의 정본은 [Stream Connector 공통 스펙](framework/common/spec/stream-connector/32-stream-connector.ko.md)이며,
 언어별 public 표면은 `framework/common/spec/stream-connector/languages/<lang>/`가 소유한다.
 
-**Java/Kotlin은 별도 가이드 트리를 두지 않는다.** 대상이 JVM 애플리케이션 하나뿐이라 엔진별로
-갈라질 것이 없어, connector 사용법이
-[Java framework 가이드 07 — STREAM](framework/java/guide/07-stream.ko.md)에 thin client로 포함된다.
+Java와 Kotlin은 같은 JVM connector runtime을 사용한다. Java guide는 `CompletionStage` 사용법을,
+Kotlin guide는 coroutine과 `Flow` 사용법을 설명한다.
 
 > TypeScript package root는 browser-only WebSocket transport와 명시적 flow 전달을 제공한다.
 > 실제 browser와 package 검증 상태는
@@ -130,7 +130,7 @@ connector를 사용한다.
 
 1. [공통 개요](framework/common/spec/02-overview.ko.md) → [상호작용 모델](framework/common/spec/03-interaction-model.ko.md) → [actor 모델](framework/common/spec/14-actor-model.ko.md)
 2. 사용할 언어의 [framework/&lt;lang&gt;](framework/dotnet/README.ko.md) guide
-3. HTTP가 필요하면 [http-client/&lt;lang&gt;](framework/dotnet/http-client/README.ko.md), 외부 client 접속이면 [stream-connector](stream-connector/cpp/guide/INDEX.ko.md)
+3. HTTP가 필요하면 [framework/&lt;lang&gt;/http-client](framework/dotnet/http-client/README.ko.md), 외부 client 접속이면 [framework/&lt;lang&gt;/stream-connector](framework/cpp/stream-connector/guide/INDEX.ko.md)
 
 ## 유지 규칙
 
@@ -138,9 +138,8 @@ connector를 사용한다.
 - 언어별 문서는 공통 의미를 해당 언어의 시그니처와 샘플로만 구체화한다.
 - 언어별 문서는 모두 `framework/doc/` 아래에서 작성하고 수정한다. 새 언어별 문서를
   `framework/languages/<lang>/doc/` 아래에 추가하지 않는다.
-- 기존 언어별 문서를 수정해야 하면 `framework/doc/framework/<lang>/`,
-  `framework/doc/http-client/<lang>/`, `framework/doc/stream-connector/<lang>/` 중
-  대상 컴포넌트에 맞는 위치에서 진행한다.
+- 기존 언어별 문서를 수정해야 하면 `framework/doc/framework/<lang>/` 아래의
+  `guide/`, `http-client/`, `stream-connector/`, `internals/` 중 대상에 맞는 위치에서 진행한다.
 - 새 문서를 추가하면 이 맵과 해당 디렉토리 `README.ko.md`를 함께 갱신한다.
 - 컴포넌트 경계를 지킨다: framework 본체는 `framework/`, HTTP client는 `http-client/`,
   STREAM connector는 `stream-connector/`.

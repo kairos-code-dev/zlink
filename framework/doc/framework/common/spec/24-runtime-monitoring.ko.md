@@ -110,6 +110,8 @@ application message를 처리할 수 있는지를 나타낸다.
 따라서 host가 `serving`이어도 특정 ClientServer Channel에 ready target이 없으면 그
 topology만 `degraded`일 수 있다. 반대로 host가 `relocating`, `relocated` 또는
 `draining`이면 연결이 남아 있어도 모든 topology의 `IsReady`는 `false`다.
+이때 연결된 peer·target 수는 현재 연결 상태를 그대로 제공한다. Host가 application
+traffic을 받지 않는다는 이유로 count를 `0`으로 바꾸지 않는다.
 
 | 상태 종류 | 허용 값 |
 |---|---|
@@ -148,6 +150,11 @@ Status는 Spot과 그 안에서 application message를 처리하는 Actor의 개
 최초 message 전달을 막는
 [activation barrier](01-glossary.ko.md#activation-barrier)와 내부 capacity counter는
 제공하지 않는다.
+
+Placement의 `IsAvailable`은 host가 `serving`이고 Object Server이며 placement weight가
+양수이고, Actor 또는 Spot capacity와 activation concurrency에 모두 여유가 있을 때만
+`true`다. Activation concurrency의 현재 값과 limit은 public status에 별도 field로
+노출하지 않는다.
 
 새 target 선택 비율에 사용하는 [weight](01-glossary.ko.md#weight)는 signed integer
 `0..10000`이다. 값이 `0`이면 새 placement 대상으로 선택하지 않는다.

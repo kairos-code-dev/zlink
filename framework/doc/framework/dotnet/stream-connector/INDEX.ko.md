@@ -20,8 +20,8 @@ connector의 API 표면(옵션, send/request, codec, 오류)은
 
 | 문서 | 대상 |
 |------|------|
-| [C++ Stream Connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md) | Unreal, Godot(GDExtension), Axmol, 일반 C++ |
-| [Node/TypeScript Stream Connector 가이드](../../../stream-connector/typescript/guide/INDEX.ko.md) | **브라우저, Unity WebGL, Cocos web**, Node |
+| [C++ Stream Connector 가이드](../../cpp/stream-connector/guide/INDEX.ko.md) | Unreal, Godot(GDExtension), Axmol, 일반 C++ |
+| [Node/TypeScript Stream Connector 가이드](../../node/stream-connector/guide/INDEX.ko.md) | **브라우저, Unity WebGL, Cocos web**, Node |
 
 **웹(브라우저·WASM)으로 빌드하면 언어와 무관하게 TypeScript connector를 사용한다.** 판단
 기준은 [Stream Connector 공통 스펙 §2](../../common/spec/stream-connector/32-stream-connector.ko.md)가 소유한다.

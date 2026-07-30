@@ -47,7 +47,7 @@ startup 오류다.
 | `ActorRef` field | 의미 |
 |---|---|
 | `ActorId` | Logical Actor identity다. |
-| `ObjectGeneration` | 같은 ActorId의 서로 다른 logical incarnation을 구분하는 0이 아닌 unsigned 63-bit 값이다. Relocation 중 target에서 Actor 객체를 다시 만드는 `Recreate`는 같은 incarnation을 계속 사용하므로 이 값을 바꾸지 않는다. |
+| `ObjectGeneration` | 같은 ActorId의 서로 다른 logical incarnation을 구분하는 0이 아닌 unsigned 63-bit 값이다. Relocation 중 target에서 Actor 객체를 다시 만드는 `RecreateOnRelocation`은 같은 incarnation을 계속 사용하므로 이 값을 바꾸지 않는다. |
 | 현재 `MeshName` | 현재 owner가 속한 Mesh다. |
 | 현재 `NodeRid` | 현재 [owner](01-glossary.ko.md#owner) node의 RID다. |
 
@@ -611,7 +611,7 @@ ActorId는 metric label로 사용하지 않는다.
 - Handler당 최대 64개, request 하나당 최대 1 MiB, request 합계 최대 8 MiB와
   기본 5초 timeout을 적용한다.
 - Same-node Join, cross-node Join과
-  [`Recreate` relocation policy](01-glossary.ko.md#relocation-policy)에서 같은 logical
+  [`RecreateOnRelocation` relocation policy](01-glossary.ko.md#relocation-policy)에서 같은 logical
   incarnation의 `ObjectGeneration`을 유지한다.
 - Actor handler가 mutable Spot state에 직접 접근하지 않고 명시적인 Spot 호출을 사용한다.
 - Session bind와 Spot membership이 독립적으로 바뀌며 서로를 암묵적으로 변경하지 않는다.

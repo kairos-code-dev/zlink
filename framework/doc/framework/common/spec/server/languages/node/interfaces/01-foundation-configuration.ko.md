@@ -290,8 +290,8 @@ Adapter는 application state를 `Uint8Array` opaque bytes로만 주고받으며 
 message wrapper를 사용하지 않는다. Framework는 `preserveStateWith(...)`의 cross-node materialization에서만 adapter를
 호출한다. Maintenance 이관, remote User·Entry Spot join과 whole User Spot relocation의 각 Actor participant에는
 Actor adapter를 사용한다. Whole User Spot의 Spot root와 cross-node User·Instance Spot materialization에는 [Spot](../../../../01-glossary.ko.md#spot)
-adapter를 사용한다. Same-node join·relocation에서는 adapter를 호출하지 않으며 Disabled cross-node operation은
-`capture(...)` 전에 거부한다. Recreate policy도 application payload를 capture·restore하지 않는다.
+adapter를 사용한다. Same-node join·relocation에서는 adapter를 호출하지 않으며 `DisableRelocation` cross-node operation은
+`capture(...)` 전에 거부한다. `RecreateOnRelocation` policy도 application payload를 capture·restore하지 않는다.
 
 Target은 owner commit 전에 restore와 accepted journal validation·staging만 완료하며 application handler를
 실행하지 않는다. Standalone Actor는 [owner](../../../../01-glossary.ko.md#owner) commit 뒤 journal replay와
@@ -332,7 +332,7 @@ phase의 `StoreUnavailable`, `RelocationFailed` 또는 `TeardownFailed`로 분�
 Entry Spot과 `PerActor` User Spot의 Actor maintenance는 application membership
 callback을 호출하지 않는다. Authority·membership commit, accepted
 journal·queue·Actor timer 복원, source relay, durable cleanup과 route ACK를 끝낸
-뒤 target dispatch를 연다. `PerActor` Spot policy는 `Recreate`만 허용하고 Spot
+뒤 target dispatch를 연다. `PerActor` Spot policy는 `RecreateOnRelocation`만 허용하고 Spot
 adapter를 등록하지 않는다.
 
 Relocated terminal reply accounting은 internal command ID 46 `replyRelayAck`를 사용한다. 이 command는 stable

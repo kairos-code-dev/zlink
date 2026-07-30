@@ -19,16 +19,16 @@
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 전용 key prefix. RL-C4에서 일시 정지 대상. |
-| relocation store | 1 | 공식 Redis relocation store extension이 사용하는 Redis instance. Location Store와 별도 key prefix와 등록 표면을 사용한다. Track F의 `Recreate`·`Snapshot` relocation payload와 accepted journal을 저장한다. |
+| relocation store | 1 | 공식 Redis relocation store extension이 사용하는 Redis instance. Location Store와 별도 key prefix와 등록 표면을 사용한다. Track F의 `RecreateOnRelocation`·`PreserveStateWith` relocation payload와 accepted journal을 저장한다. |
 | provider | 2~3 | Config 1과 같은 ChannelName provider다. `AddLocationStore(...)`로 store를 등록하면 MeshNode descriptor가 자동 갱신된다. Automatic discovery lifecycle마다 Framework가 새 RID를 발급한다. 시나리오에서 provider를 강제 종료·재시작·교체한다. |
 | Object Server | 2 | Location Store와 Relocation Store를 등록한다. 두 node 모두 전체 participant inventory에 필요한 Actor 전체, Spot 전체와 Spot stable-type population capacity를 게시하고 아래 stable type의 factory, 명시적 relocation policy와 필요한 adapter를 같은 capability로 등록한다. |
 | consumer | 시나리오별 | 지속 트래픽을 보내며 복구를 관측한다. |
 
 Track F의 Object Server는 standalone Actor, User Spot, Instance Spot을 각각 검증할 stable type을 등록한다.
-`Recreate` type은 factory와 policy만 등록하고, `Snapshot` type은 factory·policy와 Actor 또는 Spot
-RelocationAdapter를 함께 등록한다. Entry membership 시나리오는 `Snapshot` Actor type을 사용한다. User Spot
-aggregate 시나리오는 Spot과 member Actor를 모두 `Snapshot`으로 등록한다. Blocker를 검증할 때만 별도의
-`Disabled` participant type을 사용한다. Target node의 capability와 capacity는 성공 시나리오의 participant
+`RecreateOnRelocation` type은 factory와 policy만 등록하고, `PreserveStateWith` type은 factory·policy와 Actor 또는 Spot
+RelocationAdapter를 함께 등록한다. Entry membership 시나리오는 `PreserveStateWith` Actor type을 사용한다. User Spot
+aggregate 시나리오는 Spot과 member Actor를 모두 `PreserveStateWith`로 등록한다. Blocker를 검증할 때만 별도의
+`DisableRelocation` participant type을 사용한다. Target node의 capability와 capacity는 성공 시나리오의 participant
 전체를 수용할 수 있어야 한다.
 
 스크립트가 기본 배포를 시작한 뒤, 시나리오별로 provider 프로세스(또는 RL-C4의 store 프로세스)를
@@ -591,30 +591,31 @@ monitor callback이 남지 않는가.
 
 우선순위: `P0`
 
-- 절차: 첫 반복은 `Snapshot` policy와 Actor RelocationAdapter를 등록한 Actor를 source Entry Spot에 둔 뒤 host
+- 절차: 첫 반복은 `PreserveStateWith` policy와 Actor RelocationAdapter를 등록한 Actor를 source Entry Spot에 둔 뒤 host
   `PlannedMaintenance` relocation을 실행한다. Target offer와 Prepared
   evidence에 target node의 initialized Entry Spot identity를 기록하고 NewOwner CAS 전후 authority를 관찰한다.
-  두 번째 반복은 `SpotWide` 실행 모델, `Snapshot` policy와 Spot RelocationAdapter를 등록한 User Spot에
-  `Snapshot` Actor를 join한
+  두 번째 반복은 `SpotWide` 실행 모델, `PreserveStateWith` policy와 Spot RelocationAdapter를 등록한 User Spot에
+  `PreserveStateWith` Actor를 join한
   상태로 `PlannedMaintenance` mode의 `Relocate`를 호출한다. 두 target은 같은 stable type capability,
   adapter capability와 aggregate 전체를
   수용할 capacity를 게시한다.
 - 검증: Entry member Actor는 ObjectGeneration을 유지하면서 owner node, AuthorityOwnerGeneration과 current Spot을
-  target Entry Spot ID·ObjectGeneration·kind로 한 CAS에서 바꾼다. Target factory가 만든 Actor에 Snapshot
-  Adapter의 `Restore`와 journal staging을 끝낸 뒤 authority를 commit한다. Infrastructure relocation은
+  target Entry Spot ID·ObjectGeneration·kind로 한 CAS에서 바꾼다. Target factory가 만든 Actor에
+  Actor relocation adapter의 `Restore`와 journal staging을 끝낸 뒤 authority를 commit한다. Infrastructure relocation은
   application의 membership 변경이 아니므로 target Entry Spot의 join·relocation callback과 source Entry
   Spot의 leave callback을 호출하지 않는다. Source membership의 durable cleanup 뒤 accepted journal을
   replay한다. Source process 종료 반복에서도 fenced durable source cleanup terminal 뒤에만 replay를 시작한다.
   Maintenance 반복에서 target `OnActorJoin`·`OnJoinedActor` 또는 source `OnLeaveActor`가 한 번이라도 호출되거나
   source cleanup보다 journal replay가 먼저 시작되면 실패다.
-  이 `Restore` 검증은 `Snapshot` participant에만 적용하며 RL-F10에 `Recreate` 반복을 섞지 않는다.
+  이 `Restore` 검증은 `PreserveStateWith` participant에만 적용하며 RL-F10에
+  `RecreateOnRelocation` 반복을 섞지 않는다.
   Callback·replay·cleanup은 current attempt에서 retry-safe하며 source cleanup 뒤 `Completed`, bound-session
   route ACK와 steady normalization 전까지 admission을 닫는다. User Spot member가 있는
-  반복은 Spot과 current member Actor 전체의 Snapshot payload와 accepted journal을 하나의 immutable relocation
+  반복은 Spot과 current member Actor 전체의 captured state payload와 accepted journal을 하나의 immutable relocation
   root에 저장하고 membership을 유지한 채 owner·membership aggregate commit에 성공한다. User Spot aggregate는
   Actor `OnActorJoin`·`OnJoinedActor`·`OnLeaveActor` evidence가 모두 0건이어야 하며 aggregate
   journal은 commit 뒤에 replay한다. 일반 join용 `OnJoinedActor`를 maintenance 완료 신호로 사용하면 실패다.
-  `RelocationDisabled` blocker가 필요하면 이 성공 반복을 바꾸지 않고 별도의 `Disabled` participant fixture로
+  `RelocationDisabled` blocker가 필요하면 이 성공 반복을 바꾸지 않고 별도의 `DisableRelocation` participant fixture로
   preflight abort와 source authority 보존을 검증한다.
 
 #### RL-F11 readiness-first relocation과 느린 turn 격리
@@ -637,7 +638,7 @@ monitor callback이 남지 않는가.
 
 우선순위: `P0`
 
-- 절차: Snapshot User Spot과 member Actor에 periodic timer를 등록한다. Source User Spot의 현재 turn `R0`를
+- 절차: `PreserveStateWith` User Spot과 member Actor에 periodic timer를 등록한다. Source User Spot의 현재 turn `R0`를
   barrier에서 지연하고, 아직 실행하지 않은 direct message `Q1 -> Q2`, Actor message `A1 -> A2`와 pending
   timer tick을 queue에 수락시킨다. Relocation notification 뒤 `R0`만 완료시킨다. Source seal을 확인한 다음
   이전 owner route로 request와 one-way `H1 -> H2`를 추가 제출하고 target restore·authority commit·route
@@ -658,7 +659,7 @@ monitor callback이 남지 않는가.
 - 절차: 첫 반복은 encoded relocation payload가 각각 약 1 MiB인 80개의 standalone Actor를 동시에 ready로
   만든다. 두 번째 반복은 64 MiB payload를 반환하는 Actor를 여덟 개 준비한다. Capture·Restore adapter와
   instrumented Relocation Store가 active operation, callback concurrency, seal 전 byte reservation과 Capture 뒤
-  actual encoded bytes in flight의 high-water를 기록한다. 별도 반복에서는 participant별 Snapshot state의
+  actual encoded bytes in flight의 high-water를 기록한다. 별도 반복에서는 participant별 captured state의
   64 MiB reservation과 Framework-owned encoded upper bound를 합하면 256 MiB를 넘는 하나의 User Spot aggregate를
   준비한다. Aggregate가 exclusive permit을 기다리는 동안 normal unit도 계속 ready로 만들고 permit 획득 실패를
   반복한다. 마지막 반복에서는 adapter가 64 MiB보다 1 byte 큰 결과를 반환한다.

@@ -43,7 +43,8 @@ Relocation mode는 두 가지다.
 | `PlannedMaintenance` | 같은 application version의 eligible node |
 | `RollingUpdate` | option에 지정한 exact application version의 eligible node |
 
-Actor·Spot factory는 `Disabled`, `Recreate` 또는 `Snapshot` policy를 고정한다. Snapshot adapter는 opaque
+Actor·Spot factory는 `DisableRelocation`, `RecreateOnRelocation` 또는 `PreserveStateWith` policy를 고정한다.
+`PreserveStateWith` adapter는 opaque
 `byte[]` application state만 capture·restore한다. Authority phase, participant metadata, accepted journal,
 queue와 timer 복원은 Framework 내부 책임이다.
 

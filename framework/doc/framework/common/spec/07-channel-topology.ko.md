@@ -396,8 +396,10 @@ weight 합계를 최소 64-bit 정수로 계산한다. 이 합계가 overflow하
 Local Server의 weight는 ChannelName으로 지정하며 MeshName, RID나 endpoint를
 application에 요구하지 않는다.
 
-Runtime monitoring은 실제로 선택된 physical MeshName, RID와 descriptor revision을
-제공한다. Application은 이 값을 weight 변경 target으로 사용하지 않는다.
+Runtime monitoring은 실제로 선택된 `MeshName`과 Node RID를 제공한다. Descriptor
+revision과 endpoint는 stale 등록 정보와 연결을 판정하는 Framework 내부 값이므로
+public status에 포함하지 않는다. Application은 monitoring 값을 weight 변경 target으로
+사용하지 않는다.
 
 ### 4.4 한 process에서 ChannelName은 하나의 송신 경로만 가리킨다
 

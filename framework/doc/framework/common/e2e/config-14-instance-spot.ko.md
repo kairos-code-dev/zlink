@@ -79,8 +79,8 @@ endpoint를 지정해 선택하지 않고 Location authority CAS가 결정한다
 | 역할 | 수 | 책임 |
 |---|---:|---|
 | `InstanceCaller` | 2 | Object Client 역할과 Location Store를 등록한다. 서로 다른 process에서 같은 global Spot ID로 send/request를 시작한다. |
-| `InstanceOwner` | 2 | Object Server 역할, Location Store와 Relocation Store를 등록한다. Stable type `PlayerQuestSpot`·`OrderWorkflowSpot`은 `Snapshot` policy와 각 `IZLinkSpotRelocationAdapter<TSpot>`을 사용하고, 별도 negative type은 `Disabled`, recovery 비교 type은 `Recreate`를 사용한다. 모든 factory는 explicit policy와 양수 placement weight를 제공하고, node의 Spot 전체와 각 Instance Spot stable-type population limit 및 별도 activation concurrency limit을 설정한다. Activation·handler·timer evidence도 기록한다. |
-| `SpotOwner` | 1 | Object Server 역할과 Location Store를 등록하고 User Spot factory에는 stable type과 explicit `Disabled` policy를 제공한다. Entry Spot과 같은 Spot ID의 User Spot 충돌, existing-only Spot 회귀를 검증하며 relocation은 시작하지 않는다. |
+| `InstanceOwner` | 2 | Object Server 역할, Location Store와 Relocation Store를 등록한다. Stable type `PlayerQuestSpot`·`OrderWorkflowSpot`은 `PreserveStateWith` policy와 각 `IZLinkSpotRelocationAdapter<TSpot>`을 사용하고, 별도 negative type은 `DisableRelocation`, recovery 비교 type은 `RecreateOnRelocation`을 사용한다. 모든 factory는 explicit policy와 양수 placement weight를 제공하고, node의 Spot 전체와 각 Instance Spot stable-type population limit 및 별도 activation concurrency limit을 설정한다. Activation·handler·timer evidence도 기록한다. |
+| `SpotOwner` | 1 | Object Server 역할과 Location Store를 등록하고 User Spot factory에는 stable type과 explicit `DisableRelocation` policy를 제공한다. Entry Spot과 같은 Spot ID의 User Spot 충돌, existing-only Spot 회귀를 검증하며 relocation은 시작하지 않는다. |
 | `MultiMeshCaller` | 1 | 다른 Object Mesh를 initial placement으로 지정하되 global Spot ID 중복이 하나의 authority로 수렴함을 검증한다 |
 | Redis Location Store | 1 | Descriptor, owner lease, Instance authority와 CAS를 제공한다 |
 | Redis Relocation Store | 1 | Relocate의 immutable application state·accepted journal payload와 cold activation의 complete first-message recovery root·durable inbox first record를 보존한다. External State Store를 대신하지 않으며 별도 Store instance와 key prefix를 사용한다. |

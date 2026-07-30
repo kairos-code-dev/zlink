@@ -68,6 +68,9 @@ set `PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1` or
 is a shortcut that sets both send and receive socket buffers to the same value;
 `--sndbuf` and `--rcvbuf` are still available when each direction needs a
 different value.
+Manual HWM values are bytes. The previous message-count meaning is not
+accepted. A former 1,000-message setting maps to `4,096,000` bytes when the
+4 KiB planning unit is used.
 
 Multi benchmarks set the auto-HWM message unit from the current message size
 before each run:

@@ -179,9 +179,7 @@
         "public interface ZLinkFanoutRuntime",
         "public ZLinkRouteMeshRuntime routeMeshRuntime();",
         "public ZLinkClientServerRuntime clientServerRuntime();",
-        "public ZLinkFanoutRuntime fanoutRuntime();",
-        "ZLinkClientServerServerState",
-        "ZLinkFanoutPublisherConnectionState"
+        "public ZLinkFanoutRuntime fanoutRuntime();"
       ],
       "required_file_fragments": {
         "common-runtime.ko.md": [
@@ -192,16 +190,15 @@
           "별도 drain facade와 MeshName을 받는 partial operation은 없다."
         ],
         "monitoring.ko.md": [
-          "## Host runtime observation exact source signature",
-          "## Topology runtime observation exact source signature",
+          "## 2. Host 상태",
+          "## 3. RouteMesh 상태",
           "public record ZLinkFrameworkRuntimeStatus(",
           "Optional<ZLinkFrameworkRelocationResult> relocationResult,",
           "Optional<ZLinkFrameworkTerminationResult> terminationResult,",
-          "public record ZLinkInstanceSpotTypeSnapshot(",
           "public interface ZLinkClientServerRuntime {",
           "public interface ZLinkFanoutRuntime {",
-          "별도 drain control과 component termination result는 제공하지 않는다.",
-          "위의 host와 topology exact source signature가 11.0 monitoring public type의 정본이다."
+          "Monitoring은 별도 drain",
+          "일부 field만 담은 event가 아니라 변경 뒤의 완전한 snapshot을 전달한다."
         ],
         "configuration-host.ko.md": [
           "## Spring bean 계약",
@@ -262,9 +259,7 @@
         "protected abstract suspend fun createActor(",
         "suspend fun ZLinkLocationRuntimeQuery.status()",
         "Kotlin provider를 작성할 때도 Java `CompletionStage` SPI를 구현한다.",
-        "`suspend` Store interface를 별도로",
-        "ZLinkClientServerServerState",
-        "ZLinkFanoutPublisherConnectionState"
+        "`suspend` Store interface를 별도로"
       ],
       "required_file_fragments": {
         "monitoring.ko.md": [
@@ -318,9 +313,7 @@
         "addRelocationStore(store: ZLinkRelocationStore): this",
         "export interface ZLinkRelocationStore",
         "export class ZLinkRedisRelocationStore",
-        "reference: ZLinkBlobReference",
-        "ZLinkClientServerServerState",
-        "ZLinkFanoutPublisherConnectionState"
+        "reference: ZLinkBlobReference"
       ],
       "forbidden_file_fragments": {
         "01-foundation-configuration.ko.md": ["InstanceSpotAddress", "export interface SpotHandle {"],

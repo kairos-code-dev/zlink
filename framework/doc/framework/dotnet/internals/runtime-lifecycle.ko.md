@@ -35,7 +35,7 @@ reconnect 계약은 각 기능 spec이 소유하며 여기서 반복하지 않�
 
 `RelocateAsync(...)` preflight와 `ShutdownAsync(...)` seal은 같은 host maintenance barrier에서 순서를 정한다.
 Relocate는 Actor·Spot policy, target version·capability·capacity·wave와 Store를 모두 확인한 뒤에만
-`Relocating`을 commit한다. `Disabled` policy인 Actor·Spot이 남아 있거나 필요한 target·Store가 없으면 state와
+`Relocating`을 commit한다. `DisableRelocation` policy인 Actor·Spot이 남아 있거나 필요한 target·Store가 없으면 state와
 admission을 바꾸지 않고 해당 `Blocked` reason으로 끝낸다.
 
 `Relocating`부터 mode와 deadline을 shared operation에 고정한다. 같은 작업을 호출한 caller는 동일한 결과를

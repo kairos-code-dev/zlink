@@ -1,10 +1,10 @@
 # ZLink HTTP Client For C++ — 사용자 가이드
 
 > **⚠️ 이 가이드는 최신이 아니다.** 현재 리뷰·정비가 끝난 가이드는
-> [`.NET` 가이드](../../framework/dotnet/README.ko.md) 하나뿐이다. 이 문서는 그 이전 상태이며,
+> [`.NET` 가이드](../../dotnet/README.ko.md) 하나뿐이다. 이 문서는 그 이전 상태이며,
 > **`.NET` 가이드가 완성되면 이 문서를 삭제하고 그것을 기준으로 다시 쓴다.**
 >
-> **계약을 확인할 때는 이 문서를 믿지 말고 [spec 트리](../../framework/common/spec/README.ko.md)를 본다.**
+> **계약을 확인할 때는 이 문서를 믿지 말고 [spec 트리](../../common/spec/README.ko.md)를 본다.**
 
 `zlink::http_client`는 C++에서 HTTP request를 보내기 위한 범용 HTTP client다.
 zlink 스타일 fluent builder로 사용하며 public header는 Boost.Beast/Asio/OpenSSL
@@ -44,5 +44,5 @@ auto game = zlink::http_client::client_t::create ("https://game-api.example.inte
 - 실패가 어떻게 보고되는지 → [13. 에러 처리](13-error-handling.ko.md)
 
 정식 계약과 회귀 테스트 축은 spec 문서
-[cpp-http-client.ko.md](../../framework/common/spec/http-client/languages/cpp/cpp-http-client.ko.md)가 정본이다.
+[cpp-http-client.ko.md](../../common/spec/http-client/languages/cpp/cpp-http-client.ko.md)가 정본이다.
 이 가이드는 사용법을 다룬다.

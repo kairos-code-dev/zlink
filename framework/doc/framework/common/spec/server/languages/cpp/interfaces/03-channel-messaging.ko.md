@@ -7,6 +7,8 @@
 
 RouteMesh builder는 물리 mesh 하나와 그 MeshNode를 등록한다. 논리 channel은 같은
 builder에 membership으로 추가하며 별도 socket을 만들지 않는다.
+Application이 조회하는 RouteMesh 상태 interface는
+[C++ monitoring exact interface](08-monitoring.ko.md)가 정의한다.
 
 ```cpp
 namespace zlink::framework {
@@ -165,128 +167,6 @@ public:
 
 };
 
-enum class topology_state_t {
-    starting,
-    ready,
-    degraded,
-    stopping,
-    stopped,
-    failed
-};
-
-enum class peer_state_t {
-    connecting,
-    ready,
-    draining,
-    not_connected,
-    not_required
-};
-
-struct mesh_peer_snapshot_t {
-    zlink::routing_id_t rid;
-    std::uint64_t lifecycle_generation;
-    std::uint64_t descriptor_revision;
-    std::string endpoint;
-    peer_state_t state;
-    bool ready;
-    std::string drain_state;
-    std::vector<std::string> channel_names;
-    std::optional<std::string> last_failure;
-};
-
-struct mesh_channel_snapshot_t {
-    std::string channel_name;
-    int local_weight;
-    std::uint64_t ready_member_count;
-    bool selectable;
-};
-
-struct mesh_claim_snapshot_t {
-    bool application_active;
-    std::uint64_t pending_application_work;
-    bool infrastructure_active;
-    std::uint64_t pending_infrastructure_work;
-};
-
-struct instance_spot_type_snapshot_t {
-    std::string instance_spot_type;
-    std::uint64_t active_count;
-    std::uint64_t activating_count;
-    std::uint64_t closing_count;
-    std::uint64_t pending_message_count;
-    std::uint64_t pending_byte_count;
-    std::optional<std::string> last_activation_outcome;
-};
-
-struct location_runtime_snapshot_t {
-    std::string state;
-    std::optional<std::chrono::system_clock::time_point> last_success_at;
-    std::optional<std::chrono::system_clock::time_point> last_failure_at;
-};
-
-struct activation_concurrency_snapshot_t {
-    std::uint32_t active;
-    std::uint32_t limit;
-};
-
-struct mesh_node_snapshot_t {
-    std::string mesh_name;
-    zlink::routing_id_t rid;
-    std::optional<spot_id_t> entry_spot_id;
-    std::uint64_t lifecycle_generation;
-    std::uint64_t descriptor_revision;
-    std::string endpoint;
-    topology_state_t state;
-    object_role_t object_role;
-    std::int64_t application_version;
-    int placement_weight;
-    placement_capacity_t object_capacity;
-    activation_concurrency_snapshot_t activation_concurrency;
-    std::uint64_t placement_reservation_failure_count;
-    std::optional<std::string> last_placement_reservation_failure;
-    std::vector<object_capability_t> object_capabilities;
-    std::uint64_t sequence;
-    std::chrono::system_clock::time_point observed_at;
-    std::vector<std::string> descriptor_sources;
-    std::vector<mesh_peer_snapshot_t> peers;
-    std::vector<mesh_channel_snapshot_t> channels;
-    std::vector<instance_spot_type_snapshot_t> instance_spots;
-    mesh_claim_snapshot_t claims;
-    location_runtime_snapshot_t location;
-};
-
-struct mesh_runtime_event_t {
-    std::string identifier;
-    std::uint64_t sequence;
-    std::chrono::system_clock::time_point timestamp;
-    std::string mesh_name;
-    zlink::routing_id_t source_rid;
-    std::optional<zlink::routing_id_t> peer_rid;
-    std::optional<std::uint64_t> lifecycle_generation;
-    std::optional<std::uint64_t> descriptor_revision;
-    std::optional<std::string> channel_name;
-    std::optional<std::string> claim_domain;
-    std::optional<std::string> message_kind;
-    std::optional<std::string> reason;
-    std::optional<topology_state_t> state;
-};
-
-class mesh_runtime_observation_t {
-public:
-    virtual ~mesh_runtime_observation_t() = default;
-    virtual void close() = 0;
-};
-
-class route_mesh_runtime_t {
-public:
-    virtual mesh_node_snapshot_t snapshot(std::string mesh_name) const = 0;
-    virtual std::unique_ptr<mesh_runtime_observation_t> observe(
-      std::string mesh_name,
-      std::size_t capacity,
-      std::function<void(const mesh_runtime_event_t &)> observer) = 0;
-    virtual bool is_ready(std::string mesh_name) const = 0;
-};
-
 enum class client_server_role_t { client, server, client_and_server };
 
 enum class client_server_server_state_t {
@@ -301,8 +181,6 @@ enum class client_server_server_state_t {
 struct client_server_server_snapshot_t {
     zlink::routing_id_t server_rid;
     std::uint64_t lifecycle_generation;
-    std::uint64_t descriptor_revision;
-    std::string endpoint;
     int weight;
     bool ready;
     client_server_server_state_t state;
@@ -330,7 +208,6 @@ struct client_server_runtime_event_t {
     std::string channel_name;
     std::optional<zlink::routing_id_t> server_rid;
     std::optional<std::uint64_t> lifecycle_generation;
-    std::optional<std::uint64_t> descriptor_revision;
     std::optional<int> weight;
     std::optional<bool> ready;
     std::optional<client_server_server_state_t> state;
@@ -360,8 +237,6 @@ enum class fanout_publisher_connection_state_t {
 struct fanout_publisher_connection_snapshot_t {
     zlink::routing_id_t publisher_rid;
     std::uint64_t lifecycle_generation;
-    std::uint64_t descriptor_revision;
-    std::string endpoint;
     bool connection_intent;
     bool ready;
     fanout_publisher_connection_state_t state;
@@ -630,8 +505,9 @@ runtime handle이다. 이 handle은 endpoint 연결, 해제와 현재 목록 조
 
 Endpoint 없이 등록한 automatic subscriber는 `fanout_runtime_t`에서 ChannelName별
 `fanout_channel_snapshot_t`를 읽고 `fanout_runtime_event_t`를 관찰한다.
-`fanout_publisher_changed_event_t::entry`는 Publisher RID, lifecycle generation, descriptor revision과
-endpoint를 하나의 immutable identity로 보존한다. `fanout_location_changed_event_t::location`은 publisher가
+`fanout_publisher_changed_event_t::entry`는 Publisher RID와 공개 연결 상태만 제공한다.
+Descriptor revision과 endpoint는 Framework 내부에서 identity와 stale 상태를 판정하는 데만
+사용한다. `fanout_location_changed_event_t::location`은 publisher가
 0개여도 store degraded·recovered 상태를 전달한다. `std::variant`의 두 대안은 서로의 payload를 optional
 field로 섞지 않는다. 각 variant의 `identifier()`는 `static constexpr event_identifier`를 반환하므로 호출자가
 identifier를 바꿀 수 없다. `state`와 event identifier는

@@ -33,13 +33,13 @@ Bingo형 3역할에 owner-spot 서비스를 더한 구성을 쓴다.
 | location store | 1 | 공식 Redis location store extension. 실행마다 전용 key prefix. |
 | relocation store | 1 | 공식 Redis relocation store extension. location store와 같은 Redis deployment를 쓰되 별도 key prefix를 사용한다. |
 | `Session` | 1 | Location Store를 등록한 Object Client. client STREAM endpoint, global Actor binding과 packet relay를 제공하며 factory와 placement target은 제공하지 않는다. STREAM 세션이 CCU·재접속 계기의 소스다. |
-| `Play` | 2 (`play-a`, `play-b`) | Location Store와 Relocation Store를 등록한 Object Server. Entry Spot, stable User Spot type `play.room`, Actor type `play.player`, Instance Spot type `play.instance` factory를 모두 명시적 `Snapshot` policy로 등록한다. Actor factory에는 Actor relocation adapter를, 두 Spot factory에는 각 concrete Spot type의 Spot relocation adapter를 지정한다. 두 노드는 같은 capability set, placement weight `100`, Actor total·Spot total limit `128`, 두 Spot stable type별 limit `128`과 activation concurrency `32`를 제공한다. actor 이동·룸 타이머·bound push와 `Relocate` handoff의 source·target이다. |
-| `OrderWorkflow` | 2 | Location Store를 등록한 Object Server. Stable User Spot type `order.workflow` factory를 명시적 `Disabled` policy, placement weight `100`, Actor total·Spot total·`order.workflow` stable type limit `64`, activation concurrency `16`으로 등록하고 event-sourcing owner Spot과 projection fan-out을 제공한다. 이 역할은 Play의 maintenance relocation target이 아니다. |
+| `Play` | 2 (`play-a`, `play-b`) | Location Store와 Relocation Store를 등록한 Object Server. Entry Spot, stable User Spot type `play.room`, Actor type `play.player`, Instance Spot type `play.instance` factory를 모두 명시적 `PreserveStateWith` policy로 등록한다. Actor factory에는 Actor relocation adapter를, 두 Spot factory에는 각 concrete Spot type의 Spot relocation adapter를 지정한다. 두 노드는 같은 capability set, placement weight `100`, Actor total·Spot total limit `128`, 두 Spot stable type별 limit `128`과 activation concurrency `32`를 제공한다. actor 이동·룸 타이머·bound push와 `Relocate` handoff의 source·target이다. |
+| `OrderWorkflow` | 2 | Location Store를 등록한 Object Server. Stable User Spot type `order.workflow` factory를 명시적 `DisableRelocation` policy, placement weight `100`, Actor total·Spot total·`order.workflow` stable type limit `64`, activation concurrency `16`으로 등록하고 event-sourcing owner Spot과 projection fan-out을 제공한다. 이 역할은 Play의 maintenance relocation target이 아니다. |
 | trigger client | 시나리오별 | STREAM 접속·게임 진행·주문 흐름·연결 해제를 유발한다. |
 
 Store instance는 공통 Redis deployment를 사용할 수 있지만 각 Framework root가 필요한 capability를
-명시적으로 등록한다. `Play`의 `Snapshot` factory 때문에 두 Play root에는 Relocation Store가 필수다.
-`Session`과 `OrderWorkflow`에는 Snapshot 또는 Recreate factory가 없으므로 Relocation Store를 등록하지 않는다.
+명시적으로 등록한다. `Play`의 `PreserveStateWith` factory 때문에 두 Play root에는 Relocation Store가 필수다.
+`Session`과 `OrderWorkflow`에는 `PreserveStateWith` 또는 `RecreateOnRelocation` factory가 없으므로 Relocation Store를 등록하지 않는다.
 OBS-C6의 `ApplicationVersion=N+1` target과 OBS-C7의 동일 version target은 source와 같은 세 stable type,
 factory·adapter kind를 게시하고 source inventory보다 큰 Actor total, Spot total과 Spot stable type의
 `Active+Reserved+Requested` headroom을 유지한다.
@@ -276,7 +276,7 @@ flow 정보와 log message가 생성되지 않는가.
 ObjectGeneration을 유지하는가.
 
 - 절차:
-  1. `play-a`에 Snapshot policy의 room User Spot과 member Actor를 만들고 Spot·Actor의 global ID,
+  1. `play-a`에 `PreserveStateWith` policy의 room User Spot과 member Actor를 만들고 Spot·Actor의 global ID,
      ObjectGeneration, AuthorityOwnerGeneration, participant count, inventory root와 digest를 기록한다.
   2. Spot turn과 Actor request 하나를 각각 수락한 뒤 bounded gate에서 완료를 막고 `play-a`에
      `PlannedMaintenance` mode의 `Relocate`를 시작한다.

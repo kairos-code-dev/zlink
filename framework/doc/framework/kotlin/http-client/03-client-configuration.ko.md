@@ -7,7 +7,7 @@ fluent builder 메서드를 그대로 호출한다.
 
 ## builder 옵션
 
-기본값은 [공통 spec 2장](../../framework/common/spec/http-client/02-client-builder.ko.md)이 정본이다.
+기본값은 [공통 spec 2장](../../common/spec/http-client/02-client-builder.ko.md)이 정본이다.
 
 | 옵션 | 효과 | 기본값 |
 | --- | --- | --- |

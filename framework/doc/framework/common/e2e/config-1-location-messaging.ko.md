@@ -39,9 +39,9 @@ weight를 다르게 준 provider를 따로 시작한다(공유 provider는 기�
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix로 격리한다. 별도 registry process는 실행하지 않는다. |
-| relocation store | 1 (`RM-C10` 전용) | Snapshot adapter capability bound를 검증하는 Object Server root가 등록하는 공식 Redis relocation store extension. Location Store와 별도 key prefix를 사용한다. 다른 시나리오의 `Disabled` factory는 이 Store를 요구하지 않는다. |
+| relocation store | 1 (`RM-C10` 전용) | `PreserveStateWith` adapter capability bound를 검증하는 Object Server root가 등록하는 공식 Redis relocation store extension. Location Store와 별도 key prefix를 사용한다. 다른 시나리오의 `DisableRelocation` factory는 이 Store를 요구하지 않는다. |
 | provider (api 노드) | 2 (`api-a`, `api-b`) | `AddRouteMesh(meshName)`으로 MeshNode를 만들고 profile `ChannelName` membership에 request handler(`ProfileRequest`)·send handler(`ProfileCommand`)를 등록한다. RID direct route handler(`ScenarioRoutePing`)는 같은 MeshNode에 등록한다. Automatic routing ID는 역할 prefix `api-a`·`api-b` 뒤에 lifecycle별 lowercase canonical UUID v4를 붙여 발급하며 application이 exact RID를 고정하지 않는다. Dispatch-error observer로 evidence를 기록하며 테스트용 `/evidence`·`/health` HTTP endpoint를 함께 제공한다. |
-| object authority 노드 | 2 (`profile-object`, `workflow-object`) | 각각 `profile`·`workflow` Mesh의 Object Server다. 두 노드는 같은 stable Actor type `cfg1.actor`과 User Spot type `cfg1.user-spot` factory를 `Disabled` policy로 등록하고 placement weight `100`, Actor total·Spot total limit `128`과 activation concurrency `32`를 사용한다. RM-A7의 manager call과 direct request를 시작할 Client capability는 Server role에 포함된다. |
+| object authority 노드 | 2 (`profile-object`, `workflow-object`) | 각각 `profile`·`workflow` Mesh의 Object Server다. 두 노드는 같은 stable Actor type `cfg1.actor`과 User Spot type `cfg1.user-spot` factory를 `DisableRelocation` policy로 등록하고 placement weight `100`, Actor total·Spot total limit `128`과 activation concurrency `32`를 사용한다. RM-A7의 manager call과 direct request를 시작할 Client capability는 Server role에 포함된다. |
 | consumer | 시나리오별 | Location Store를 사용하는 automatic topology에서는 같은 MeshName의 descriptor에서 peer를 확인하고 RID prefix만 설정한다. 두 MeshNode 중 RID가 canonical byte order에서 더 작은 쪽만 connect를 시작한다. Manual topology에서는 role `None` MeshNode에 fixed RID와 peer endpoint를 언어별 peer-connection interface로 등록한다. Application 구성에 따라 한쪽 또는 양쪽에서 connect할 수 있으며, 양쪽에서 시작한 중복 후보는 admission이 하나의 ready 연결로 수렴시킨다. |
 | Object Client pair | 2 (`client-a`, `client-b`, RM-A3 전용) | 같은 MeshName과 Location Store를 사용한다. 기본 반복은 `Objects().Client()`와 outbound Channel Client만 등록한다. 대조 반복은 한쪽에 RouteMesh Channel Server를 weight `100`과 `0`으로 각각 등록한다. Automatic 반복과 runner가 endpoint를 지정한 Manual 반복을 분리한다. Application Node direct handler와 object factory는 등록하지 않는다. |
 
@@ -52,7 +52,7 @@ ChannelName만 지정하며 endpoint는 descriptor에서 확인한다. 이 confi
 언어별 peer-connection interface로 지정한다. RouteMesh 구성원은 모두 `ROUTER`다.
 
 `profile-object`와 `workflow-object` root는 Location Store를 명시적으로 등록한다. 두 factory의 policy가
-모두 `Disabled`이므로 RM-A7에는 Relocation Store와 relocation adapter가 필요하지 않다. `RM-C10`의 Snapshot
+모두 `DisableRelocation`이므로 RM-A7에는 Relocation Store와 relocation adapter가 필요하지 않다. `RM-C10`의 `PreserveStateWith`
 capability fixture만 Location Store와 Relocation Store를 함께 등록하고 factory kind에 맞는 adapter를
 제공한다. Channel-only provider와 consumer에 object factory를 추가하지 않는다.
 
@@ -412,10 +412,10 @@ member를 더 자주 선택하는가.
 검증하고 언어별로 truncate하거나 나누어 게시하지 않는가.
 
 - 절차: Encoded descriptor가 정확히 1 MiB 이하인 경계와 1 MiB 초과인 host를 각각 시작한다. Stable type
-  bound fixture는 Object Server에 `Disabled` policy의 distinct stable factory type 1,024개와 1,025개를
-  등록한다. Snapshot adapter bound fixture는 Object Server에 `Snapshot` policy와 factory kind에 맞는
+  bound fixture는 Object Server에 `DisableRelocation` policy의 distinct stable factory type 1,024개와 1,025개를
+  등록한다. State-preserving adapter bound fixture는 Object Server에 `PreserveStateWith` policy와 factory kind에 맞는
   distinct adapter capability를 1,024개와 1,025개 등록한다. 모든 fixture는 Location Store, positive
-  placement weight와 Actor total·Spot total limit `2,048`, activation concurrency `128`을 사용한다. Snapshot fixture는 별도 Relocation
+  placement weight와 Actor total·Spot total limit `2,048`, activation concurrency `128`을 사용한다. State-preserving fixture는 별도 Relocation
   Store도 등록해 Store 누락 오류가 descriptor bound 결과를 가리지 않게 한다.
 - 검증: 경계 이하는 descriptor 하나로 게시되고 모든 entry가 보존된다. 한 상한이라도 넘으면 host startup이
   stable configuration error로 전체 실패하며 descriptor, owner lease와 partial capability가 Store에 남지 않는다.

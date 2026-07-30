@@ -266,7 +266,7 @@ Instance Spot을 새로 준비할 때 어떤 factory를 사용할지 결정하�
 
 같은 ActorId 또는 Spot ID의 서로 다른 logical incarnation을 구분하는 번호다. 이전
 generation에 늦게 도착한 message나 reply를 새 incarnation에 전달하지 않도록
-사용한다. Relocation 중 target에서 `Recreate` policy로 application 객체를 다시
+사용한다. Relocation 중 target에서 `RecreateOnRelocation` policy로 application 객체를 다시
 만들어도 같은 logical incarnation을 계속 실행하므로 이 값은 유지한다.
 
 | 항목 | 내용 |
@@ -275,7 +275,7 @@ generation에 늦게 도착한 message나 reply를 새 incarnation에 전달하�
 | .NET 표기 | `ulong` |
 | 공개 구성 | `1..long.MaxValue` 범위의 정수 하나다. JSON에서는 decimal string으로 표현한다. |
 | 생성·관리 | Location Store provider의 transaction domain global counter가 발급한다. |
-| 수명 | 같은 logical incarnation 동안 유지된다. Same-node Join, cross-node relocation과 `Recreate`에서도 바꾸지 않는다. Logical incarnation을 종료한 뒤 새 object를 만들 때 새 값을 발급한다. 최대값 뒤에는 wrap하지 않고 `GenerationExhausted`로 실패한다. |
+| 수명 | 같은 logical incarnation 동안 유지된다. Same-node Join, cross-node relocation과 `RecreateOnRelocation`에서도 바꾸지 않는다. Logical incarnation을 종료한 뒤 새 object를 만들 때 새 값을 발급한다. 최대값 뒤에는 wrap하지 않고 `GenerationExhausted`로 실패한다. |
 
 <a id="owner"></a>
 ### Owner
@@ -1272,9 +1272,9 @@ peer를 남기지만 ready·liveness·health failure 집계에서는 제외한�
 
 | 항목 | 내용 |
 |---|---|
-| 형태 | 증가하는 lifecycle identifier |
+| 형태 | 0이 아닌 opaque equality token. 숫자 크기로 실행 순서를 판단하지 않는다. |
 | .NET 표기 | `ulong LifecycleGeneration` |
-| 공개 구성 | 1 이상의 generation 값 하나다. Endpoint가 같아도 재시작한 실행은 새 값을 사용한다. |
+| 공개 구성 | 0이 아닌 generation 값 하나다. Endpoint가 같아도 재시작한 실행은 이전 값과 다른 새 값을 사용한다. |
 | 생성·관리 | Framework가 새 listener·server lifecycle에 사용할 값을 확정한다. |
 | 수명 | 해당 실행이 끝날 때까지 유지된다. Remote는 descriptor와 transport admission의 값을 exact 비교한다. |
 

@@ -317,7 +317,7 @@ ID나 여러 Store 항목을 함께 확정하는 aggregate commit ID와 같은 �
 cleanup 뒤 completion callback을 먼저 실행한다. Completion이 계속 실패하면 Actor를
 sealed 상태로 유지하고 barrier 뒤의 일반 message를 실행하지 않는다.
 
-Same-node join은 relocation이 아니므로 relocation policy가 `Disabled`여도 허용한다.
+Same-node join은 relocation이 아니므로 relocation policy가 `DisableRelocation`이어도 허용한다.
 
 Actor가 이미 요청한 User Spot에 속해 있거나 Entry Spot Actor가 다시
 `JoinEntrySpot`을 호출하면 Framework는 실제 이동 없이 `Accepted` completion을
@@ -396,12 +396,12 @@ Cross-node join은 다음 순서를 지킨다.
 3. Source는 relocation을 시작할 실행 권한과 예상 저장 공간을 기다리지 않고 한 번
    확인한다. 모두 확보한 경우에만 새 Actor message 수락과 기존 membership 변경을
    임시로 막는다. 확보하지 못하면 기존 Actor 처리를 계속한다.
-4. `Snapshot`이면 Actor relocation adapter의 `Capture`로 application state를 얻는다. Seal 시점에 실행하지 않은
+4. `PreserveStateWith`이면 Actor relocation adapter의 `Capture`로 application state를 얻는다. Seal 시점에 실행하지 않은
    message queue, accepted journal, timer logical registration·pending tick과 Framework metadata를 함께
-   Relocation Store에 고정한다. `Recreate`이면 adapter를 호출하지 않고 application state 없이 boundary를
-   고정한다. `Disabled`이면 `Capture` 전에 거부한다.
+   Relocation Store에 고정한다. `RecreateOnRelocation`이면 adapter를 호출하지 않고 application state 없이 boundary를
+   고정한다. `DisableRelocation`이면 `Capture` 전에 거부한다.
 5. Target에 필요한 capacity를 예약하고 아직 application message를 받지 않는 새
-   Actor를 준비한다. `Snapshot`이면 target factory가 만든 Actor에 같은 adapter의
+   Actor를 준비한다. `PreserveStateWith`이면 target factory가 만든 Actor에 같은 adapter의
    `Restore`를 호출한다. 이미 수락했지만 실행하지 않은 작업은 handler를 실행하지
    않은 채 검증하여 target queue에 준비한다.
 6. Actor authority, source·target membership, capacity와 aggregate generation을
@@ -515,13 +515,13 @@ Actor·User Spot·Instance Spot의 [Object Server](01-glossary.ko.md#object-clie
 
 | Policy | 의미 |
 |---|---|
-| `Disabled` | Cross-node relocation을 capture 전에 거부하고 source owner와 admission을 유지한다. |
-| `Recreate` | Target factory를 실행하고 Framework queue·timer 정보는 유지하지만 application state payload는 전달하지 않는다. 새 application 객체를 만들더라도 같은 logical incarnation이므로 `ObjectGeneration`을 유지한다. |
-| `Snapshot` | Handler가 정상적으로 끝난 경계의 application state를 object 종류에 맞는 relocation adapter로 opaque byte sequence에 capture하고 target에 복원한다. Framework queue·timer 정보도 함께 유지한다. |
+| `DisableRelocation` | Cross-node relocation을 capture 전에 거부하고 source owner와 admission을 유지한다. |
+| `RecreateOnRelocation` | Target factory를 실행하고 Framework queue·timer 정보는 유지하지만 application state payload는 전달하지 않는다. 새 application 객체를 만들더라도 같은 logical incarnation이므로 `ObjectGeneration`을 유지한다. |
+| `PreserveStateWith` | Handler가 정상적으로 끝난 경계의 application state를 object 종류에 맞는 relocation adapter로 opaque byte sequence에 capture하고 target에 복원한다. Framework queue·timer 정보도 함께 유지한다. |
 
 Actor는 `ActorRelocationAdapter`를 사용한다. `SpotWide` User Spot과 Instance Spot은
 `SpotRelocationAdapter`를 사용한다. `PerActor` User Spot의 Spot shell은 application
-state를 이전하지 않으므로 `Recreate` policy만 허용하며 Spot adapter를 등록하면
+state를 이전하지 않으므로 `RecreateOnRelocation` policy만 허용하며 Spot adapter를 등록하면
 startup configuration error다.
 
 두 adapter의 operation 이름은 `Capture`와 `Restore`다. `Capture`는 source
@@ -725,8 +725,8 @@ relocation에만 허용하며 같은 ActorId의 새 incarnation은 explicit bind
   lifecycle callback이 없는 `Accepted`로 완료한다.
 - Reply encoding 실패는 barrier를 폐기하지만 encoding 뒤 caller disconnect나
   transport admission 실패는 Join을 취소하지 않는다.
-- Cross-node join이 shared factory policy를 사용하며 same-node join은 `Disabled`로 차단하지 않는다.
-- Same-node Join, cross-node Join과 `Recreate`에서 Actor `ObjectGeneration`을
+- Cross-node join이 shared factory policy를 사용하며 same-node join은 `DisableRelocation`으로 차단하지 않는다.
+- Same-node Join, cross-node Join과 `RecreateOnRelocation`에서 Actor `ObjectGeneration`을
   유지하고 cross-node owner 변경에서만 `AuthorityOwnerGeneration`을 증가시킨다.
 - Actor authority, source·target membership, capacity와 aggregate generation을
   bounded aggregate commit 하나로 확정하며 후처리를 위해 같은 aggregate를 다시
@@ -740,8 +740,8 @@ relocation에만 허용하며 같은 ActorId의 새 incarnation은 explicit bind
 - `Defer()` 뒤 source seal 전 message는 barrier 뒤 Actor queue에 두고, seal 뒤
   message만 [bounded ingress hold](01-glossary.ko.md#relocation-ingress-hold)에 보관한다.
 - Completion callback을 barrier 뒤 일반 message보다 먼저 실행한다.
-- `Snapshot`은 handler 종료 경계의 application state와 Framework queue·timer를
-  복원하고, `Recreate`는 application state 없이 Framework queue·timer만 복원한다.
+- `PreserveStateWith`는 handler 종료 경계의 application state와 Framework queue·timer를
+  복원하고, `RecreateOnRelocation`은 application state 없이 Framework queue·timer만 복원한다.
 - User Spot과 member Actor가
   [bounded aggregate commit](01-glossary.ko.md#bounded-aggregate-commit)의
   generation 하나로 함께 전환된다.

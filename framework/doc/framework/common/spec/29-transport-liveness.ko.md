@@ -171,7 +171,8 @@ Remote endpoint와 identity를 찾도록 Store에 게시하는 정보를
 - Identity, 같은 RID를 사용한 서로 다른 process 실행을 구분하는
   [lifecycle generation](01-glossary.ko.md#lifecycle-generation) 또는 security
   확인에 실패했다.
-- 같은 peer의 더 큰 lifecycle generation을 새 connection에서 승인했다.
+- 현재 discovery descriptor와 같은 lifecycle generation을 가진 새 connection을
+  승인해 기존 physical connection을 교체했다.
 - Host가 `Draining`, `Stopped` 또는 `Error`가 되어 새 target 선택을 허용하지 않는다.
 
 Orderly close와 transport disconnect는 15초를 기다리지 않는다. 이전 physical
@@ -205,7 +206,8 @@ Reconnect는 기존 configuration 또는 현재 discovery descriptor를 사용�
 - 이전 connection ID, reply route, session binding과 ready 상태를 재사용하지 않는다.
 - Classic fanout은 해당 publisher용 SUB socket을 새로 만든다.
 - Fanout connection은 첫 정상 record를 받기 전까지 ready가 아니다.
-- 같은 RID라도 더 큰 lifecycle generation이면 새 peer 실행으로 처리한다.
+- 같은 RID라도 현재 discovery descriptor와 다른 lifecycle generation이면 새
+  process 실행으로 처리한다. Generation 값의 숫자 크기는 비교하지 않는다.
 
 ## 7. Location Store와 host 종료
 

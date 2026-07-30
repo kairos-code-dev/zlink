@@ -207,8 +207,8 @@ Relocation은 같은 player actor를 다른 owner에서 계속 실행하는 과�
 [Message Follow](../../spec/18-object-routing.ko.md#24-이전-owner-route에-도착한-message)가 새 owner로 전달한다.
 Application은 이전 owner의 `ActorRef`를 저장하거나 새 owner를 직접 찾지 않는다.
 
-Player Actor factory에는 `Snapshot<PlayerActorRelocationAdapter>()` policy를 등록한다. Player Actor는
-좌표·zone의 권위이므로(§2.1) `Recreate`로 application state를 생략하면 relocation 뒤 좌표를 유지할 수 없다.
+Player Actor factory에는 `PreserveStateWith<PlayerActorRelocationAdapter>()`를 등록한다. Player Actor는
+좌표·zone의 권위이므로(§2.1) `RecreateOnRelocation`으로 application state를 생략하면 relocation 뒤 좌표를 유지할 수 없다.
 Adapter는 state format을 application이 관리하는 opaque bytes로 반환하며 Framework message나 state contract
 ID를 사용하지 않는다.
 
@@ -363,8 +363,13 @@ var mesh = options.AddRouteMesh(ZoneWorldNames.Mesh)
 
 mesh.Objects().Server()
     .AddEntrySpot<ZoneEntrySpot>()
-    .AddSpotFactory<ZoneSpot>(ZoneWorldNames.ZoneSpotType, null,
-        ZLinkRelocationPolicy<ZoneSpot>.Disabled);
+    .AddActorFactory<PlayerActor, PlayerActorFactory>(
+        ZoneWorldNames.PlayerActorType,
+        factory => factory
+            .PreserveStateWith<PlayerActorRelocationAdapter>())
+    .AddSpotFactory<ZoneSpot>(
+        ZoneWorldNames.ZoneSpotType,
+        factory => factory.DisableRelocation());
 
 mesh.Channel(ZoneWorldNames.ZoneChannel)
     .Server(); // zone Logical Multicast의 처리 대상 membership이다.

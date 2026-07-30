@@ -47,7 +47,7 @@ descriptor·owner lease record를 직접 읽거나 의미를 해석하지 않는
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension. 실행마다 전용 location key prefix를 사용한다. Harness가 이 capability만 정지·지연·복구할 수 있다. |
 | relocation store | 1 | 공식 Redis relocation store extension. 기본 topology는 같은 Redis deployment를 공유하되 별도 relocation key prefix와 별도 Store instance를 등록한다. Track F에서는 이 capability만 독립적으로 정지·지연·복구할 수 있다. |
-| provider (api·object server 노드) | 2 (`api-a`, `api-b`) | ChannelName handler와 Object Server 역할을 함께 등록한다. `RecoveryActor`와 `RecoverySnapshotSpot`에는 `Snapshot` policy와 kind별 Relocation Adapter를, `RecoveryInstanceSpot`에는 adapter 없는 `Recreate` policy를 등록하고 별도 negative type에만 `Disabled`를 사용한다. 모든 stable factory type은 explicit policy와 positive placement capacity를 제공한다. `AddLocationStore(...)`와 `AddRelocationStore(...)`를 각각 호출하며 `/evidence`·`/health`와 runtime query endpoint를 제공한다. |
+| provider (api·object server 노드) | 2 (`api-a`, `api-b`) | ChannelName handler와 Object Server 역할을 함께 등록한다. `RecoveryActor`와 `RecoverySnapshotSpot`에는 `PreserveStateWith` policy와 kind별 Relocation Adapter를, `RecoveryInstanceSpot`에는 adapter 없는 `RecreateOnRelocation` policy를 등록하고 별도 negative type에만 `DisableRelocation`을 사용한다. 모든 stable factory type은 explicit policy와 positive placement capacity를 제공한다. `AddLocationStore(...)`와 `AddRelocationStore(...)`를 각각 호출하며 `/evidence`·`/health`와 runtime query endpoint를 제공한다. |
 | consumer | 1 | Object Client 역할과 두 Store를 별도 등록하고 descriptor 기반 automatic discovery로 provider와 연결한다. 지속 request와 Track F의 object operation으로 연결·authority 상태를 관측하고 public RouteMesh status를 HTTP endpoint로 노출한다. |
 | probe | 시나리오별 | 각 역할 server의 public status, structured log와 실제 messaging 결과를 확인하는 client 흐름. Store provider protocol 시나리오에서는 별도의 opaque operation evidence를 확인한다. |
 
@@ -396,9 +396,9 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
 
 우선순위: `P0`
 
-- 절차: 64 MiB보다 큰 accepted journal과 Snapshot state를 만들어 reversible seal 뒤 logical relocation을
+- 절차: 64 MiB보다 큰 accepted journal과 captured application state를 만들어 reversible seal 뒤 logical relocation을
   여러 immutable data chunk와 root manifest로 저장한다. Chunk write, manifest write, authority CAS, renew와
-  cleanup 사이에서 process를 각각 종료한다. Empty Recreate relocation도 별도 실행한다.
+  cleanup 사이에서 process를 각각 종료한다. Empty `RecreateOnRelocation` relocation도 별도 실행한다.
 - 검증: 각 data chunk는 64 MiB 이하이고 manifest가 total length·checksum, 1부터 시작하는 order와 각
   reference·length·checksum을 고정한다. Authority는 manifest reference 하나만 가리키며 target은 전체 payload를
   한 번에 allocation하지 않고 bounded streaming validation·replay로 원래 journal과 state를 복원한다. Authority

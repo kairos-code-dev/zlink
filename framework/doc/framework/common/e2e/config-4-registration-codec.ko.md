@@ -181,7 +181,7 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
   duplicate field와 required field 누락은 handler 전에 안정된 decode failure로 끝난다. Application JSON의
   whitespace와 object member order가 다른 것은 허용하며 decode 뒤 다시 encode한 byte sequence의 일치를
   요구하지 않는다.
-- 세부 동작: `framework-json-v1`의 typed application message 언어 간 의미 호환성. Snapshot relocation
+- 세부 동작: `framework-json-v1`의 typed application message 언어 간 의미 호환성. `PreserveStateWith` relocation
   adapter는 application이 관리하는 opaque bytes를 반환하므로 state contract ID, generic state type과
   Framework JSON decode를 이 시나리오에서 검증하지 않는다.
 

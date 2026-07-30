@@ -28,5 +28,10 @@ Browser connector와 Node.js Framework는 서로 다른 package다. Browser conn
 
 ## 사용 안내
 
-이 트리는 **계약**만 소유한다. 언어별 사용 가이드는
-[`framework/doc/stream-connector/`](../../../../stream-connector/README.ko.md)에 있다.
+이 트리는 **계약**만 소유한다. 사용법은
+[C++](../../../../framework/cpp/stream-connector/README.ko.md),
+[.NET](../../../../framework/dotnet/stream-connector/README.ko.md),
+[Java](../../../../framework/java/stream-connector/README.ko.md),
+[Kotlin](../../../../framework/kotlin/stream-connector/README.ko.md),
+[Node.js/TypeScript](../../../../framework/node/stream-connector/README.ko.md)의 언어별 가이드에서
+확인한다.

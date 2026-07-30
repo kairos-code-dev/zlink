@@ -45,8 +45,8 @@ Actor·User Spot aggregate와 Instance Spot relocation coordinator는 `Preparing
 `IZLinkAuthorityStore.CompareExchangeAuthorityAsync(...)` 한 호출로 바꾸고, `Committed` 뒤에는 source owner로
 rollback하지 않는다.
 
-`Recreate`와 `Snapshot`은 accepted journal·timer state를 Relocation Store에 immutable payload로 기록한다.
-`Snapshot`만 adapter가 반환한 opaque `byte[]` application state를 추가한다. Runtime은
+`RecreateOnRelocation`과 `PreserveStateWith`는 accepted journal·timer state를 Relocation Store에 immutable payload로 기록한다.
+`PreserveStateWith`만 adapter가 반환한 opaque `byte[]` application state를 추가한다. Runtime은
 `TimeSpan.FromHours(24)` retention을 넘기고 current Location authority가 가리키는 reference만 읽는다.
 `Get/Missing`은 authority를 다시 읽어 stale reference와 relocation data loss를 구분하고 `Delete/Missing`은
 idempotent cleanup으로 끝낸다.

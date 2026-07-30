@@ -246,8 +246,8 @@ Request 없는 overload는 empty `ZLinkMessage`를 고정한다. Timeout 기본�
 명시 값은 millisecond 올림 기준 유한한 `1..int.MaxValue` ms다. `Defer()`에서
 monotonic absolute deadline을 고정한다.
 
-Relocation policy는 Actor factory registration이 소유한다. `Disabled`는 cross-node materialization이 필요한
-이동을 capture 전에 거부한다. `Recreate`는 target [factory](../../../../01-glossary.ko.md#factory)로 같은 logical identity를 다시 만들고 application
+Relocation policy는 Actor factory registration이 소유한다. `DisableRelocation`은 cross-node materialization이 필요한
+이동을 capture 전에 거부한다. `RecreateOnRelocation`은 target [factory](../../../../01-glossary.ko.md#factory)로 같은 logical identity를 다시 만들고 application
 state를 복구하지 않는다. `PreserveStateWith<TAdapter>()`는 `IZLinkActorRelocationAdapter<TActor>`가 반환한 byte 배열을
 opaque application payload로 저장하고 target Actor instance에 복원한다. 별도 application state generic과 stable
 state contract ID를 받지 않으며 Framework message wrapper를 payload로 사용하지 않는다. Adapter는 relocation
@@ -255,8 +255,8 @@ reference, accepted journal, relocation phase, source·target owner와 Store CAS
 
 다른 node에서 Actor instance를 materialize하는 maintenance, cross-node User Spot·[Entry Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) join과 whole User
 Spot relocation의 모든 Actor participant는 같은 Actor factory policy를 사용한다. `PreserveStateWith`일 때만 Actor adapter의
-`CaptureAsync(...)`와 `RestoreAsync(...)`를 호출한다. Same-node join은 adapter를 호출하지 않으며 `Disabled`로
-거부하지도 않는다. `Disabled` policy의 cross-node 이동은 adapter 없이 capture 전에 거부한다.
+`CaptureAsync(...)`와 `RestoreAsync(...)`를 호출한다. Same-node join은 adapter를 호출하지 않으며 `DisableRelocation`으로
+거부하지도 않는다. `DisableRelocation` policy의 cross-node 이동은 adapter 없이 capture 전에 거부한다.
 
 Target은 [owner](../../../../01-glossary.ko.md#owner) commit 전에 restore와 accepted journal validation·staging만 완료하며 application handler를
 실행하지 않는다. Standalone Actor는 owner commit 뒤 lifecycle callback과 old Entry membership의 durable

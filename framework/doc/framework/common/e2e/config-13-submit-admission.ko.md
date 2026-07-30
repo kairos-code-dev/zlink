@@ -47,7 +47,7 @@ send·reply call이다. Stream connector package의 send builder, 반환 type과
 |---|---:|---|
 | location store | 1 | Automatic topology와 global Spot·Actor authority가 공유하는 공식 Redis Location Store. 실행마다 전용 key prefix를 사용한다. |
 | `AdmissionCaller` | 1 | Location Store를 등록한 Object Client. 이 host가 source인 RouteMesh·ClientServer Channel, global Spot·Actor와 Logical Multicast call을 시작하지만 factory와 placement target은 제공하지 않는다. |
-| `MeshTarget` | 2 | Location Store를 등록한 Object Server. Entry Spot, stable User Spot type `admission.spot`과 Actor type `admission.actor` factory를 명시적 `Disabled` policy로 등록하고 placement weight `100`, Actor total·Spot total·`admission.spot` stable type limit `128`, activation concurrency `32`를 사용한다. RouteMesh Channel handler, local·remote Spot·Actor handler와 User Spot의 Logical Multicast subscription을 제공한다. |
+| `MeshTarget` | 2 | Location Store를 등록한 Object Server. Entry Spot, stable User Spot type `admission.spot`과 Actor type `admission.actor` factory를 명시적 `DisableRelocation` policy로 등록하고 placement weight `100`, Actor total·Spot total·`admission.spot` stable type limit `128`, activation concurrency `32`를 사용한다. RouteMesh Channel handler, local·remote Spot·Actor handler와 User Spot의 Logical Multicast subscription을 제공한다. |
 | `ClientServerTarget` | 2 | 전용 ClientServer Channel의 send handler를 제공하고 select-one 재선택 대상을 분리한다 |
 | `SessionGateway` | 2 | Location Store를 등록한 Object Client. local·remote bound session, global Actor relay와 server STREAM session을 제공하고 이 family의 public call을 시작하지만 object factory는 제공하지 않는다. |
 | `FanoutPublisher` | 1 | classic fanout publisher와 publish endpoint를 제공하고 fanout public call을 시작한다 |
@@ -58,7 +58,7 @@ send·reply call이다. Stream connector package의 send builder, 반환 type과
 | `EvidenceCollector` | 1 | 각 source host가 종료되기 전에 보낸 operation evidence를 저장하고 source host 종료 뒤에도 조회 endpoint를 유지한다 |
 
 Stateful scenario는 close·destroy 뒤 recreate로 generation을 바꾸고 cross-node relocation은 시작하지 않는다.
-따라서 `MeshTarget`의 모든 factory는 `Disabled`를 사용하며 Relocation Store와 relocation adapter를 등록하지
+따라서 `MeshTarget`의 모든 factory는 `DisableRelocation`을 사용하며 Relocation Store와 relocation adapter를 등록하지
 않는다. SA-E2E-06에서 `Relocate`하는 `AdmissionCaller`와 `SessionGateway`는 Object Client라 local object
 inventory가 없고, 다른 Channel·session component의 eligible target만 preflight한다. Object operation을
 시작하지 않는 역할에는 object role을 추가하지 않는다.

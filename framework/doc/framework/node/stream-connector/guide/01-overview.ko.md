@@ -25,4 +25,4 @@ Protobuf package root는 browser-safe codec을 제공하고, Node framework 등�
 않는다.
 
 wire 계약의 정본은
-[Stream Connector 공통 스펙](../../../framework/common/spec/stream-connector/32-stream-connector.ko.md)이다.
+[Stream Connector 공통 스펙](../../../common/spec/stream-connector/32-stream-connector.ko.md)이다.

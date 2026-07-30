@@ -134,7 +134,7 @@ Target version 조건은 capability, capacity와 weight를 적용하기 전에 �
   낮은 다른 version으로 자동 전환하지 않는다.
 
 두 mode 모두 source node를 제외하고 `Serving` 상태인 Object Server, stable type, relocation policy,
-Snapshot adapter와 capacity가 호환되는 target만 사용한다. Source에 `MaintenanceWave`가 설정되어 있으면
+Relocation adapter와 capacity가 호환되는 target만 사용한다. Source에 `MaintenanceWave`가 설정되어 있으면
 같은 wave의 target을 제외한다. 남은 후보가 여러 개이면 기존 node-wide placement weight를 적용한다.
 요청한 version의 eligible target이 없으면 deadline까지 descriptor와 Core ready 상태의 수렴을 기다린 뒤
 `Blocked/TargetUnavailable`을 반환한다.
@@ -260,7 +260,9 @@ Channel Server membership이 있으면 연결이 필요하며, 연결되지 않�
 반영한다. Object role이 `None`인 Channel-only topology의 peer 관측은 기존 규칙을 유지한다.
 
 `Placement.IsAvailable`은 이 node가 Object Server role이고 새로운 Actor·Spot을 받을 수 있을 때 true다.
-Population reservation, activation barrier와 stable type별 내부 count는 public status에 포함하지 않는다.
+Actor 또는 Spot capacity와 activation concurrency에 모두 여유가 있어야 한다. Population reservation,
+activation concurrency의 현재 값, activation barrier와 stable type별 내부 count는 public status에
+포함하지 않는다.
 
 ## 5. ClientServer
 

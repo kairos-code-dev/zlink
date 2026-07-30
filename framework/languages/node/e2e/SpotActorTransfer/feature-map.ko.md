@@ -9,7 +9,7 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 | `ST-A1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: local admission accept와 callback 순서. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-A2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: local admission reject의 무효과. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-A3` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: joined callback 완료 전 packet dispatch 차단. Track A~E 로그: `log/20260710-152609-2661347`. |
-| `ST-B1` | 부분 구현 | Public object placement로 source와 다른 target Spot을 선택하고 native deferred Join을 실행한다. Seal 중 수락한 packet을 source handoff backlog에 넣고 target mailbox에서 callback 전에 replay한다. Target admission, durable deferred-completion root staging, state restore, `Joined`, backlog handler, commit ACK, `onJoinCompleted(Accepted)`와 새 owner request 순서를 확인한다. Join 완료 뒤 public `ActorManager.find`로 target authority와 보존된 object generation도 확인한다. 최신 증거: `log/20260729-171629-4066922`. 일반 backlog와 application state를 포함하는 restart recovery manifest 및 실제 target process restart 증거는 아직 없다. |
+| `ST-B1` | 부분 구현 | Public object placement로 source와 다른 target Spot을 선택하고 native deferred Join을 실행한다. Seal 중 수락한 packet을 source handoff backlog에 넣고 target mailbox에서 callback 전에 replay한다. Target admission, durable deferred-completion root staging, state restore, `Joined`, backlog handler, commit ACK, `onJoinCompleted(Accepted)`와 새 owner request 순서를 확인한다. Join 완료 뒤 public `ActorManager.find`로 target authority와 보존된 object generation도 확인한다. 최신 증거: `log/20260729-171629-4066922`. 일반 backlog를 포함하는 동일 process handoff 검증은 유지하며, target process restart 복구는 `ST-H2`가 검증한다. |
 | `ST-B2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: commit 뒤 source cleanup. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-B3` | 전환 필요 | 현재 runner는 transfer adapter가 없는 actor의 기본 빈 state transfer 성공과 target 기본 state를 확인한다. 그러나 `joined -> location_committed`를 성공 순서로 단언해, 공통 시나리오의 `location_committed -> joined` 순서와 다르다. 이 순서를 정렬하기 전에는 기존 Track A~E 로그를 완료 증거로 사용하지 않는다. |
 | `ST-B4` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: custom empty state transfer. Track A~E 로그: `log/20260710-152609-2661347`. |
@@ -34,19 +34,19 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 | `ST-G4` | 미구현 | relocation 중 `ToActor` Message Follow와 target queue 순서를 검증하는 E2E가 없다. |
 | `ST-G5` | 미구현 | Entry·PerActor Actor relocation interruption 목표와 초과 뒤 계속 진행을 검증하는 E2E가 없다. |
 | `ST-G6` | 미구현 | `ApplicationSignaled` readiness와 completion callback의 source·target owner를 검증하는 E2E가 없다. |
-| `ST-H1` | 미구현 | Deferred Join 등록, immutable request와 Actor queue barrier를 실제 process에서 검증하지 않는다. |
-| `ST-H2` | 미구현 | Join completion outcome, operation ID와 crash recovery E2E가 없다. |
-| `ST-H3` | 미구현 | Context identity와 relocation 이후 source fence E2E가 없다. |
-| `ST-H4` | 미구현 | 허용 execution context, 중복 등록과 relocation error parity E2E가 없다. |
+| `ST-H1` | Actor handler 일부 구현 | Actor handler의 `Defer` 뒤 request를 변경하고 source capture 전에 후속 one-way를 제출한다. Target은 Defer 시점 Spot ID로 admission하고 queued message를 한 번 처리하며 generation을 유지한다. User·Entry Spot의 Spot·Timer handler matrix는 남아 있다. 최신 actual-process 증거: `log/20260730-121017-838595`. |
+| `ST-H2` | 구현 | `run_e2e.sh ST-H2`가 PerActor·Recreate target에 deferred Join을 제출하고 Accepted completion callback 진입 뒤 target process를 강제 종료한다. 같은 Redis prefix와 node RID로 target을 다시 시작한 뒤 durable root에서 복구한 Actor의 동일 operation ID, ObjectGeneration, application state, Accepted completion 1회와 packet admission을 확인한다. 최신 actual-process 증거: `log/20260730-111148-275188`. |
+| `ST-H3` | Actor context 일부 구현 | source와 target Actor factory가 받은 Context와 Actor accessor의 reference identity, cross-node generation 유지를 actual process에서 검증한다. Spot 종류별 Context와 source Context 직접 fence 반복은 남아 있다. 최신 actual-process 증거: `log/20260730-121034-846982`. |
+| `ST-H4` | Actor handler 일부 구현 | 같은 Actor turn에서 동일 call의 두 번째 `Defer`가 `alreadySubmitted`, 첫 Join이 pending인 동안 두 번째 Join이 `actorMoving`으로 동기 실패하는지 actual process에서 검증한다. 허용 Spot·Timer handler matrix, turn scope 밖 호출, policy·target·precommit 오류 parity는 남아 있다. 최신 actual-process 증거: `log/20260730-121457-893498`. |
 | `ST-H4A` | 미구현 | Deferred Join 등록량·payload·timeout 경계와 Relocate·Shutdown race E2E가 없다. |
 | `ST-H4B` | 미구현 | Join 뒤 Yield, awaited cycle과 reply terminal E2E가 없다. |
-| `ST-H5` | 미구현 | MessageContext와 Actor handler signature parity를 실제 transport로 검증하는 E2E가 없다. |
-| `ST-I1` | 미구현 | 실제 encoded Actor·Spot payload profile과 경계·초과 크기 E2E가 없다. |
-| `ST-I2` | 미구현 | 다량 Recreate·Snapshot Actor relocation의 처리 시간과 Actor·control service 연속성 E2E가 없다. |
-| `ST-I3` | 미구현 | 다량 Instance Spot·SpotWide relocation의 처리 시간과 Spot·Actor·control service 연속성 E2E가 없다. |
-| `ST-I4` | 미구현 | Actor·Spot × one-way·request × commit 전·후 Message Follow matrix가 없다. |
-| `ST-I5` | 미구현 | Message Follow 기간 종료, duplicate, deadline, generation, loop와 bound E2E가 없다. |
-| `ST-I6` | 미구현 | Actor·Spot multi-hop relocation과 Message Follow route 정리 E2E가 없다. |
+| `ST-H5` | Actor context 일부 구현 | Entry·User Spot Actor send/request에서 MeshName, nullable ChannelName·CorrelationId, PacketName과 immutable metadata를 실제 transport로 확인한다. RouteMesh·publish·session specialized context matrix는 각 전용 E2E에 남아 있다. 최신 actual-process 증거: `log/20260730-121238-857242`. |
+| `ST-I1` | RED — Core/bindings handoff 필요 | Actor의 4 KiB·64 KiB application state는 실제 adapter payload로 capture·restore한다. 8 MiB state는 현재 command 42/44 request에 base64 JSON으로 inline되어 negotiated message bound를 넘고 `actorRouteNotFound`로 rollback된다. Relocation Store reference wire와 Instance·SpotWide, RSS, 64 MiB boundary, permit starvation은 남아 있다. 최신 RED 증거: `log/20260730-120141-755814`. |
+| `ST-I2` | RED — runtime blocker | source host의 stateful Actor 16개를 public host relocation으로 이전하면서 control request와 moving Actor one-way를 검증한다. 현재 약 32.81초의 unit interruption 뒤 control request가 `routeNotConnected`로 실패한다. 정본 10,000/1,000 workload와 60초 baseline·SLO 통계도 남아 있다. 최신 RED 증거: `log/20260730-115329-655906`. |
+| `ST-I3` | RED — runtime blocker | source host의 User Spot 16개를 public host relocation으로 이전하고 generation·final owner·wall time을 검증한다. 현재 relocation이 Spot을 이동하기 전에 `RelocationFailed(6)`로 끝난다. Instance 1,000개와 SpotWide 100×100, traffic·atomic publication·SLO 통계도 남아 있다. 최신 RED 증거: `log/20260730-120426-763822`. |
+| `ST-I4` | Actor follow 실행 가능 | 이전 owner에 고정한 실제 transport delivery를 commit 뒤 해제해 Actor one-way·request가 current owner에서 한 번 처리되는 selector를 연결했다. Queue·hold·Spot·PerActor split matrix는 남아 있다. |
+| `ST-I5` | Actor duplicate·expiry 실행 가능 | 중복 이전-route delivery의 exactly-once와 duration 만료 뒤 `actorLocationStale`·handler 미실행을 실제 process에서 검증한다. Deadline·correlation reorder·generation·loop·hop·bound 반복은 남아 있다. |
+| `ST-I6` | Actor multi-hop 실행 가능 | 세 node의 두 번 relocation 뒤 첫 owner에 고정한 one-way·request가 final owner에서 한 번 처리되고 hop별 operation ID·generation·deadline·correlation·checksum이 보존되는 selector를 연결했다. Spot, crash recovery와 route count cleanup은 남아 있다. |
 
 ## 증거 경계
 
@@ -69,9 +69,10 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 - ActorNode는 actor-local handler registry 대신 Nest의 Spot·Entry Spot handler registration을
   사용하고, 제거된 Location row event monitoring을 더 이상 참조하지 않는다. ST-B1은 Join 완료 뒤
   public `ActorManager.find` 결과로 target authority와 보존된 object generation을 확인한다. Exact
-  authority commit 시점은 별도 internal conformance evidence를 연결해야 한다. 실제 process restart는
-  아직 완료 증거가 아니다. Target Actor state, transfer state와 handoff backlog가 process memory와 Join
-  wire에만 있고 startup Actor recovery coordinator가 없기 때문이다.
+  authority commit 시점은 별도 internal conformance evidence를 연결해야 한다. ST-H2 runner는
+  PerActor·Recreate target과 provider-backed Accepted root를 사용해 target process restart를 준비한다.
+  startup recovery coordinator가 같은 operation ID·Actor generation·application state를 복구하고
+  completion callback을 한 번 실행하는지 확인하며, 안정화된 Core handoff 뒤 실제 process 증거를 남긴다.
 - Redis Store는 첫 병렬 사용을 하나의 connection attempt로 직렬화하고 `isReady` 뒤 command를
   제출한다. Location·Relocation Store는 같은 Redis deployment에서 `:location`과 `:relocation`
   prefix를 사용한다. Authority·object generation·node capacity·creation terminal은 각각 독립 key로
@@ -106,4 +107,6 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
   cross-process change stamp가 없으므로 authoritative descriptor scan을 polling한다. Raw backend의
   `serving` peer를 public `ready` state로 투영하도록 맞췄고 admission reply가 일시적으로 제출되지
   않아도 process를 종료하지 않는다. Backend·auto-connect focused test 51/51이 통과했다.
-- `ST-F3A`, `ST-G1~G6`, `ST-H1~H5`와 `ST-I1~I6`은 아직 실행하지 않는다.
+- `ST-F3A`, `ST-G1~G6`와 `ST-H1~H5`는 아직 실행하지 않는다.
+- `ST-I1~I6`은 각 행의 독립 부분집합을 실제 process에서 실행한다. 각 행에
+  기록한 Spot·recovery·bound matrix가 남아 있으므로 전체 공통 시나리오 완료 증거는 아니다.

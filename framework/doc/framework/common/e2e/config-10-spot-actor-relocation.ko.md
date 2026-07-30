@@ -24,7 +24,7 @@ MeshNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 
 
 - 다룬다: 같은 node join 순서, remote actor relocation 정상 경로, relocation state 복원, 빈 state relocation, admission/commit
   분리, source node down 전후 동작, authority commit 시점, moving 중 actor packet admission 차단,
-  `Recreate`·`Snapshot` adapter 경계와 callback 실패, bound session 이전, **seal 전에 수락한 Actor journal의
+  `RecreateOnRelocation`·`PreserveStateWith` adapter 경계와 callback 실패, bound session 이전, **seal 전에 수락한 Actor journal의
   순서 보존·Ready 전 replay, Message Follow와 route 제거, request reply correlation과 timeout**.
 - 여기서 다루지 않는다: 일반 spot messaging 전체(Config 2), 비동기 handler 완료 후 mailbox 재개(Config 8),
   actor id 기반 no-bind send/request(Config 9), location store 자체 장애(Config 6).
@@ -41,7 +41,7 @@ MeshNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. Actor·Spot authority row와 owner lease는 framework lifecycle이 관리한다. |
 | relocation store | 1 | 공식 Redis relocation store extension. Location Store와 같은 deployment를 사용할 수 있지만 별도 prefix와 `AddRelocationStore(...)` 등록을 사용한다. |
-| actor 노드 | 2 (`actor-a`, `actor-b`), multi-hop 반복은 3 (`actor-c` 추가) | Object Server role의 Entry Spot + User Spot + Actor mailbox host. 모든 node에 같은 stable Actor·User Spot type, positive placement capacity와 explicit relocation policy를 등록한다. Snapshot type은 kind별 adapter를 등록하고 Recreate type은 adapter 없이 factory만 등록한다. Lifecycle callback과 adapter는 order marker를 남긴다. |
+| actor 노드 | 2 (`actor-a`, `actor-b`), multi-hop 반복은 3 (`actor-c` 추가) | Object Server role의 Entry Spot + User Spot + Actor mailbox host. 모든 node에 같은 stable Actor·User Spot type, positive placement capacity와 explicit relocation policy를 등록한다. `PreserveStateWith` type은 kind별 adapter를 등록하고 `RecreateOnRelocation` type은 adapter 없이 factory만 등록한다. Lifecycle callback과 adapter는 order marker를 남긴다. |
 | session gateway | 2 (`session-a`, `session-b`) | Object Client role과 Location Store를 등록하고 stream session, exact `ActorRef` bind와 actor push를 관찰한다. Remote relocation 뒤 bound session push가 target actor로 이어지는지 검증한다. |
 | relocation controller | 1 | Object Client role과 Location Store를 등록한 실제 사용자 요청 역할 server. HTTP endpoint 안에서 actor 생성, join, global Actor ID packet send와 failure injection을 public framework API로 실행한다. |
 | consumer | 시나리오별 | HTTP client wrapper로 relocation controller endpoint를 호출하고, 필요한 경우 stream connector로 session gateway에 연결해 push와 bind 상태를 관찰한다. |
@@ -189,14 +189,14 @@ Ready barrier를 끝낸 뒤 join을 완료하는가.
   release 재시도가 target authority의 object·owner generation을 지우면 실패다.
 - 세부 동작: commit 뒤 durable source cleanup recovery와 success barrier.
 
-#### ST-B3 Recreate policy의 adapter 없는 relocation
+#### ST-B3 RecreateOnRelocation policy의 adapter 없는 relocation
 
 우선순위: `P0`
 
-**검증 질문:** `Recreate` policy를 등록한 Actor가 application state adapter 없이 factory와 accepted journal만으로
+**검증 질문:** `RecreateOnRelocation` policy를 등록한 Actor가 application state adapter 없이 factory와 accepted journal만으로
 remote relocation을 완료하는가.
 
-- 절차: `actor-recreate` type에 actor factory와 `Recreate` relocation policy를 등록하고 relocation adapter는
+- 절차: `actor-recreate` type에 actor factory와 `RecreateOnRelocation` relocation policy를 등록하고 relocation adapter는
   등록하지 않는다. 같은 node
   join이 아니라 반드시 다른 node user Spot으로 remote relocation을 시도한다.
 - 검증: remote relocation은 성공한다. Evidence order는 `admission -> source_sealed -> target_factory -> journal_staged ->
@@ -206,16 +206,16 @@ remote relocation을 완료하는가.
   source `OnLeaveActor`, target `OnJoinedActor`, target authority commit이 모두 정상 순서로 관찰된다.
   Accepted journal도 비어 있으면 source requirement의 message·byte는 0이고 target capacity offer는 양수다.
   Runtime은 비어 있는 deterministic relocation envelope과 reservation generation을 기록한다.
-- 세부 동작: `Recreate` policy의 application state 없는 relocation과 all-zero accepted journal.
+- 세부 동작: `RecreateOnRelocation` policy의 application state 없는 relocation과 all-zero accepted journal.
 
 #### ST-B4 remote relocation empty state
 
 우선순위: `P0`
 
-**검증 질문:** `Snapshot` relocation adapter가 empty byte sequence를 반환해도 target actor가 만들어지고
+**검증 질문:** `PreserveStateWith` relocation adapter가 empty byte sequence를 반환해도 target actor가 만들어지고
 domain state를 별도로 읽어 올 수 있는가.
 
-- 절차: `actor-empty-state` type에 `Snapshot` policy와 custom relocation adapter를 등록한다. Source
+- 절차: `actor-empty-state` type에 `PreserveStateWith` policy와 custom relocation adapter를 등록한다. Source
   `Capture`는 empty byte sequence를 반환한다. Target factory가 Actor를 만든 뒤 `Restore`는 빈 bytes를
   해당 instance에 적용한다. Target `OnJoinedActor`는 actor id로 별도 저장소에서 domain state를 읽고
   marker를 남긴다.
@@ -223,7 +223,7 @@ domain state를 별도로 읽어 올 수 있는가.
   restore_empty -> journal_staged -> prepared -> authority_committed -> joined -> domain_state_loaded -> journal_replayed ->
   leave -> source_cleanup -> completed -> route_ack -> steady_normalized -> ready -> admission_open ->
   success_reply`다. Empty bytes와 adapter 미등록을 같은 의미로 취급하지 않는다.
-- 세부 동작: `Snapshot` adapter의 empty application state relocation.
+- 세부 동작: `PreserveStateWith` adapter의 empty application state relocation.
 
 ### Track C — failure/recovery
 
@@ -675,8 +675,8 @@ accepted journal, timer와 framing은 encoded payload에 추가된다.
   결합한 Context를 사용한다. Commit 뒤 source Context의 operation은 fence되고 current target으로 자동
   전달되지 않는다. 별도 반복에서는 Actor·User·Entry·Instance Spot factory가 전달받은 것과 다른 Context를
   노출하게 하고 factory completion 뒤 initialize, Ready authority, message admission과 active capacity가
-  모두 0건임을 확인한다. Snapshot은 handler tail의 application state와 Framework queue·timer를 복원한다.
-  Recreate는 ObjectGeneration을 유지한 새 instance에 Framework queue·timer만 복원하고 application state는
+  모두 0건임을 확인한다. `PreserveStateWith`는 handler tail의 application state와 Framework queue·timer를 복원한다.
+  `RecreateOnRelocation`은 ObjectGeneration을 유지한 새 instance에 Framework queue·timer만 복원하고 application state는
   capture하지 않는다.
 - 세부 동작: Context composition, generation 유지와 source fencing.
 
@@ -687,7 +687,7 @@ accepted journal, timer와 framing은 encoded payload에 추가된다.
 - 절차: 허용된 Actor handler와 User·Entry Spot의 Spot·Timer handler에서 성공 반복을 실행한다. Instance
   Spot handler·timer, factory, `Configure`, lifecycle callback, relocation adapter와 detached/background
   task에서는 각각 Defer를 시도한다. 같은 call 두 번째 Defer, 같은 Actor의 pending transition 중 Defer,
-  Disabled policy, eligible target 부재와 target 확정 뒤 precommit failure도 각각 실행한다.
+  `DisableRelocation` policy, eligible target 부재와 target 확정 뒤 precommit failure도 각각 실행한다.
 - 검증: Instance Spot과 turn scope 밖의 모든 시도는 `InvalidOperation`으로 동기 실패하고 barrier,
   target I/O와 Location mutation이 모두 0건이다. 두 번째 Defer와 pending transition은
   `InvalidOperation`과 `Unavailable`로 각각 동기 실패한다. 나머지는 completion에서 `Rejected`,
@@ -775,11 +775,11 @@ report에 남긴다. Queue·accepted journal·timer·participant 목록과 frami
 | `small` | 4 KiB | 64 KiB | queue 8×1 KiB, journal 2×1 KiB, timer 4개 | 자주 이동하는 작은 상태 |
 | `normal` | 64 KiB | 1 MiB | queue 32×4 KiB, journal 8×4 KiB, timer 16개 | 일반 업무 상태와 대기 작업 |
 | `large` | 8 MiB | 32 MiB | queue 64×64 KiB, journal 16×64 KiB, timer 64개 | 큰 state와 backlog |
-| `boundary` | Snapshot object 하나당 64 MiB | participant 5개의 합계 320 MiB | ingress hold는 별도 반복에서 1,024 records와 16 MiB 경계를 사용 | participant 상한과 oversized aggregate 단독 실행 |
+| `boundary` | state-preserving object 하나당 64 MiB | participant 5개의 합계 320 MiB | ingress hold는 별도 반복에서 1,024 records와 16 MiB 경계를 사용 | participant 상한과 oversized aggregate 단독 실행 |
 
 `boundary`의 320 MiB aggregate는 process의 기본 256 MiB payload gate를 줄여서 통과시키지 않는다.
 다른 payload 이동이 없을 때 한 unit만 실행되는지 확인한다. Actor 하나와 Instance Spot은 256 MiB
-gate 안에서만 진행하고 Snapshot object 하나가 64 MiB를 넘는 반복은
+gate 안에서만 진행하고 state-preserving object 하나가 64 MiB를 넘는 반복은
 `Blocked/StateIncompatible`이어야 한다. Message payload 자체의 상한은 negotiated
 `MaxMessageSize`를 따르므로 relocation state 크기와 혼동하지 않는다.
 
@@ -792,8 +792,8 @@ target admission 또는 safe abort가 끝난 시점까지의 전체 host wall ti
 
 | Workload | 고정 수와 payload | 전체 host 목표 |
 |---|---|---|
-| Entry·`PerActor` Actor bulk | `Recreate` Actor 10,000개 | 180초 이내, 64 units/s 이상 |
-| Snapshot Actor bulk | `normal` Actor 1,000개 | 90초 이내, 16 units/s 이상 |
+| Entry·`PerActor` Actor bulk | `RecreateOnRelocation` Actor 10,000개 | 180초 이내, 64 units/s 이상 |
+| `PreserveStateWith` Actor bulk | `normal` Actor 1,000개 | 90초 이내, 16 units/s 이상 |
 | Instance Spot bulk | `normal` Instance Spot 1,000개 | 150초 이내, 8 units/s 이상 |
 | `SpotWide` bulk | Actor 100개씩 포함한 User Spot 100개, 전체 participant 10,100개 | 180초 이내, 1 aggregate/s 이상 |
 
@@ -831,8 +831,8 @@ unit을 rollback하거나 취소하지 않고 safe terminal까지 진행해야 �
 
 우선순위: `P0`
 
-- 절차: 고정 workload SLO의 두 Actor bulk를 fresh host process에서 각각 실행한다. Recreate와
-  Snapshot은 서로 다른 selector로 실행하며 elapsed time과 units/s를 합치지 않는다. Relocation 전
+- 절차: 고정 workload SLO의 두 Actor bulk를 fresh host process에서 각각 실행한다. `RecreateOnRelocation`과
+  `PreserveStateWith`는 서로 다른 selector로 실행하며 elapsed time과 units/s를 합치지 않는다. Relocation 전
   60초 동안 source와 target의
   control Actor·Spot에 request 200/s와 one-way 200/s를 균등하게 보내 baseline을 만든다. Host
   relocation 동안 같은 offered load를 유지하고, 이동 대상 Actor에도 global Actor ID로 request와

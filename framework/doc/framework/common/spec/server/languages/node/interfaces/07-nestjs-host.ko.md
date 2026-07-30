@@ -87,9 +87,9 @@ export declare class ZLinkModule {
     static forRootFactory(options: ZLinkModuleFactoryOptions): DynamicModule;
 }
 
-export interface ZLinkModuleFactoryOptions {
-    readonly useFactory: (...args: unknown[]) => ZLinkModuleOptions | Promise<ZLinkModuleOptions>;
-    readonly inject?: readonly InjectionToken[];
+export interface ZLinkModuleFactoryOptions<TArgs extends unknown[] = unknown[]> {
+    readonly useFactory: (...args: TArgs) => ZLinkModuleOptions | Promise<ZLinkModuleOptions>;
+    readonly inject?: { readonly [TIndex in keyof TArgs]: InjectionToken };
     readonly imports?: ModuleMetadata['imports'];
 }
 
@@ -404,5 +404,5 @@ NestJS builder도 Entry Spot 구현 type만 등록한다. Entry Spot의 `SpotId`
 
 `RecreateOnRelocation` 또는 `PreserveStateWith` factory가 하나라도 있거나 Instance Spot [factory](../../../../01-glossary.ko.md#factory)가 하나라도 등록된 Object Server는
 `addRelocationStore(...)`를 정확히 한 번 호출해야 한다. [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 없고 모든 factory가
-`Disabled`인 same-node 구성만 Relocation Store를 생략할 수 있다. 누락과 중복은 socket bind 전에 configuration
+`DisableRelocation`인 same-node 구성만 Relocation Store를 생략할 수 있다. 누락과 중복은 socket bind 전에 configuration
 error다.

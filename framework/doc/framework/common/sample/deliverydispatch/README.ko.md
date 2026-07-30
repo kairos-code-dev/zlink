@@ -271,7 +271,7 @@ owner를 찾는다. Client wire에도 `ActorRef`, `NodeRid`와 session route를 
 Client를 등록한다. Object Server role을 가진 CustomerGateway와 CourierActorNode는 자기
 Actor factory와 Entry Spot을 등록한다.
 
-이 샘플의 courier·customer Actor factory는 relocation policy를 `Disabled`로 등록한다.
+이 샘플의 courier·customer Actor factory는 relocation policy를 `DisableRelocation`으로 등록한다.
 DeliveryDispatch는 actor 생성, direct messaging과 session bind를 설명하는 샘플이며,
 relocation이나 Message Follow 동작을 시연하거나 검증하지 않는다.
 

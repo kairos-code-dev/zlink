@@ -17,7 +17,7 @@ Target이 HWM 때문에 수신을 멈추면 Core의 network pipe가 차고, 그 
 
 Application message와 request는 memory 여유가 없을 때 수신을 중단한다. 이미 보낸 request의
 reply와 처리를 계속하기 위해 필요한 runtime control은 별도 Completion connection으로
-수신한다. 이 구조로 application backlog가 completion 진행을 막는 순환 의존성을 제거한다.
+수신한다. 이 구조로 application 수신 중단이 completion 진행을 막는 순환 의존성을 제거한다.
 
 이번 승인 범위는 C-01부터 BP-03까지다. Framework F-01 이후 작업은 이번 범위에 포함하지
 않는다.
@@ -26,7 +26,7 @@ reply와 처리를 계속하기 위해 필요한 runtime control은 별도 Compl
 
 - Core와 bindings는 C-01부터 BP-03까지 이 문서의 순서와 gate를 따라 변경한다.
 - 두 connection, byte HWM과 내부 queue 제거를 Core 목표 구조로 적용한다.
-- Framework application backlog budget은 F-01 이후 별도 지시 전까지 적용하지
+- Framework Application HWM은 F-01 이후 별도 지시 전까지 적용하지
   않는다.
 - 정확한 public contract는 이 문서, C header, 정식 spec과 contract test에서 같은 의미로
   유지한다.
@@ -38,25 +38,25 @@ reply와 처리를 계속하기 위해 필요한 runtime control은 별도 Compl
 | 계층 | 이 설계에서 맡는 책임 |
 |---|---|
 | Application | 유한한 최대 message 크기를 설정한다. `ApplicationHwmBytes`를 생략하면 선택한 Auto HWM profile, 양수를 지정하면 고정 HWM, `0`을 지정하면 무제한을 사용한다. Auto profile 기본값은 `BALANCED`다. |
-| Framework | Host 전체 dispatch backlog byte를 계산하고 Application `Recv`를 중단·재개한다. Request handler와 reply가 사용하는 memory는 별도 동시성과 reserve로 제한한다. |
+| Framework | Host 전체에서 수신 후 handler가 완료되지 않은 payload byte를 계산하고 Application `Recv`를 중단·재개한다. Reply가 사용하는 memory는 별도 동시성과 reserve로 제한한다. |
 | Core | Directional pipe의 실제 보관 byte를 HWM으로 제한하고 Application·Completion connection pair를 관리한다. |
 | Bindings | Core의 64-bit byte option, monitoring 값과 오류를 각 언어에서 같은 의미로 제공한다. |
 | Remote runtime | 같은 pair identity와 generation을 검증하고, stale reply와 control을 적용하지 않는다. |
 
 ### 1.3 정상 처리 순서
 
-1. Framework는 Application backlog가 HWM보다 작으면 complete application message를
+1. Framework는 처리 중인 application payload 합계가 HWM보다 작으면 complete message를
    `Recv`한다.
-2. Core에서 완성된 message를 받은 뒤 실제 payload byte를 application backlog에 더한다.
-3. Application backlog가 HWM에 도달하거나 초과하면 Application connection의 `Recv`만
+2. Core에서 완성된 message를 받은 뒤 실제 payload byte를 처리 중인 합계에 더한다.
+3. 처리 중인 payload 합계가 HWM에 도달하거나 초과하면 Application connection의 `Recv`만
    중단한다.
 4. Core pipe가 byte HWM까지 차면 source의 send가 대기한다.
 5. Completion connection의 poller는 계속 실행하여 이미 보낸 request의 reply와 필수 control을
    처리한다.
 6. Request handler는 실행 전에 reply 한 건의 최대 memory를 예약한다. Reply를 Core가
    받아들이면 Framework의 reply byte를 Core transport reserve로 넘긴다.
-7. Handler 실행이 시작되어 backlog가 재개 기준 아래로 내려가면 Application `Recv`를 다시
-   시작한다.
+7. Handler가 terminal 상태에 도달하여 처리 중인 payload 합계가 HWM보다 작아지면 Application
+   `Recv`를 다시 시작한다.
 
 ## 2. 왜 현재 구조를 바꿔야 하는가
 
@@ -83,7 +83,7 @@ Target의 처리 속도보다 source의 송신 속도가 빠르면 수신 대기
 목표 구조와 계산 방법은 승인되었다. 다음 값과 protocol 세부 사항은 C-01부터 C-08까지
 구현·측정하고 C header, 정식 spec과 contract test에 같은 의미로 고정한다.
 
-- Framework application backlog에 적용할 payload byte 합산 규칙
+- Framework가 수신 후 처리 중인 application payload에 적용할 byte 합산 규칙
 - Framework Application HWM과 Completion connection HWM의 production 기본값
 - Host 전체 `maxPendingCompletionSends`, peer별 공정성 상한과 completion send permit 값
 - Completion connection handshake, reconnect와 pending request 종료 error
@@ -91,40 +91,66 @@ Target의 처리 속도보다 source의 송신 속도가 빠르면 수신 대기
 - Core Auto HWM planning unit option의 정확한 migration 계약
 - C monitoring ABI version과 다섯 Framework 언어의 exact public interface
 
-## 4. Framework는 application backlog를 어떻게 제한하는가
+Core가 내부에서 만드는 Completion connection은 방향별 HWM을 `262144` byte로 제한한다.
+Application socket에 더 작은 HWM이 설정되어 있으면 그 값을 유지한다. Network Completion
+connection의 `SNDBUF`와 `RCVBUF`는 각각 `65536` byte를 상한으로 사용한다. 이 값은 hidden
+transport lane의 내부 memory 정책이며 새 public option으로 노출하지 않는다.
 
-이 절은 Framework가 아직 handler 실행을 시작하지 못한 application job의 payload 합계를
-제한하는 공개 동작을 정의한다. 이 제한을 Application HWM이라고 한다. Application HWM은 한
-Framework host 전체에 적용하며 connection, MeshNode, Channel, Spot 또는 Actor마다 나누지 않는다.
+## 4. Framework는 처리 중인 application payload를 어떻게 제한하는가
+
+이 절은 Framework가 수신했지만 handler 처리가 아직 완료되지 않은 application job의 payload
+합계를 제한하는 공개 동작을 정의한다. 이 제한을 Application HWM이라고 한다. Application HWM은
+한 Framework host 전체에 적용하며 connection, MeshNode, Channel, Spot 또는 Actor마다 나누지
+않는다.
 
 Application은 HWM 값을 직접 지정하거나 Auto profile을 선택한다. Framework는 적용한 HWM과
-현재 backlog를 비교하여 application message 수신을 중단하거나 재개한다.
+현재 pending payload 합계를 비교하여 application message 수신을 중단하거나 재개한다.
 
-### 4.1 어떤 byte를 backlog에 포함하는가
+### 4.1 어떤 payload byte를 계산하는가
 
-`applicationBacklogBytes`는 Framework가 수신했지만 handler 실행을 시작하지 못한 application
-job의 payload byte 합계다. Job은 dispatch 대기에 들어간 시점부터 handler 실행을 시작할
-때까지 backlog에 포함된다.
+`applicationPendingPayloadBytes`는 Framework가 `Recv`한 complete message 가운데 handler
+처리가 아직 terminal 상태에 도달하지 않은 application job의 payload byte 합계다. Job은
+`Recv`가 완료된 시점부터 handler가 정상 완료, 실패 또는 cancellation로 끝날 때까지 합계에
+포함된다.
 
-다음 payload byte를 포함한다.
-
-- Queue에서 dispatch를 기다리는 message
-- Target queue에 들어가기 전에 Framework가 보관하는 message
-- Relocation 또는 Message Follow 처리 중 dispatch를 기다리는 message
-- Framework 내부 queue 사이를 이동 중인 message
+Queue에서 dispatch를 기다리는 job과 handler가 실행 중인 job을 모두 포함한다. Core pipe와 OS
+socket buffer에 남아 있어 Framework가 아직 `Recv`하지 않은 message, handler가 끝난 job과
+completion 처리는 포함하지 않는다.
 
 Multipart message 한 건은 모든 application payload part의 길이를 합산한다. Envelope, routing
 정보, Framework metadata, allocator overhead와 minimum charge는 더하지 않는다. 같은 job을
 Framework 내부에서 이동할 때는 한 번만 계산한다. 같은 payload를 서로 다른 job으로 복제하면
 각 job의 payload byte를 계산한다.
 
-Handler가 job 실행을 시작하면 해당 payload byte를 backlog에서 차감한다. 실행 중인 handler가
-참조하는 message, Core pipe, OS socket buffer와 completion 처리 memory는 포함하지 않는다.
-Application HWM은 process memory 전체가 아니라 dispatch를 기다리는 payload를 제한한다.
+Application HWM은 process memory 전체의 상한이 아니다. Framework가 `Recv`하여 처리 중인
+application payload의 합계를 기준으로 새 수신을 중단하는 값이다.
+
+#### Payload 합계를 어떻게 유지하는가
+
+Framework는 queue나 실행 중인 handler를 순회하여 `applicationPendingPayloadBytes`를 다시
+계산하지 않는다. Complete message를 `Recv`할 때 각 payload part의 길이를 합산하고 그 결과를
+내부 HandlerContext에 immutable 값으로 저장한다. Payload를 복사하거나 HWM 계산을 위해 part를
+다시 순회하지 않는다. 이 값은 내부 accounting에만 사용하며 public HandlerContext API로
+노출하지 않는다.
+
+Framework는 다음 상태 변경에서만 host 전체 합계를 갱신한다.
+
+1. Complete message의 `Recv`가 성공하면 HandlerContext에 저장한 payload byte를 합계에 한 번
+   더한다.
+2. Job이 queue 사이를 이동하거나 handler 실행을 시작할 때는 합계를 변경하지 않는다.
+3. Handler가 정상 완료, 실패 또는 cancellation로 terminal 상태에 도달하면 HandlerContext에
+   저장한 payload byte를 합계에서 한 번 뺀다.
+4. Handler를 시작하기 전에 shutdown, routing failure 또는 cancellation로 job이 terminal
+   상태에 도달해도 같은 완료 경로에서 저장한 payload byte를 한 번 뺀다.
+
+HandlerContext에는 payload byte 값만 추가하며 별도의 accounting object를 만들지 않는다. 모든
+terminal 처리는 기존 공통 완료 경로를 사용하여 같은 payload byte를 두 번 빼지 않는다. 여러
+thread가 합계를 변경하면 host 전체 64-bit atomic counter를 사용하며, counter 때문에 새 lock을
+추가하지 않는다.
 
 ### 4.2 설정값은 어떻게 해석하는가
 
-`ApplicationHwmBytes`는 host 전체 application backlog에 적용할 64-bit byte 값이다.
+`ApplicationHwmBytes`는 host 전체 `applicationPendingPayloadBytes`에 적용할 64-bit byte 값이다.
 
 | 설정 | 적용 결과 |
 |---|---|
@@ -146,7 +172,8 @@ Framework Application HWM은 Core socket의 send·receive HWM과 별도다. Fram
 
 ### 4.3 Auto HWM은 어떻게 계산하는가
 
-Auto mode에서는 Application에 할당된 memory 중 선택한 profile의 비율을 backlog에 배정한다.
+Auto mode에서는 Application에 할당된 memory 중 선택한 profile의 비율을 pending application
+payload에 배정한다.
 
 ```text
 autoApplicationHwmBytes =
@@ -165,10 +192,10 @@ Framework는 host physical memory, 현재 OS free memory, process RSS, CPU 사�
 
 | Profile | `selectedProfileRatio` | 적용 결과 |
 |---|---:|---|
-| `COMPACT` | `2%` (`0.02`) | 할당된 memory의 2%를 backlog payload에 배정한다. |
-| `LOW_LATENCY` | `5%` (`0.05`) | 할당된 memory의 5%를 backlog payload에 배정한다. |
+| `COMPACT` | `2%` (`0.02`) | 할당된 memory의 2%를 pending payload에 배정한다. |
+| `LOW_LATENCY` | `5%` (`0.05`) | 할당된 memory의 5%를 pending payload에 배정한다. |
 | `BALANCED` | `10%` (`0.10`) | 할당된 memory의 10%를 배정하며 별도 설정이 없을 때 사용한다. |
-| `THROUGHPUT` | `20%` (`0.20`) | 할당된 memory의 20%를 backlog payload에 배정한다. |
+| `THROUGHPUT` | `20%` (`0.20`) | 할당된 memory의 20%를 pending payload에 배정한다. |
 
 모든 Framework 언어는 이 비율을 그대로 사용한다. 같은 profile 이름을 Core context에도
 설정하지만 비율을 Core HWM 계산에 사용하지 않는다. Core는 동일한 profile 이름에 해당하는
@@ -180,37 +207,39 @@ memory limit이나 profile을 명시적으로 변경한 경우에만 다시 계�
 
 ### 4.4 언제 HWM에 도달한 것으로 판단하는가
 
-HWM이 `0`이면 Framework는 backlog 때문에 수신을 중단하지 않는다. HWM이 양수이면 다음 조건에서
-새 application `Recv`를 시작한다.
+HWM이 `0`이면 Framework는 pending payload 때문에 수신을 중단하지 않는다. HWM이 양수이면
+다음 조건에서 새 application `Recv`를 시작한다.
 
 ```text
 canStartRecv =
-    applicationBacklogBytes < applicationHwmBytes
+    applicationPendingPayloadBytes < applicationHwmBytes
 ```
 
-Framework는 다음 message 크기를 미리 알 수 없으므로 HWM byte를 선예약하지 않는다. HWM보다
-작은 backlog에서 시작한 message는 HWM보다 크더라도 끝까지 수신한다. 그 결과 HWM을 초과하면
-이후의 새 `Recv`만 중단한다. 따라서 HWM보다 큰 message 한 건도 backlog가 비어 있으면 처리할
-수 있다.
+Framework는 다음 message 크기를 미리 알 수 없으므로 HWM byte를 선예약하지 않는다. 처리 중인
+payload 합계가 HWM보다 작을 때 시작한 message는 HWM보다 크더라도 끝까지 수신한다. 그 결과
+HWM을 초과하면 이후의 새 `Recv`만 중단한다. 따라서 HWM보다 큰 message 한 건도 처리 중인
+application job이 없으면 수신할 수 있다.
 
 여러 ingress poller가 동시에 시작한 `Recv`도 모두 완료할 수 있다. Application HWM은 이미
 시작한 message를 실패시키는 memory 상한이 아니라 새 수신을 중단하는 기준이다.
 
 ### 4.5 HWM에 도달하면 Framework는 무엇을 하는가
 
-Application backlog가 HWM에 도달하거나 초과하면 Framework는 다음 순서로 처리한다.
+`applicationPendingPayloadBytes`가 HWM에 도달하거나 초과하면 Framework는 다음 순서로
+처리한다.
 
 1. 새로운 application message의 `Recv`를 시작하지 않는다.
-2. 이미 시작한 `Recv`는 완료하고 받은 payload byte를 backlog에 더한다. HWM을 초과했다는
+2. 이미 시작한 `Recv`는 완료하고 받은 payload byte를 처리 중인 합계에 더한다. HWM을 초과했다는
    이유로 message를 제거하거나 application error로 완료하지 않는다.
 3. Framework queue에서 기다리는 application job은 계속 dispatch한다.
 4. 이미 보낸 request의 reply와 Framework 처리에 필요한 control message는 계속 수신한다.
-5. Handler가 job 실행을 시작하면 해당 payload byte를 backlog에서 차감한다.
-6. Backlog가 HWM보다 작아지면 application message의 `Recv`를 재개한다.
+5. Handler가 terminal 상태에 도달하면 HandlerContext에 저장한 payload byte를 합계에서
+   차감한다.
+6. 처리 중인 payload 합계가 HWM보다 작아지면 application message의 `Recv`를 재개한다.
 
 Framework가 application `Recv`를 중단하면 이후 message는 Core receive queue에 남는다. Core
 receive queue가 해당 pipe의 HWM에 도달하면 source의 새 송신이 대기한다. 이 과정으로
-Framework의 application backlog 제한이 source의 backpressure로 전달된다.
+Framework의 Application HWM이 source의 backpressure로 전달된다.
 
 ### 4.6 Application은 어떤 기준으로 값을 선택하는가
 
@@ -219,34 +248,39 @@ Framework의 application backlog 제한이 source의 backpressure로 전달된�
 
 | 운영 조건 | 선택할 profile |
 |---|---|
-| Backlog memory를 가장 작게 제한해야 한다. | `COMPACT` |
+| Pending payload를 가장 작게 제한해야 한다. | `COMPACT` |
 | 짧은 queue 지연이 burst 흡수보다 중요하다. | `LOW_LATENCY` |
 | 별도의 우선 조건이 없다. | `BALANCED` |
 | 추가 memory와 queue 지연을 허용하고 burst 흡수가 중요하다. | `THROUGHPUT` |
 
 Profile만으로 운영 요구를 만족할 수 없으면 production과 같은 workload에서 지속 처리량을
-측정하여 양수 `ApplicationHwmBytes`를 지정한다. 지속 처리량은 backlog가 존재하는 동안
+측정하여 양수 `ApplicationHwmBytes`를 지정한다. 지속 처리량은 대기 중인 job이 존재하는 동안
 handler가 처리를 완료한 application payload byte를 실행 시간으로 나눈 값이다. Ingress byte와
-순간 peak는 사용하지 않는다.
+순간 peak는 사용하지 않는다. 같은 실행에서 handler가 실행 중인 payload byte의 최대 합계도
+측정한다.
 
 Application은 허용할 최대 queue 대기 시간을 정하고 다음 값을 HWM 후보로 사용한다.
 
 ```text
 candidateApplicationHwmBytes =
-    measuredSustainableDrainBytesPerSecond
-    * maximumQueueDelaySeconds
+    measuredPeakActiveHandlerPayloadBytes
+    + measuredSustainableDrainBytesPerSecond
+        * maximumQueueDelaySeconds
 ```
+
+실행 중인 handler payload도 Application HWM에 포함하므로 HWM 후보에서 먼저 확보한다. 나머지
+byte가 허용한 queue 대기 시간 동안 dispatch를 기다릴 수 있는 payload다.
 
 후보값은 다음 조건을 같은 workload에서 확인한 뒤 production 값으로 사용한다.
 
-- Backlog를 후보값까지 채워도 process memory limit을 넘지 않는다.
+- Pending payload 합계가 후보값에 도달해도 process memory limit을 넘지 않는다.
 - Queue 대기 시간이 Application이 정한 최대값을 넘지 않는다.
-- HWM보다 큰 최대 message 한 건도 backlog가 비어 있을 때 처리할 수 있다.
+- HWM보다 큰 최대 message 한 건도 처리 중인 application job이 없을 때 수신할 수 있다.
 - HWM에 도달하면 message를 버리지 않고 source에 backpressure가 전달된다.
 
-Application HWM은 backlog 크기와 예상 queue 대기 시간을 제한한다. CPU 사용률이나 handler
-동시 실행 수를 제한하지 않는다. CPU 목표는 dispatch concurrency나 별도 rate limit으로 맞춘
-뒤 지속 처리량을 측정해야 한다.
+Application HWM은 처리 중인 payload 합계와 예상 queue 대기 시간을 제한한다. CPU 사용률이나
+handler 동시 실행 수를 제한하지 않는다. CPU 목표는 dispatch concurrency나 별도 rate limit으로
+맞춘 뒤 지속 처리량을 측정해야 한다.
 
 성능 테스트 guide는 이 절의 처리량 정의, 후보 계산식과 검증 조건을 사용한다. Warm-up 시간,
 반복 횟수, workload 구성과 결과표처럼 실행 절차에 필요한 내용만 guide에서 추가한다.
@@ -542,39 +576,39 @@ C++ binding처럼 현재 HWM을 `message_count_t`로 표현하는 binding은 값
 16. 최대 pending request 수에 도달하면 새 request admission만 대기하고 기존 completion은
     계속 처리되는지 검증한다.
 17. 목표 최대 connection 수에서 요청자·응답자 `completionReserve`,
-    `coreTransportReserve`와 Framework backlog를 함께 채워도 process memory limit과
-    emergency headroom을 침범하지 않는지 검증한다.
+    `coreTransportReserve`와 Framework pending payload를 함께 채워도 process memory limit을
+    넘지 않는지 검증한다.
 18. HWM 기능을 끈 기준 build와 비교하여 새 allocation·mutex·system call이 hot path에
     추가되지 않았는지 확인하고 throughput, CPU/message와 p99 latency를 기록한다.
 19. 복수 MeshNode와 복수 I/O thread에서 작은 message를 처리하여 현재 MeshNode별 병렬 drain
     대비 aggregate throughput과 scaling이 허용 범위 안에 있는지 검증한다.
-20. 한 Spot이나 Actor가 대부분의 backlog byte를 보유하면 host backlog와
-    owner·unattributed·infrastructure 합계가 일치하고, active handler byte는 별도 합계로
-    구분되며, 명시적 top-N 진단에서 해당 owner가 확인되는지 검증한다.
+20. 한 Spot이나 Actor가 대부분의 pending payload byte를 보유하면 host 전체 합계와 queued,
+    active handler, unattributed, infrastructure 합계가 일치하며, 명시적 top-N 진단에서 해당
+    owner가 확인되는지 검증한다.
 21. A와 B가 동시에 HWM에 도달한 상태에서 양방향 nested request를 보내고, Completion
-    connection과 local timeout이 계속 진행되어 handler 실행 시작 뒤 application backlog가
-    줄고 handler terminal 뒤 completion reserve와 ingress가 회복되는지 검증한다.
+    connection과 local timeout이 계속 진행되어 handler terminal 뒤 pending payload 합계가
+    줄고 completion reserve와 ingress가 회복되는지 검증한다.
 22. Completion send permit이 host 상한에 도달하면 추가 request handler admission이
     대기하고 request byte가 Application budget에 남는지 검증한다. Handler 실행을 시작하면
     original request의 queue lease가 반환되고 미전송 reply count와 byte는 responder
     completion reserve 상한을 넘지 않으며, Core가 send를 받아들일 때 두 reserve 사이에서
     byte가 누락되거나 이중으로 계산되지 않아야 한다.
-23. HWM과 `MaxMessageSize` 조합별로 HWM보다 작은 backlog에서 시작한 message는 완료하고,
-    backlog가 HWM에 도달하거나 초과한 뒤에는 새 `Recv`를 시작하지 않으며, connection별
-    미사용 chunk reserve가 생기지 않는지 검증한다. 복수 ingress poller가 이미 시작한
-    message는 완료될 수 있음을 함께 검증한다.
+23. HWM과 `MaxMessageSize` 조합별로 처리 중인 payload 합계가 HWM보다 작을 때 시작한 message는
+    완료하고, 합계가 HWM에 도달하거나 초과한 뒤에는 새 `Recv`를 시작하지 않으며,
+    connection별 미사용 chunk reserve가 생기지 않는지 검증한다. 복수 ingress poller가 이미
+    시작한 message는 완료될 수 있음을 함께 검증한다.
 24. Application message와 relocation·session binding·peer lifecycle control을 두
     connection에서 양방향으로 추월시켜도 generation, epoch, sequence와 barrier가 stale
     control 적용과 순서 역전을 막는지 검증한다. Fence 대기 상한을 넘으면 pair 전체와 pair
     generation이 종료되고 해당 pending request가 terminal error로 끝나는지도 확인한다.
-25. Application backlog가 HWM에 도달하거나 초과하면 새 수신을 중단하고, handler 실행으로
-    HWM보다 작아지면 수신을 재개하는지 검증한다. Framework Auto HWM profile을 변경하면
+25. `applicationPendingPayloadBytes`가 HWM에 도달하거나 초과하면 새 수신을 중단하고, handler
+    terminal로 HWM보다 작아지면 수신을 재개하는지 검증한다. Framework Auto HWM profile을 변경하면
     Framework가 사용하는 Core context의 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`도 같은 값으로
     변경되는지 검증한다.
 26. Framework에서 `ApplicationHwmBytes`를 생략하면 Application 할당 memory에 선택한 profile
     비율을 곱하는지 확인한다. `COMPACT=2%`, `LOW_LATENCY=5%`, `BALANCED=10%`,
     `THROUGHPUT=20%`를 사용하고 profile을 생략하면 `BALANCED`를 적용하는지 검증한다. 양수를
-    설정하면 host 전체 backlog에 해당 byte 값을 사용하고, `0`을 명시하면 무제한으로 동작하는지
+    설정하면 host 전체 pending payload에 해당 byte 값을 사용하고, `0`을 명시하면 무제한으로 동작하는지
     검증한다. Auto mode에서는 profile 이름만 Core context에 동일하게 설정하고 Framework가
     계산한 byte HWM을 connection별 Core HWM으로 복제하지 않는지도 contract test로 검증한다.
 27. Core clean review를 통과한 candidate에서 `bindings/c/perf`의 single·multi 전체 pattern과
@@ -816,7 +850,7 @@ bindings source가 바뀌면 5단계 review를 다시 수행한다. Core source�
 ### 8.7 7단계: Framework 적용
 
 이 단계의 결과는 Framework host가 Core와 bindings의 byte HWM을 사용하여 process 전체의
-application backlog를 제한하고, application 수신이 중단되어도 request completion을 계속
+처리 중인 application payload 합계를 제한하고, application 수신이 중단되어도 request completion을 계속
 처리하는 것이다.
 
 1. 구현 전에 [Framework 공개 계약 관리 절차](../framework/common/spec/00-public-contract-governance.ko.md)에
@@ -828,8 +862,9 @@ application backlog를 제한하고, application 수신이 중단되어도 reque
 3. Application·Completion connection을 함께 poll하되 Application HWM에 도달하면
    Application `Recv`만 중단한다. Core에서 받은 application message를 다른 payload queue로
    복사하거나 이동하지 않는다.
-4. Host 전체 `applicationBacklogBytes`를 관리한다. 여러 MeshNode의 기존 ingress poller는
-   backlog가 HWM보다 작을 때 `Recv`를 시작하며 기존 병렬성을 유지한다.
+4. Host 전체 `applicationPendingPayloadBytes`를 관리한다. Complete message를 `Recv`하면 내부
+   HandlerContext에 payload byte를 저장하고 합계에 더한다. Handler terminal 공통 경로에서
+   저장한 값을 합계에서 빼며 기존 ingress poller 병렬성을 유지한다.
 5. Request handler를 실행하기 전에 completion send permit을 확보한다. Permit 상한에
    도달하면 request를 Application queue와 budget에 남긴다. Handler 실행을 시작하면 request의
    queue lease를 반환한다. Handler terminal에서는 completion permit을 실제 reply byte로
@@ -838,7 +873,7 @@ application backlog를 제한하고, application 수신이 중단되어도 reque
    byte 값을 사용하며, 명시적인 `0`이면 무제한으로 동작한다. Auto mode에서 검증된 profile을
    확인할 수 없으면 startup을 실패시킨다. Auto mode에서 선택한 profile은 Framework가 사용하는
    Core context의 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`에도 동일하게 설정한다.
-7. Framework monitoring은 application backlog와 active handler 사용량,
+7. Framework monitoring은 pending application payload 합계와 queued·active handler 구분,
    Auto HWM memory 계산 입력, pause, owner별 byte,
    requester·responder completion reserve, completion send permit과 pending request를
    queue 순회 없이 제공한다.
@@ -916,9 +951,9 @@ Accounted byte 기준으로 64 B payload에서 1.38, 1 KiB에서 1.04,
 | CR-02 | Core review | Codex 5.6 High 독립 전체 review | `gpt-5.6-sol` high, [core review log](log/inbound-dispatch-lane-core-review.ko.md) round 1. `NOT CLEAN`(`Critical` 2, `High` 1, `Medium` 2) | 완료 |
 | CR-03 | Core review | 사용자 정책 변경 전 Claude Fable 독립 전체 review | Round 1~4 report와 finding을 core review log에 기록 | 완료 |
 | CR-04 | Core review | Finding 통합, severity와 대안 검토 | Round 1~4 finding과 disposition 기록 | 완료 |
-| CR-05 | Core review | `Medium` 이상 finding 수정과 회귀 검증 | Round 4 Codex·기존 Fable finding 수정 및 검증 중 | 진행 중 |
-| CR-06 | Core review | 변경 candidate의 Codex 전체 재검토 | 최신 SHA의 Codex 전체 report | 승인 대기 |
-| CR-07 | Core review | Codex `Medium` 이상 0건 확인 | `CLEAN` 판정과 남은 `Low` disposition | 승인 대기 |
+| CR-05 | Core review | `Medium` 이상 finding 수정과 회귀 검증 | Round 6의 `High` 4건·`Medium` 3건과 `Low` 1건을 모두 반영. Core non-serial 20/20, serial 63/63 통과 | 완료 |
+| CR-06 | Core review | 변경 candidate의 Codex 전체 재검토 | Candidate `84d01c95c7`, `gpt-5.6-sol` high Round 6 전체 report는 `NOT CLEAN` | 완료 |
+| CR-07 | Core review | 마지막 review finding 반영 확인 | 사용자 결정으로 Round 6을 마지막 review로 고정. Report를 `CLEAN`으로 바꾸지 않고 finding 전체 반영과 83/83 검증으로 종료 | 완료 |
 | CP-01 | Core perf smoke | `core/build` 공식 runtime 재build와 provenance 확인 | Candidate·runtime SHA-256과 출력 경로 | 승인 대기 |
 | CP-02 | Core perf smoke | C single 전체 64B smoke 실행 | 검증 27의 `status=complete` report | 승인 대기 |
 | CP-03 | Core perf smoke | C multi 전체 64B smoke 실행 | 검증 27의 `status=complete` report | 승인 대기 |
@@ -964,22 +999,18 @@ latency가 낮으며, memory amplification은 accounted byte 기준 64 B에서 1
 [reqrep multipart rollback review](log/inbound-dispatch-lane-reqrep-multipart-rollback-review.ko.md)
 §9에 있다.
 
-**진행 중인 것.** 2단계 Core clean review의 Round 4 finding을 수정하고 있다. Candidate
-`d9df28edee`의 Codex와 정책 변경 전에 끝난 Fable report는 모두 `NOT CLEAN`이다. PUB/XPUB
-multipart size admission, ROUTER completion correlation, C perf HWM 타입, C binding의 Core 11
-raw-only header, WS/WSS pair readiness와 dead dispatch state를 수정했다. 수정 뒤 CPU 제한 build와
-회귀 test를 마치고 새 candidate를 만든다. 이후 review는 사용자 결정에 따라 Codex만 사용한다.
+**진행 중인 것.** Round 6 Codex review의 finding을 모두 반영했고 CPU 10개 제한에서 Core
+non-serial 20/20과 serial 63/63을 통과했다. Round 6 report는 `NOT CLEAN`이지만, 사용자 결정에
+따라 이번 finding 반영을 마지막 Core review cycle로 고정하고 추가 review 없이 Core perf
+smoke(CP-01~CP-03)로 진행한다.
 
 **다음에 할 일.**
 
-1. Round 4 finding 수정을 마치고 Core와 C binding contract test를 CPU 제한 조건에서 실행한다.
-2. 새 candidate SHA를 만들고 Codex의 **전체** review를 다시 받는다. 수정 diff만 보는 재검토는
-   인정하지 않는다. 공통 brief는
-   [core review prompt](log/inbound-dispatch-lane-core-review-prompt.md)이고 candidate SHA만
-   바꿔서 쓴다. Reviewer가 보고서 file을 쓸 수 있는 경로를 주어야 한다.
-3. Codex report에서 `Medium` 이상 finding이 0건일 때 `CLEAN`으로 판정하고 3단계 perf
-   smoke(CP-01~CP-03)로 넘어간다. Binding 사전 적용분은 Core candidate가 확정된 뒤 다시
-   반영하고 검증한다.
+1. Round 6 반영 source를 commit하고 공식 `core/build` runtime의 candidate·SHA-256을 기록한다.
+2. C single·multi 전체 pattern과 transport를 64B로 실행하여 두 report의
+   `status=complete`를 확인한다.
+3. Binding 사전 적용분을 확정한 Core runtime과 header에 다시 맞추고 package·consumer test를
+   실행한다.
 
 **작업 규칙.** 작업 tree(`/home/hep7/project/kairos/zlink`)에는 다른 담당자의 미완료 변경이
 있다. `git reset`, `git checkout`, `git clean`을 쓰지 않고, 이 작업과 관련된 file만 stage해서

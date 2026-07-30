@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 #include "utils/macros.hpp"
 #include "core/session_base.hpp"
+#include "core/transport_pair_policy.hpp"
 #include "engine/i_engine.hpp"
 #include "utils/err.hpp"
 #include "utils/env.hpp"
@@ -155,6 +156,14 @@ int zlink::session_base_t::set_peer_transport_pair (transport_lane_t lane_,
     _transport_lane = lane_;
     _transport_pair_id = pair_id_;
     _transport_pair_generation = generation_;
+    if (lane_ == transport_lane_completion) {
+        options.sndhwm = transport_pair_policy::completion_hwm (options.sndhwm);
+        options.rcvhwm = transport_pair_policy::completion_hwm (options.rcvhwm);
+        options.sndbuf =
+          transport_pair_policy::completion_socket_buffer (options.sndbuf);
+        options.rcvbuf =
+          transport_pair_policy::completion_socket_buffer (options.rcvbuf);
+    }
     if (_pipe)
         _pipe->set_transport_pair (lane_, pair_id_, generation_);
     return 0;

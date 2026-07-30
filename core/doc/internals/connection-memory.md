@@ -24,8 +24,11 @@ path; it adds no allocator query, heap allocation, system call, or new hot-path
 lock.
 
 The directional HWM limits this accounted storage. An empty pipe may admit one
-message larger than the HWM, subject to the socket's maximum message size, and
-then blocks later writes. The monitor reports bytes in flight and this
+complete message larger than the HWM, subject to the socket's maximum message
+size, and then blocks later writes. This exception does not apply to an
+unfinished multipart. A hidden Completion connection in a paired transport
+caps each directional HWM at 262144 bytes and caps each network send and
+receive socket buffer at 65536 bytes. The monitor reports bytes in flight and this
 oversize-admission history. These values explain Core accounting but are not an
 exact process resident-memory measurement.
 

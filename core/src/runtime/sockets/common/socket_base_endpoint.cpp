@@ -13,6 +13,7 @@
 #include "core/io_thread.hpp"
 #include "core/pipe.hpp"
 #include "core/session_base.hpp"
+#include "core/transport_pair_policy.hpp"
 #include "utils/random.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "transports/ipc/ipc_address.hpp"
@@ -205,6 +206,12 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
 
             const transport_lane_t lane =
               lane_index == 0 ? transport_lane_application : transport_lane_completion;
+            if (lane == transport_lane_completion) {
+                hwms[0] = transport_pair_policy::completion_hwm (hwms[0]);
+                hwms[1] = transport_pair_policy::completion_hwm (hwms[1]);
+                new_pipes[0]->set_hwms (hwms[1], hwms[0]);
+                new_pipes[1]->set_hwms (hwms[0], hwms[1]);
+            }
             new_pipes[0]->set_transport_pair (lane, pair_id, pair_generation);
             new_pipes[1]->set_transport_pair (lane, pair_id, pair_generation);
             if (!conflate) {
@@ -309,6 +316,16 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
             lane_options.transport_pair_generation = pair_generation;
             lane_options.transport_pair_initiator = true;
             lane_options.transport_pair_state = pair_state;
+            if (lane_options.transport_lane == transport_lane_completion) {
+                lane_options.sndhwm =
+                  transport_pair_policy::completion_hwm (lane_options.sndhwm);
+                lane_options.rcvhwm =
+                  transport_pair_policy::completion_hwm (lane_options.rcvhwm);
+                lane_options.sndbuf =
+                  transport_pair_policy::completion_socket_buffer (lane_options.sndbuf);
+                lane_options.rcvbuf =
+                  transport_pair_policy::completion_socket_buffer (lane_options.rcvbuf);
+            }
         }
 
         address_t *paddr = new (std::nothrow) address_t (protocol, address, this->get_ctx ());

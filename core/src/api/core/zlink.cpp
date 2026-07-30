@@ -114,10 +114,6 @@ zlink_close_result_t zlink_close (void *s_)
         errno = EBUSY;
         return ZLINK_CLOSE_BUSY;
     }
-    if (zlink::socket_reqrep_internal::in_socket_request_completion_callback (s_)) {
-        errno = EBUSY;
-        return ZLINK_CLOSE_BUSY;
-    }
     //  The pin keeps the state alive while this close inspects it. It must be
     //  released before unregister_monitor_handlers: the unregister path waits
     //  for reader pins to drain before deleting the state.

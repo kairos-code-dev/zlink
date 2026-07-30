@@ -64,7 +64,9 @@ static int send_frames_once (zlink::socket_base_t *socket_,
                              int flags_,
                              bool rollback_started_,
                              zlink::socket_public_send_scope_t &scope_,
-                             zlink::pipe_t **application_pipe_out_ = NULL)
+                             zlink::pipe_t **application_pipe_out_ = NULL,
+                             zlink::multipart_pipe_selected_fn selected_fn_ = NULL,
+                             void *selected_userdata_ = NULL)
 {
     bool started = rollback_started_;
     if (application_pipe_out_)
@@ -87,6 +89,8 @@ static int send_frames_once (zlink::socket_base_t *socket_,
         }
         if (application_pipe_out_ && i == 0)
             *application_pipe_out_ = selected_pipe;
+        if (selected_fn_ && i == 0)
+            selected_fn_ (selected_pipe, selected_userdata_);
         started = more;
     }
 
@@ -111,7 +115,9 @@ static int send_prefix_sequence_once (zlink::socket_base_t *socket_,
                                       zlink_msg_t *parts_,
                                       size_t part_count_,
                                       int flags_,
-                                      zlink::socket_public_send_scope_t &scope_)
+                                      zlink::socket_public_send_scope_t &scope_,
+                                      zlink::multipart_pipe_selected_fn selected_fn_ = NULL,
+                                      void *selected_userdata_ = NULL)
 {
     std::vector<zlink_msg_t> prepared_prefixes (prefix_count_);
     size_t prepared_count = 0;
@@ -138,7 +144,8 @@ static int send_prefix_sequence_once (zlink::socket_base_t *socket_,
         if (zlink::multipart_send_facade_t::send_scoped (
               socket_,
               reinterpret_cast<zlink::msg_t *> (&prepared_prefixes[i]),
-              (has_following ? ZLINK_SNDMORE : 0) | flags_ | prefixes_[i].frame_flags, scope_)
+              (has_following ? ZLINK_SNDMORE : 0) | flags_ | prefixes_[i].frame_flags,
+              scope_)
             != 0) {
             const int err = errno;
             if (started)
@@ -157,7 +164,10 @@ static int send_prefix_sequence_once (zlink::socket_base_t *socket_,
         return 0;
     }
 
-    return send_frames_once (socket_, parts_, part_count_, flags_, started, scope_);
+    zlink::pipe_t *application_pipe = NULL;
+    return send_frames_once (
+      socket_, parts_, part_count_, flags_, started, scope_,
+      selected_fn_ ? &application_pipe : NULL, selected_fn_, selected_userdata_);
 }
 
 static int send_frames_once_routed (zlink::socket_base_t *socket_,
@@ -165,11 +175,13 @@ static int send_frames_once_routed (zlink::socket_base_t *socket_,
                                     zlink_msg_t *parts_,
                                     size_t part_count_,
                                     int flags_,
-                                    zlink::socket_public_send_scope_t &scope_)
+                                    zlink::socket_public_send_scope_t &scope_,
+                                    zlink::multipart_pipe_selected_fn selected_fn_ = NULL,
+                                    void *selected_userdata_ = NULL)
 {
     const prefix_frame_t routing_prefix = {routing_id_->data, routing_id_->size, 0};
     return send_prefix_sequence_once (socket_, &routing_prefix, 1, false, parts_, part_count_,
-                                      flags_, scope_);
+                                      flags_, scope_, selected_fn_, selected_userdata_);
 }
 
 static int send_publish_once (zlink::socket_base_t *socket_,
@@ -286,9 +298,10 @@ int zlink::logical_multipart_send_tracked (socket_base_t *socket_,
                                            zlink_msg_t *parts_,
                                            size_t part_count_,
                                            int flags_,
-                                           zlink::pipe_t **application_pipe_out_)
+                                           multipart_pipe_selected_fn selected_fn_,
+                                           void *selected_userdata_)
 {
-    if (!socket_ || !parts_ || part_count_ == 0 || !application_pipe_out_) {
+    if (!socket_ || !parts_ || part_count_ == 0 || !selected_fn_) {
         errno = EINVAL;
         return -1;
     }
@@ -298,13 +311,40 @@ int zlink::logical_multipart_send_tracked (socket_base_t *socket_,
     if (!send_scope.acquired ())
         return -1;
 
+    zlink::pipe_t *application_pipe = NULL;
     const int rc = send_frames_once (
-      socket_, parts_, part_count_, flags_, false, send_scope, application_pipe_out_);
+      socket_, parts_, part_count_, flags_, false, send_scope,
+      &application_pipe, selected_fn_, selected_userdata_);
     if (rc != 0)
         return -1;
 
     errno = 0;
     return 0;
+}
+
+int zlink::logical_multipart_send_routed_tracked (
+  socket_base_t *socket_,
+  const zlink_routing_id_t *routing_id_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  int flags_,
+  multipart_pipe_selected_fn selected_fn_,
+  void *selected_userdata_)
+{
+    if (!socket_ || !routing_id_ || !parts_ || part_count_ == 0
+        || !selected_fn_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink::socket_public_send_scope_t send_scope =
+      zlink::multipart_send_facade_t::make_scope (socket_, true);
+    if (!send_scope.acquired ())
+        return -1;
+
+    return send_frames_once_routed (
+      socket_, routing_id_, parts_, part_count_, flags_, send_scope,
+      selected_fn_, selected_userdata_);
 }
 
 int zlink::logical_multipart_send_routed (socket_base_t *socket_,

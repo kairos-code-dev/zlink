@@ -82,7 +82,8 @@ int zlink::socket_base_t::send_routed_scoped (const zlink_routing_id_t *target_r
                                               int flags_,
                                               socket_public_send_scope_t &send_scope,
                                               uint64_t *connection_id_out_,
-                                              uint64_t expected_connection_id_)
+                                              uint64_t expected_connection_id_,
+                                              zlink::pipe_t **pipe_out_)
 {
     if (unlikely (!target_rid_)) {
         errno = EFAULT;
@@ -91,7 +92,7 @@ int zlink::socket_base_t::send_routed_scoped (const zlink_routing_id_t *target_r
 
     return send_direct_with_retry (
       target_rid_, msg_, flags_, send_scope, connection_id_out_,
-      expected_connection_id_);
+      expected_connection_id_, false, pipe_out_);
 }
 
 std::unique_ptr<zlink::socket_public_send_scope_t>
@@ -165,7 +166,7 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
 #endif
         rc = target_rid_
                ? xsend_routed (target_rid_, msg_, connection_id_out_,
-                               expected_connection_id_)
+                               expected_connection_id_, pipe_out_)
                : xsend_pipe (msg_, pipe_out_);
     if (rc == 0) {
         dispatch_runtime ().clear_send_recovery_pending ();
@@ -244,7 +245,7 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
 #endif
                 rc = target_rid_
                        ? xsend_routed (target_rid_, msg_, connection_id_out_,
-                                       expected_connection_id_)
+                                       expected_connection_id_, pipe_out_)
                        : xsend_pipe (msg_, pipe_out_);
             if (rc == 0) {
                 dispatch_runtime ().clear_send_recovery_pending ();
@@ -298,7 +299,7 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
         _auto_hwm_send_attempts.fetch_add (1, std::memory_order_relaxed);
         rc = target_rid_
                ? xsend_routed (target_rid_, msg_, connection_id_out_,
-                               expected_connection_id_)
+                               expected_connection_id_, pipe_out_)
                : xsend_pipe (msg_, pipe_out_);
         if (rc == 0) {
             dispatch_runtime ().clear_send_recovery_pending ();

@@ -23,8 +23,10 @@ message 소유권을 반환하면 같은 charge를 byte credit으로 반환한�
 call 또는 hot path lock을 새로 추가하지 않는다.
 
 Directional HWM은 이 accounted storage를 제한한다. 비어 있는 pipe는 소켓의 최대 message
-크기를 넘지 않는 범위에서 HWM보다 큰 message 한 건을 허용하고, 그 뒤의 write를
-중단한다. Monitor는 in-flight byte와 oversize 허용 이력을 제공한다. 이 값은 Core
+크기를 넘지 않는 범위에서 HWM보다 큰 complete message 한 건을 허용하고, 그 뒤의 write를
+중단한다. 끝나지 않은 multipart에는 이 예외를 적용하지 않는다. Paired transport의 hidden
+Completion connection은 방향별 HWM을 262144 byte로 제한하고 network socket의 send·receive
+buffer는 각각 65536 byte를 상한으로 사용한다. Monitor는 in-flight byte와 oversize 허용 이력을 제공한다. 이 값은 Core
 회계를 설명하지만 process resident memory의 정확한 측정값은 아니다.
 
 Kernel buffer는 platform autotuning에 따라 증가할 수 있다. TLS는 record와 handshake

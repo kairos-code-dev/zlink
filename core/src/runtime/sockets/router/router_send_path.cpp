@@ -161,15 +161,28 @@ int zlink::router_t::xsend (msg_t *msg_)
     return 0;
 }
 
+int zlink::router_t::xsend_pipe (msg_t *msg_, pipe_t **pipe_out_)
+{
+    if (pipe_out_)
+        *pipe_out_ = NULL;
+    const int rc = xsend (msg_);
+    if (rc == 0 && pipe_out_ && _current_out)
+        *pipe_out_ = _current_out;
+    return rc;
+}
+
 int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
                                   msg_t *msg_,
                                   uint64_t *connection_id_out_,
-                                  uint64_t expected_connection_id_)
+                                  uint64_t expected_connection_id_,
+                                  pipe_t **pipe_out_)
 {
     zlink_assert (!_more_out);
     zlink_assert (!_current_out);
     if (connection_id_out_)
         *connection_id_out_ = 0;
+    if (pipe_out_)
+        *pipe_out_ = NULL;
 
     _more_out = (msg_->flags () & msg_t::more) != 0;
 
@@ -198,6 +211,8 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
         }
         if (connection_id_out_)
             *connection_id_out_ = _current_out_connection_id;
+        if (pipe_out_)
+            *pipe_out_ = _current_out;
 
         const pipe_write_status_t write_status = _current_out->check_write_status ();
         if (write_status != pipe_write_ready) {
@@ -211,6 +226,8 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
             _current_out_connection_id = 0;
             if (connection_id_out_)
                 *connection_id_out_ = 0;
+            if (pipe_out_)
+                *pipe_out_ = NULL;
 
             if (_mandatory) {
                 _more_out = false;
@@ -258,6 +275,8 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
             _current_out_connection_id = 0;
             if (connection_id_out_)
                 *connection_id_out_ = 0;
+            if (pipe_out_)
+                *pipe_out_ = NULL;
             if (_mandatory) {
                 _more_out = false;
                 errno = pipe_full ? EAGAIN : EHOSTUNREACH;

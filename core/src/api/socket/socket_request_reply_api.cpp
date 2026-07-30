@@ -44,8 +44,10 @@ int reqrep::send_request_frame (zlink::socket_base_t *socket_,
     if (size_ > 0 && data_)
         memcpy (msg.data (), data_, size_);
 
-    const int rc = peer_rid_ ? socket_->send_routed_scoped (peer_rid_, &msg, flags_,
-                                                            *helper_state_->send.send_scope)
+    const int rc = peer_rid_ ? socket_->send_routed_scoped (
+                                peer_rid_, &msg, flags_,
+                                *helper_state_->send.send_scope, NULL, 0,
+                                application_pipe_out_)
                              : socket_->send_scoped (&msg, flags_, *helper_state_->send.send_scope,
                                                     application_pipe_out_);
     const int saved_errno = errno;

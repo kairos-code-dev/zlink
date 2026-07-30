@@ -7,6 +7,7 @@
 
 #include "utils/macros.hpp"
 #include "core/pipe.hpp"
+#include "core/transport_pair_policy.hpp"
 #include "utils/err.hpp"
 #include "utils/debug_log.hpp"
 #include "utils/heap_owner.hpp"
@@ -1079,6 +1080,7 @@ void zlink::pipe_t::hiccup ()
 
 void zlink::pipe_t::set_hwms (uint64_t inhwm_, uint64_t outhwm_)
 {
+    scoped_fast_lock_t lock (_out_sync);
     uint64_t in = inhwm_;
     uint64_t out = outhwm_;
 
@@ -1100,21 +1102,30 @@ void zlink::pipe_t::set_hwms (uint64_t inhwm_, uint64_t outhwm_)
                     : outhwm_ + _out_hwm_boost;
     }
 
+    if (_transport_lane == transport_lane_completion) {
+        in = transport_pair_policy::completion_hwm (in);
+        out = transport_pair_policy::completion_hwm (out);
+    }
+
     _inhwm = in;
-    _lwm = compute_lwm (in);
-    _lwm = apply_lwm_hint (_inhwm, _lwm, _lwm_hint);
+    const uint64_t lwm = apply_lwm_hint (
+      _inhwm, compute_lwm (in), _lwm_hint);
+    _lwm.store (lwm, std::memory_order_relaxed);
     _hwm = out;
 }
 
 void zlink::pipe_t::set_lwm_hint (uint64_t lwm_hint_)
 {
+    scoped_fast_lock_t lock (_out_sync);
     _lwm_hint = lwm_hint_ > 0 ? lwm_hint_ : 0;
-    _lwm = compute_lwm (_inhwm);
-    _lwm = apply_lwm_hint (_inhwm, _lwm, _lwm_hint);
+    _lwm.store (
+      apply_lwm_hint (_inhwm, compute_lwm (_inhwm), _lwm_hint),
+      std::memory_order_relaxed);
 }
 
 void zlink::pipe_t::set_hwms_boost (uint64_t inhwmboost_, uint64_t outhwmboost_)
 {
+    scoped_fast_lock_t lock (_out_sync);
     _in_hwm_boost = inhwmboost_;
     _out_hwm_boost = outhwmboost_;
     _in_hwm_boost_set = true;
@@ -1159,8 +1170,10 @@ zlink::pipe_t::check_hwm_for_message (const msg_t *msg_)
     if (!can_commit_bytes_with_peer_snapshot_unlocked (
           _out_incomplete_bytes + frame_bytes, prospective_payload,
           _out_incomplete_bytes == 0 || _out_multipart_started_empty)) {
-        _out_active = false;
-        _waiting_for_byte_credit.store (true, std::memory_order_release);
+        if (_bytes_written > _peers_bytes_read) {
+            _out_active = false;
+            _waiting_for_byte_credit.store (true, std::memory_order_release);
+        }
         return pipe_message_admission_hwm_full;
     }
     return pipe_message_admission_ready;
@@ -1417,7 +1430,7 @@ bool zlink::pipe_t::write_message_unlocked (const msg_t *msg_,
     if ((commits_bytes || enforce_incremental_hwm_) && enforce_hwm_
         && !can_commit_bytes_with_peer_snapshot_unlocked (
           _out_incomplete_bytes, _out_incomplete_payload_bytes,
-          (!more || _max_message_bytes != 0)
+          !more
             && (incomplete_before == 0 || _out_multipart_started_empty))) {
         const bool exceeds_max_message_size =
           _max_message_bytes != 0
@@ -1425,7 +1438,8 @@ bool zlink::pipe_t::write_message_unlocked (const msg_t *msg_,
         _out_incomplete_bytes = incomplete_before;
         _out_incomplete_payload_bytes = payload_before;
         _out_multipart_started_empty = multipart_started_empty_before;
-        if (!exceeds_max_message_size) {
+        if (!exceeds_max_message_size
+            && _bytes_written > _peers_bytes_read) {
             _out_active = false;
             _waiting_for_byte_credit.store (true, std::memory_order_release);
         }
@@ -1490,12 +1504,13 @@ void zlink::pipe_t::account_inbound_frame (const msg_t *msg_)
     _in_incomplete_bytes = 0;
 
     const uint64_t credit_delta = _bytes_read - _last_credit_bytes_read;
-    const bool writer_waiting =
-      _peer && _peer->_waiting_for_byte_credit.load (std::memory_order_acquire);
-    const bool drained_visible_input = _in_pipe && !_in_pipe->check_read ();
-    if (credit_delta > 0
-        && ((_lwm > 0 && credit_delta >= _lwm)
-            || (writer_waiting && drained_visible_input))) {
+    const uint64_t lwm = _lwm.load (std::memory_order_relaxed);
+    const bool lwm_reached = lwm > 0 && credit_delta >= lwm;
+    bool blocked_writer_drained = false;
+    if (!lwm_reached && credit_delta > 0 && _peer
+        && _peer->_waiting_for_byte_credit.load (std::memory_order_acquire))
+        blocked_writer_drained = _in_pipe && !_in_pipe->check_read ();
+    if (credit_delta > 0 && (lwm_reached || blocked_writer_drained)) {
         _last_credit_bytes_read = _bytes_read;
         send_activate_write (_peer, _msgs_read, _bytes_read);
     }

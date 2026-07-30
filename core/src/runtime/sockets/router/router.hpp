@@ -33,10 +33,12 @@ class router_t : public routing_socket_base_t
     int xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_FINAL;
     int xgetsockopt (int option_, void *optval_, size_t *optvallen_) ZLINK_FINAL;
     int xsend (zlink::msg_t *msg_) ZLINK_OVERRIDE;
+    int xsend_pipe (zlink::msg_t *msg_, zlink::pipe_t **pipe_out_) ZLINK_OVERRIDE;
     int xsend_routed (const zlink_routing_id_t *target_rid_,
                       zlink::msg_t *msg_,
                       uint64_t *connection_id_out_,
-                      uint64_t expected_connection_id_) ZLINK_OVERRIDE;
+                      uint64_t expected_connection_id_,
+                      zlink::pipe_t **pipe_out_) ZLINK_OVERRIDE;
     int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
     int xrecv_routed (zlink::msg_t *msg_,
                       zlink_routing_id_t *source_rid_out_,

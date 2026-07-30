@@ -9,6 +9,7 @@ namespace zlink
 {
 class socket_base_t;
 class pipe_t;
+typedef void (*multipart_pipe_selected_fn) (pipe_t *pipe_, void *userdata_);
 
 int logical_multipart_send (socket_base_t *socket_,
                             zlink_msg_t *parts_,
@@ -19,7 +20,17 @@ int logical_multipart_send_tracked (socket_base_t *socket_,
                                     zlink_msg_t *parts_,
                                     size_t part_count_,
                                     int flags_,
-                                    zlink::pipe_t **application_pipe_out_);
+                                    multipart_pipe_selected_fn selected_fn_,
+                                    void *selected_userdata_);
+
+int logical_multipart_send_routed_tracked (
+  socket_base_t *socket_,
+  const zlink_routing_id_t *routing_id_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  int flags_,
+  multipart_pipe_selected_fn selected_fn_,
+  void *selected_userdata_);
 
 int logical_multipart_send_routed (socket_base_t *socket_,
                                    const zlink_routing_id_t *routing_id_,

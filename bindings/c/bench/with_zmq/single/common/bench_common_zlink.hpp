@@ -414,6 +414,22 @@ inline bool set_sockopt_int (void *socket_, zlink_option_t option_, int value_, 
     return rc == 0;
 }
 
+inline bool set_sockopt_hwm_bytes (void *socket_,
+                                   zlink_option_t option_,
+                                   uint64_t value_,
+                                   const char *name_)
+{
+    const int rc = zlink_set_option (socket_, option_, &value_, sizeof (value_));
+    if (rc != 0) {
+        std::cerr << "setsockopt(" << name_ << ") failed: "
+                  << zlink_strerror (zlink_errno ()) << std::endl;
+        return false;
+    }
+    if (bench_debug_enabled ())
+        std::cerr << "setsockopt(" << name_ << ") = " << value_ << " bytes" << std::endl;
+    return true;
+}
+
 inline bool
 set_pub_opt_int (void *socket_, zlink_pub_option_t option_, int value_, const char *name_)
 {
@@ -534,11 +550,16 @@ inline int resolve_single_pubsub_recv_timeout_ms ()
     return resolve_single_recv_timeout_ms ();
 }
 
-inline int resolve_single_socket_hwm (bool send_)
+inline uint64_t resolve_single_socket_hwm_bytes (bool send_)
 {
     const int base_hwm = parse_positive_env ("PERF_SINGLE_HWM", 1000);
-    return send_ ? parse_positive_env ("PERF_SINGLE_SNDHWM", base_hwm)
-                 : parse_positive_env ("PERF_SINGLE_RCVHWM", base_hwm);
+    const int message_slots =
+      send_ ? parse_positive_env ("PERF_SINGLE_SNDHWM", base_hwm)
+            : parse_positive_env ("PERF_SINGLE_RCVHWM", base_hwm);
+    const uint64_t unit = ZLINK_AUTO_HWM_MESSAGE_UNIT_BYTES_DFLT;
+    return static_cast<uint64_t> (message_slots) > UINT64_MAX / unit
+             ? UINT64_MAX
+             : static_cast<uint64_t> (message_slots) * unit;
 }
 
 inline int resolve_single_queue_sample_ms ()
@@ -719,15 +740,17 @@ inline void print_fail_result (const std::string &lib_type,
     print_queue_metrics (lib_type, pattern, transport, size, queue_stats);
 }
 
-inline void apply_single_hwm (void *socket_)
+inline bool apply_single_hwm (void *socket_)
 {
     if (!socket_)
-        return;
+        return false;
 
-    const int sndhwm = resolve_single_socket_hwm (true);
-    const int rcvhwm = resolve_single_socket_hwm (false);
-    set_sockopt_int (socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
-    set_sockopt_int (socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
+    const uint64_t sndhwm = resolve_single_socket_hwm_bytes (true);
+    const uint64_t rcvhwm = resolve_single_socket_hwm_bytes (false);
+    return set_sockopt_hwm_bytes (
+             socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM")
+           && set_sockopt_hwm_bytes (
+             socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
 }
 
 inline void apply_single_send_timeout (void *socket_, const std::string &)
@@ -997,8 +1020,8 @@ inline bool setup_connected_pair (void *bind_socket_,
         || !setup_tls_client (connect_socket_, transport_))
         return false;
 
-    apply_single_hwm (bind_socket_);
-    apply_single_hwm (connect_socket_);
+    if (!apply_single_hwm (bind_socket_) || !apply_single_hwm (connect_socket_))
+        return false;
 
     std::string endpoint = bind_and_resolve_endpoint (bind_socket_, transport_, id_);
     if (endpoint.empty ())

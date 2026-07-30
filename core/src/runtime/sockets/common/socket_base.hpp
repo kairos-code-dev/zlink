@@ -173,7 +173,8 @@ class socket_base_t : public own_t,
                             int flags_,
                             socket_public_send_scope_t &scope_,
                             uint64_t *connection_id_out_ = NULL,
-                            uint64_t expected_connection_id_ = 0);
+                            uint64_t expected_connection_id_ = 0,
+                            zlink::pipe_t **pipe_out_ = NULL);
     std::unique_ptr<socket_public_send_scope_t> begin_public_send_scope (bool force_sync_);
     int rollback ();
     int rollback_scoped (socket_public_send_scope_t &scope_);
@@ -398,7 +399,8 @@ class socket_base_t : public own_t,
     virtual int xsend_routed (const zlink_routing_id_t *target_rid_,
                               zlink::msg_t *msg_,
                               uint64_t *connection_id_out_,
-                              uint64_t expected_connection_id_);
+                              uint64_t expected_connection_id_,
+                              zlink::pipe_t **pipe_out_);
     virtual bool xsubmit_retry_allowed (const zlink_routing_id_t *target_rid_, int err_) const;
     virtual int xrollback ();
 

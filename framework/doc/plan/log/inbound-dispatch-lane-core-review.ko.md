@@ -434,3 +434,44 @@ reply 뒤 slot 재사용을 포함한다. Targeted CTest는 9/9, 전체 build는
 63/63(`-j1`)으로 나누어 83/83이 통과했다. 실행 log는 각각
 `/tmp/zlink-r5-target-ctest-final.log`, `/tmp/zlink-r5-full-build.log`,
 `/tmp/zlink-r5-ctest-nonserial.log`, `/tmp/zlink-r5-ctest-serial.log`에 있다.
+
+## Round 6
+
+Candidate `84d01c95c7`을 `/tmp/zlink-core-candidate-84d01c95c7`에 고정하고 비교 기준
+`8bc2aa6786`, rubric v1로 Codex 전체 review를 수행했다. 사용자 정책에 따라 다른 reviewer는
+추가하지 않았다.
+
+| Reviewer | Model | Reasoning | 실행 시각 | Report | 판정 |
+| --- | --- | --- | --- | --- | --- |
+| Codex 5.6 High | `gpt-5.6-sol` | high | 2026-07-30 | `/tmp/zlink-review-results/codex-round6.md` | `NOT CLEAN` |
+
+Codex는 `High` 4건, `Medium` 3건과 `Low` 1건을 보고했다. Unfinished multipart의 empty-pipe
+예외, runtime HWM 변경 data race, request 전송 뒤 pair를 기록하던 race, ROUTER disconnect의
+mutable RID 의존, Completion lane의 독립 memory budget 부재, receive credit hot-path의 불필요한
+queue 조회, C 비교 benchmark의 4-byte HWM 전달과 중복 close guard다.
+
+다음과 같이 반영했다.
+
+- Empty-pipe 예외는 complete single-part message에만 적용하고 모든 `MORE` frame에는 일반 byte
+  HWM을 적용했다.
+- Outbound HWM 변경은 pipe write lock으로 보호하고 receive LWM은 atomic publication으로
+  바꾸었다. LWM 조건을 먼저 검사하고 blocked writer가 있을 때만 input queue를 조회한다.
+- Send transaction이 첫 application frame을 선택한 시점에 immutable pair ID와 generation을
+  pending request에 기록하고, final flush 전에 correlation을 확정한다. ROUTER disconnect도 같은
+  pair identity만 사용한다.
+- Completion lane의 내부 HWM을 256 KiB, network socket buffer를 64 KiB로 제한했다. 이 값은
+  public option을 추가하지 않고 Core 내부 transport-pair policy가 소유한다.
+- C 비교 benchmark는 기존 count 환경값에 planning unit을 곱한 `uint64_t` byte 값을 전달하고,
+  option 설정 실패를 setup 실패로 전파한다. 중복 close guard는 제거했다.
+
+CPU는 `taskset -c 0-9`, build 병렬도는 `-j10`, 우선순위는 `nice -n 10`으로 제한했다. Clean
+rebuild와 공식 runtime 생성 뒤 non-serial 20/20, serial 63/63이 통과했다. 첫 serial 실행에서
+stream multi-client readiness test가 한 번 timing failure를 냈지만 격리 재실행과 전체 serial
+재실행에서는 각각 1/1과 63/63이 통과했다. 최종 log는
+`/tmp/zlink-r6-full-build.log`, `/tmp/zlink-r6-ctest-nonserial.log`,
+`/tmp/zlink-r6-ctest-serial-final.log`에 있다.
+
+2026-07-30 사용자 결정에 따라 Round 6 finding 반영을 마지막 Core review cycle로 삼는다. Round 6
+report 자체는 `NOT CLEAN`이므로 `CLEAN`으로 바꾸지 않는다. 위 finding과 `Low`를 모두 반영하고
+전체 검증을 통과한 source를 Core perf smoke 입력으로 사용하며, 변경 candidate에 대한 추가
+Codex review는 수행하지 않는다.

@@ -325,7 +325,7 @@ class pipe_t ZLINK_FINAL : public object_t,
     uint64_t _hwm;
 
     //  Low watermark for the inbound pipe.
-    uint64_t _lwm;
+    std::atomic<uint64_t> _lwm;
     uint64_t _inhwm;
     uint64_t _lwm_hint;
 

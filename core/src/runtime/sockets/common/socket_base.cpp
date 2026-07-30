@@ -522,12 +522,15 @@ int zlink::socket_base_t::xsend_pipe (msg_t *msg_, pipe_t **pipe_out_)
 int zlink::socket_base_t::xsend_routed (const zlink_routing_id_t *target_rid_,
                                        msg_t *msg_,
                                        uint64_t *connection_id_out_,
-                                       uint64_t expected_connection_id_)
+                                       uint64_t expected_connection_id_,
+                                       pipe_t **pipe_out_)
 {
     LIBZLINK_UNUSED (target_rid_);
     LIBZLINK_UNUSED (msg_);
     if (connection_id_out_)
         *connection_id_out_ = 0;
+    if (pipe_out_)
+        *pipe_out_ = NULL;
     LIBZLINK_UNUSED (expected_connection_id_);
     errno = ENOTSUP;
     return -1;

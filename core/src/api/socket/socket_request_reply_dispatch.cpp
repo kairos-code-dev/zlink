@@ -145,11 +145,8 @@ void fail_disconnected_peer_requests (
     if (!state_)
         return;
 
-    const std::string peer_key (
-      routing_id_ && routing_id_size_ > 0
-        ? reinterpret_cast<const char *> (routing_id_)
-        : "",
-      routing_id_ && routing_id_size_ > 0 ? routing_id_size_ : 0);
+    LIBZLINK_UNUSED (routing_id_);
+    LIBZLINK_UNUSED (routing_id_size_);
     std::vector<pending_request_t> failed;
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
@@ -158,11 +155,9 @@ void fail_disconnected_peer_requests (
                state_->pending_requests.begin ();
              it != state_->pending_requests.end ();) {
             const bool matches =
-              state_->socket_type == ZLINK_CORE_SOCKET_DEALER
-                ? it->second.transport_pair_id == transport_pair_id_
-                    && it->second.transport_pair_generation
-                         == transport_pair_generation_
-                : it->first.peer_rid == peer_key;
+              it->second.transport_pair_id == transport_pair_id_
+              && it->second.transport_pair_generation
+                   == transport_pair_generation_;
             if (!matches) {
                 ++it;
                 continue;

@@ -1409,9 +1409,9 @@ transport 모두에서 throughput이 높고 tail latency가 낮다. tcp는 261,0
 | C-06 | Core | 내부 PAIR receive queue와 completion deque 제거 | Payload queue source 제거와 request/reply 전체 회귀 통과 | 완료 |
 | C-07 | Core | Core memory·성능·wire regression 검증 | Core 80/80, targeted 20회와 Valgrind error 0건. req/rep 결함 3건(`563e11d614`, `58aa55df8b`)과 inproc pair readiness(`0830b29317`) 수정 뒤 재통과. 같은 fixture로 측정한 count HWM 대비 여섯 transport throughput·tail latency 비교와 memory amplification 1.38(64 B)·1.00(64 KiB) 기록 | 완료 |
 | C-08 | Core | Core 정식 spec·monitoring·오류 문서 갱신 | Socket·context·polling·monitoring 정식 spec과 internals 동기화, public surface contract 통과 | 완료 |
-| CR-01 | Core review | Candidate SHA, 비교 기준과 공통 review 입력 고정 | §8.2 입력 manifest | 승인 대기 |
-| CR-02 | Core review | Codex 5.6 High 독립 전체 review | Model·prompt 정보와 finding report | 승인 대기 |
-| CR-03 | Core review | Claude Fable 독립 전체 review | Model·prompt 정보와 finding report | 승인 대기 |
+| CR-01 | Core review | Candidate SHA, 비교 기준과 공통 review 입력 고정 | Candidate `d7d682bb1f`, 비교 기준 `8bc2aa6786`, [core review log](log/inbound-dispatch-lane-core-review.ko.md) round 1 입력 manifest | 완료 |
+| CR-02 | Core review | Codex 5.6 High 독립 전체 review | Model·prompt 정보와 finding report | 진행 중 |
+| CR-03 | Core review | Claude Fable 독립 전체 review | Model·prompt 정보와 finding report | 진행 중 |
 | CR-04 | Core review | Finding 통합, severity와 대안 검토 | Round별 finding ledger | 승인 대기 |
 | CR-05 | Core review | `Medium` 이상 finding 수정과 회귀 검증 | Fix commit과 test·benchmark 결과 | 승인 대기 |
 | CR-06 | Core review | 변경 candidate의 두 reviewer 전체 재검토 | 같은 SHA의 두 최신 report | 승인 대기 |

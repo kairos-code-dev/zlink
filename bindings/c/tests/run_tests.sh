@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 C_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ROOT_DIR="$(cd "${C_DIR}/../.." && pwd)"
 BUILD_DIR="${C_DIR}/build"
+BUILD_JOBS="${ZLINK_BUILD_JOBS:-2}"
 
 if grep -R -n -E 'core/include|ZLINK_CORE_INCLUDE_DIR|PERF_CORE_INCLUDE_DIR' \
   "${C_DIR}/CMakeLists.txt" \
@@ -25,7 +26,7 @@ cmake -S "${C_DIR}" -B "${BUILD_DIR}" \
   -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
   -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF
 
-cmake --build "${BUILD_DIR}" -j"$(nproc)"
+cmake --build "${BUILD_DIR}" -j"${BUILD_JOBS}"
 ctest --test-dir "${BUILD_DIR}" --output-on-failure -L contract
 
 "${C_DIR}/samples/run_samples.sh"

@@ -163,6 +163,10 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (fd_t fd_,
     _hello_body_bytes (0),
     _hello_body_len (0),
     _hello_send_size (0),
+    _negotiated_transport_lane (options_.transport_lane),
+    _negotiated_transport_pair_id (options_.transport_pair_id),
+    _negotiated_transport_pair_generation (
+      options_.transport_pair_generation),
     _peer_routing_id_size (0),
     _subscription_required (false),
     _current_timer_id (-1),
@@ -248,6 +252,10 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (
     _hello_body_bytes (0),
     _hello_body_len (0),
     _hello_send_size (0),
+    _negotiated_transport_lane (options_.transport_lane),
+    _negotiated_transport_pair_id (options_.transport_pair_id),
+    _negotiated_transport_pair_generation (
+      options_.transport_pair_generation),
     _peer_routing_id_size (0),
     _subscription_required (false),
     _current_timer_id (-1),
@@ -571,10 +579,15 @@ void zlink::asio_ws_engine_t::on_read_complete (const boost::system::error_code 
             }
         }
 
-        //  Notify socket about successful handshake
-        if (_socket) {
+        //  Notify the socket only after both transport lanes are ready.
+        if (_socket && !paired_transport ()) {
             _socket->event_connection_ready_changed (_endpoint_uri_pair, _peer_routing_id,
                                                      _peer_routing_id_size);
+        } else if (_socket) {
+            _socket->event_transport_pair_lane_ready (
+              _endpoint_uri_pair, _peer_routing_id, _peer_routing_id_size,
+              _negotiated_transport_lane, _negotiated_transport_pair_id,
+              _negotiated_transport_pair_generation);
         }
 
         //  Trigger output to start sending any pending messages
@@ -829,6 +842,11 @@ int zlink::asio_ws_engine_t::process_ready_message (msg_t *msg_)
             && _session->set_peer_transport_pair (lane, pair_id, generation) != 0)) {
         set_last_error (zmp_error_internal, "transport pair metadata invalid");
         return -1;
+    }
+    if (paired_transport ()) {
+        _negotiated_transport_lane = lane;
+        _negotiated_transport_pair_id = pair_id;
+        _negotiated_transport_pair_generation = generation;
     }
     if (paired_transport () && !_options.transport_pair_initiator)
         schedule_ready_reply (lane, pair_id, generation);

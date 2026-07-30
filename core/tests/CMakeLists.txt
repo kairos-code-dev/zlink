@@ -907,12 +907,12 @@ if(Python3_Interpreter_FOUND)
     TIMEOUT 60
     LABELS "unittest")
   add_test(
-    NAME contract_monitor_abi_mirror
+    NAME contract_c_header_mirror
     COMMAND
       ${Python3_EXECUTABLE}
-      ${CMAKE_CURRENT_SOURCE_DIR}/contract/check_monitor_abi_mirror.py
+      ${CMAKE_CURRENT_SOURCE_DIR}/contract/check_c_header_mirror.py
       ${CMAKE_CURRENT_SOURCE_DIR}/../..)
-  set_tests_properties(contract_monitor_abi_mirror PROPERTIES
+  set_tests_properties(contract_c_header_mirror PROPERTIES
     TIMEOUT 30
     LABELS "unittest")
 endif()

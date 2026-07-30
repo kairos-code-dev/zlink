@@ -323,7 +323,7 @@ inline bool create_client_sockets (ctx_guard_t &ctx,
 inline void refresh_connected_client_auto_hwm (void *ctx,
                                                const std::vector<void *> &sockets,
                                                zlink_socket_type_t client_socket_type,
-                                               int hwm_value,
+                                               uint64_t hwm_value,
                                                const std::string &transport,
                                                size_t msg_size)
 {

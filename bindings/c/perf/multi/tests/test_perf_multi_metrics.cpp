@@ -3,6 +3,9 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <limits>
 #include <vector>
 
 namespace
@@ -80,6 +83,27 @@ void test_echo_latency_uses_one_way_estimate ()
     assert (close_to (latency_sample_ns ("MULTI_PUBSUB", 200), 200.0));
 }
 
+void set_multi_hwm_env (const char *value)
+{
+#if defined(_WIN32)
+    _putenv_s ("PERF_MULTI_HWM", value ? value : "");
+#else
+    if (value)
+        setenv ("PERF_MULTI_HWM", value, 1);
+    else
+        unsetenv ("PERF_MULTI_HWM");
+#endif
+}
+
+void test_hwm_parser_preserves_uint64_range ()
+{
+    set_multi_hwm_env ("4294967296");
+    assert (resolve_bench_settings ().hwm == UINT64_C (4294967296));
+    set_multi_hwm_env ("18446744073709551615");
+    assert (resolve_bench_settings ().hwm == std::numeric_limits<uint64_t>::max ());
+    set_multi_hwm_env (NULL);
+}
+
 }
 
 int main ()
@@ -89,5 +113,6 @@ int main ()
     test_weighted_child_aggregation ();
     test_count_duration_and_bandwidth ();
     test_echo_latency_uses_one_way_estimate ();
+    test_hwm_parser_preserves_uint64_range ();
     return 0;
 }

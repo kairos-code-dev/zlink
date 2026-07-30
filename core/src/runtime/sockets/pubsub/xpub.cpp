@@ -333,14 +333,18 @@ int zlink::xpub_t::xsend (msg_t *msg_)
     const bool msg_more = (msg_->flags () & msg_t::more) != 0;
 
     if (_send_all_data && !_manual && !options.invert_matching) {
+        const pipe_message_admission_t admission = _dist.check_hwm (msg_);
+        const bool admitted =
+          admission == pipe_message_admission_ready
+          || (_lossy && admission == pipe_message_admission_hwm_full);
         int rc = -1;
-        if (_lossy || _dist.check_hwm (msg_)) {
+        if (admitted) {
             if (_dist.send_to_all (msg_) == 0) {
                 _more_send = msg_more;
                 rc = 0;
             }
         } else
-            errno = EAGAIN;
+            errno = admission == pipe_message_admission_too_large ? EMSGSIZE : EAGAIN;
         return rc;
     }
 
@@ -363,8 +367,12 @@ int zlink::xpub_t::xsend (msg_t *msg_)
         }
     }
 
+    const pipe_message_admission_t admission = _dist.check_hwm (msg_);
+    const bool admitted =
+      admission == pipe_message_admission_ready
+      || (_lossy && admission == pipe_message_admission_hwm_full);
     int rc = -1; //  Assume we fail
-    if (_lossy || _dist.check_hwm (msg_)) {
+    if (admitted) {
         if (_dist.send_to_matching (msg_) == 0) {
             //  If we are at the end of multi-part message we can mark
             //  all the pipes as non-matching.
@@ -374,7 +382,7 @@ int zlink::xpub_t::xsend (msg_t *msg_)
             rc = 0; //  Yay, sent successfully
         }
     } else
-        errno = EAGAIN;
+        errno = admission == pipe_message_admission_too_large ? EMSGSIZE : EAGAIN;
     return rc;
 }
 

@@ -6,13 +6,14 @@
 #include <cerrno>
 #include <cstring>
 #include <cctype>
+#include <cstdint>
 #include <iostream>
 #include <string>
 
 struct bench_settings_t
 {
     size_t clients;
-    int hwm;
+    uint64_t hwm;
     int duration_seconds;
     int connect_ready_timeout_ms;
 };
@@ -74,6 +75,24 @@ inline int resolve_multi_int_env_with_fallback (const char *env_name,
     return static_cast<int> (parsed);
 }
 
+inline uint64_t resolve_multi_uint64_env_with_fallback (const char *env_name,
+                                                        const char *legacy_name,
+                                                        uint64_t default_value)
+{
+    const char *value = resolve_multi_env_value (env_name, legacy_name);
+    if (!value)
+        return default_value;
+    if (std::strspn (value, "0123456789") != std::strlen (value))
+        return default_value;
+
+    char *end = NULL;
+    errno = 0;
+    const unsigned long long parsed = std::strtoull (value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0')
+        return default_value;
+    return static_cast<uint64_t> (parsed);
+}
+
 inline std::string normalize_multi_pattern_name (const char *pattern)
 {
     if (!pattern || !*pattern)
@@ -86,7 +105,7 @@ inline std::string normalize_multi_pattern_name (const char *pattern)
     return normalized;
 }
 
-inline int resolve_default_hwm (const char *pattern, int clients)
+inline uint64_t resolve_default_hwm (const char *pattern, int clients)
 {
     (void) clients;
     (void) pattern;
@@ -119,8 +138,8 @@ inline bench_settings_t resolve_bench_settings ()
     const int resolved_clients = resolve_multi_int_env_with_fallback (
       "PERF_MULTI_CLIENTS", "PERF_CLIENTS", resolve_default_clients (pattern), 1);
     settings.clients = static_cast<size_t> (resolved_clients);
-    settings.hwm = resolve_multi_int_env_with_fallback (
-      "PERF_MULTI_HWM", "PERF_HWM", resolve_default_hwm (pattern, resolved_clients), 0);
+    settings.hwm = resolve_multi_uint64_env_with_fallback (
+      "PERF_MULTI_HWM", "PERF_HWM", resolve_default_hwm (pattern, resolved_clients));
     settings.duration_seconds = resolve_multi_int_env_with_fallback ("PERF_MULTI_DURATION_SECONDS",
                                                                      "PERF_DURATION_SECONDS", 5, 1);
     settings.connect_ready_timeout_ms = resolve_multi_int_env_with_fallback (

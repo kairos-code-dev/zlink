@@ -96,7 +96,7 @@ struct session_t
     std::atomic<unsigned long long> pending_count;
     std::atomic<size_t> auto_hwm_msg_size;
     zlink_socket_type_t auto_hwm_socket_type;
-    int auto_hwm_hwm_value;
+    uint64_t auto_hwm_hwm_value;
     std::string transport;
     std::mutex send_mutex;
     std::mutex pending_mutex;
@@ -113,7 +113,7 @@ inline void reset_session (session_t *session,
                            void *ctx,
                            void *send_socket,
                            zlink_socket_type_t auto_hwm_socket_type,
-                           int auto_hwm_hwm_value,
+                           uint64_t auto_hwm_hwm_value,
                            const std::string &transport)
 {
     if (!session)

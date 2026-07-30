@@ -65,15 +65,12 @@ struct socket_request_reply_state_t : public zlink::request_reply_runtime::seque
     zlink::socket_base_t *socket;
     int socket_type;
     std::mutex mutex;
-    std::condition_variable internal_dispatch_cv;
     std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t> pending_requests;
     std::unordered_map<uint64_t, pending_key_t> pending_request_keys_by_seq;
     std::unordered_map<uint64_t, dealer_reply_target_t> dealer_reply_targets;
     std::unordered_map<pending_key_t, zlink::pipe_t *, pending_key_hash_t>
       router_reply_targets;
     uint64_t dealer_next_reply_token;
-    bool internal_dispatch_installed;
-    bool internal_dispatch_installing;
     bool closing;
     zlink::request_completion::queue_state_t completion;
 };
@@ -160,7 +157,6 @@ inline void add_socket_pending_request_locked (socket_request_reply_state_t *sta
 
 inline bool remove_socket_pending_request_locked (socket_request_reply_state_t *state_,
                                                   const pending_key_t &key_,
-                                                  bool allow_sequence_fallback_,
                                                   pending_request_t *pending_out_)
 {
     if (!state_)
@@ -168,13 +164,6 @@ inline bool remove_socket_pending_request_locked (socket_request_reply_state_t *
 
     std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>::iterator it =
       state_->pending_requests.find (key_);
-    if (it == state_->pending_requests.end () && allow_sequence_fallback_) {
-        std::unordered_map<uint64_t, pending_key_t>::iterator seq_it =
-          state_->pending_request_keys_by_seq.find (key_.request_seq);
-        if (seq_it != state_->pending_request_keys_by_seq.end ())
-            it = state_->pending_requests.find (seq_it->second);
-    }
-
     if (it == state_->pending_requests.end ())
         return false;
 
@@ -186,9 +175,29 @@ inline bool remove_socket_pending_request_locked (socket_request_reply_state_t *
     return true;
 }
 
+inline bool take_pending_reply_from_transport_locked (
+  socket_request_reply_state_t *state_,
+  const pending_key_t &key_,
+  uint64_t transport_pair_id_,
+  uint64_t transport_pair_generation_,
+  pending_request_t *pending_out_)
+{
+    if (!state_)
+        return false;
+
+    std::unordered_map<pending_key_t, pending_request_t,
+                       pending_key_hash_t>::const_iterator pending_it =
+      state_->pending_requests.find (key_);
+    if (pending_it == state_->pending_requests.end ()
+        || pending_it->second.transport_pair_id != transport_pair_id_
+        || pending_it->second.transport_pair_generation
+             != transport_pair_generation_)
+        return false;
+    return remove_socket_pending_request_locked (state_, key_, pending_out_);
+}
+
 bool remove_socket_pending_request (const std::shared_ptr<socket_request_reply_state_t> &state_,
                                     const pending_key_t &key_,
-                                    bool allow_sequence_fallback_,
                                     pending_request_t *pending_out_);
 int schedule_socket_pending_timeout (
   const std::shared_ptr<socket_request_reply_state_t> &state_,
@@ -197,8 +206,6 @@ int schedule_socket_pending_timeout (
   std::shared_ptr<zlink::request_timeout::task_t> *task_out_);
 void queue_socket_pending_timeout_completion (
   const std::shared_ptr<socket_request_reply_state_t> &state_, const pending_request_t &pending_);
-int ensure_internal_dispatch_installed (
-  const std::shared_ptr<socket_request_reply_state_t> &state_);
 bool has_pending_request_work (const std::shared_ptr<socket_request_reply_state_t> &state_);
 void fail_disconnected_peer_requests (
   const std::shared_ptr<socket_request_reply_state_t> &state_,

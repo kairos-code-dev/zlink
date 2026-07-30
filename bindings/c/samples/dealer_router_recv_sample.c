@@ -14,19 +14,17 @@ static void dealer_router_router_thread (void *arg_)
 {
     dealer_router_sample_t *sample = (dealer_router_sample_t *) arg_;
     const zlink_routing_id_t *source_node_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t part;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     zlink_msg_t reply;
 
     assert (zlink_msg_init (&part) == 0);
-    assert (zlink_router_recv_part (sample->router, &source_node_rid, &source_spot_rid,
-                                    &request_seq, &part, &has_more, 0)
+    assert (zlink_router_recv_part (sample->router, &source_node_rid, &request_seq, &part,
+                                    &has_more, 0)
             == ZLINK_RECV_OK);
     assert (source_node_rid != NULL);
     assert (source_node_rid->size > 0);
-    assert (source_spot_rid == NULL || source_spot_rid->size == 0);
     assert (request_seq == 0);
     assert (has_more == ZLINK_PART_FINAL);
     assert (zlink_msg_size (&part) == strlen (k_dealer_router_request));

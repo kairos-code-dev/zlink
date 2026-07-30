@@ -29,6 +29,15 @@ enum pipe_write_status_t
     pipe_write_inactive
 };
 
+enum pipe_message_admission_t : int
+{
+    pipe_message_admission_ready = 0,
+    pipe_message_admission_hwm_full,
+    pipe_message_admission_too_large,
+    pipe_message_admission_inactive,
+    pipe_message_admission_invalid
+};
+
 struct transport_lifetime_t
 {
     explicit transport_lifetime_t (uint64_t connection_id_) :
@@ -214,7 +223,7 @@ class pipe_t ZLINK_FINAL : public object_t,
     bool check_hwm () const;
     //  Checks whether the current multipart transaction can commit with this
     //  frame. A rejected final frame makes the pipe wait for byte credit.
-    bool check_hwm_for_message (const msg_t *msg_);
+    pipe_message_admission_t check_hwm_for_message (const msg_t *msg_);
 
     void set_endpoint_pair (endpoint_uri_pair_t endpoint_pair_);
     const endpoint_uri_pair_t &get_endpoint_pair () const;

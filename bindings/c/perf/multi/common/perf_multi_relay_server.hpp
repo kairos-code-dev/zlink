@@ -192,7 +192,7 @@ inline bool flush_pending_replies (void *server, std::deque<pending_reply_t> *pe
 inline bool drain_recv_and_relay (void *server,
                                   void *ctx,
                                   zlink_socket_type_t socket_type,
-                                  int hwm_value,
+                                  uint64_t hwm_value,
                                   const std::string &transport,
                                   size_t *active_msg_size,
                                   std::deque<pending_reply_t> *pending,
@@ -283,7 +283,7 @@ inline bool drain_recv_and_relay (void *server,
 inline bool run_server_loop (const relay_server_config_t &config,
                              void *server,
                              void *ctx,
-                             int hwm_value,
+                             uint64_t hwm_value,
                              const std::string &lib_name,
                              const std::string &transport)
 {

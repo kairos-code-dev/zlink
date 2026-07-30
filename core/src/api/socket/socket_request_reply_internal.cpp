@@ -49,8 +49,6 @@ socket_request_reply_state_t::socket_request_reply_state_t (zlink::socket_base_t
     socket (socket_),
     socket_type (socket_type_),
     dealer_next_reply_token (1),
-    internal_dispatch_installed (false),
-    internal_dispatch_installing (false),
     closing (false)
 {
 }
@@ -132,22 +130,20 @@ void on_socket_request_timeout (void *userdata_)
         return;
 
     pending_request_t pending;
-    if (remove_socket_pending_request (ctx->state, ctx->key, false, &pending))
+    if (remove_socket_pending_request (ctx->state, ctx->key, &pending))
         queue_socket_pending_timeout_completion (ctx->state, pending);
 }
 }
 
 bool remove_socket_pending_request (const std::shared_ptr<socket_request_reply_state_t> &state_,
                                     const pending_key_t &key_,
-                                    bool allow_sequence_fallback_,
                                     pending_request_t *pending_out_)
 {
     if (!state_)
         return false;
 
     std::lock_guard<std::mutex> lock (state_->mutex);
-    return remove_socket_pending_request_locked (state_.get (), key_, allow_sequence_fallback_,
-                                                 pending_out_);
+    return remove_socket_pending_request_locked (state_.get (), key_, pending_out_);
 }
 
 int schedule_socket_pending_timeout (

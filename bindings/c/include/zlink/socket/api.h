@@ -297,14 +297,6 @@ zlink_router_recv_part (void *router_,
                         zlink_part_flag_t *has_more_out_,
                         zlink_recv_flags_t flags_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_socket_set_channel_name (void *socket_,
-                                                                  const char *channel_name_);
-
-ZLINK_EXPORT zlink_config_result_t zlink_socket_get_channel_name (void *socket_,
-                                                                  char *channel_name_buf_,
-                                                                  size_t channel_name_capacity_,
-                                                                  size_t *channel_name_len_out_);
-
 ZLINK_EXPORT zlink_recv_result_t zlink_recv_part (void *s_,
                                                   const zlink_routing_id_t **source_rid_out_,
                                                   zlink_msg_t *part_out_,

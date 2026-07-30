@@ -27,9 +27,6 @@ static const char *const k_dealer_router_reply = "pong";
 static const char *const k_stream_payload = "hello-stream";
 static const char *const k_pubsub_topic = "prices";
 static const char *const k_pubsub_payload = "101.25";
-static const char *const k_channel_name = "sample";
-static const char *const k_spot_topic = "room:lobby";
-static const char *const k_spot_payload = "hello-spot";
 
 /* ---- Message helpers ----------------------------------------------------- */
 
@@ -283,36 +280,6 @@ static inline void sample_pause_ms (int timeout_ms_)
     zlink_pollitem_t item = {NULL, 0, 0, 0};
     (void) zlink_poll (&item, 0, timeout_ms_, NULL);
 #endif
-}
-
-static inline int wait_for_spot_node_subject_ready (void *node_, int timeout_ms)
-{
-    struct timespec start;
-    clock_gettime (CLOCK_MONOTONIC, &start);
-
-    for (;;) {
-        zlink_spot_node_status_t status;
-        if (zlink_spot_node_status (node_, &status) == 0 && status.subject_count > 0
-            && (status.ready_subject_count > 0 || status.connected_peer_count > 0
-                || status.active_peer_count > 0 || status.configured_peer_count == 0)) {
-            return 1;
-        }
-
-        struct timespec now;
-        clock_gettime (CLOCK_MONOTONIC, &now);
-        long elapsed_ms = (long) (now.tv_sec - start.tv_sec) * 1000
-                          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
-        long remaining = (long) timeout_ms - elapsed_ms;
-        if (remaining <= 0)
-            break;
-        if (remaining > 10)
-            remaining = 10;
-
-        zlink_pollitem_t item = {NULL, 0, 0, 0};
-        (void) zlink_poll (&item, 0, remaining, NULL);
-    }
-
-    return 0;
 }
 
 /* ---- Callback synchronization primitives (POSIX) ------------------------- */

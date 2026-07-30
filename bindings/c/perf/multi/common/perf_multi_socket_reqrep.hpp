@@ -480,7 +480,7 @@ enum server_recv_step_t
 
 inline server_recv_step_t reply_one_request (void *server,
                                              void *ctx,
-                                             int hwm_value,
+                                             uint64_t hwm_value,
                                              const std::string &transport,
                                              zlink_socket_type_t socket_type,
                                              size_t *active_msg_size)
@@ -535,7 +535,7 @@ inline server_recv_step_t reply_one_request (void *server,
 
 inline bool run_server_loop (void *server,
                              void *ctx,
-                             int hwm_value,
+                             uint64_t hwm_value,
                              const std::string &transport,
                              zlink_socket_type_t socket_type)
 {

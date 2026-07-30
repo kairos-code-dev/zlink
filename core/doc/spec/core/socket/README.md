@@ -458,7 +458,10 @@ so a finite HWM does not reject every legal large message. The message must
 still satisfy `ZLINK_OPT_MAXMSGSIZE`. This exception admits at most one such
 message before further writes wait. Core returns credit at
 `ceil(hwm_bytes / 2)`; this pipe threshold is fixed and is independent of a
-Framework receive-resume threshold.
+Framework receive-resume threshold. If the receiver drains all currently
+visible input and the pipe becomes empty, Core may return accumulated credit
+before the LWM is reached. The LWM is therefore the maximum batching threshold
+for credit returns; it does not prohibit an early return for an empty pipe.
 
 ##### Timing
 

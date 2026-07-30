@@ -42,7 +42,7 @@ void reqrep::erase_socket_pending_request (
         return;
 
     reqrep::pending_request_t pending;
-    if (reqrep::remove_socket_pending_request (state_, key_, false, &pending)) {
+    if (reqrep::remove_socket_pending_request (state_, key_, &pending)) {
         zlink::request_timeout::cancel (pending.timeout_task);
         zlink::request_completion::release_reservation (&state_->completion);
     }
@@ -51,9 +51,9 @@ void reqrep::erase_socket_pending_request (
 void reqrep::record_socket_pending_transport_pair (
   const std::shared_ptr<reqrep::socket_request_reply_state_t> &state_,
   const reqrep::pending_key_t &key_,
-  zlink::pipe_t *application_pipe_)
+  zlink::pipe_t *transport_pair_pipe_)
 {
-    if (!state_ || !application_pipe_)
+    if (!state_ || !transport_pair_pipe_)
         return;
 
     std::lock_guard<std::mutex> lock (state_->mutex);
@@ -62,9 +62,9 @@ void reqrep::record_socket_pending_transport_pair (
       state_->pending_requests.find (key_);
     if (it == state_->pending_requests.end ())
         return;
-    it->second.transport_pair_id = application_pipe_->get_transport_pair_id ();
+    it->second.transport_pair_id = transport_pair_pipe_->get_transport_pair_id ();
     it->second.transport_pair_generation =
-      application_pipe_->get_transport_pair_generation ();
+      transport_pair_pipe_->get_transport_pair_generation ();
 }
 
 int reqrep::ensure_socket_pending_request (

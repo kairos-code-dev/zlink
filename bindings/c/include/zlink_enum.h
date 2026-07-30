@@ -78,10 +78,6 @@ typedef enum zlink_option_t
     ZLINK_OPT_TCP_MAXRT = 0x3025,
     ZLINK_OPT_TCP_NODELAY = 0x3031,
 
-    /* Heartbeat options */
-    ZLINK_OPT_HEARTBEAT_IVL = 0x3021,
-    ZLINK_OPT_HEARTBEAT_TTL = 0x3022,
-    ZLINK_OPT_HEARTBEAT_TIMEOUT = 0x3023,
 
     /* Network and address-family options */
     ZLINK_OPT_IPV6 = 0x301A,
@@ -268,8 +264,7 @@ typedef enum zlink_poller_source_kind_t
 {
     ZLINK_POLLER_SOURCE_SOCKET = 1,
     ZLINK_POLLER_SOURCE_FD = 2,
-    ZLINK_POLLER_SOURCE_TIMER = 3,
-    ZLINK_POLLER_SOURCE_MESH_NODE = 4
+    ZLINK_POLLER_SOURCE_TIMER = 3
 } zlink_poller_source_kind_t;
 
 typedef enum zlink_send_flags_t

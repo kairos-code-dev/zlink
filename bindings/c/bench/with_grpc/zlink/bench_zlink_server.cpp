@@ -115,7 +115,6 @@ bool recv_multipart_body (void *router,
                           zlink_msg_t *body_out)
 {
     const zlink_routing_id_t *rid = nullptr;
-    const zlink_routing_id_t *spot = nullptr;
     uint64_t seq = 0;
     zlink_part_flag_t more = ZLINK_PART_FINAL;
     zlink_msg_t header;
@@ -123,7 +122,7 @@ bool recv_multipart_body (void *router,
         return false;
 
     const int header_rc =
-      zlink_router_recv_part (router, &rid, &spot, &seq, &header, &more,
+      zlink_router_recv_part (router, &rid, &seq, &header, &more,
                               ZLINK_RECV_FLAGS_NONE);
     if (header_rc != ZLINK_RECV_OK) {
         zlink_msg_close (&header);
@@ -146,7 +145,7 @@ bool recv_multipart_body (void *router,
     const zlink_routing_id_t *body_rid = nullptr;
     uint64_t body_seq = 0;
     const int body_rc =
-      zlink_router_recv_part (router, &body_rid, &spot, &body_seq, body_out, &more,
+      zlink_router_recv_part (router, &body_rid, &body_seq, body_out, &more,
                               ZLINK_RECV_FLAGS_NONE);
     return body_rc == ZLINK_RECV_OK && more == ZLINK_PART_FINAL && body_rid && body_seq == seq;
 }

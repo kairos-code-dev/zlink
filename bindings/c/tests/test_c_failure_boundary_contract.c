@@ -39,16 +39,6 @@ int main (void)
     CHECK (zlink_set_routing_id (pair, rid255.data, rid255.size) == ZLINK_CONFIG_OK);
     CHECK (zlink_set_routing_id (pair, rid255.data, 256) == ZLINK_CONFIG_INVALID_ARGUMENT);
 
-    char channel255[256];
-    memset (channel255, 'c', 255);
-    channel255[255] = '\0';
-    CHECK (zlink_socket_set_channel_name (pair, channel255) == ZLINK_CONFIG_OK);
-
-    char channel256[257];
-    memset (channel256, 'c', 256);
-    channel256[256] = '\0';
-    CHECK (zlink_socket_set_channel_name (pair, channel256) == ZLINK_CONFIG_INVALID_ARGUMENT);
-
     char endpoint256[280];
     memset (endpoint256, 'e', sizeof (endpoint256));
     endpoint256[0] = 't';

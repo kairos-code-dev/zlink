@@ -447,7 +447,10 @@ accounted 크기가 HWM보다 큰 message 한 건을 허용할 수 있습니다.
 message를 HWM이 작다는 이유만으로 모두 거절하지 않습니다. 이 message도
 `ZLINK_OPT_MAXMSGSIZE`를 만족해야 하며, 한 건을 허용한 뒤에는 이후 write가 대기합니다.
 Core는 `ceil(hwm_bytes / 2)`에서 credit을 반환합니다. 이 pipe 기준은 고정값이며
-Framework의 receive 재개 기준과 별개입니다.
+Framework의 receive 재개 기준과 별개입니다. 다만 receiver가 현재 확인할 수 있는 input을
+모두 읽어 pipe가 비면 LWM에 도달하지 않았더라도 누적 credit을 즉시 반환할 수 있습니다.
+따라서 LWM은 credit 반환의 최대 batching 기준이며, 빈 pipe에서의 조기 반환을 금지하지
+않습니다.
 
 ##### Timing
 

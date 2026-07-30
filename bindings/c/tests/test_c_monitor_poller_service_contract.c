@@ -79,21 +79,6 @@ int main (void)
     CHECK (zlink_poller_destroy (&poller) == ZLINK_CLOSE_OK);
     CHECK (poller == NULL);
 
-    zlink_spot_node_options_t node_options;
-    memset (&node_options, 0, sizeof (node_options));
-    node_options.mode = ZLINK_SPOT_NODE_MODE_ALL;
-    void *node = zlink_spot_node_new (ctx, &node_options);
-    CHECK (node != NULL);
-    void *spot = zlink_spot_new (node);
-    CHECK (spot != NULL);
-
-    zlink_spot_node_status_t status;
-    CHECK (zlink_spot_node_status (node, &status) == ZLINK_CONFIG_OK);
-
-    CHECK (zlink_spot_destroy (&spot) == ZLINK_CLOSE_OK);
-    CHECK (spot == NULL);
-    CHECK (zlink_spot_node_destroy (&node) == ZLINK_CLOSE_OK);
-    CHECK (node == NULL);
     CHECK (zlink_monitor_close (&monitor) == ZLINK_CLOSE_OK);
     CHECK (monitor == NULL);
     CHECK (zlink_close (pair) == ZLINK_CLOSE_OK);

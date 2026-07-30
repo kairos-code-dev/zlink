@@ -689,11 +689,8 @@ void run_blocking_dealer_receive_ownership_transition (bool use_dealer_receive_)
       std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
     while (std::chrono::steady_clock::now () < receive_deadline) {
         state = zlink::socket_reqrep_internal::find_request_reply_state (handle);
-        if (state) {
-            std::lock_guard<std::mutex> lock (state->mutex);
-            direct_receive_ready =
-              !state->internal_dispatch_installed;
-        }
+        if (state)
+            direct_receive_ready = true;
         if (direct_receive_ready)
             break;
         msleep (1);
@@ -958,79 +955,6 @@ void test_direct_dealer_generic_recv_and_poller_preserve_raw_order ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_poller_destroy (&poller));
     test_context_socket_close_zero_linger (dealer);
     test_context_socket_close_zero_linger (router);
-}
-
-void test_concurrent_dispatch_install_and_close_terminates_cleanly ()
-{
-    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
-    TEST_ASSERT_NOT_NULL (dealer);
-    const int linger = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (dealer, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
-
-    socket_handle_t handle = as_socket_handle (dealer);
-    std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> state =
-      zlink::socket_reqrep_internal::find_or_create_request_reply_state (handle);
-    TEST_ASSERT_NOT_NULL (state.get ());
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink::socket_reqrep_internal::ensure_completion_queue_ready (state));
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        state->internal_dispatch_installing = true;
-    }
-
-    std::mutex close_mutex;
-    std::condition_variable close_cv;
-    bool close_started = false;
-    bool close_returned = false;
-    int drain_result = -1;
-    std::thread close_thread ([&] () {
-        {
-            std::lock_guard<std::mutex> lock (close_mutex);
-            close_started = true;
-        }
-        close_cv.notify_all ();
-        drain_result =
-          zlink::socket_reqrep_internal::drain_close_request_reply_socket (handle);
-        {
-            std::lock_guard<std::mutex> lock (close_mutex);
-            close_returned = true;
-        }
-        close_cv.notify_all ();
-    });
-
-    {
-        std::unique_lock<std::mutex> lock (close_mutex);
-        close_cv.wait (lock, [&] () { return close_started; });
-        (void) close_cv.wait_for (lock, std::chrono::milliseconds (20),
-                                 [&] () { return close_returned; });
-    }
-    bool returned_before_install_finished = false;
-    {
-        std::lock_guard<std::mutex> lock (close_mutex);
-        returned_before_install_finished = close_returned;
-    }
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        state->internal_dispatch_installing = false;
-    }
-    state->internal_dispatch_cv.notify_all ();
-    close_thread.join ();
-
-    bool installed_after_drain = false;
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        installed_after_drain = state->internal_dispatch_installed;
-    }
-    test_context_socket_close_zero_linger (dealer);
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE (
-      0, returned_before_install_finished ? 1 : 0,
-      "close drain returned before dispatch installation completed");
-    TEST_ASSERT_EQUAL_INT_MESSAGE (
-      0, installed_after_drain ? 1 : 0,
-      "dispatch remained installed after close drain completed");
-    (void) drain_result;
 }
 
 //  Keeps the compiler from constant-folding the intentionally impossible
@@ -1444,6 +1368,37 @@ void test_dealer_disconnect_fails_only_requests_on_that_pipe ()
     test_context_socket_close_zero_linger (router_b);
     if (router_a)
         test_context_socket_close_zero_linger (router_a);
+}
+
+void test_router_completion_correlation_requires_peer_and_pair_identity ()
+{
+    using namespace zlink::socket_reqrep_internal;
+    socket_request_reply_state_t state (NULL, ZLINK_CORE_SOCKET_ROUTER);
+
+    pending_key_t expected_key;
+    expected_key.peer_rid = "peer-a";
+    expected_key.request_seq = 77;
+    pending_request_t expected;
+    expected.key = expected_key;
+    expected.transport_pair_id = 101;
+    expected.transport_pair_generation = 9;
+    expected.handler = NULL;
+    expected.userdata = NULL;
+    add_socket_pending_request_locked (&state, expected_key, expected);
+
+    pending_request_t taken;
+    pending_key_t wrong_peer_key = expected_key;
+    wrong_peer_key.peer_rid = "peer-b";
+    TEST_ASSERT_FALSE (take_pending_reply_from_transport_locked (
+      &state, wrong_peer_key, 101, 9, &taken));
+    TEST_ASSERT_FALSE (take_pending_reply_from_transport_locked (
+      &state, expected_key, 202, 9, &taken));
+    TEST_ASSERT_FALSE (take_pending_reply_from_transport_locked (
+      &state, expected_key, 101, 10, &taken));
+    TEST_ASSERT_TRUE (take_pending_reply_from_transport_locked (
+      &state, expected_key, 101, 9, &taken));
+    TEST_ASSERT_EQUAL_UINT64 (77, taken.key.request_seq);
+    TEST_ASSERT_TRUE (state.pending_requests.empty ());
 }
 
 void test_router_to_router_request_reply_basic ()
@@ -2100,12 +2055,12 @@ int main ()
     RUN_SELECTED (test_generic_dealer_recv_honors_configured_no_input_timeout);
     RUN_SELECTED (test_typed_dealer_recv_honors_configured_no_input_timeout);
     RUN_SELECTED (test_direct_dealer_generic_recv_and_poller_preserve_raw_order);
-    RUN_SELECTED (test_concurrent_dispatch_install_and_close_terminates_cleanly);
     RUN_SELECTED (test_prefixed_multipart_second_prefix_allocation_failure_rolls_back);
     RUN_SELECTED (test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id);
     RUN_SELECTED (test_router_reply_completion_backpressure_recovers_over_tcp);
     RUN_SELECTED (test_disconnect_of_paired_endpoint_stops_reconnecting);
     RUN_SELECTED (test_dealer_disconnect_fails_only_requests_on_that_pipe);
+    RUN_SELECTED (test_router_completion_correlation_requires_peer_and_pair_identity);
     RUN_SELECTED (test_router_to_router_request_reply_basic);
     RUN_SELECTED (test_connect_only_router_requester_receives_reply);
     RUN_SELECTED (test_multiple_in_flight_requests_complete_independently);

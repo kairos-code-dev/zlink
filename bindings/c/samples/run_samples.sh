@@ -6,6 +6,7 @@ C_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ROOT_DIR="$(cd "${C_DIR}/../.." && pwd)"
 CORE_BUILD_DIR="${ROOT_DIR}/core/build"
 BUILD_DIR="${C_DIR}/build"
+BUILD_JOBS="${ZLINK_BUILD_JOBS:-2}"
 
 CONFIGURE_ARGS=(
   -DZLINK_CORE_DIR=${ROOT_DIR}/core
@@ -27,7 +28,7 @@ echo "[c-samples] configure: ${BUILD_DIR}"
 cmake -S "${C_DIR}" -B "${BUILD_DIR}" "${CONFIGURE_ARGS[@]}"
 
 echo "[c-samples] build"
-cmake --build "${BUILD_DIR}" -j"$(nproc)"
+cmake --build "${BUILD_DIR}" -j"${BUILD_JOBS}"
 
 echo "[c-samples] run"
 ctest --test-dir "${BUILD_DIR}" --output-on-failure -L sample-smoke

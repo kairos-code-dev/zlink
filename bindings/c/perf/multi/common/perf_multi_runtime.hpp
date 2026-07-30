@@ -578,7 +578,7 @@ inline uint64_t bench_hwm_from_env (const char *name_, uint64_t default_hwm_)
     return static_cast<uint64_t> (parsed);
 }
 
-inline void apply_benchmark_hwm (void *socket_, int hwm_value)
+inline void apply_benchmark_hwm (void *socket_, uint64_t hwm_value)
 {
     if (!bench_manual_socket_overrides_allowed ())
         return;
@@ -587,18 +587,18 @@ inline void apply_benchmark_hwm (void *socket_, int hwm_value)
     const char *rcvhwm_raw = resolve_multi_named_env_value ("PERF_RCVHWM");
     const bool explicit_sndhwm = sndhwm_raw && *sndhwm_raw;
     const bool explicit_rcvhwm = rcvhwm_raw && *rcvhwm_raw;
-    if (hwm_value <= 0 && !explicit_sndhwm && !explicit_rcvhwm)
+    if (hwm_value == 0 && !explicit_sndhwm && !explicit_rcvhwm)
         return;
 
-    if (explicit_sndhwm || hwm_value > 0) {
+    if (explicit_sndhwm || hwm_value != 0) {
         const uint64_t sndhwm =
-          bench_hwm_from_env ("PERF_SNDHWM", static_cast<uint64_t> (hwm_value));
+          bench_hwm_from_env ("PERF_SNDHWM", hwm_value);
         if (sndhwm > 0)
             set_sockopt_u64 (socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
     }
-    if (explicit_rcvhwm || hwm_value > 0) {
+    if (explicit_rcvhwm || hwm_value != 0) {
         const uint64_t rcvhwm =
-          bench_hwm_from_env ("PERF_RCVHWM", static_cast<uint64_t> (hwm_value));
+          bench_hwm_from_env ("PERF_RCVHWM", hwm_value);
         if (rcvhwm > 0)
             set_sockopt_u64 (socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
     }
@@ -706,7 +706,7 @@ inline void apply_debug_timeouts (void *socket_, const std::string &transport)
 }
 
 inline void apply_benchmark_socket_options (void *socket_,
-                                            int hwm_value,
+                                            uint64_t hwm_value,
                                             const std::string &transport,
                                             zlink_socket_type_t socket_type = ZLINK_SOCKET_ANY,
                                             size_t msg_size = 0,

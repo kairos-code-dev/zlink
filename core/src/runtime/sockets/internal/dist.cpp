@@ -13,7 +13,7 @@ zlink::dist_t::dist_t () :
     _eligible (0),
     _more (false),
     _matching_hwm_cache_valid (false),
-    _matching_hwm_ready (true)
+    _matching_hwm_admission (pipe_message_admission_ready)
 {
 }
 
@@ -242,24 +242,30 @@ bool zlink::dist_t::write_at (pipes_t::size_type index_, msg_t *msg_)
     return true;
 }
 
-bool zlink::dist_t::check_hwm (const msg_t *msg_)
+zlink::pipe_message_admission_t zlink::dist_t::check_hwm (const msg_t *msg_)
 {
     if (!msg_ && _matching_hwm_cache_valid)
-        return _matching_hwm_ready;
+        return _matching_hwm_admission;
 
-    bool ready = true;
-    for (pipes_t::size_type i = 0; i < _matching; ++i)
-        if (msg_ ? !_pipes[i]->check_hwm_for_message (msg_)
-                 : !_pipes[i]->check_hwm ()) {
-            ready = false;
-            break;
-        }
+    pipe_message_admission_t result = pipe_message_admission_ready;
+    for (pipes_t::size_type i = 0; i < _matching; ++i) {
+        const pipe_message_admission_t current =
+          msg_ ? _pipes[i]->check_hwm_for_message (msg_)
+               : (_pipes[i]->check_hwm () ? pipe_message_admission_ready
+                                          : pipe_message_admission_hwm_full);
+        if (current == pipe_message_admission_too_large
+            || current == pipe_message_admission_invalid)
+            result = current;
+        else if (result == pipe_message_admission_ready
+                 && current != pipe_message_admission_ready)
+            result = current;
+    }
 
     if (!msg_) {
         _matching_hwm_cache_valid = true;
-        _matching_hwm_ready = ready;
+        _matching_hwm_admission = result;
     }
-    return ready;
+    return result;
 }
 
 void zlink::dist_t::rollback ()

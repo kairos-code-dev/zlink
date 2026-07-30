@@ -1,5 +1,4 @@
 #include <string.h>
-#include <stdint.h>
 
 #include <zlink.h>
 
@@ -15,15 +14,6 @@ static int make_part (zlink_msg_t *msg, const char *text)
     CHECK (zlink_msg_init_size (msg, len) == ZLINK_CONFIG_OK);
     memcpy (zlink_msg_data (msg), text, len);
     return 0;
-}
-
-static zlink_routing_id_t make_routing_id (const char *text)
-{
-    zlink_routing_id_t rid;
-    memset (&rid, 0, sizeof rid);
-    rid.size = (uint8_t) strlen (text);
-    memcpy (rid.data, text, rid.size);
-    return rid;
 }
 
 int main (void)
@@ -61,25 +51,6 @@ int main (void)
 
     CHECK (zlink_close (sender) == ZLINK_CLOSE_OK);
     CHECK (zlink_close (receiver) == ZLINK_CLOSE_OK);
-
-    void *node = zlink_spot_node_new (ctx, NULL);
-    CHECK (node != NULL);
-    zlink_routing_id_t room_rid = make_routing_id ("c-room");
-    void *room_a = NULL;
-    void *room_b = NULL;
-    uint32_t created_a = 0;
-    uint32_t created_b = 0;
-    CHECK (zlink_spot_node_spot_get_or_new (node, &room_rid, &room_a, &created_a)
-           == ZLINK_CONFIG_OK);
-    CHECK (zlink_spot_node_spot_get_or_new (node, &room_rid, &room_b, &created_b)
-           == ZLINK_CONFIG_OK);
-    CHECK (room_a != NULL);
-    CHECK (room_b != NULL);
-    CHECK (created_a == 1);
-    CHECK (created_b == 0);
-    CHECK (zlink_spot_destroy (&room_a) == ZLINK_CLOSE_OK);
-    CHECK (zlink_spot_destroy (&room_b) == ZLINK_CLOSE_OK);
-    CHECK (zlink_spot_node_destroy (&node) == ZLINK_CLOSE_OK);
 
     CHECK (zlink_ctx_term (ctx) == ZLINK_CLOSE_OK);
     return 0;

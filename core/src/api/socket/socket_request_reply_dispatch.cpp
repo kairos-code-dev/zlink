@@ -24,6 +24,8 @@ namespace
 void complete_reply_from_transport (
   socket_request_reply_state_t *state_,
   const zlink_routing_id_t *source_rid_,
+  uint64_t transport_pair_id_,
+  uint64_t transport_pair_generation_,
   zlink_msg_t *parts_,
   size_t part_count_)
 {
@@ -43,7 +45,8 @@ void complete_reply_from_transport (
     pending_request_t pending;
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
-        if (!remove_socket_pending_request_locked (state_, key, true, &pending)) {
+        if (!take_pending_reply_from_transport_locked (
+              state_, key, transport_pair_id_, transport_pair_generation_, &pending)) {
             zlink::request_reply::close_request_reply_parts (parts_, part_count_);
             return;
         }
@@ -114,27 +117,10 @@ void process_completion_pipe (zlink::socket_base_t *socket_, zlink::pipe_t *pipe
             memcpy (source_rid.data, rid.data (), rid.size ());
         }
         complete_reply_from_transport (
-          state.get (), source_rid.size > 0 ? &source_rid : NULL, &parts[0], parts.size ());
+          state.get (), source_rid.size > 0 ? &source_rid : NULL,
+          pipe_->get_transport_pair_id (), pipe_->get_transport_pair_generation (),
+          &parts[0], parts.size ());
     }
-}
-
-int ensure_internal_dispatch_installed (const std::shared_ptr<socket_request_reply_state_t> &state_)
-{
-    if (!state_ || !state_->socket) {
-        errno = EFAULT;
-        return -1;
-    }
-    std::lock_guard<std::mutex> lock (state_->mutex);
-    if (state_->closing) {
-        errno = ETERM;
-        return -1;
-    }
-    // Application messages remain in the transport pipe until a public
-    // receive operation consumes them. Completion traffic has its own pipe,
-    // so no socket-wide dispatcher or payload queue is required.
-    state_->internal_dispatch_installed = false;
-    errno = 0;
-    return 0;
 }
 
 bool has_pending_request_work (const std::shared_ptr<socket_request_reply_state_t> &state_)
@@ -206,17 +192,9 @@ int drain_close_request_reply_socket (socket_handle_t handle_)
     if (!state)
         return 0;
 
-    bool stop_dispatch = false;
     {
-        std::unique_lock<std::mutex> lock (state->mutex);
+        std::lock_guard<std::mutex> lock (state->mutex);
         state->closing = true;
-        while (state->internal_dispatch_installing)
-            state->internal_dispatch_cv.wait (lock);
-        stop_dispatch = state->internal_dispatch_installed;
-    }
-    if (stop_dispatch && handle_.socket->socket_msg_dispatch_active ()
-        && zlink::socket_base_t::current_socket_msg_dispatch_socket () != handle_.socket) {
-        (void) handle_.socket->socket_msg_dispatch_stop ();
     }
 
     std::vector<pending_request_t> pending;
@@ -255,8 +233,6 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
     if (state) {
         {
             std::lock_guard<std::mutex> state_lock (state->mutex);
-            state->internal_dispatch_installed = false;
-            state->internal_dispatch_installing = false;
             state->closing = true;
             for (std::unordered_map<pending_key_t, pending_request_t,
                                     pending_key_hash_t>::iterator it =
@@ -271,7 +247,6 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
             state->router_reply_targets.clear ();
             zlink::request_completion::close (&state->completion);
         }
-        state->internal_dispatch_cv.notify_all ();
     }
     for (size_t i = 0; i < timeout_tasks.size (); ++i)
         zlink::request_timeout::cancel (timeout_tasks[i]);

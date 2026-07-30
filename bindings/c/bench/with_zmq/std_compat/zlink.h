@@ -178,12 +178,6 @@ inline zlink_routing_id_t &recv_tls_source_rid ()
     return rid;
 }
 
-inline zlink_routing_id_t &recv_tls_source_spot_rid ()
-{
-    static thread_local zlink_routing_id_t rid;
-    return rid;
-}
-
 inline void recv_tls_reset ()
 {
     std::vector<zlink_msg_t> &parts = recv_tls_parts ();
@@ -200,7 +194,6 @@ inline void recv_tls_reset ()
     count = 0;
     next_index = 0;
     std::memset (&recv_tls_source_rid (), 0, sizeof (zlink_routing_id_t));
-    std::memset (&recv_tls_source_spot_rid (), 0, sizeof (zlink_routing_id_t));
     recv_tls_request_seq () = 0;
 }
 }
@@ -640,7 +633,6 @@ inline int zlink_std_compat_recv (void *s_,
     if (source_rid_out_)
         source_rid_out_->size = 0;
     std::memset (&zlink_std_compat::recv_tls_source_rid (), 0, sizeof (zlink_routing_id_t));
-    std::memset (&zlink_std_compat::recv_tls_source_spot_rid (), 0, sizeof (zlink_routing_id_t));
     zlink_std_compat::recv_tls_request_seq () = 0;
 
     int socket_type = 0;
@@ -709,35 +701,26 @@ inline int zlink_std_compat_recv (void *s_,
 
 inline int zlink_std_compat_router_recv (void *router_,
                                          const zlink_routing_id_t **peer_rid_out_,
-                                         const zlink_routing_id_t **source_spot_rid_out_,
                                          uint64_t *request_seq_out_,
                                          zlink_msg_t **parts_out_,
                                          size_t *part_count_out_,
                                          zlink_recv_flags_t flags_)
 {
     static thread_local zlink_routing_id_t tls_peer_rid;
-    static thread_local zlink_routing_id_t tls_source_spot_rid;
-
     if (request_seq_out_)
         *request_seq_out_ = 0;
-    std::memset (&tls_source_spot_rid, 0, sizeof (tls_source_spot_rid));
 
     const int rc = zlink_std_compat_recv (router_, &tls_peer_rid, parts_out_, part_count_out_,
                                           static_cast<zlink_send_flags_t> (flags_));
     if (rc != 0) {
         if (peer_rid_out_)
             *peer_rid_out_ = NULL;
-        if (source_spot_rid_out_)
-            *source_spot_rid_out_ = &tls_source_spot_rid;
         return rc;
     }
 
     if (peer_rid_out_)
         *peer_rid_out_ = tls_peer_rid.size > 0 ? &tls_peer_rid : NULL;
-    if (source_spot_rid_out_)
-        *source_spot_rid_out_ = &tls_source_spot_rid;
     zlink_std_compat::recv_tls_source_rid () = tls_peer_rid;
-    zlink_std_compat::recv_tls_source_spot_rid () = tls_source_spot_rid;
     zlink_std_compat::recv_tls_request_seq () = request_seq_out_ ? *request_seq_out_ : 0;
     return 0;
 }
@@ -775,7 +758,6 @@ inline int zlink_recv_part (void *s_,
 
 inline int zlink_router_recv_part (void *router_,
                                    const zlink_routing_id_t **peer_rid_out_,
-                                   const zlink_routing_id_t **source_spot_rid_out_,
                                    uint64_t *request_seq_out_,
                                    zlink_msg_t *part_out_,
                                    zlink_part_flag_t *has_more_out_,
@@ -789,13 +771,11 @@ inline int zlink_router_recv_part (void *router_,
     if (zlink_std_compat::recv_tls_count () == 0) {
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
-        if (zlink_std_compat_router_recv (router_, peer_rid_out_, source_spot_rid_out_,
-                                          request_seq_out_, &parts, &part_count, flags_)
+        if (zlink_std_compat_router_recv (router_, peer_rid_out_, request_seq_out_, &parts,
+                                          &part_count, flags_)
             != 0) {
             if (peer_rid_out_)
                 *peer_rid_out_ = NULL;
-            if (source_spot_rid_out_)
-                *source_spot_rid_out_ = NULL;
             if (request_seq_out_)
                 *request_seq_out_ = 0;
             return -1;
@@ -806,9 +786,6 @@ inline int zlink_router_recv_part (void *router_,
         *peer_rid_out_ = zlink_std_compat::recv_tls_source_rid ().size > 0
                            ? &zlink_std_compat::recv_tls_source_rid ()
                            : NULL;
-    }
-    if (source_spot_rid_out_) {
-        *source_spot_rid_out_ = &zlink_std_compat::recv_tls_source_spot_rid ();
     }
     if (request_seq_out_)
         *request_seq_out_ = zlink_std_compat::recv_tls_request_seq ();
@@ -934,14 +911,6 @@ zlink_set_tls_client (void *socket_, const char *ca_, const char *hostname_, int
     (void) hostname_;
     (void) trust_system_;
     return 0;
-}
-
-inline int zlink_spot_node_set_pub_bind (void *node_, const char *endpoint_)
-{
-    (void) node_;
-    (void) endpoint_;
-    errno = ENOTSUP;
-    return -1;
 }
 
 inline uint64_t zlink_translate_monitor_event (int socket_type_, uint16_t raw_event_)

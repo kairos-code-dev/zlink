@@ -5,7 +5,6 @@
 
 #include <zlink/common.h>
 #include <zlink/socket/api.h>
-#include <zlink/service/mesh_node.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -252,7 +251,6 @@ ZLINK_EXPORT int zlink_poller_wait (void *poller_,
 typedef void (*zlink_timer_handler_fn) (void *timer_, uint64_t fire_count_, void *userdata_);
 
 ZLINK_EXPORT void *zlink_timer_new (void);
-ZLINK_EXPORT void *zlink_spot_timer_new (void *spot_);
 ZLINK_EXPORT zlink_close_result_t zlink_timer_destroy (void **timer_p_);
 ZLINK_EXPORT zlink_config_result_t zlink_timer_start (void *timer_,
                                                       uint64_t interval_ns_,
@@ -262,102 +260,6 @@ ZLINK_EXPORT zlink_recv_result_t zlink_timer_recv (void *timer_, uint64_t *fire_
 ZLINK_EXPORT zlink_handler_result_t zlink_timer_handler (void *timer_,
                                                          zlink_timer_handler_fn handler_,
                                                          void *userdata_);
-
-/******************************************************************************/
-/*  MeshNode monitor. Contract: core/doc/spec/core/07-monitoring.md          */
-/******************************************************************************/
-
-#define ZLINK_MESH_MONITOR_ABI_VERSION 1u
-#define ZLINK_MESH_MONITOR_CHANNEL_MAX 255u
-
-typedef uint64_t zlink_mesh_monitor_event_mask_t;
-
-typedef enum zlink_mesh_monitor_event_kind_t {
-  ZLINK_MESH_MONITOR_STATE_CHANGED       = 1,
-  ZLINK_MESH_MONITOR_PEER_CONNECTING     = 2,
-  ZLINK_MESH_MONITOR_PEER_ADMITTED       = 3,
-  ZLINK_MESH_MONITOR_PEER_DRAINING       = 4,
-  ZLINK_MESH_MONITOR_PEER_CLOSED         = 5,
-  ZLINK_MESH_MONITOR_PEER_REJECTED       = 6,
-  ZLINK_MESH_MONITOR_CHANNEL_CHANGED     = 7,
-  ZLINK_MESH_MONITOR_MESSAGE_SUBMITTED   = 8,
-  ZLINK_MESH_MONITOR_MULTICAST_COMMITTED = 9,
-  ZLINK_MESH_MONITOR_MULTICAST_DROPPED   = 10,
-  ZLINK_MESH_MONITOR_BACKPRESSURED       = 11,
-  ZLINK_MESH_MONITOR_OPERATION_COMPLETED = 12,
-  ZLINK_MESH_MONITOR_PROTOCOL_ERROR      = 13,
-  ZLINK_MESH_MONITOR_CLAIM_REVOKED       = 14
-} zlink_mesh_monitor_event_kind_t;
-
-typedef struct zlink_mesh_monitor_open_options_t {
-  uint32_t struct_size;
-  uint32_t version;
-  zlink_mesh_monitor_event_mask_t events;
-} zlink_mesh_monitor_open_options_t;
-
-typedef struct zlink_mesh_monitor_event_t {
-  uint32_t struct_size;
-  uint32_t version;
-  zlink_mesh_monitor_event_kind_t kind;
-  uint64_t timestamp_ms;
-  uint64_t mesh_lifecycle_generation;
-  uint64_t mesh_descriptor_revision;
-  zlink_mesh_node_state_t mesh_state;
-  zlink_routing_id_t peer_rid;
-  uint64_t peer_lifecycle_generation;
-  uint64_t peer_descriptor_revision;
-  zlink_mesh_owner_kind_t owner_kind;
-  zlink_routing_id_t spot_rid;
-  zlink_actor_ref_t actor;
-  char channel_name[ZLINK_MESH_MONITOR_CHANNEL_MAX + 1];
-  uint64_t operation_id_high;
-  uint64_t operation_id_low;
-  uint32_t snapshot_remote_target_count;
-  uint32_t admitted_remote_target_count;
-  uint32_t dropped_remote_target_count;
-  uint32_t snapshot_local_spot_count;
-  uint32_t admitted_local_spot_count;
-  uint32_t dropped_local_spot_count;
-  int32_t result_code;
-  int32_t failure_errno;
-} zlink_mesh_monitor_event_t;
-
-typedef struct zlink_mesh_monitor_status_t {
-  uint32_t struct_size;
-  uint32_t version;
-  zlink_mesh_node_state_t state;
-  uint64_t peer_admitted;
-  uint64_t peer_rejected;
-  uint64_t submitted_messages;
-  uint64_t completed_operations;
-  uint64_t backpressured_submits;
-  uint64_t multicast_messages;
-  uint64_t multicast_dropped_targets;
-  uint64_t active_claims;
-  uint64_t pending_application_messages;
-  uint64_t pending_infrastructure_messages;
-  uint64_t pending_bytes;
-} zlink_mesh_monitor_status_t;
-
-typedef void (*zlink_mesh_monitor_handler_fn)(
-  const zlink_mesh_monitor_event_t *event,
-  void *userdata);
-
-ZLINK_EXPORT void *zlink_mesh_node_monitor_open(
-  void *mesh_node,
-  const zlink_mesh_monitor_open_options_t *options);
-ZLINK_EXPORT zlink_handler_result_t zlink_mesh_node_monitor_handler(
-  void *monitor,
-  zlink_mesh_monitor_handler_fn handler,
-  void *userdata);
-ZLINK_EXPORT zlink_recv_result_t zlink_mesh_node_monitor_recv(
-  void *monitor,
-  zlink_mesh_monitor_event_t *event_out,
-  zlink_recv_flags_t flags);
-ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_monitor_status(
-  void *monitor,
-  zlink_mesh_monitor_status_t *status_out);
-ZLINK_EXPORT zlink_close_result_t zlink_mesh_node_monitor_close(void **monitor_p);
 
 #ifdef __cplusplus
 }

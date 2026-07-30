@@ -27,7 +27,7 @@ extern "C" int zlink_router_enable_request_reply_receive (void *router_)
 
     std::shared_ptr<reqrep::socket_request_reply_state_t> state =
       reqrep::find_or_create_request_reply_state (handle);
-    return reqrep::ensure_internal_dispatch_installed (state);
+    return reqrep::ensure_completion_queue_ready (state);
 }
 
 extern "C" int zlink_socket_request_reply_set_default_timeout (void *socket_,

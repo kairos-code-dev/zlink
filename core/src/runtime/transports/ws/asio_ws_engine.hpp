@@ -268,6 +268,9 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
     std::vector<unsigned char> _ready_send;
     std::vector<unsigned char> _deferred_ready_send;
     bool _deferred_ready_pending;
+    transport_lane_t _negotiated_transport_lane;
+    uint64_t _negotiated_transport_pair_id;
+    uint64_t _negotiated_transport_pair_generation;
     unsigned char _peer_routing_id[256];
     size_t _peer_routing_id_size;
 

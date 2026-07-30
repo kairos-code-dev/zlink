@@ -12,6 +12,7 @@ namespace zlink
 {
 class pipe_t;
 class msg_t;
+enum pipe_message_admission_t : int;
 
 //  Class manages a set of outbound pipes. It sends each messages to
 //  each of them.
@@ -52,7 +53,7 @@ class dist_t
     static bool has_out ();
 
     //  Check HWM of all matching pipes.
-    bool check_hwm (const zlink::msg_t *msg_ = NULL);
+    pipe_message_admission_t check_hwm (const zlink::msg_t *msg_ = NULL);
 
     //  Roll back any queued multipart prefix and restore normal state.
     void rollback ();
@@ -94,7 +95,7 @@ class dist_t
     // rescanning the same matching prefix until a pipe state transition
     // happens.
     bool _matching_hwm_cache_valid;
-    bool _matching_hwm_ready;
+    pipe_message_admission_t _matching_hwm_admission;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (dist_t)
 };

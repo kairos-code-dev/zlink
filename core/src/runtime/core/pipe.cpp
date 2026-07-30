@@ -1095,36 +1095,42 @@ bool zlink::pipe_t::check_hwm () const
     return _out_active && _state == active && check_hwm_unlocked ();
 }
 
-bool zlink::pipe_t::check_hwm_for_message (const msg_t *msg_)
+zlink::pipe_message_admission_t
+zlink::pipe_t::check_hwm_for_message (const msg_t *msg_)
 {
-    if (!msg_) {
-        errno = EFAULT;
-        return false;
-    }
+    if (!msg_)
+        return pipe_message_admission_invalid;
 
     scoped_optional_fast_lock_t lock (&_out_sync);
-    if (!_out_active || _state != active || !check_hwm_unlocked ())
-        return false;
-    if ((msg_->flags () & msg_t::more) != 0 || msg_->is_delimiter ())
-        return true;
+    if (_state != active)
+        return pipe_message_admission_inactive;
+    if (!_out_active || !check_hwm_unlocked ())
+        return pipe_message_admission_hwm_full;
+    if (msg_->is_delimiter ())
+        return pipe_message_admission_ready;
 
     const uint64_t frame_bytes = frame_accounted_bytes (msg_);
     if (frame_bytes == UINT64_MAX
-        || UINT64_MAX - _out_incomplete_bytes < frame_bytes) {
-        errno = EMSGSIZE;
-        return false;
-    }
+        || UINT64_MAX - _out_incomplete_bytes < frame_bytes)
+        return pipe_message_admission_too_large;
     const uint64_t payload_bytes = static_cast<uint64_t> (msg_->size ());
-    if (UINT64_MAX - _out_incomplete_payload_bytes < payload_bytes
-        || !can_commit_bytes_unlocked (
-          _out_incomplete_bytes + frame_bytes,
-          _out_incomplete_payload_bytes + payload_bytes,
+    if (UINT64_MAX - _out_incomplete_payload_bytes < payload_bytes)
+        return pipe_message_admission_too_large;
+
+    const uint64_t prospective_payload =
+      _out_incomplete_payload_bytes + payload_bytes;
+    if (_max_message_bytes != 0 && prospective_payload > _max_message_bytes)
+        return pipe_message_admission_too_large;
+    if ((msg_->flags () & msg_t::more) != 0)
+        return pipe_message_admission_ready;
+
+    if (!can_commit_bytes_unlocked (
+          _out_incomplete_bytes + frame_bytes, prospective_payload,
           _out_incomplete_bytes == 0 || _out_multipart_started_empty)) {
         _out_active = false;
-        errno = EAGAIN;
-        return false;
+        return pipe_message_admission_hwm_full;
     }
-    return true;
+    return pipe_message_admission_ready;
 }
 
 bool zlink::pipe_t::check_hwm_unlocked () const
@@ -1324,6 +1330,15 @@ bool zlink::pipe_t::write_message_unlocked (const msg_t *msg_,
         return false;
     }
     _out_incomplete_payload_bytes += frame_payload_bytes;
+
+    if (_max_message_bytes != 0
+        && _out_incomplete_payload_bytes > _max_message_bytes) {
+        _out_incomplete_bytes = incomplete_before;
+        _out_incomplete_payload_bytes = payload_before;
+        _out_multipart_started_empty = multipart_started_empty_before;
+        errno = EMSGSIZE;
+        return false;
+    }
 
     const bool more = (msg_->flags () & msg_t::more) != 0;
     const bool commits_bytes = !more && !msg_->is_delimiter ();

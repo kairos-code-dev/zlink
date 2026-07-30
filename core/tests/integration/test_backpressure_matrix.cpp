@@ -1023,6 +1023,70 @@ void test_unlimited_hwm_still_enforces_max_message_size ()
     test_context_socket_close_zero_linger (receiver);
 }
 
+void test_pubsub_incomplete_multipart_stops_at_max_message_size ()
+{
+    const char *endpoint = "inproc://pubsub-incomplete-max-message-size";
+    const int64_t max_message_size = 1024;
+    const uint64_t hwm_bytes = 4096;
+    const int recv_timeout_ms = 3000;
+
+    void *pub = test_context_socket (ZLINK_SOCKET_PUB);
+    void *sub = test_context_socket (ZLINK_SOCKET_SUB);
+    TEST_ASSERT_NOT_NULL (pub);
+    TEST_ASSERT_NOT_NULL (sub);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_set_subscription (sub, ""));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      sub, ZLINK_OPT_MAXMSGSIZE, &max_message_size, sizeof (max_message_size)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (sub, ZLINK_OPT_RCVHWM, &hwm_bytes, sizeof (hwm_bytes)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (pub, ZLINK_OPT_SNDHWM, &hwm_bytes, sizeof (hwm_bytes)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      sub, ZLINK_OPT_RCVTIMEO, &recv_timeout_ms, sizeof (recv_timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
+    msleep (SETTLE_TIME);
+
+    zlink_msg_t first;
+    zlink_msg_t exceeds_max;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&first, 400));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&exceeds_max, 700));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_publish_part (
+        pub, kTopic, &first, ZLINK_SEND_FLAGS_DONTWAIT, ZLINK_PART_MORE));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_INVALID_ARGUMENT,
+      zlink_publish_part (
+        pub, kTopic, &exceeds_max, ZLINK_SEND_FLAGS_DONTWAIT, ZLINK_PART_MORE));
+    TEST_ASSERT_EQUAL_INT (EMSGSIZE, errno);
+
+    zlink_msg_t valid;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&valid, strlen ("valid")));
+    memcpy (zlink_msg_data (&valid), "valid", strlen ("valid"));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_publish (pub, kTopic, &valid, 1, ZLINK_SEND_FLAGS_DONTWAIT));
+
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    char topic[32];
+    size_t topic_len = sizeof (topic);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_subscribe (sub, NULL, &parts, &part_count, topic, &topic_len,
+                       static_cast<zlink_recv_flags_t> (0)));
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_UINT64 (strlen (kTopic), topic_len);
+    TEST_ASSERT_EQUAL_MEMORY (kTopic, topic, topic_len);
+    TEST_ASSERT_EQUAL_UINT64 (strlen ("valid"), zlink_msg_size (&parts[0]));
+    TEST_ASSERT_EQUAL_MEMORY ("valid", zlink_msg_data (&parts[0]), strlen ("valid"));
+    zlink_multipart_close (parts, part_count);
+
+    test_context_socket_close_zero_linger (sub);
+    test_context_socket_close_zero_linger (pub);
+}
+
 void test_connect_before_bind_conflate_uses_receiver_max_message_size ()
 {
     const char *endpoint = "inproc://conflate_receiver_maxmsg";
@@ -1080,6 +1144,8 @@ int main (int, char **)
         RUN_TEST (test_empty_pipe_oversize_stops_at_max_message_size);
     if (should_run_case ("test_unlimited_hwm_still_enforces_max_message_size"))
         RUN_TEST (test_unlimited_hwm_still_enforces_max_message_size);
+    if (should_run_case ("test_pubsub_incomplete_multipart_stops_at_max_message_size"))
+        RUN_TEST (test_pubsub_incomplete_multipart_stops_at_max_message_size);
     if (should_run_case (
           "test_connect_before_bind_conflate_uses_receiver_max_message_size"))
         RUN_TEST (

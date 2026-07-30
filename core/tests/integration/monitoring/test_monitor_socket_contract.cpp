@@ -1352,6 +1352,90 @@ void run_inproc_two_dealers_ready ()
         test_context_socket_close_zero_linger (clients[i]);
     test_context_socket_close_zero_linger (server);
 }
+
+#if defined ZLINK_HAVE_WS
+void run_ws_dealer_router_ready (bool secure_)
+{
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *client = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+    configure_pair_socket (server);
+    configure_pair_socket (client);
+
+    const char dealer_id[] = "MRXWS";
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, dealer_id, sizeof (dealer_id) - 1));
+
+#if defined ZLINK_HAVE_WSS
+    tls_test_files_t files;
+    if (secure_) {
+        files = make_tls_test_files ();
+        const int trust_system = 0;
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+          client, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+          server, ZLINK_OPT_TLS_CERT, files.server_cert.c_str (), files.server_cert.size ()));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+          server, ZLINK_OPT_TLS_KEY, files.server_key.c_str (), files.server_key.size ()));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+          client, ZLINK_OPT_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
+        const char hostname[] = "localhost";
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_set_option (client, ZLINK_OPT_TLS_HOSTNAME, hostname, strlen (hostname)));
+    }
+#else
+    TEST_ASSERT_FALSE (secure_);
+#endif
+
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events = ZLINK_EVENT_CONNECTION_READY;
+    void *server_monitor = zlink_socket_monitor_open (server, &monitor_opts);
+    void *client_monitor = zlink_socket_monitor_open (client, &monitor_opts);
+    TEST_ASSERT_NOT_NULL (server_monitor);
+    TEST_ASSERT_NOT_NULL (client_monitor);
+    configure_pair_socket (server_monitor);
+    configure_pair_socket (client_monitor);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (server, secure_ ? "wss://127.0.0.1:*" : "ws://127.0.0.1:*"));
+    char endpoint[256];
+    size_t endpoint_size = sizeof (endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
+
+    unsigned char routing_id[255];
+    size_t routing_id_size = 0;
+    TEST_ASSERT_TRUE (wait_for_monitor_ready_recv_with_activity (
+      server_monitor, server, 5000, routing_id, &routing_id_size));
+    TEST_ASSERT_TRUE (wait_for_monitor_ready_recv (client_monitor, 5000));
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (dealer_id) - 1, routing_id_size);
+    TEST_ASSERT_EQUAL_MEMORY (dealer_id, routing_id, routing_id_size);
+    TEST_ASSERT_EQUAL_UINT64 (0, count_extra_ready_events (server_monitor));
+    TEST_ASSERT_EQUAL_UINT64 (0, count_extra_ready_events (client_monitor));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (client, "ping", 4, 0));
+    const zlink_routing_id_t *source_node_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_recv (server, &source_node_rid, &request_seq, &parts, &part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_MEMORY ("ping", zlink_msg_data (&parts[0]), 4);
+    zlink_multipart_close (parts, part_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&client_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&server_monitor));
+    test_context_socket_close_zero_linger (client);
+    test_context_socket_close_zero_linger (server);
+#if defined ZLINK_HAVE_WSS
+    if (secure_)
+        cleanup_tls_test_files (files);
+#endif
+}
+#endif
 } // namespace
 
 void test_pair_ready_with_monitor_recv_and_socket_recv ()
@@ -1408,6 +1492,19 @@ void test_inproc_two_dealers_ready_once_each ()
 {
     run_inproc_two_dealers_ready ();
 }
+
+#if defined ZLINK_HAVE_WS
+void test_ws_dealer_router_ready_once_after_both_lanes ()
+{
+    run_ws_dealer_router_ready (false);
+}
+#if defined ZLINK_HAVE_WSS
+void test_wss_dealer_router_ready_once_after_both_lanes ()
+{
+    run_ws_dealer_router_ready (true);
+}
+#endif
+#endif
 
 void test_router_router_ready_with_monitor_recv_and_socket_recv ()
 {
@@ -1680,6 +1777,12 @@ int main ()
     RUN_TEST (test_inproc_dealer_router_ready_after_bind);
     RUN_TEST (test_inproc_dealer_router_ready_after_pending_connect);
     RUN_TEST (test_inproc_two_dealers_ready_once_each);
+#if defined ZLINK_HAVE_WS
+    RUN_TEST (test_ws_dealer_router_ready_once_after_both_lanes);
+#if defined ZLINK_HAVE_WSS
+    RUN_TEST (test_wss_dealer_router_ready_once_after_both_lanes);
+#endif
+#endif
     RUN_TEST (test_router_router_ready_with_monitor_recv_and_socket_recv);
     RUN_TEST (test_router_router_ready_with_monitor_recv_and_socket_callback);
     RUN_TEST (test_pubsub_ready_with_monitor_recv_and_socket_recv);

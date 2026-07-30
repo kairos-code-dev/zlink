@@ -957,9 +957,17 @@ void run_empty_pipe_oversize_bound (int64_t receiver_maxmsgsize_, bool expect_ad
     if (expect_admitted_) {
         TEST_ASSERT_EQUAL_INT (static_cast<int> (ZLINK_SUBMIT_OK), static_cast<int> (rc));
     } else {
-        TEST_ASSERT_EQUAL_INT (static_cast<int> (ZLINK_SUBMIT_BACKPRESSURED),
+        TEST_ASSERT_EQUAL_INT (static_cast<int> (ZLINK_SUBMIT_INVALID_ARGUMENT),
                                static_cast<int> (rc));
+        TEST_ASSERT_EQUAL_INT (EMSGSIZE, errno);
         zlink_msg_close (&msg);
+
+        zlink_msg_t valid;
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&valid, 1));
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_SUBMIT_OK,
+          zlink_send_part (
+            sender, &valid, ZLINK_SEND_FLAGS_DONTWAIT, ZLINK_PART_FINAL));
     }
 
     test_context_socket_close_zero_linger (sender);
@@ -998,13 +1006,57 @@ void test_unlimited_hwm_still_enforces_max_message_size ()
     zlink_msg_t msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&msg, 64u * 1024u));
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_SUBMIT_BACKPRESSURED,
+      ZLINK_SUBMIT_INVALID_ARGUMENT,
       zlink_send_part (
         sender, &msg, ZLINK_SEND_FLAGS_DONTWAIT, ZLINK_PART_FINAL));
+    TEST_ASSERT_EQUAL_INT (EMSGSIZE, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
+
+    zlink_msg_t valid;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&valid, 1));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part (
+        sender, &valid, ZLINK_SEND_FLAGS_DONTWAIT, ZLINK_PART_FINAL));
 
     test_context_socket_close_zero_linger (sender);
     test_context_socket_close_zero_linger (receiver);
+}
+
+void test_connect_before_bind_conflate_uses_receiver_max_message_size ()
+{
+    const char *endpoint = "inproc://conflate_receiver_maxmsg";
+    const int conflate = 1;
+    const int64_t receiver_max_message_size = 8192;
+    void *sender = test_context_socket (ZLINK_SOCKET_DEALER);
+    void *receiver = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      sender, ZLINK_OPT_CONFLATE, &conflate, sizeof (conflate)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      receiver, ZLINK_OPT_MAXMSGSIZE, &receiver_max_message_size,
+      sizeof (receiver_max_message_size)));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sender, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, endpoint));
+
+    zlink_msg_t oversized;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&oversized, 64u * 1024u));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_INVALID_ARGUMENT,
+      zlink_send_part (
+        sender, &oversized, ZLINK_SEND_FLAGS_DONTWAIT, ZLINK_PART_FINAL));
+    TEST_ASSERT_EQUAL_INT (EMSGSIZE, errno);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&oversized));
+
+    zlink_msg_t valid;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&valid, 1));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part (
+        sender, &valid, ZLINK_SEND_FLAGS_DONTWAIT, ZLINK_PART_FINAL));
+
+    test_context_socket_close_zero_linger (receiver);
+    test_context_socket_close_zero_linger (sender);
 }
 
 static bool should_run_case (const char *name_)
@@ -1028,6 +1080,10 @@ int main (int, char **)
         RUN_TEST (test_empty_pipe_oversize_stops_at_max_message_size);
     if (should_run_case ("test_unlimited_hwm_still_enforces_max_message_size"))
         RUN_TEST (test_unlimited_hwm_still_enforces_max_message_size);
+    if (should_run_case (
+          "test_connect_before_bind_conflate_uses_receiver_max_message_size"))
+        RUN_TEST (
+          test_connect_before_bind_conflate_uses_receiver_max_message_size);
     const int status = UNITY_END ();
     fflush (NULL);
     return status;

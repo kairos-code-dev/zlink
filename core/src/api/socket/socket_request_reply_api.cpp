@@ -35,7 +35,8 @@ int reqrep::send_request_frame (zlink::socket_base_t *socket_,
                                 const zlink_routing_id_t *peer_rid_,
                                 const void *data_,
                                 size_t size_,
-                                int flags_)
+                                int flags_,
+                                zlink::pipe_t **application_pipe_out_)
 {
     zlink::msg_t msg;
     if (msg.init_size (size_) != 0)
@@ -45,7 +46,8 @@ int reqrep::send_request_frame (zlink::socket_base_t *socket_,
 
     const int rc = peer_rid_ ? socket_->send_routed_scoped (peer_rid_, &msg, flags_,
                                                             *helper_state_->send.send_scope)
-                             : socket_->send_scoped (&msg, flags_, *helper_state_->send.send_scope);
+                             : socket_->send_scoped (&msg, flags_, *helper_state_->send.send_scope,
+                                                    application_pipe_out_);
     const int saved_errno = errno;
     (void) msg.close ();
     errno = saved_errno;

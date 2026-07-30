@@ -7,7 +7,6 @@
 
 #include "api/socket/request_completion_queue_internal.hpp"
 #include "api/socket/request_reply_protocol_internal.hpp"
-#include "api/socket/socket_request_reply_router_state_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "utils/routing_id.hpp"
 
@@ -192,66 +191,5 @@ std::shared_ptr<socket_request_reply_state_t> find_request_reply_state (socket_h
                           : std::shared_ptr<socket_request_reply_state_t> ();
 }
 
-int start_request (socket_handle_t handle_,
-                   const zlink_routing_id_t *peer_rid_,
-                   zlink_msg_t *parts_,
-                   size_t part_count_,
-                   zlink_send_flags_t flags_,
-                   uint32_t timeout_ms_,
-                   zlink_reply_handler_fn handler_,
-                   void *userdata_)
-{
-    std::shared_ptr<socket_request_reply_state_t> state =
-      find_or_create_request_reply_state (handle_);
-    if (!state || handle_.socket->ensure_completion_processing () != 0)
-        return -1;
-    if (!zlink::request_completion::try_reserve (&state->completion))
-        return -1;
-
-    pending_key_t key;
-    pending_request_t pending;
-    uint32_t resolved_timeout_ms = zlink::request_reply::default_timeout_ms;
-    {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        const uint64_t request_seq =
-          zlink::request_reply_runtime::allocate_request_sequence (state.get ());
-        if (request_seq == 0)
-        {
-            zlink::request_completion::release_reservation (&state->completion);
-            return -1;
-        }
-
-        key.request_seq = request_seq;
-        if (handle_.socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER
-            && zlink::valid_routing_id (peer_rid_)) {
-            key.peer_rid = zlink::routing_id_key (peer_rid_);
-        }
-
-        pending.key = key;
-        pending.handler = handler_;
-        pending.userdata = userdata_;
-        resolved_timeout_ms =
-          zlink::request_reply::resolve_timeout_ms (timeout_ms_, state->default_timeout_ms);
-        if (schedule_socket_pending_timeout (state, key, resolved_timeout_ms,
-                                             &pending.timeout_task)
-            != 0) {
-            zlink::request_completion::release_reservation (&state->completion);
-            return -1;
-        }
-        add_socket_pending_request_locked (state.get (), key, pending);
-    }
-
-    const uint8_t message_type = zlink::request_reply::request_type;
-    const int rc = send_request_reply_message (handle_.socket, peer_rid_, parts_, part_count_,
-                                               flags_, message_type, key.request_seq);
-    if (rc != 0) {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        zlink::request_timeout::cancel (pending.timeout_task);
-        (void) remove_socket_pending_request_locked (state.get (), key, false, NULL);
-        zlink::request_completion::release_reservation (&state->completion);
-        return -1;
-    }
-    return 0;
-}
 }
 }

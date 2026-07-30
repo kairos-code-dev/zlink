@@ -246,7 +246,8 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
             _weighted_multipart_pipe = NULL;
             _dropping = more;
             _more = false;
-            errno = EAGAIN;
+            if (errno != EMSGSIZE)
+                errno = EAGAIN;
             return -2;
         }
         if (pipe_)
@@ -271,11 +272,14 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
                 _weighted_multipart_pipe = NULL;
                 _dropping = more;
                 _more = false;
-                errno = EAGAIN;
+                if (errno != EMSGSIZE)
+                    errno = EAGAIN;
                 return -2;
             }
-            _active = 0;
-            errno = EAGAIN;
+            if (errno != EMSGSIZE) {
+                _active = 0;
+                errno = EAGAIN;
+            }
             return -1;
         }
 
@@ -341,9 +345,13 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
             // retry this frame immediately in blocking mode.
             _dropping = (msg_->flags () & msg_t::more) != 0;
             _more = false;
-            errno = EAGAIN;
+            if (errno != EMSGSIZE)
+                errno = EAGAIN;
             return -2;
         }
+
+        if (errno == EMSGSIZE)
+            return -1;
 
         _active--;
         if (_current < _active)

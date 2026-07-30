@@ -82,7 +82,8 @@ int zlink::pair_t::xsend (msg_t *msg_)
     const bool more = (msg_->flags () & msg_t::more) != 0;
     const bool ok = _pipe ? (more ? _pipe->write (msg_) : _pipe->write_and_flush (msg_)) : false;
     if (!ok) {
-        errno = EAGAIN;
+        if (errno != EMSGSIZE)
+            errno = EAGAIN;
         return -1;
     }
 

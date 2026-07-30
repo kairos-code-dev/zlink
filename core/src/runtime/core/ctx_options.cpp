@@ -69,8 +69,6 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             if (optvallen_ == sizeof (uint64_t)) {
                 uint64_t msg_unit_bytes = 0;
                 memcpy (&msg_unit_bytes, optval_, sizeof (msg_unit_bytes));
-                if (msg_unit_bytes > auto_hwm_max_message_unit_bytes)
-                    break;
                 scoped_lock_t locker (_opt_sync);
                 _auto_hwm.set_msg_unit_bytes (msg_unit_bytes);
                 refresh_auto_hwm = true;

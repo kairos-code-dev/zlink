@@ -7,6 +7,7 @@
 #include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_pending_internal.hpp"
+#include "core/pipe.hpp"
 #include "utils/routing_id.hpp"
 
 namespace reqrep = zlink::socket_reqrep_internal;
@@ -45,6 +46,25 @@ void reqrep::erase_socket_pending_request (
         zlink::request_timeout::cancel (pending.timeout_task);
         zlink::request_completion::release_reservation (&state_->completion);
     }
+}
+
+void reqrep::record_socket_pending_transport_pair (
+  const std::shared_ptr<reqrep::socket_request_reply_state_t> &state_,
+  const reqrep::pending_key_t &key_,
+  zlink::pipe_t *application_pipe_)
+{
+    if (!state_ || !application_pipe_)
+        return;
+
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    std::unordered_map<reqrep::pending_key_t, reqrep::pending_request_t,
+                       reqrep::pending_key_hash_t>::iterator it =
+      state_->pending_requests.find (key_);
+    if (it == state_->pending_requests.end ())
+        return;
+    it->second.transport_pair_id = application_pipe_->get_transport_pair_id ();
+    it->second.transport_pair_generation =
+      application_pipe_->get_transport_pair_generation ();
 }
 
 int reqrep::ensure_socket_pending_request (
@@ -89,6 +109,8 @@ int reqrep::ensure_socket_pending_request (
         }
 
         pending.key = key;
+        pending.transport_pair_id = 0;
+        pending.transport_pair_generation = 0;
         pending.handler = handler_;
         pending.userdata = userdata_;
         const uint32_t resolved_timeout_ms =

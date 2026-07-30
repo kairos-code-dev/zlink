@@ -512,6 +512,13 @@ int zlink::socket_base_t::xsend (msg_t *)
     return -1;
 }
 
+int zlink::socket_base_t::xsend_pipe (msg_t *msg_, pipe_t **pipe_out_)
+{
+    if (pipe_out_)
+        *pipe_out_ = NULL;
+    return xsend (msg_);
+}
+
 int zlink::socket_base_t::xsend_routed (const zlink_routing_id_t *target_rid_,
                                        msg_t *msg_,
                                        uint64_t *connection_id_out_,

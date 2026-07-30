@@ -43,6 +43,8 @@ struct pending_key_hash_t
 struct pending_request_t
 {
     pending_key_t key;
+    uint64_t transport_pair_id;
+    uint64_t transport_pair_generation;
     zlink_reply_handler_fn handler;
     void *userdata;
     std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
@@ -197,17 +199,11 @@ void queue_socket_pending_timeout_completion (
   const std::shared_ptr<socket_request_reply_state_t> &state_, const pending_request_t &pending_);
 int ensure_internal_dispatch_installed (
   const std::shared_ptr<socket_request_reply_state_t> &state_);
-int start_request (socket_handle_t handle_,
-                   const zlink_routing_id_t *peer_rid_,
-                   zlink_msg_t *parts_,
-                   size_t part_count_,
-                   zlink_send_flags_t flags_,
-                   uint32_t timeout_ms_,
-                   zlink_reply_handler_fn handler_,
-                   void *userdata_);
 bool has_pending_request_work (const std::shared_ptr<socket_request_reply_state_t> &state_);
 void fail_disconnected_peer_requests (
   const std::shared_ptr<socket_request_reply_state_t> &state_,
+  uint64_t transport_pair_id_,
+  uint64_t transport_pair_generation_,
   const unsigned char *routing_id_,
   size_t routing_id_size_,
   int errnum_);

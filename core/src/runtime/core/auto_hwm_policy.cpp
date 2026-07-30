@@ -50,6 +50,13 @@ uint32_t clamp_size_to_u32 (size_t value_)
     return value_ > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t> (value_);
 }
 
+uint64_t saturating_multiply_u64 (uint64_t left_, uint64_t right_)
+{
+    if (left_ != 0 && right_ > UINT64_MAX / left_)
+        return UINT64_MAX;
+    return left_ * right_;
+}
+
 zlink_auto_hwm_profile_t normalize_profile (zlink_auto_hwm_profile_t profile_)
 {
     switch (profile_) {
@@ -496,11 +503,8 @@ void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
             ? plan.effective_message_bytes
             : (stream_policy_class (plan.policy_class) ? auto_hwm_stream_message_bytes
                                                        : auto_hwm_message_bytes);
-        zlink_assert (
-          budget_hwm == 0
-          || planning_unit_bytes <= UINT64_MAX / static_cast<uint64_t> (budget_hwm));
-        plan.unit_budget_bytes =
-          static_cast<uint64_t> (budget_hwm) * planning_unit_bytes;
+        plan.unit_budget_bytes = saturating_multiply_u64 (
+          static_cast<uint64_t> (budget_hwm), planning_unit_bytes);
         plan.size_cap = size_cap_for_class (context_->profile, plan.policy_class);
         if (!plan.manual_sndbuf) {
             plan.requested_sndbuf = -1;

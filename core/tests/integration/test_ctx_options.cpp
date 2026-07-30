@@ -309,13 +309,20 @@ void test_ctx_option_auto_hwm_msg_unit_round_trip_and_validation ()
     TEST_ASSERT_EQUAL_UINT64 (
       value_64, get_u64_context_option (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES));
 
+    const uint64_t max_value = UINT64_MAX;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set_data (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                          &max_value, sizeof (max_value)));
+    TEST_ASSERT_EQUAL_UINT64 (
+      max_value, get_u64_context_option (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES));
+
     const int value = 128;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
       zlink_ctx_set_data (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value)));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_EQUAL_UINT64 (
-      value_64, get_u64_context_option (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES));
+      max_value, get_u64_context_option (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES));
 
     const uint64_t zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -490,6 +497,18 @@ void test_socket_option_auto_hwm_msg_unit_round_trip ()
     read_socket_auto_hwm_snapshot (router, &status);
     TEST_ASSERT_EQUAL_UINT64 (8192u, status.auto_hwm_effective_message_bytes);
 
+    value = UINT64_MAX;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value)));
+    value = 0;
+    value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, &value_size));
+    TEST_ASSERT_EQUAL_UINT64 (UINT64_MAX, value);
+    read_socket_auto_hwm_snapshot (router, &status);
+    TEST_ASSERT_EQUAL_UINT64 (UINT64_MAX, status.auto_hwm_effective_message_bytes);
+    TEST_ASSERT_EQUAL_UINT64 (UINT64_MAX, status.auto_hwm_unit_budget_bytes);
+
     const int negative = -1;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
@@ -499,7 +518,7 @@ void test_socket_option_auto_hwm_msg_unit_round_trip ()
     value_size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_get_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, &value_size));
-    TEST_ASSERT_EQUAL_UINT64 (8192, value);
+    TEST_ASSERT_EQUAL_UINT64 (UINT64_MAX, value);
 
     value = 0;
     TEST_ASSERT_SUCCESS_ERRNO (

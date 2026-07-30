@@ -49,11 +49,6 @@ namespace socket_reqrep_internal
 struct socket_request_reply_state_t;
 }
 
-namespace reqrep_internal
-{
-struct router_request_reply_state_t;
-}
-
 namespace part_helper_internal
 {
 struct handle_state_t;
@@ -73,8 +68,6 @@ typedef void (*sub_io_handler_fn) (const zlink_routing_id_t *source_rid_,
 
 struct socket_request_reply_bridge_t
 {
-    std::shared_ptr<reqrep_internal::router_request_reply_state_t>
-      router_request_reply_state;
     std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t> request_reply_state;
     std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state;
 };
@@ -170,7 +163,10 @@ class socket_base_t : public own_t,
     int send (zlink::msg_t *msg_, int flags_);
     // Internal helper for logical multipart wrappers that already hold the
     // public send scope for the whole transaction.
-    int send_scoped (zlink::msg_t *msg_, int flags_, socket_public_send_scope_t &scope_);
+    int send_scoped (zlink::msg_t *msg_,
+                     int flags_,
+                     socket_public_send_scope_t &scope_,
+                     zlink::pipe_t **pipe_out_ = NULL);
     int send_routed (const zlink_routing_id_t *target_rid_, zlink::msg_t *msg_, int flags_);
     int send_routed_scoped (const zlink_routing_id_t *target_rid_,
                             zlink::msg_t *msg_,
@@ -361,11 +357,6 @@ class socket_base_t : public own_t,
     int get_peer_weight (uint32_t *weight_out_) const;
     uint32_t local_peer_weight () const;
     int socket_id () const;
-    std::shared_ptr<reqrep_internal::router_request_reply_state_t>
-    router_request_reply_state () const;
-    void set_router_request_reply_state (
-      const std::shared_ptr<reqrep_internal::router_request_reply_state_t> &state_);
-    void clear_router_request_reply_state ();
     std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t>
     request_reply_state () const;
     std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t>
@@ -402,6 +393,7 @@ class socket_base_t : public own_t,
     //  The default implementation assumes that send is not supported.
     virtual bool xhas_out ();
     virtual int xsend (zlink::msg_t *msg_);
+    virtual int xsend_pipe (zlink::msg_t *msg_, zlink::pipe_t **pipe_out_);
     virtual int xsend_routed (const zlink_routing_id_t *target_rid_,
                               zlink::msg_t *msg_,
                               uint64_t *connection_id_out_,
@@ -502,7 +494,8 @@ class socket_base_t : public own_t,
                                 socket_public_send_scope_t &scope_,
                                 uint64_t *connection_id_out_ = NULL,
                                 uint64_t expected_connection_id_ = 0,
-                                bool report_multipart_abort_ = false);
+                                bool report_multipart_abort_ = false,
+                                zlink::pipe_t **pipe_out_ = NULL);
 
     enum
     {

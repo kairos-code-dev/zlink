@@ -1381,6 +1381,71 @@ void test_disconnect_of_paired_endpoint_stops_reconnecting ()
     test_context_socket_close_zero_linger (router);
 }
 
+void test_dealer_disconnect_fails_only_requests_on_that_pipe ()
+{
+    void *router_a = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *router_b = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router_a);
+    TEST_ASSERT_NOT_NULL (router_b);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    const char *endpoint_a = "inproc://zmp-dealer-selective-disconnect-a";
+    const char *endpoint_b = "inproc://zmp-dealer-selective-disconnect-b";
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router_a, endpoint_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router_b, endpoint_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint_b));
+    msleep (SETTLE_TIME);
+
+    reply_probe_t reply_a;
+    reply_probe_t reply_b;
+    reply_a.progress_handle = dealer;
+    reply_b.progress_handle = dealer;
+
+    zlink_msg_t request_a;
+    zlink_msg_t request_b;
+    zlink_msg_init (&request_a);
+    zlink_msg_init (&request_b);
+    init_string_part (&request_a, "request-a");
+    init_string_part (&request_b, "request-b");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_dealer_request (dealer, &request_a, 1, &capture_reply, &reply_a, 0, 5000));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_dealer_request (dealer, &request_b, 1, &capture_reply, &reply_b, 0, 5000));
+
+    request_handler_probe_t received_a;
+    request_handler_probe_t received_b;
+    recv_router_request_into_probe (router_a, &received_a);
+    recv_router_request_into_probe (router_b, &received_b);
+
+    reply_probe_t *failed_reply =
+      received_a.request_payload == "request-a" ? &reply_a : &reply_b;
+    reply_probe_t *successful_reply = failed_reply == &reply_a ? &reply_b : &reply_a;
+
+    test_context_socket_close_zero_linger (router_a);
+    router_a = NULL;
+    send_captured_reply (router_b, &received_b, "reply-from-b");
+
+    TEST_ASSERT_TRUE (wait_for_reply (failed_reply));
+    TEST_ASSERT_TRUE (wait_for_reply (successful_reply));
+    {
+        std::lock_guard<std::mutex> lock (failed_reply->mutex);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_NOT_CONNECTED, failed_reply->result);
+        TEST_ASSERT_EQUAL_UINT64 (0, failed_reply->part_count);
+    }
+    {
+        std::lock_guard<std::mutex> lock (successful_reply->mutex);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, successful_reply->result);
+        TEST_ASSERT_EQUAL_STRING ("reply-from-b", successful_reply->payload.c_str ());
+    }
+
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router_b);
+    if (router_a)
+        test_context_socket_close_zero_linger (router_a);
+}
+
 void test_router_to_router_request_reply_basic ()
 {
     void *server_router = test_context_socket (ZLINK_SOCKET_ROUTER);
@@ -2040,6 +2105,7 @@ int main ()
     RUN_SELECTED (test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id);
     RUN_SELECTED (test_router_reply_completion_backpressure_recovers_over_tcp);
     RUN_SELECTED (test_disconnect_of_paired_endpoint_stops_reconnecting);
+    RUN_SELECTED (test_dealer_disconnect_fails_only_requests_on_that_pipe);
     RUN_SELECTED (test_router_to_router_request_reply_basic);
     RUN_SELECTED (test_connect_only_router_requester_receives_reply);
     RUN_SELECTED (test_multiple_in_flight_requests_complete_independently);

@@ -906,4 +906,13 @@ if(Python3_Interpreter_FOUND)
   set_tests_properties(contract_public_surface PROPERTIES
     TIMEOUT 60
     LABELS "unittest")
+  add_test(
+    NAME contract_monitor_abi_mirror
+    COMMAND
+      ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/contract/check_monitor_abi_mirror.py
+      ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+  set_tests_properties(contract_monitor_abi_mirror PROPERTIES
+    TIMEOUT 30
+    LABELS "unittest")
 endif()

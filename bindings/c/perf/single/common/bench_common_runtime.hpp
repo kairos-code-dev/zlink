@@ -231,11 +231,27 @@ inline bool bench_single_manual_socket_overrides_allowed ()
     return value && std::strcmp (value, "1") == 0;
 }
 
-inline int resolve_single_socket_hwm (bool send_)
+inline uint64_t parse_single_positive_u64_env (const char *name_, uint64_t default_value_)
 {
-    const int base_hwm = parse_positive_env ("PERF_SINGLE_HWM", 0);
-    return send_ ? parse_positive_env ("PERF_SINGLE_SNDHWM", base_hwm)
-                 : parse_positive_env ("PERF_SINGLE_RCVHWM", base_hwm);
+    const char *value = std::getenv (name_);
+    if (!value || !*value)
+        return default_value_;
+    if (std::strspn (value, "0123456789") != std::strlen (value))
+        return default_value_;
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long parsed = std::strtoull (value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0' || parsed == 0)
+        return default_value_;
+    return static_cast<uint64_t> (parsed);
+}
+
+inline uint64_t resolve_single_socket_hwm (bool send_)
+{
+    const uint64_t base_hwm = parse_single_positive_u64_env ("PERF_SINGLE_HWM", 0);
+    return send_ ? parse_single_positive_u64_env ("PERF_SINGLE_SNDHWM", base_hwm)
+                 : parse_single_positive_u64_env ("PERF_SINGLE_RCVHWM", base_hwm);
 }
 
 inline int parse_single_byte_size_token (const char *value_, int default_value_)
@@ -344,14 +360,12 @@ inline void apply_single_hwm (void *socket_)
     if (!socket_ || !bench_single_manual_socket_overrides_allowed ())
         return;
 
-    const int sndhwm = resolve_single_socket_hwm (true);
-    const int rcvhwm = resolve_single_socket_hwm (false);
+    const uint64_t sndhwm = resolve_single_socket_hwm (true);
+    const uint64_t rcvhwm = resolve_single_socket_hwm (false);
     if (sndhwm > 0)
-        set_sockopt_u64 (
-          socket_, ZLINK_OPT_SNDHWM, static_cast<uint64_t> (sndhwm), "ZLINK_OPT_SNDHWM");
+        set_sockopt_u64 (socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
     if (rcvhwm > 0)
-        set_sockopt_u64 (
-          socket_, ZLINK_OPT_RCVHWM, static_cast<uint64_t> (rcvhwm), "ZLINK_OPT_RCVHWM");
+        set_sockopt_u64 (socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
 }
 
 inline bool apply_single_auto_hwm_msg_unit (void *ctx_, size_t msg_size_)

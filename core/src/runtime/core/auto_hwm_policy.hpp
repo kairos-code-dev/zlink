@@ -46,7 +46,6 @@ enum
     auto_hwm_connection_bucket_none = UINT32_MAX
 };
 
-const uint64_t auto_hwm_max_message_unit_bytes = UINT64_MAX / 512u;
 
 struct auto_hwm_context_plan_t
 {

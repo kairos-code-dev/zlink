@@ -37,6 +37,18 @@ print_total_time() {
 }
 trap 'print_total_time $?' EXIT
 
+is_positive_u64() {
+  local value="${1:-}"
+  local normalized="${value}"
+  [[ "${value}" =~ ^[0-9]+$ ]] || return 1
+  while [[ "${#normalized}" -gt 1 && "${normalized:0:1}" == "0" ]]; do
+    normalized="${normalized:1}"
+  done
+  [[ "${normalized}" != "0" ]] || return 1
+  [[ "${#normalized}" -lt 20 ]] && return 0
+  [[ "${#normalized}" -eq 20 && ! "${normalized}" > "18446744073709551615" ]]
+}
+
 IS_WINDOWS=0
 PLATFORM="linux"
 ARCH="x64"
@@ -501,15 +513,15 @@ if [[ -n "${SINGLE_DURATION_SECONDS}" && ( ! "${SINGLE_DURATION_SECONDS}" =~ ^[0
   echo "duration must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${SINGLE_HWM}" && ( ! "${SINGLE_HWM}" =~ ^[0-9]+$ || "${SINGLE_HWM}" -lt 1 ) ]]; then
+if [[ -n "${SINGLE_HWM}" ]] && ! is_positive_u64 "${SINGLE_HWM}"; then
   echo "hwm must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${SINGLE_SNDHWM}" && ( ! "${SINGLE_SNDHWM}" =~ ^[0-9]+$ || "${SINGLE_SNDHWM}" -lt 1 ) ]]; then
+if [[ -n "${SINGLE_SNDHWM}" ]] && ! is_positive_u64 "${SINGLE_SNDHWM}"; then
   echo "send-hwm must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${SINGLE_RCVHWM}" && ( ! "${SINGLE_RCVHWM}" =~ ^[0-9]+$ || "${SINGLE_RCVHWM}" -lt 1 ) ]]; then
+if [[ -n "${SINGLE_RCVHWM}" ]] && ! is_positive_u64 "${SINGLE_RCVHWM}"; then
   echo "recv-hwm must be a positive integer." >&2
   exit 1
 fi

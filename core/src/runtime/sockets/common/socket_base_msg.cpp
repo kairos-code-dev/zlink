@@ -60,9 +60,10 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 
 int zlink::socket_base_t::send_scoped (msg_t *msg_,
                                        int flags_,
-                                       socket_public_send_scope_t &send_scope)
+                                       socket_public_send_scope_t &send_scope,
+                                       pipe_t **pipe_out_)
 {
-    return send_direct_with_retry (NULL, msg_, flags_, send_scope);
+    return send_direct_with_retry (NULL, msg_, flags_, send_scope, NULL, 0, false, pipe_out_);
 }
 
 int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
@@ -127,11 +128,14 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
                                                   socket_public_send_scope_t &send_scope,
                                                   uint64_t *connection_id_out_,
                                                   uint64_t expected_connection_id_,
-                                                  bool report_multipart_abort_)
+                                                  bool report_multipart_abort_,
+                                                  pipe_t **pipe_out_)
 {
     zlink_assert (send_scope.acquired ());
     if (connection_id_out_)
         *connection_id_out_ = 0;
+    if (pipe_out_)
+        *pipe_out_ = NULL;
 
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
@@ -162,7 +166,7 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
         rc = target_rid_
                ? xsend_routed (target_rid_, msg_, connection_id_out_,
                                expected_connection_id_)
-               : xsend (msg_);
+               : xsend_pipe (msg_, pipe_out_);
     if (rc == 0) {
         dispatch_runtime ().clear_send_recovery_pending ();
         return 0;
@@ -241,7 +245,7 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
                 rc = target_rid_
                        ? xsend_routed (target_rid_, msg_, connection_id_out_,
                                        expected_connection_id_)
-                       : xsend (msg_);
+                       : xsend_pipe (msg_, pipe_out_);
             if (rc == 0) {
                 dispatch_runtime ().clear_send_recovery_pending ();
                 return 0;
@@ -295,7 +299,7 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
         rc = target_rid_
                ? xsend_routed (target_rid_, msg_, connection_id_out_,
                                expected_connection_id_)
-               : xsend (msg_);
+               : xsend_pipe (msg_, pipe_out_);
         if (rc == 0) {
             dispatch_runtime ().clear_send_recovery_pending ();
             break;

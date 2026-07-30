@@ -1333,15 +1333,15 @@ bool zlink::pipe_t::write_message_unlocked (const msg_t *msg_,
     if ((commits_bytes || enforce_incremental_hwm_) && enforce_hwm_
         && !can_commit_bytes_unlocked (
           _out_incomplete_bytes, _out_incomplete_payload_bytes,
-          commits_bytes
-            && (incomplete_before == 0 || _out_multipart_started_empty))) {
+          incomplete_before == 0 || _out_multipart_started_empty)) {
         const bool exceeds_max_message_size =
           _max_message_bytes != 0
           && _out_incomplete_payload_bytes > _max_message_bytes;
         _out_incomplete_bytes = incomplete_before;
         _out_incomplete_payload_bytes = payload_before;
         _out_multipart_started_empty = multipart_started_empty_before;
-        _out_active = false;
+        if (!exceeds_max_message_size)
+            _out_active = false;
         errno = exceeds_max_message_size ? EMSGSIZE : EAGAIN;
         return false;
     }

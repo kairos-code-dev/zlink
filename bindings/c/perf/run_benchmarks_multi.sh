@@ -54,6 +54,18 @@ is_uint() {
   [[ "${value}" =~ ^[0-9]+$ ]]
 }
 
+is_positive_u64() {
+  local value="${1:-}"
+  local normalized="${value}"
+  is_uint "${value}" || return 1
+  while [[ "${#normalized}" -gt 1 && "${normalized:0:1}" == "0" ]]; do
+    normalized="${normalized:1}"
+  done
+  [[ "${normalized}" != "0" ]] || return 1
+  [[ "${#normalized}" -lt 20 ]] && return 0
+  [[ "${#normalized}" -eq 20 && ! "${normalized}" > "18446744073709551615" ]]
+}
+
 NOFILE_SKIP_REASON=""
 ensure_nofile_limit() {
   local clients="${1:-}"
@@ -922,15 +934,15 @@ if ! is_uint "${MONITOR_HWM}"; then
   echo "Error: --monitor-hwm must be a non-negative integer." >&2
   exit 1
 fi
-if [[ -n "${HWM}" ]] && ( ! is_uint "${HWM}" || (( HWM < 1 )) ); then
+if [[ -n "${HWM}" ]] && ! is_positive_u64 "${HWM}"; then
   echo "Error: --hwm must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${SNDHWM}" ]] && ( ! is_uint "${SNDHWM}" || (( SNDHWM < 1 )) ); then
+if [[ -n "${SNDHWM}" ]] && ! is_positive_u64 "${SNDHWM}"; then
   echo "Error: --send-hwm must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${RCVHWM}" ]] && ( ! is_uint "${RCVHWM}" || (( RCVHWM < 1 )) ); then
+if [[ -n "${RCVHWM}" ]] && ! is_positive_u64 "${RCVHWM}"; then
   echo "Error: --recv-hwm must be a positive integer." >&2
   exit 1
 fi

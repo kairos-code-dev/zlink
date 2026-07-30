@@ -18,7 +18,8 @@ int send_request_frame (zlink::socket_base_t *socket_,
                         const zlink_routing_id_t *peer_rid_,
                         const void *data_,
                         size_t size_,
-                        int flags_);
+                        int flags_,
+                        zlink::pipe_t **application_pipe_out_ = NULL);
 int send_request_payload_part (zlink::socket_base_t *socket_,
                                zlink::part_helper_internal::handle_state_t *helper_state_,
                                const zlink_routing_id_t *peer_rid_,

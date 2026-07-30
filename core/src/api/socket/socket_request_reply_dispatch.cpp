@@ -62,10 +62,10 @@ void complete_reply_from_transport (
         callback_part_count = 0;
     }
     zlink::request_completion::claim_owner_thread (&state_->completion);
-    zlink::request_completion::release_reservation (&state_->completion);
     zlink::request_completion::invoke_callback (
       state_->socket, pending.handler, callback_errno, callback_parts,
       callback_part_count, pending.userdata);
+    zlink::request_completion::release_reservation (&state_->completion);
     state_->socket->notify_request_completion ();
     zlink::request_reply::close_request_reply_parts (parts_, part_count_);
 }
@@ -150,6 +150,8 @@ bool has_pending_request_work (const std::shared_ptr<socket_request_reply_state_
 
 void fail_disconnected_peer_requests (
   const std::shared_ptr<socket_request_reply_state_t> &state_,
+  uint64_t transport_pair_id_,
+  uint64_t transport_pair_generation_,
   const unsigned char *routing_id_,
   size_t routing_id_size_,
   int errnum_)
@@ -171,7 +173,10 @@ void fail_disconnected_peer_requests (
              it != state_->pending_requests.end ();) {
             const bool matches =
               state_->socket_type == ZLINK_CORE_SOCKET_DEALER
-              || it->first.peer_rid == peer_key;
+                ? it->second.transport_pair_id == transport_pair_id_
+                    && it->second.transport_pair_generation
+                         == transport_pair_generation_
+                : it->first.peer_rid == peer_key;
             if (!matches) {
                 ++it;
                 continue;

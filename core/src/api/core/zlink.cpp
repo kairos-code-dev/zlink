@@ -33,7 +33,6 @@ struct iovec
 #include "api/monitoring/monitor_api_internal.hpp"
 #include "api/socket/part_helper_internal.hpp"
 #include "api/monitoring/poller_api_internal.hpp"
-#include "api/socket/socket_request_reply_router_state_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/core/close_result_internal.hpp"
@@ -115,7 +114,7 @@ zlink_close_result_t zlink_close (void *s_)
         errno = EBUSY;
         return ZLINK_CLOSE_BUSY;
     }
-    if (zlink::reqrep_internal::in_request_completion_callback (s_)) {
+    if (zlink::socket_reqrep_internal::in_socket_request_completion_callback (s_)) {
         errno = EBUSY;
         return ZLINK_CLOSE_BUSY;
     }
@@ -174,11 +173,7 @@ zlink_close_result_t zlink_close (void *s_)
         if (zlink::socket_reqrep_internal::drain_close_request_reply_socket (handle) != 0) {
             return zlink::close_result_internal::from_rc (-1);
         }
-        if (zlink::reqrep_internal::drain_close_router_request_reply_state (s_) != 0) {
-            return zlink::close_result_internal::from_rc (-1);
-        }
         zlink_socket_request_reply_cleanup (s_);
-        zlink::reqrep_internal::cleanup_router_request_reply_state (s_);
         const int rc = handle.socket->close ();
         return zlink::close_result_internal::from_rc (rc);
     }
@@ -195,11 +190,7 @@ zlink_close_result_t zlink_close (void *s_)
     if (zlink::socket_reqrep_internal::drain_close_request_reply_socket (handle) != 0) {
         return zlink::close_result_internal::from_rc (-1);
     }
-    if (zlink::reqrep_internal::drain_close_router_request_reply_state (s_) != 0) {
-        return zlink::close_result_internal::from_rc (-1);
-    }
     zlink_socket_request_reply_cleanup (s_);
-    zlink::reqrep_internal::cleanup_router_request_reply_state (s_);
     const int rc = handle.socket->close ();
     return zlink::close_result_internal::from_rc (rc);
 }

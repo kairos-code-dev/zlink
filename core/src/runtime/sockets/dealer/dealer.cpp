@@ -48,7 +48,8 @@ int zlink::dealer_t::sendpipe_to (pipe_t *pipe_, msg_t *msg_, int flags_)
     const bool more = (msg_->flags () & msg_t::more) != 0;
     const bool ok = more ? pipe_->write (msg_) : pipe_->write_and_flush (msg_);
     if (!ok) {
-        errno = EAGAIN;
+        if (errno != EMSGSIZE)
+            errno = EAGAIN;
         return -1;
     }
 
@@ -130,6 +131,11 @@ int zlink::dealer_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_
 int zlink::dealer_t::xsend (msg_t *msg_)
 {
     return sendpipe (msg_, NULL);
+}
+
+int zlink::dealer_t::xsend_pipe (msg_t *msg_, pipe_t **pipe_out_)
+{
+    return sendpipe (msg_, pipe_out_);
 }
 
 int zlink::dealer_t::xrecv (msg_t *msg_)

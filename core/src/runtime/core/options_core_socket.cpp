@@ -34,10 +34,8 @@ int zlink::options_setsockopt_core_socket (
             if (optvallen_ == sizeof (uint64_t)) {
                 uint64_t value = 0;
                 memcpy (&value, optval_, sizeof (value));
-                if (value <= auto_hwm_max_message_unit_bytes) {
-                    self_->auto_hwm_msg_unit_bytes = value;
-                    return 0;
-                }
+                self_->auto_hwm_msg_unit_bytes = value;
+                return 0;
             }
             break;
 

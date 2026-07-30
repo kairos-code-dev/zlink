@@ -15,6 +15,10 @@ int lookup_socket_pending_request_by_seq (
   pending_key_t *key_out_);
 void erase_socket_pending_request (const std::shared_ptr<socket_request_reply_state_t> &state_,
                                    const pending_key_t &key_);
+void record_socket_pending_transport_pair (
+  const std::shared_ptr<socket_request_reply_state_t> &state_,
+  const pending_key_t &key_,
+  zlink::pipe_t *application_pipe_);
 int ensure_socket_pending_request (socket_handle_t handle_,
                                    const zlink_routing_id_t *peer_rid_,
                                    uint32_t timeout_ms_,

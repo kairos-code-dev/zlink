@@ -8,11 +8,18 @@
 namespace zlink
 {
 class socket_base_t;
+class pipe_t;
 
 int logical_multipart_send (socket_base_t *socket_,
                             zlink_msg_t *parts_,
                             size_t part_count_,
                             int flags_);
+
+int logical_multipart_send_tracked (socket_base_t *socket_,
+                                    zlink_msg_t *parts_,
+                                    size_t part_count_,
+                                    int flags_,
+                                    zlink::pipe_t **application_pipe_out_);
 
 int logical_multipart_send_routed (socket_base_t *socket_,
                                    const zlink_routing_id_t *routing_id_,

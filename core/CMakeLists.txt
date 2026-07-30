@@ -816,7 +816,6 @@ set(api-socket-sources
     src/api/socket/socket_request_reply_internal.cpp
     src/api/socket/socket_request_reply_router_control.cpp
     src/api/socket/socket_request_reply_router_api.cpp
-    src/api/socket/socket_request_reply_router_state.cpp
     src/runtime/core/control_runtime.cpp
     src/api/socket/socket_request_reply_api.cpp
     src/api/socket/socket_request_reply_pending_api.cpp

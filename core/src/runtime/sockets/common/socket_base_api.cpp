@@ -4,7 +4,6 @@
 
 #include "core/ctx.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
-#include "api/socket/socket_request_reply_router_state_internal.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "core/mailbox.hpp"
 #include "core/msg.hpp"
@@ -414,15 +413,6 @@ int zlink::socket_base_t::drain_request_completion_controls ()
         drained += rc;
     }
 
-    std::shared_ptr<reqrep_internal::router_request_reply_state_t> router_state =
-      router_request_reply_state ();
-    if (router_state) {
-        const int rc =
-          reqrep_internal::drain_router_reply_completions (router_state, this);
-        if (rc < 0)
-            return -1;
-        drained += rc;
-    }
     return drained;
 }
 
@@ -438,10 +428,7 @@ void zlink::socket_base_t::resume_completion_processing_if_needed ()
 
     std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t> socket_state =
       request_reply_state ();
-    std::shared_ptr<reqrep_internal::router_request_reply_state_t> router_state =
-      router_request_reply_state ();
-    if ((socket_state && socket_reqrep_internal::has_pending_request_work (socket_state))
-        || (router_state && reqrep_internal::has_pending_router_request_work (router_state))) {
+    if (socket_state && socket_reqrep_internal::has_pending_request_work (socket_state)) {
         (void) ensure_completion_processing ();
     }
 }
@@ -638,6 +625,8 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
 
     pipe_t *paired_pipe = NULL;
     const uint64_t pair_id = pipe_ ? pipe_->get_transport_pair_id () : 0;
+    const uint64_t pair_generation =
+      pipe_ ? pipe_->get_transport_pair_generation () : 0;
     const bool completion =
       pipe_ && pair_id != 0 && pipe_->get_transport_lane () == transport_lane_completion;
     bool application_attached = pair_id == 0;
@@ -700,11 +689,12 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
     if (get_ctx ())
         get_ctx ()->schedule_auto_hwm_recalculate ();
 
-    if (paired_pipe && !is_terminating ()) {
+    if (pair_id != 0 && !is_terminating ()) {
         socket_reqrep_internal::fail_disconnected_peer_requests (
-          request_reply_state (), routing_id_data, routing_id_size, ECONNRESET);
-        reqrep_internal::fail_disconnected_router_requests (
-          router_request_reply_state (), ECONNRESET);
+          request_reply_state (), pair_id, pair_generation,
+          routing_id_data, routing_id_size, ENOTCONN);
+    }
+    if (paired_pipe && !is_terminating ()) {
         paired_pipe->terminate (false);
     }
 }

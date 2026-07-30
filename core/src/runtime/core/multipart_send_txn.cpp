@@ -21,10 +21,11 @@ struct multipart_send_facade_t
     static int send_scoped (socket_base_t *socket_,
                             msg_t *msg_,
                             int flags_,
-                            socket_public_send_scope_t &scope_)
+                            socket_public_send_scope_t &scope_,
+                            pipe_t **pipe_out_ = NULL)
     {
         return socket_->send_direct_with_retry (
-          NULL, msg_, flags_, scope_, NULL, 0, true);
+          NULL, msg_, flags_, scope_, NULL, 0, true, pipe_out_);
     }
 
     static int rollback_scoped (socket_base_t *socket_, socket_public_send_scope_t &scope_)
@@ -62,15 +63,20 @@ static int send_frames_once (zlink::socket_base_t *socket_,
                              size_t part_count_,
                              int flags_,
                              bool rollback_started_,
-                             zlink::socket_public_send_scope_t &scope_)
+                             zlink::socket_public_send_scope_t &scope_,
+                             zlink::pipe_t **application_pipe_out_ = NULL)
 {
     bool started = rollback_started_;
+    if (application_pipe_out_)
+        *application_pipe_out_ = NULL;
 
     for (size_t i = 0; i < part_count_; ++i) {
         const bool more = i + 1 < part_count_;
+        zlink::pipe_t *selected_pipe = NULL;
         if (zlink::multipart_send_facade_t::send_scoped (
               socket_, reinterpret_cast<zlink::msg_t *> (&parts_[i]),
-              (more ? ZLINK_SNDMORE : 0) | flags_, scope_)
+              (more ? ZLINK_SNDMORE : 0) | flags_, scope_,
+              application_pipe_out_ && i == 0 ? &selected_pipe : NULL)
             != 0) {
             const int err = errno;
             if (started)
@@ -79,6 +85,8 @@ static int send_frames_once (zlink::socket_base_t *socket_,
             errno = err;
             return -1;
         }
+        if (application_pipe_out_ && i == 0)
+            *application_pipe_out_ = selected_pipe;
         started = more;
     }
 
@@ -267,6 +275,31 @@ int zlink::logical_multipart_send (socket_base_t *socket_,
         return -1;
 
     const int rc = send_frames_once (socket_, parts_, part_count_, flags_, false, send_scope);
+    if (rc != 0)
+        return -1;
+
+    errno = 0;
+    return 0;
+}
+
+int zlink::logical_multipart_send_tracked (socket_base_t *socket_,
+                                           zlink_msg_t *parts_,
+                                           size_t part_count_,
+                                           int flags_,
+                                           zlink::pipe_t **application_pipe_out_)
+{
+    if (!socket_ || !parts_ || part_count_ == 0 || !application_pipe_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink::socket_public_send_scope_t send_scope =
+      zlink::multipart_send_facade_t::make_scope (socket_, true);
+    if (!send_scope.acquired ())
+        return -1;
+
+    const int rc = send_frames_once (
+      socket_, parts_, part_count_, flags_, false, send_scope, application_pipe_out_);
     if (rc != 0)
         return -1;
 

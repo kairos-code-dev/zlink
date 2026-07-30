@@ -203,11 +203,13 @@ zlink_submit_result_t request_part_common (void *handle_,
             return zlink::submit_result_internal::from_errno (saved_errno);
         }
 
+        zlink::pipe_t *application_pipe = NULL;
         const int send_rc =
           peer_rid_
             ? zlink::logical_multipart_send_routed (handle.socket, peer_rid_, combined,
                                                     total_part_count, flags_)
-            : zlink::logical_multipart_send (handle.socket, combined, total_part_count, flags_);
+            : zlink::logical_multipart_send_tracked (
+                handle.socket, combined, total_part_count, flags_, &application_pipe);
         const int saved_errno = errno;
         zlink::request_reply::close_built_parts (combined, total_part_count);
         if (send_rc != 0) {
@@ -215,6 +217,8 @@ zlink_submit_result_t request_part_common (void *handle_,
             errno = saved_errno;
             return zlink::submit_result_internal::from_errno (saved_errno);
         }
+        reqrep::record_socket_pending_transport_pair (
+          request_state, pending_key, application_pipe);
         return ZLINK_SUBMIT_OK;
     }
 
@@ -246,13 +250,18 @@ zlink_submit_result_t request_part_common (void *handle_,
         const unsigned char type = family_ == zlink::part_helper_internal::send_family_router_reply
                                      ? zlink::request_reply::reply_type
                                      : zlink::request_reply::request_type;
+        zlink::pipe_t *application_pipe = NULL;
         if (zlink::request_reply::send_envelope_control_frames (
               type, spec.request_seq,
               [&] (size_t index_, const void *data_, size_t size_) {
                   return reqrep::send_request_frame (
                     handle.socket, state.get (),
                     index_ == zlink::request_reply::envelope_protocol_index ? peer_rid_ : NULL,
-                    data_, size_, ZLINK_SNDMORE | (flags_ & ZLINK_DONTWAIT));
+                    data_, size_, ZLINK_SNDMORE | (flags_ & ZLINK_DONTWAIT),
+                    !peer_rid_
+                        && index_ == zlink::request_reply::envelope_protocol_index
+                      ? &application_pipe
+                      : NULL);
               })
             != 0) {
             const int saved_errno = errno;
@@ -262,6 +271,8 @@ zlink_submit_result_t request_part_common (void *handle_,
             errno = saved_errno;
             return zlink::submit_result_internal::from_errno (saved_errno);
         }
+        reqrep::record_socket_pending_transport_pair (
+          request_state, pending_key, application_pipe);
     }
 
     for (size_t i = 0; i < state->send.buffered_parts.size (); ++i) {

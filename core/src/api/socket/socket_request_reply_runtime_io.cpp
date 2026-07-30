@@ -9,7 +9,6 @@
 #include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_runtime_io_helpers.hpp"
-#include "api/socket/socket_request_reply_router_state_internal.hpp"
 #include "core/c_api_copy_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
@@ -503,6 +502,8 @@ int send_completion_frames (zlink::socket_base_t *socket_,
         ? socket_->completion_pipe_for_application (application_pipe_)
         : socket_->completion_pipe_for_peer (peer_rid_);
     if (!completion) {
+        zlink::request_reply::consume_send_frames_from (
+          parts_, 0, part_count_);
         errno = EAGAIN;
         return -1;
     }
@@ -520,6 +521,8 @@ int send_completion_frames (zlink::socket_base_t *socket_,
         if (!written) {
             const int saved_errno = errno ? errno : EAGAIN;
             completion->rollback ();
+            zlink::request_reply::consume_send_frames_from (
+              parts_, i, part_count_);
             errno = saved_errno;
             return -1;
         }

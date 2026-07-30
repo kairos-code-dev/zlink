@@ -559,7 +559,7 @@ inline bool bench_manual_socket_overrides_allowed ()
     return value && std::strcmp (value, "1") == 0;
 }
 
-inline int bench_hwm_from_env (const char *name_, int default_hwm_)
+inline uint64_t bench_hwm_from_env (const char *name_, uint64_t default_hwm_)
 {
     if (!name_ || !*name_)
         return default_hwm_;
@@ -567,15 +567,15 @@ inline int bench_hwm_from_env (const char *name_, int default_hwm_)
     const char *value = resolve_multi_named_env_value (name_);
     if (!value || !*value)
         return default_hwm_;
+    if (std::strspn (value, "0123456789") != std::strlen (value))
+        return default_hwm_;
 
     errno = 0;
     char *end = NULL;
-    const long parsed = std::strtol (value, &end, 10);
-    if (errno != 0 || end == value || parsed <= 0)
+    const unsigned long long parsed = std::strtoull (value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0' || parsed == 0)
         return default_hwm_;
-    if (parsed > INT_MAX)
-        return INT_MAX;
-    return static_cast<int> (parsed);
+    return static_cast<uint64_t> (parsed);
 }
 
 inline void apply_benchmark_hwm (void *socket_, int hwm_value)
@@ -591,16 +591,16 @@ inline void apply_benchmark_hwm (void *socket_, int hwm_value)
         return;
 
     if (explicit_sndhwm || hwm_value > 0) {
-        const int sndhwm = bench_hwm_from_env ("PERF_SNDHWM", hwm_value);
+        const uint64_t sndhwm =
+          bench_hwm_from_env ("PERF_SNDHWM", static_cast<uint64_t> (hwm_value));
         if (sndhwm > 0)
-            set_sockopt_u64 (
-              socket_, ZLINK_OPT_SNDHWM, static_cast<uint64_t> (sndhwm), "ZLINK_OPT_SNDHWM");
+            set_sockopt_u64 (socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
     }
     if (explicit_rcvhwm || hwm_value > 0) {
-        const int rcvhwm = bench_hwm_from_env ("PERF_RCVHWM", hwm_value);
+        const uint64_t rcvhwm =
+          bench_hwm_from_env ("PERF_RCVHWM", static_cast<uint64_t> (hwm_value));
         if (rcvhwm > 0)
-            set_sockopt_u64 (
-              socket_, ZLINK_OPT_RCVHWM, static_cast<uint64_t> (rcvhwm), "ZLINK_OPT_RCVHWM");
+            set_sockopt_u64 (socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
     }
 }
 

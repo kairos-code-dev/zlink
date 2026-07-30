@@ -1410,10 +1410,10 @@ transport 모두에서 throughput이 높고 tail latency가 낮다. tcp는 261,0
 | C-07 | Core | Core memory·성능·wire regression 검증 | Core 80/80, targeted 20회와 Valgrind error 0건. req/rep 결함 3건(`563e11d614`, `58aa55df8b`)과 inproc pair readiness(`0830b29317`) 수정 뒤 재통과. 같은 fixture로 측정한 count HWM 대비 여섯 transport throughput·tail latency 비교와 memory amplification 1.38(64 B)·1.00(64 KiB) 기록 | 완료 |
 | C-08 | Core | Core 정식 spec·monitoring·오류 문서 갱신 | Socket·context·polling·monitoring 정식 spec과 internals 동기화, public surface contract 통과 | 완료 |
 | CR-01 | Core review | Candidate SHA, 비교 기준과 공통 review 입력 고정 | Candidate `d7d682bb1f`, 비교 기준 `8bc2aa6786`, [core review log](log/inbound-dispatch-lane-core-review.ko.md) round 1 입력 manifest | 완료 |
-| CR-02 | Core review | Codex 5.6 High 독립 전체 review | Model·prompt 정보와 finding report | 진행 중 |
-| CR-03 | Core review | Claude Fable 독립 전체 review | Model·prompt 정보와 finding report | 진행 중 |
-| CR-04 | Core review | Finding 통합, severity와 대안 검토 | Round별 finding ledger | 승인 대기 |
-| CR-05 | Core review | `Medium` 이상 finding 수정과 회귀 검증 | Fix commit과 test·benchmark 결과 | 승인 대기 |
+| CR-02 | Core review | Codex 5.6 High 독립 전체 review | `gpt-5.6-sol` high, [core review log](log/inbound-dispatch-lane-core-review.ko.md) round 1. `NOT CLEAN`(`Critical` 2, `High` 1, `Medium` 2) | 완료 |
+| CR-03 | Core review | Claude Fable 독립 전체 review | Round 1 실행 중. 보고서 도착 후 core review log에 기록 | 진행 중 |
+| CR-04 | Core review | Finding 통합, severity와 대안 검토 | Codex round 1 finding 5건 기록 완료. Fable 보고서 도착 후 통합 | 진행 중 |
+| CR-05 | Core review | `Medium` 이상 finding 수정과 회귀 검증 | Round 1 `Medium` 이상 5건 미수정 | 승인 대기 |
 | CR-06 | Core review | 변경 candidate의 두 reviewer 전체 재검토 | 같은 SHA의 두 최신 report | 승인 대기 |
 | CR-07 | Core review | 두 reviewer의 `Medium` 이상 0건 확인 | `CLEAN` 판정과 남은 `Low` disposition | 승인 대기 |
 | CP-01 | Core perf smoke | `core/build` 공식 runtime 재build와 provenance 확인 | Candidate·runtime SHA-256과 출력 경로 | 승인 대기 |
@@ -1441,6 +1441,55 @@ transport 모두에서 throughput이 높고 tail latency가 낮다. tcp는 261,0
 | F-07 | Framework | 다섯 언어 public contract와 E2E parity 확인 | 언어별 contract test와 공통 E2E 결과 | 범위 밖 |
 | F-08 | Framework | Memory·성능·다중 MeshNode 통합 검증 | 검증 17~19과 benchmark log | 범위 밖 |
 | F-09 | Framework | 정식 spec, guide와 운영 문서 갱신 | 문서 검증 결과와 최종 review | 범위 밖 |
+
+### 9.1 지금까지 한 일과 다음 작업
+
+2026-07-30 12:20 기준 상태다. 다른 담당자가 이어받을 때 필요한 것만 적는다.
+
+**끝난 것.** 1단계 C-01~C-08 전부. Stage 1 도중 찾아 고친 결함은 네 건이다.
+
+| commit | 내용 |
+| --- | --- |
+| `563e11d614` | reply submit이 socket command를 배수하지 않아 completion credit이 회복되지 않던 문제, lb·DEALER·dist의 multipart rollback 누락 |
+| `58aa55df8b` | multipart byte admission을 per-call HWM writer로 한정(PUB blocking publish가 drop되던 회귀) |
+| `0830b29317` | inproc paired transport의 `ZLINK_EVENT_CONNECTION_READY` 미발행, pair readiness key의 routing id 의존 |
+| `af2ef1e558` | perf fixture reply retry를 측정 경로 밖으로 이동 |
+
+C-07 증거는 `d7d682bb1f`다. Byte HWM이 여섯 transport 모두에서 count HWM보다 빠르고 tail
+latency가 낮으며, memory amplification은 accounted byte 기준 64 B에서 1.38, 64 KiB에서 1.00이다.
+측정 방법·수치·결함별 근거는
+[reqrep multipart rollback review](log/inbound-dispatch-lane-reqrep-multipart-rollback-review.ko.md)
+§9에 있다.
+
+**진행 중인 것.** 2단계 Core clean review round 1이다. Candidate는 `d7d682bb1f`, 비교 기준은
+`8bc2aa6786`, 검토용 worktree는 `/tmp/zlink-core-candidate-d7d682bb1f`다. Codex 5.6 High는
+`NOT CLEAN`으로 끝났고 finding 5건이
+[core review log](log/inbound-dispatch-lane-core-review.ko.md)에 있다. Claude Fable review는
+실행 중이고 보고서가 도착하면 같은 문서에 기록한다.
+
+**다음에 할 일.**
+
+1. Claude Fable 보고서를 받아 core review log의 CR-03 행과 finding 표를 채운다. 두 reviewer의
+   severity가 다르면 합의 전까지 높은 쪽을 적용한다.
+2. Round 1 `Medium` 이상 finding을 고친다. 현재 목록은 C binding monitoring header의 ABI
+   불일치(`Critical`), 무계 completion control deque(`Critical`), 빈 pipe oversize 예외의
+   `MaxMessageSize` 미확인(`High`), count 의미가 남은 공개 guide(`Medium`), pair
+   identity·generation wire fixture 부재(`Medium`)다.
+3. 수정마다 Core test와 필요한 benchmark를 실행하고 새 candidate SHA를 만든다.
+4. 새 candidate로 두 reviewer의 **전체** review를 다시 받는다. 수정 diff만 보는 재검토는
+   인정하지 않는다. 공통 brief는
+   [core review prompt](log/inbound-dispatch-lane-core-review-prompt.md)이고 candidate SHA만
+   바꿔서 쓴다. Reviewer가 보고서 file을 쓸 수 있는 경로를 주어야 한다. round 1의 Codex는
+   read-only sandbox 때문에 stdout으로만 보고했다.
+5. 두 reviewer가 같은 candidate에서 `Medium` 이상 0건일 때 `CLEAN`으로 판정하고 3단계 perf
+   smoke(CP-01~CP-03)로 넘어간다. 그 전에는 bindings 작업을 시작하지 않는다.
+
+**작업 규칙.** 작업 tree(`/home/hep7/project/kairos/zlink`)에는 다른 담당자의 미완료 변경이
+있다. `git reset`, `git checkout`, `git clean`을 쓰지 않고, 이 작업과 관련된 file만 stage해서
+commit한다. Perf 공식 runtime은 `core/build/lib/libzlink.so`이고 `build_cpp_release` 같은 임시
+build 결과를 쓰지 않는다. count HWM 비교 기준 worktree는
+`/tmp/zlink-hwm-baseline-8bc2aa6786`이며, perf fixture reply 경로를 candidate와 같게 맞춰 둔
+상태다.
 
 ## 10. 언제 적용할 수 있는가
 

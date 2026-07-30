@@ -468,10 +468,13 @@ Framework receive-resume threshold.
 | `ZLINK_OPT_SUBMIT_RETRY_TIMEOUT` | Local-submit retry budget in milliseconds (`int`; raw socket default is 0, which disables retry) |
 | `ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS` | Additional retry attempts after the first submit (`int`; raw socket default is 0, current maximum is 16) |
 
-Submit retry only retries local submit failures classified as `ENOTCONN` or
-`EHOSTUNREACH`. It does not run for `ZLINK_DONTWAIT` calls, backpressure
-(`EAGAIN`), admission rejection, argument errors, or reply timeout after a
-request submit has already succeeded.
+Submit retry only retries local submit failures classified as `ENOTCONN`,
+`EHOSTUNREACH`, or `ECONNREFUSED`. A blocking submit to a locally initiated
+paired endpoint treats these connectivity errors as retryable until the pair
+validates. If the wait budget expires, the public result is
+`ZLINK_SUBMIT_BACKPRESSURED` with `errno == EAGAIN`. Retry does not run for
+`ZLINK_DONTWAIT` calls, backpressure (`EAGAIN`), admission rejection, argument
+errors, or reply timeout after a request submit has already succeeded.
 
 ##### TCP
 

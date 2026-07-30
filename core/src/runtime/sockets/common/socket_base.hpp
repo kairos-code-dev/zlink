@@ -88,7 +88,8 @@ struct transport_pair_pipes_t
         application_attached (false),
         application_validated (false),
         completion_validated (false),
-        ready (false)
+        ready (false),
+        draining (false)
     {
     }
 
@@ -99,6 +100,9 @@ struct transport_pair_pipes_t
     bool application_validated;
     bool completion_validated;
     bool ready;
+    //  Set while a thread consumes this pair's Completion pipe. The pipe has a
+    //  single-consumer queue, so two owners must not read it at once.
+    bool draining;
 };
 
 class socket_recv_source_rid_scope_t
@@ -110,6 +114,21 @@ class socket_recv_source_rid_scope_t
   private:
     socket_base_t *_prev_socket;
     bool _prev_enabled;
+};
+
+//  Marks the calling thread as the owner of one socket's completion
+//  processing for the lifetime of the scope.
+class completion_drain_scope_t
+{
+  public:
+    explicit completion_drain_scope_t (const socket_base_t *socket_);
+    ~completion_drain_scope_t ();
+
+  private:
+    completion_drain_scope_t (const completion_drain_scope_t &);
+    completion_drain_scope_t &operator= (const completion_drain_scope_t &);
+
+    const socket_base_t *_previous;
 };
 
 class socket_base_t : public own_t,
@@ -199,6 +218,20 @@ class socket_base_t : public own_t,
     void release_completion_processing ();
     void acquire_completion_poller ();
     void release_completion_poller ();
+
+    //  True when the calling thread has taken ownership of this socket's
+    //  completion processing, which is the only place a registered reply
+    //  handler may run. Ownership is taken by a wait that asked for
+    //  ZLINK_POLLCOMPLETION and by the async mailbox worker that stands in for
+    //  a poller. Any other command drain records readiness instead of running
+    //  user code, so a handler never runs re-entrantly inside an unrelated
+    //  send, recv or option call.
+    bool completion_drain_permitted () const;
+
+    //  Delivers replies from every ready Completion pipe. Called from the
+    //  owned drain points, because a pipe that was made readable while no
+    //  owner was draining does not report readiness again.
+    void process_ready_completion_pipes ();
     void resume_completion_processing_if_needed ();
     void notify_request_completion ();
     int drain_request_completion_controls ();
@@ -537,6 +570,14 @@ class socket_base_t : public own_t,
 
     //  Creates new endpoint ID and adds the endpoint to the map.
     void add_endpoint (const endpoint_uri_pair_t &endpoint_pair_, own_t *endpoint_, pipe_t *pipe_);
+    //  Paired transports register both lanes under the same endpoint key and
+    //  keep the shared pair state so that terminating the endpoint stops the
+    //  whole pair instead of leaving one lane to reconnect on its own.
+    void add_transport_pair_endpoint (
+      const endpoint_uri_pair_t &endpoint_pair_,
+      own_t *endpoint_,
+      pipe_t *pipe_,
+      const std::shared_ptr<transport_pair_state_t> &pair_state_);
 
     //  To be called after processing commands or invoking any command
     //  handlers explicitly. If required, it will deallocate the socket.
@@ -634,6 +675,11 @@ class socket_base_t : public own_t,
     uint32_t _local_peer_weight;
     typedef std::pair<uint64_t, uint64_t> transport_pair_key_t;
     typedef std::map<transport_pair_key_t, transport_pair_pipes_t> transport_pairs_t;
+    //  Owner of the transport pair table. Pair admission, readiness, teardown
+    //  and Completion pipe consumption all run under this mutex; the pipes
+    //  themselves are drained outside it so a reply handler never runs with the
+    //  table locked.
+    mutable mutex_t _transport_pairs_sync;
     transport_pairs_t _transport_pairs;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)

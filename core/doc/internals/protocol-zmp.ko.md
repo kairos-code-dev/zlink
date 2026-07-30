@@ -79,8 +79,9 @@ sequenceDiagram
 routing ID 길이(1바이트), routing ID(0~255바이트) 순서로 구성한다.
 
 **READY frame**: READY control byte는 항상 전송한다. `Socket-Type`과
-`Routing-Id` metadata property는 `ZLINK_OPT_ZMP_METADATA`를 활성화했을 때만
-추가한다. 이 option의 기본값은 비활성화다.
+`Routing-Id` metadata property는 `ZLINK_OPT_ZMP_METADATA`를 활성화했을 때
+추가한다. 이 option의 기본값은 비활성화다. 다만 paired DEALER와 ROUTER transport는
+이 option과 관계없이 이 metadata와 §3.1의 pair property를 항상 추가한다.
 
 ### 3.1 Request-reply transport pair
 

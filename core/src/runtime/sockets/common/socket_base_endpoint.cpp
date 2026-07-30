@@ -342,10 +342,16 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
         paddr->to_string (last_endpoint);
         if (lane_index == 0)
             endpoint_runtime ().set_last_endpoint (last_endpoint);
-        const std::string endpoint_key =
-          lane_index == 0 ? endpoint_uri_ : std::string (endpoint_uri_) + "#completion";
-        add_endpoint (make_unconnected_connect_endpoint_pair (endpoint_key),
-                      static_cast<own_t *> (session), newpipe);
+        //  Both lanes of a pair share one endpoint key. The endpoint map is a
+        //  multimap, so every endpoint-scoped operation - disconnect above all
+        //  - reaches the whole pair without knowing that lanes exist.
+        if (paired_transport)
+            add_transport_pair_endpoint (
+              make_unconnected_connect_endpoint_pair (endpoint_uri_),
+              static_cast<own_t *> (session), newpipe, pair_state);
+        else
+            add_endpoint (make_unconnected_connect_endpoint_pair (endpoint_uri_),
+                          static_cast<own_t *> (session), newpipe);
     }
     return 0;
 }
@@ -401,6 +407,24 @@ std::string zlink::socket_base_t::resolve_tcp_addr (std::string endpoint_uri_pai
         LIBZLINK_DELETE (tcp_addr);
     }
     return endpoint_uri_pair_;
+}
+
+void zlink::socket_base_t::add_transport_pair_endpoint (
+  const endpoint_uri_pair_t &endpoint_pair_,
+  own_t *endpoint_,
+  pipe_t *pipe_,
+  const std::shared_ptr<transport_pair_state_t> &pair_state_)
+{
+    launch_child (endpoint_);
+    endpoint_runtime ().endpoints.ZLINK_MAP_INSERT_OR_EMPLACE (
+      endpoint_pair_.identifier (),
+      endpoint_pipe_t (endpoint_, pipe_, endpoint_pair_.local_type, pair_state_));
+
+    if (pipe_ != NULL) {
+        endpoint_uri_pair_t pipe_endpoint_pair = endpoint_pair_;
+        pipe_endpoint_pair.connection_id = 0;
+        pipe_->set_endpoint_pair (ZLINK_MOVE (pipe_endpoint_pair));
+    }
 }
 
 void zlink::socket_base_t::add_endpoint (const endpoint_uri_pair_t &endpoint_pair_,
@@ -478,6 +502,11 @@ int zlink::socket_base_t::term_endpoint_internal (const char *endpoint_uri_)
     }
 
     for (endpoints_t::iterator it = range.first; it != range.second; ++it) {
+        //  A disconnect ends the whole pair. Without this the surviving lane's
+        //  session would treat the peer pipe termination as a transport failure
+        //  and redial an endpoint the caller has just removed.
+        if (it->second.transport_pair_state)
+            it->second.transport_pair_state->disable_reconnect ();
         if (it->second.pipe != NULL)
             it->second.pipe->terminate (false);
         term_child (it->second.endpoint);

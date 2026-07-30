@@ -61,10 +61,24 @@ struct socket_endpoint_pipe_t
         endpoint (endpoint_), pipe (pipe_), local_type (local_type_)
     {
     }
+    socket_endpoint_pipe_t (own_t *endpoint_,
+                            pipe_t *pipe_,
+                            endpoint_type_t local_type_,
+                            const std::shared_ptr<transport_pair_state_t> &pair_state_) :
+        endpoint (endpoint_),
+        pipe (pipe_),
+        local_type (local_type_),
+        transport_pair_state (pair_state_)
+    {
+    }
 
     own_t *endpoint;
     pipe_t *pipe;
     endpoint_type_t local_type;
+    //  Paired transports keep the shared pair state here so that terminating
+    //  one endpoint can stop the whole pair from reconnecting. Both lanes of
+    //  one connect share this state and the same endpoint key.
+    std::shared_ptr<transport_pair_state_t> transport_pair_state;
 };
 typedef std::multimap<std::string, socket_endpoint_pipe_t> socket_endpoints_t;
 

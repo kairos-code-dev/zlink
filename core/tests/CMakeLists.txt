@@ -111,6 +111,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_zmp_request_reply_router_recv_surface
   ${INTEGRATION_TEST_ROOT}/test_router_concurrent_routed_recv
   ${INTEGRATION_TEST_ROOT}/test_router_mandatory_hwm
+  ${INTEGRATION_TEST_ROOT}/test_zmp_metadata
   ${INTEGRATION_TEST_ROOT}/test_stream_socket
   ${INTEGRATION_TEST_ROOT}/test_stream_threadsafe
   ${INTEGRATION_TEST_ROOT}/test_stream_send_blocking_wakeup

@@ -18,6 +18,11 @@ extern "C" {
 #define ZLINK_NULL 0
 #define ZLINK_PLAIN 1
 
+/* HWM option values are uint64_t byte counts. */
+#define ZLINK_HWM_BYTES_DFLT ((uint64_t) 4096000)
+#define ZLINK_AUTO_HWM_MESSAGE_UNIT_BYTES_DFLT ((uint64_t) 4096)
+#define ZLINK_AUTO_HWM_STREAM_UNIT_BYTES_DFLT ((uint64_t) 1024)
+
 /******************************************************************************/
 /*  Raw socket events and monitoring                                          */
 /******************************************************************************/
@@ -125,10 +130,26 @@ ZLINK_EXPORT zlink_handler_result_t zlink_send_ready_handler (void *s_,
  */
 ZLINK_EXPORT zlink_close_result_t zlink_close (void *s_);
 
+/**
+ * @brief Set a common socket option.
+ *
+ * `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, and
+ * `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` require an exact `uint64_t` value.
+ * HWM values are bytes and `0` means unlimited. The Auto HWM message unit is
+ * a planning input and `0` selects the socket-type default. Four-byte legacy
+ * values fail with `ZLINK_CONFIG_INVALID_ARGUMENT`.
+ */
 ZLINK_EXPORT zlink_config_result_t zlink_set_option (void *handle_,
                                                      zlink_option_t option_,
                                                      const void *optval_,
                                                      size_t optvallen_);
+
+/**
+ * @brief Get a common socket option.
+ *
+ * The three byte-count options documented by zlink_set_option() require an
+ * exact `uint64_t` output buffer and return a size of `sizeof(uint64_t)`.
+ */
 ZLINK_EXPORT zlink_config_result_t zlink_get_option (void *handle_,
                                                      zlink_option_t option_,
                                                      void *optval_,

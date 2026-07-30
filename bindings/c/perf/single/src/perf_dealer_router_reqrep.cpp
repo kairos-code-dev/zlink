@@ -51,8 +51,12 @@ bool setup_session (void *router_, void *dealer_, const std::string &transport_,
                                      ready_timeout_ms);
     zlink_monitor_close (&router_monitor);
     zlink_monitor_close (&dealer_monitor);
-    if (!router_ready || !dealer_ready)
+    if (!router_ready || !dealer_ready) {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-single-reqrep] connection ready timeout router="
+                      << router_ready << " dealer=" << dealer_ready << std::endl;
         return false;
+    }
 
     const int timeout_ms = resolve_single_recv_timeout_ms ();
     set_sockopt_int (router_, ZLINK_OPT_RCVTIMEO, timeout_ms, "ZLINK_OPT_RCVTIMEO");
@@ -124,7 +128,12 @@ void run_dealer_router_reqrep (const std::string &transport,
             std::cerr << "[perf-single-reqrep] shutdown failed requester=" << ok
                       << " stop=" << stop_ok << " poller=" << poller_ok
                       << " replier_fatal="
-                      << reply_state.fatal.load (std::memory_order_acquire) << std::endl;
+                      << reply_state.fatal.load (std::memory_order_acquire)
+                      << " received="
+                      << reply_state.received.load (std::memory_order_acquire)
+                      << " replied="
+                      << reply_state.replied.load (std::memory_order_acquire)
+                      << " completed=" << completed << std::endl;
         print_fail ();
         fflush (NULL);
         std::_Exit (1);

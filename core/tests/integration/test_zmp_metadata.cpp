@@ -4,6 +4,7 @@
 #include "testutil_unity.hpp"
 
 #include "protocol/wire.hpp"
+#include "protocol/zmp_metadata.hpp"
 #include "protocol/zmp_protocol.hpp"
 
 #include <errno.h>
@@ -110,6 +111,43 @@ bool send_zmp_control (fd_t fd_, const unsigned char *body_, size_t body_len_)
     return send_zmp_frame (fd_, zlink::zmp_flag_control, body_, body_len_);
 }
 
+bool send_paired_dealer_handshake (fd_t fd_,
+                                   const char *routing_id_,
+                                   uint64_t pair_id_,
+                                   uint64_t generation_,
+                                   unsigned char lane_)
+{
+    unsigned char hello[3 + 255];
+    const size_t routing_id_size = strlen (routing_id_);
+    if (routing_id_size > 255)
+        return false;
+    hello[0] = zlink::zmp_control_hello;
+    hello[1] = static_cast<unsigned char> (ZLINK_SOCKET_DEALER);
+    hello[2] = static_cast<unsigned char> (routing_id_size);
+    memcpy (hello + 3, routing_id_, routing_id_size);
+    if (!send_zmp_control (fd_, hello, 3 + routing_id_size))
+        return false;
+
+    std::vector<unsigned char> ready;
+    ready.push_back (zlink::zmp_control_ready);
+    zlink::zmp_metadata::append_property (
+      ready, "Socket-Type", "DEALER", strlen ("DEALER"));
+    zlink::zmp_metadata::append_property (
+      ready, "Routing-Id", routing_id_, routing_id_size);
+
+    unsigned char pair_id[8];
+    unsigned char generation[8];
+    zlink::put_uint64 (pair_id, pair_id_);
+    zlink::put_uint64 (generation, generation_);
+    zlink::zmp_metadata::append_property (
+      ready, "Zlink-Pair-Id", pair_id, sizeof (pair_id));
+    zlink::zmp_metadata::append_property (
+      ready, "Zlink-Pair-Generation", generation, sizeof (generation));
+    zlink::zmp_metadata::append_property (
+      ready, "Zlink-Lane", &lane_, sizeof (lane_));
+    return send_zmp_control (fd_, &ready[0], ready.size ());
+}
+
 bool read_zmp_frame (fd_t fd_,
                      unsigned char &flags_,
                      std::vector<unsigned char> &body_,
@@ -189,6 +227,48 @@ void test_zmp_error_invalid_hello ()
     test_context_socket_close (server);
 }
 
+void test_paired_ready_generation_mismatch_is_not_attached ()
+{
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    fd_t application = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
+    fd_t completion = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
+    TEST_ASSERT_NOT_EQUAL (retired_fd, application);
+    TEST_ASSERT_NOT_EQUAL (retired_fd, completion);
+
+    //  Both lanes claim the same pair and peer, but a different generation.
+    //  The server must not combine them into a dispatchable Application pipe.
+    TEST_ASSERT_TRUE (
+      send_paired_dealer_handshake (application, "raw-paired-peer", 41, 7, 0));
+    TEST_ASSERT_TRUE (
+      send_paired_dealer_handshake (completion, "raw-paired-peer", 41, 8, 1));
+
+    const unsigned char payload[] = {'s', 't', 'a', 'l', 'e'};
+    TEST_ASSERT_TRUE (
+      send_zmp_frame (application, 0, payload, sizeof (payload)));
+    msleep (SETTLE_TIME * 10);
+
+    zlink_msg_t msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
+    const zlink_routing_id_t *source_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_NO_DATA,
+      zlink_router_recv_part (
+        server, &source_rid, &request_seq, &msg, &has_more,
+        static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
+
+    close (completion);
+    close (application);
+    test_context_socket_close_zero_linger (server);
+}
+
 int main (void)
 {
     UNITY_BEGIN ();
@@ -196,6 +276,7 @@ int main (void)
     setup_test_environment ();
 
     RUN_TEST (test_zmp_error_invalid_hello);
+    RUN_TEST (test_paired_ready_generation_mismatch_is_not_attached);
 
     return UNITY_END ();
 }

@@ -76,7 +76,10 @@ sequenceDiagram
 
 **HELLO frame**: control_type (1B) + socket_type (1B) + routing_id_len (1B) + routing_id (0-255B)
 
-**READY frame**: the READY control byte is always sent; the `Socket-Type` and `Routing-Id` metadata properties are attached only when `ZLINK_OPT_ZMP_METADATA` is enabled (default off)
+**READY frame**: the READY control byte is always sent. `Socket-Type` and
+`Routing-Id` metadata are attached when `ZLINK_OPT_ZMP_METADATA` is enabled
+(default off). Paired DEALER and ROUTER transports always attach this metadata
+plus the pair properties described in §3.1, regardless of that option.
 
 ### 3.1 Paired request-reply transports
 

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "testutil.hpp"
+#include "testutil_monitoring.hpp"
 #include "testutil_unity.hpp"
 #include "api/socket/socket_api_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
@@ -1322,6 +1323,64 @@ void test_router_reply_completion_backpressure_recovers_over_tcp ()
     test_context_socket_close_zero_linger (router);
 }
 
+namespace disconnect_pair
+{
+size_t drain_connected_events (void *monitor_)
+{
+    size_t connected = 0;
+    for (;;) {
+        zlink_monitor_event_t event;
+        if (recv_monitor_event_from_socket (monitor_, &event, ZLINK_DONTWAIT) != 0)
+            break;
+        if (event.event == ZLINK_EVENT_CONNECTED)
+            ++connected;
+    }
+    return connected;
+}
+}
+
+//  Disconnecting a paired endpoint has to end both lanes. While the Completion
+//  lane was registered under its own endpoint key, disconnect terminated only
+//  the Application lane and the surviving Completion session treated that as a
+//  transport failure and redialled the removed endpoint every reconnect
+//  interval.
+void test_disconnect_of_paired_endpoint_stops_reconnecting ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    const int reconnect_ivl = 50;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (dealer, ZLINK_OPT_RECONNECT_IVL,
+                                                 &reconnect_ivl, sizeof (reconnect_ivl)));
+
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events = ZLINK_EVENT_CONNECTED;
+    void *dealer_monitor = zlink_socket_monitor_open (dealer, &monitor_opts);
+    TEST_ASSERT_NOT_NULL (dealer_monitor);
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (router, endpoint, sizeof (endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
+    msleep (SETTLE_TIME * 20);
+
+    //  Both lanes have connected by now; those events are expected.
+    TEST_ASSERT_TRUE (disconnect_pair::drain_connected_events (dealer_monitor) > 0);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_disconnect (dealer, endpoint));
+
+    //  The router keeps listening, so a lane that survived the disconnect
+    //  reconnects within a few reconnect intervals and reports it.
+    msleep (static_cast<int> (reconnect_ivl) * 12);
+    TEST_ASSERT_EQUAL_UINT64 (0, disconnect_pair::drain_connected_events (dealer_monitor));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&dealer_monitor));
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
+}
+
 void test_router_to_router_request_reply_basic ()
 {
     void *server_router = test_context_socket (ZLINK_SOCKET_ROUTER);
@@ -1980,6 +2039,7 @@ int main ()
     RUN_SELECTED (test_prefixed_multipart_second_prefix_allocation_failure_rolls_back);
     RUN_SELECTED (test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id);
     RUN_SELECTED (test_router_reply_completion_backpressure_recovers_over_tcp);
+    RUN_SELECTED (test_disconnect_of_paired_endpoint_stops_reconnecting);
     RUN_SELECTED (test_router_to_router_request_reply_basic);
     RUN_SELECTED (test_connect_only_router_requester_receives_reply);
     RUN_SELECTED (test_multiple_in_flight_requests_complete_independently);

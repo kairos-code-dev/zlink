@@ -94,12 +94,41 @@ inline bool set_sockopt_int (void *socket_, zlink_option_t option_, int value_, 
     return rc == 0;
 }
 
+inline bool
+set_sockopt_u64 (void *socket_, zlink_option_t option_, uint64_t value_, const char *name_)
+{
+    const int rc = zlink_set_option (socket_, option_, &value_, sizeof (value_));
+    if (rc != 0 && bench_debug_enabled ()) {
+        std::cerr << "setsockopt(" << name_ << ") failed: " << zlink_strerror (zlink_errno ())
+                  << std::endl;
+    }
+    if (bench_debug_enabled ()) {
+        uint64_t out = 0;
+        size_t out_size = sizeof (out);
+        const int grc = zlink_get_option (socket_, option_, &out, &out_size);
+        if (grc == 0)
+            std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
+    }
+    return rc == 0;
+}
+
 inline bool set_ctx_opt_int (void *ctx_, zlink_ctx_option_t option_, int value_, const char *name_)
 {
     const int rc = zlink_ctx_set (ctx_, option_, value_);
     if (rc != 0 && bench_debug_enabled ()) {
         std::cerr << "zlink_ctx_set(" << name_ << ") failed: " << zlink_strerror (zlink_errno ())
                   << std::endl;
+    }
+    return rc == 0;
+}
+
+inline bool
+set_ctx_opt_u64 (void *ctx_, zlink_ctx_option_t option_, uint64_t value_, const char *name_)
+{
+    const int rc = zlink_ctx_set_data (ctx_, option_, &value_, sizeof (value_));
+    if (rc != 0 && bench_debug_enabled ()) {
+        std::cerr << "zlink_ctx_set_data(" << name_
+                  << ") failed: " << zlink_strerror (zlink_errno ()) << std::endl;
     }
     return rc == 0;
 }

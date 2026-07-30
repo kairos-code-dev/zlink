@@ -458,9 +458,12 @@ Framework의 receive 재개 기준과 별개입니다.
 | `ZLINK_OPT_SUBMIT_RETRY_TIMEOUT` | local submit 실패 재시도 예산 (ms, `int`; raw socket 기본값 0, 0이면 재시도 없음) |
 | `ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS` | 최초 submit 이후 추가 재시도 횟수 (`int`; raw socket 기본값 0, 현재 상한 16) |
 
-Submit retry는 `ENOTCONN` 또는 `EHOSTUNREACH`로 분류되는 local submit 실패만
-짧게 다시 시도합니다. `ZLINK_DONTWAIT` 호출, backpressure(`EAGAIN`), admission
-거절, 인자 오류, request submit 성공 뒤의 reply timeout은 retry 대상이 아닙니다.
+Submit retry는 `ENOTCONN`, `EHOSTUNREACH` 또는 `ECONNREFUSED`로 분류되는 local
+submit 실패만 짧게 다시 시도한다. Locally initiated paired endpoint의 blocking
+submit은 pair 검증이 끝날 때까지 이 연결 오류를 재시도 대상으로 처리한다. 대기
+예산이 끝나면 공개 결과는 `ZLINK_SUBMIT_BACKPRESSURED`, `errno`는 `EAGAIN`이다.
+`ZLINK_DONTWAIT` 호출, backpressure(`EAGAIN`), admission 거절, 인자 오류, request
+submit 성공 뒤의 reply timeout은 retry 대상이 아니다.
 
 ##### TCP
 

@@ -59,6 +59,13 @@ bool router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         const std::string connect_routing_id = extract_connect_routing_id ();
         routing_id.set (reinterpret_cast<const unsigned char *> (connect_routing_id.c_str ()),
                         connect_routing_id.length ());
+    } else if (locally_initiated_ && pipe_->get_routing_id ().size () != 0) {
+        //  A reconnect has already consumed the one-shot connect routing ID.
+        //  The new Application pipe retains that ID so the replacement route
+        //  uses the same public identity instead of waiting for an identity
+        //  frame that paired transports do not send.
+        const blob_t &retained_routing_id = pipe_->get_routing_id ();
+        routing_id.set (retained_routing_id.data (), retained_routing_id.size ());
     } else {
         msg.init ();
         const bool ok = pipe_->read (&msg);
@@ -117,7 +124,18 @@ bool router_t::adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_, bool lo
 {
     const out_pipe_t *const existing_outpipe = lookup_out_pipe (routing_id_);
     if (existing_outpipe) {
-        if (!_handover)
+        //  A reconnect from the same locally initiated endpoint replaces its
+        //  previous generation even when general ROUTER handover is disabled.
+        //  Otherwise the old pipe can keep the routing ID until its terminate
+        //  command is processed and the new generation remains anonymous.
+        const std::string &new_endpoint =
+          pipe_->get_endpoint_pair ().identifier ();
+        const std::string &existing_endpoint =
+          existing_outpipe->pipe->get_endpoint_pair ().identifier ();
+        const bool same_local_endpoint_reconnect =
+          locally_initiated_ && existing_outpipe->locally_initiated
+          && !new_endpoint.empty () && new_endpoint == existing_endpoint;
+        if (!_handover && !same_local_endpoint_reconnect)
             return false;
 
         if (!duplicate_pipe_should_replace (*existing_outpipe, routing_id_, locally_initiated_)) {

@@ -374,10 +374,10 @@ Options:
   --transports LIST      Comma-separated transports.
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override client count (default: 100, stream=10000).
-  --hwm N                Debug-only override PERF_MULTI_HWM.
+  --hwm BYTES            Debug-only byte override PERF_MULTI_HWM.
                          Requires PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
-  --send-hwm N           Debug-only override PERF_MULTI_SNDHWM (fallback: --hwm).
-  --recv-hwm N           Debug-only override PERF_MULTI_RCVHWM (fallback: --hwm).
+  --send-hwm BYTES       Debug-only byte override PERF_MULTI_SNDHWM (fallback: --hwm).
+  --recv-hwm BYTES       Debug-only byte override PERF_MULTI_RCVHWM (fallback: --hwm).
   --buf SIZE             Debug-only override for both PERF_MULTI_SNDBUF and PERF_MULTI_RCVBUF.
   --sndbuf SIZE          Debug-only override PERF_MULTI_SNDBUF (e.g. 64b, 1k, 64k).
   --rcvbuf SIZE          Debug-only override PERF_MULTI_RCVBUF (e.g. 64b, 1k, 64k).
@@ -395,7 +395,7 @@ Options:
                          Override PERF_MULTI_SERVER_READY_TIMEOUT_MS (default: 10000).
   --connect-ready-timeout-ms N
                          Override PERF_MULTI_CONNECT_READY_TIMEOUT_MS (default: 1000).
-  --monitor-hwm N        Override PERF_MULTI_MONITOR_HWM (default: 1000).
+  --monitor-hwm BYTES    Override PERF_MULTI_MONITOR_HWM (default: 4096000).
   --server-shutdown-timeout-ms N
                          Override PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS (default: 5000).
   --server-bind-port N
@@ -566,7 +566,7 @@ TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-${PERF_TRANSPORT_
 PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-${PERF_PATTERN_TRANSITION_MS:-3000}}"
 SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-${PERF_SERVER_READY_TIMEOUT_MS:-10000}}"
 CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${PERF_CONNECT_READY_TIMEOUT_MS:-1000}}"
-MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-${PERF_MONITOR_HWM:-1000}}"
+MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-${PERF_MONITOR_HWM:-4096000}}"
 SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-${PERF_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}}"
 SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-${PERF_SERVER_BIND_PORT:-0}}"
 CTX_AUTO_HWM_ENABLE="${PERF_CTX_AUTO_HWM_ENABLE:-1}"

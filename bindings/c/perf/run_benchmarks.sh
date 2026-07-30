@@ -116,10 +116,10 @@ Options:
   --results-tag NAME          Optional tag in saved result filename.
   --runs N                    Iterations per pattern/transport/size (default: 1).
   --duration N                Override single duration seconds (default: 5).
-  --hwm N                     Debug-only PERF_SINGLE_HWM override.
+  --hwm BYTES                 Debug-only PERF_SINGLE_HWM byte override.
                              Requires PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
-  --send-hwm N                Debug-only PERF_SINGLE_SNDHWM override.
-  --recv-hwm N                Debug-only PERF_SINGLE_RCVHWM override.
+  --send-hwm BYTES            Debug-only PERF_SINGLE_SNDHWM byte override.
+  --recv-hwm BYTES            Debug-only PERF_SINGLE_RCVHWM byte override.
   --buf SIZE                  Debug-only override for both PERF_SINGLE_SNDBUF and PERF_SINGLE_RCVBUF.
   --sndbuf SIZE               Debug-only PERF_SINGLE_SNDBUF override (e.g. 64b, 1k, 64k).
   --rcvbuf SIZE               Debug-only PERF_SINGLE_RCVBUF override (e.g. 64b, 1k, 64k).

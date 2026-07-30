@@ -221,9 +221,13 @@ void zlink::socket_base_t::in_event ()
 void zlink::socket_base_t::process_async_mailbox ()
 {
     lifecycle_coordinator ().mark_async_processing_started ();
+    //  This worker stands in for a completion poller when the application has
+    //  not registered one, so it owns the completion drain while it runs.
+    const completion_drain_scope_t drain_scope (this);
     do {
         process_commands (0, false);
         acknowledge_request_completion_notification ();
+        process_ready_completion_pipes ();
         (void) drain_request_completion_controls ();
         if (lifecycle_coordinator ().is_destroyed ()) {
             if (!lifecycle_coordinator ().is_async_mailbox_active ()) {

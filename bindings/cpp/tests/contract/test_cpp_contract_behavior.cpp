@@ -234,7 +234,7 @@ void test_stream_send_ready_handler_survives_move_and_source_destruction ()
         zlink::stream_socket_t server (ctx);
         zlink::socket_monitor_t monitor = server.monitor_open ();
         server.options ().notify (false);
-        server.options ().send_hwm (zlink::message_count_t::value (8));
+        server.options ().send_hwm (zlink::byte_count_t::bytes (8));
         server.bind ("tcp://127.0.0.1:0");
         const std::string endpoint = server.options ().last_endpoint ();
         assert (!endpoint.empty ());

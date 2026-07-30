@@ -8,10 +8,10 @@ import type { RidDuplicatePolicyValue } from './socket_constants';
 export interface CommonSocketOptions {
   /** How long, in ms, close waits to deliver queued messages. */
   linger: number;
-  /** Max outbound messages queued before back-pressure; 0 means no limit. */
-  sendHwm: number;
-  /** Max inbound messages queued before back-pressure; 0 means no limit. */
-  recvHwm: number;
+  /** Maximum accounted outbound bytes before back-pressure; 0n means unlimited. */
+  sendHwm: bigint;
+  /** Maximum accounted inbound bytes before back-pressure; 0n means unlimited. */
+  recvHwm: bigint;
   /** How long, in ms, a blocking send waits before failing. */
   sendTimeout: number;
   /** How long, in ms, a blocking receive waits before failing. */

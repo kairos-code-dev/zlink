@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <climits>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <string>
@@ -18,15 +19,15 @@ namespace multi
 struct multi_bench_settings_t
 {
     size_t clients;
-    int hwm;
-    int sndhwm;
-    int rcvhwm;
+    uint64_t hwm;
+    uint64_t sndhwm;
+    uint64_t rcvhwm;
     int duration_seconds;
     int client_poll_timeout_ms;
     int connect_ready_timeout_ms;
     int sndtimeo_ms;
     int rcvtimeo_ms;
-    int monitor_hwm;
+    uint64_t monitor_hwm;
     int server_bind_port;
 };
 
@@ -47,6 +48,23 @@ inline int parse_positive_env (const char *name, int default_value)
     if (parsed > INT_MAX)
         return INT_MAX;
     return static_cast<int> (parsed);
+}
+
+inline uint64_t parse_positive_uint64_env (const char *name, uint64_t default_value)
+{
+    if (!name)
+        return default_value;
+
+    const char *value = std::getenv (name);
+    if (!value || !*value || *value == '-')
+        return default_value;
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long parsed = std::strtoull (value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0' || parsed == 0)
+        return default_value;
+    return static_cast<uint64_t> (parsed);
 }
 
 inline bool manual_socket_overrides_enabled ()
@@ -73,7 +91,7 @@ inline size_t resolve_multi_default_clients (const std::string &pattern)
                                                 : static_cast<size_t> (100);
 }
 
-inline int resolve_multi_default_hwm (const std::string &pattern, size_t)
+inline uint64_t resolve_multi_default_hwm (const std::string &pattern, size_t)
 {
     (void) pattern;
     return 1000;
@@ -88,18 +106,18 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
     const int clients =
       std::max (1, parse_positive_env ("PERF_MULTI_CLIENTS", static_cast<int> (default_clients)));
 
-    const int default_hwm = resolve_multi_default_hwm (pattern, static_cast<size_t> (clients));
+    const uint64_t default_hwm = resolve_multi_default_hwm (pattern, static_cast<size_t> (clients));
 
     multi_bench_settings_t out;
     out.clients = static_cast<size_t> (clients);
     if (manual_socket_overrides_enabled ()) {
-        out.hwm = std::max (1, parse_positive_env ("PERF_MULTI_HWM", default_hwm));
-        out.sndhwm = std::max (1, parse_positive_env ("PERF_MULTI_SNDHWM", out.hwm));
-        out.rcvhwm = std::max (1, parse_positive_env ("PERF_MULTI_RCVHWM", out.hwm));
+        out.hwm = parse_positive_uint64_env ("PERF_MULTI_HWM", default_hwm);
+        out.sndhwm = parse_positive_uint64_env ("PERF_MULTI_SNDHWM", out.hwm);
+        out.rcvhwm = parse_positive_uint64_env ("PERF_MULTI_RCVHWM", out.hwm);
     } else {
-        out.hwm = -1;
-        out.sndhwm = -1;
-        out.rcvhwm = -1;
+        out.hwm = 0;
+        out.sndhwm = 0;
+        out.rcvhwm = 0;
     }
     out.duration_seconds = std::max (1, parse_positive_env ("PERF_MULTI_DURATION_SECONDS", 5));
     out.client_poll_timeout_ms = 0;
@@ -107,7 +125,7 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
       std::max (0, parse_positive_env ("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000));
     out.sndtimeo_ms = std::max (0, parse_positive_env ("PERF_MULTI_SNDTIMEO_MS", 200));
     out.rcvtimeo_ms = std::max (0, parse_positive_env ("PERF_MULTI_RCVTIMEO_MS", 200));
-    out.monitor_hwm = std::max (1, parse_positive_env ("PERF_MULTI_MONITOR_HWM", 1000));
+    out.monitor_hwm = parse_positive_uint64_env ("PERF_MULTI_MONITOR_HWM", 1000);
     out.server_bind_port = std::max (0, parse_positive_env ("PERF_MULTI_SERVER_BIND_PORT", 0));
 
     return out;

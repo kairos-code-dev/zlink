@@ -310,10 +310,10 @@ internal static partial class PerfRunner
         Console.Error.WriteLine($"{tag} stop-token publish failed");
     }
 
-    private static int ResolveSingleHwmValue(string specificName)
+    private static ulong ResolveSingleHwmValue(string specificName)
     {
-        int hwm = PerfEnv.ReadNonNegative("PERF_SINGLE_HWM", 0);
-        int specific = PerfEnv.ReadNonNegative(specificName, 0);
+        ulong hwm = PerfEnv.ReadUInt64("PERF_SINGLE_HWM", 0);
+        ulong specific = PerfEnv.ReadUInt64(specificName, 0);
         return specific > 0 ? specific : hwm;
     }
 
@@ -366,8 +366,8 @@ internal static partial class PerfRunner
         socket.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
         if (allowManualOverrides)
         {
-            int sndHwm = ResolveSingleHwmValue("PERF_SINGLE_SNDHWM");
-            int rcvHwm = ResolveSingleHwmValue("PERF_SINGLE_RCVHWM");
+            ulong sndHwm = ResolveSingleHwmValue("PERF_SINGLE_SNDHWM");
+            ulong rcvHwm = ResolveSingleHwmValue("PERF_SINGLE_RCVHWM");
             if (sndHwm > 0)
                 socket.Options.SendHighWaterMark = sndHwm;
             if (rcvHwm > 0)
@@ -379,7 +379,7 @@ internal static partial class PerfRunner
     {
         if (msgSize <= 0)
             return;
-        ctx.Options.AutoHwmMessageUnitBytes = msgSize;
+        ctx.Options.AutoHwmMessageUnitBytes = (ulong)msgSize;
     }
 
     internal static void RecalculateSingleAutoHwm(IContext ctx)

@@ -24,6 +24,12 @@ public static class PerfEnv
             : fallback;
     }
 
+    public static ulong ReadUInt64(string name, ulong fallback)
+    {
+        string? raw = Environment.GetEnvironmentVariable(name);
+        return ulong.TryParse(raw, out ulong parsed) ? parsed : fallback;
+    }
+
     public static int ReadByteSize(string name, int fallback)
     {
         string? raw = Environment.GetEnvironmentVariable(name);

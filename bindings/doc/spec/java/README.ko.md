@@ -696,6 +696,40 @@ Handler 등록 이름은 이벤트 발생이 아니라 등록을 설명한다.
 - `recvRouted`
 - `recvActorLifecycle`
 
+## Byte HWM 및 monitoring ABI v2
+
+HWM은 queue의 message 수가 아니라 Core가 계산한 accounted byte의 상한이다. Java 공개
+interface는 `long`의 64개 bit를 unsigned 값으로 해석하여 Core의 `uint64_t` 전체 범위를
+손실 없이 전달한다. Java caller는 `Long.compareUnsigned`와 `Long.toUnsignedString`을 사용하고,
+Kotlin caller는 `ULong.toLong()`과 `Long.toULong()`으로 변환한다. `0`은 무제한이고 수동
+기본값은 `4_096_000 bytes`다. 이전 `int` overload, alias 또는 count 단위 adapter는 제공하지
+않는다.
+
+```java
+public final class ContextOptions {
+    public long autoHwmMessageUnitBytes();          // unsigned 64-bit planning unit을 반환한다.
+    public void autoHwmMessageUnitBytes(long value); // 0은 socket type별 기본값을 선택한다.
+}
+
+public class CommonSocketOptions {
+    public long sendHwm();           // unsigned outbound accounted-byte 상한을 반환한다.
+    public void sendHwm(long value); // value의 64개 bit를 그대로 Core에 전달한다.
+    public long recvHwm();
+    public void recvHwm(long value);
+}
+```
+
+`MonitorStatus` record는 native `zlink_monitor_status_t` ABI version 2와 같은 field를 제공한다.
+Planned, applied, deferred HWM과 in-flight 사용량은 unsigned `long` byte 값이다. Deferred 값은
+대응하는 `autoHwmDeferredSendHwmValid()` 또는 `autoHwmDeferredRecvHwmValid()`가 `true`일 때만
+유효하다. Pending message 값은 count 진단값으로 남고 byte field와 이름을 공유하지 않는다.
+`abiVersion()`이 `2`가 아니거나 `structSize()`가 binding layout과 다르면
+`UnsupportedOperationException`을 발생시킨다. 이전 32-bit monitoring layout은 받지 않는다.
+
+Java와 Kotlin은 같은 Java method를 호출한다. 별도 Kotlin adapter나 다른 단위의 option을
+추가하지 않는다. Request/reply API는 HWM 값을 인자로 받지 않으며 기존 lifetime과 ownership
+계약을 유지한다.
+
 ## Error And Result Policy
 
 Java public error는 core result 도메인의 의미를 보존하지만, native errno를

@@ -638,10 +638,10 @@ class socket_t
                             options.linger (std::chrono::milliseconds (static_cast<int> (value_)));
                             return 0;
                         case socket_option::sndhwm:
-                            options.send_hwm (message_count_t::value (static_cast<int> (value_)));
+                            options.send_hwm (byte_count_t::bytes (value_));
                             return 0;
                         case socket_option::rcvhwm:
-                            options.recv_hwm (message_count_t::value (static_cast<int> (value_)));
+                            options.recv_hwm (byte_count_t::bytes (value_));
                             return 0;
                         case socket_option::sndtimeo:
                             options.send_timeout (

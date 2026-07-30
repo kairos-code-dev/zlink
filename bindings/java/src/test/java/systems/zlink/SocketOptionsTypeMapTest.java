@@ -1,5 +1,6 @@
 package systems.zlink.runtime.sockets;
 
+import systems.zlink.TestSupport;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.sockets.CommonSocketOptions;
@@ -80,6 +81,41 @@ public class SocketOptionsTypeMapTest {
             SocketOptions.CONNECT_ROUTING_ID_BYTES.valueClass());
         assertEquals(SocketOptions.CONNECT_ROUTING_ID.optionId(),
             SocketOptions.CONNECT_ROUTING_ID_BYTES.optionId());
+    }
+
+    @Test
+    public void highWaterMarkKeysUseUnsigned64BitValues() {
+        assertEquals(Long.class, SocketOptions.SNDHWM.valueClass());
+        assertEquals(Long.class, SocketOptions.RCVHWM.valueClass());
+        assertEquals(SocketOptionValueType.UINT64,
+            SocketOptions.SNDHWM.valueType());
+        assertEquals(SocketOptionValueType.UINT64,
+            SocketOptions.RCVHWM.valueType());
+    }
+
+    @Test
+    public void byteHighWaterMarksRoundTrip64BitBoundaries() {
+        TestSupport.assumeNative();
+        try (Context ctx = Zlink.createContext()) {
+            ctx.options().autoHwmEnabled(false);
+            try (PairSocket pair = ctx.createPairSocket()) {
+                assertEquals(4_096_000L, pair.options().sendHwm());
+                assertEquals(4_096_000L, pair.options().recvHwm());
+
+                long beyondInt32 = (long) Integer.MAX_VALUE + 65_536L;
+                pair.options().sendHwm(beyondInt32);
+                pair.options().recvHwm(Long.MAX_VALUE);
+                assertEquals(beyondInt32, pair.options().sendHwm());
+                assertEquals(Long.MAX_VALUE, pair.options().recvHwm());
+
+                pair.options().sendHwm(0L);
+                pair.options().recvHwm(0L);
+                assertEquals(0L, pair.options().sendHwm());
+                assertEquals(0L, pair.options().recvHwm());
+                pair.options().sendHwm(-1L);
+                assertEquals(-1L, pair.options().sendHwm());
+            }
+        }
     }
 
     @Test

@@ -32,6 +32,8 @@ monitor_event_t make_monitor_event (const zlink_monitor_event_t &native_)
 monitor_status_t make_monitor_status (const zlink_monitor_status_t &native_)
 {
     monitor_status_t status;
+    status.abi_version = native_.abi_version;
+    status.struct_size = native_.struct_size;
     status.source_kind = static_cast<monitor_source_kind> (native_.source_kind);
     status.state_flags = native_.state_flags;
     status.detail_flags = native_.detail_flags;
@@ -51,15 +53,24 @@ monitor_status_t make_monitor_status (const zlink_monitor_status_t &native_)
     status.auto_hwm_connection_bucket_hysteresis_retained =
       native_.auto_hwm_connection_bucket_hysteresis_retained != 0;
     status.auto_hwm_effective_message_bytes = native_.auto_hwm_effective_message_bytes;
-    status.auto_hwm_applied_sndhwm = native_.auto_hwm_applied_sndhwm;
-    status.auto_hwm_applied_rcvhwm = native_.auto_hwm_applied_rcvhwm;
+    status.auto_hwm_planned_sndhwm_bytes = native_.auto_hwm_planned_sndhwm_bytes;
+    status.auto_hwm_planned_rcvhwm_bytes = native_.auto_hwm_planned_rcvhwm_bytes;
+    status.auto_hwm_applied_sndhwm_bytes = native_.auto_hwm_applied_sndhwm_bytes;
+    status.auto_hwm_applied_rcvhwm_bytes = native_.auto_hwm_applied_rcvhwm_bytes;
     status.auto_hwm_effective_sndbuf = native_.auto_hwm_effective_sndbuf;
     status.auto_hwm_effective_rcvbuf = native_.auto_hwm_effective_rcvbuf;
     status.auto_hwm_last_recalc_ms = native_.auto_hwm_last_recalc_ms;
     status.auto_hwm_last_recalc_reason = native_.auto_hwm_last_recalc_reason;
     status.auto_hwm_send_blocked_ratio_ppm = native_.auto_hwm_send_blocked_ratio_ppm;
-    status.auto_hwm_deferred_sndhwm = native_.auto_hwm_deferred_sndhwm;
-    status.auto_hwm_deferred_rcvhwm = native_.auto_hwm_deferred_rcvhwm;
+    status.auto_hwm_deferred_sndhwm_bytes = native_.auto_hwm_deferred_sndhwm_bytes;
+    status.auto_hwm_deferred_rcvhwm_bytes = native_.auto_hwm_deferred_rcvhwm_bytes;
+    status.auto_hwm_deferred_sndhwm_valid = native_.auto_hwm_deferred_sndhwm_valid != 0;
+    status.auto_hwm_deferred_rcvhwm_valid = native_.auto_hwm_deferred_rcvhwm_valid != 0;
+    status.snd_bytes_in_flight = native_.snd_bytes_in_flight;
+    status.rcv_bytes_in_flight = native_.rcv_bytes_in_flight;
+    status.minimum_core_message_charge_bytes = native_.minimum_core_message_charge_bytes;
+    status.oversize_message_admission_count = native_.oversize_message_admission_count;
+    status.oversize_message_admission_max_bytes = native_.oversize_message_admission_max_bytes;
     return status;
 }
 

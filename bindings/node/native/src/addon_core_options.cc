@@ -106,6 +106,10 @@ size_t initial_getopt_buffer_len (int32_t opt)
             return 256;
         case ZLINK_OPT_MAXMSGSIZE:
             return sizeof (int64_t);
+        case ZLINK_OPT_SNDHWM:
+        case ZLINK_OPT_RCVHWM:
+        case ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES:
+            return sizeof (uint64_t);
         default:
             return sizeof (int);
     }

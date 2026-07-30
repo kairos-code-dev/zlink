@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using Systems.Zlink.Runtime.Native;
+using System.Runtime.InteropServices;
 
 namespace Systems.Zlink;
 
@@ -28,6 +29,12 @@ internal static class MonitorConverters
 
     internal static MonitorStatus FromNative(ref ZlinkMonitorStatus native)
     {
+        var expectedSize = (uint)Marshal.SizeOf<ZlinkMonitorStatus>();
+        if (native.AbiVersion != ZlinkMonitorStatus.CurrentAbiVersion
+            || native.StructSize != expectedSize)
+            throw new NotSupportedException(
+                $"Unsupported monitor status ABI {native.AbiVersion} "
+                + $"with structure size {native.StructSize}.");
         return new MonitorStatus(in native);
     }
 }

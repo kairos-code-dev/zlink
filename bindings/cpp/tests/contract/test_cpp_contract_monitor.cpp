@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "support.hpp"
+#include <zlink.h>
 
 #include <condition_variable>
 #include <mutex>
@@ -36,6 +37,13 @@ template <typename T> class has_open_t
 };
 
 static_assert (has_open_t<zlink::socket_monitor_t>::value, "socket_monitor_t must expose open");
+static_assert (
+  std::is_same<decltype (zlink::monitor_status_t ().auto_hwm_applied_sndhwm_bytes),
+               uint64_t>::value,
+  "monitor applied send HWM must be a uint64_t byte value");
+static_assert (
+  std::is_same<decltype (zlink::monitor_status_t ().snd_bytes_in_flight), uint64_t>::value,
+  "monitor in-flight bytes must be uint64_t");
 
 template <typename T> class has_on_event_t
 {
@@ -202,6 +210,8 @@ void test_socket_monitor_open_recv_snapshot ()
     (void) monitor.recv (zlink::recv_flags_t::dontwait);
     assert (wait_for_any_socket_monitor_event (monitor, 2000));
     const zlink::monitor_status_t snapshot = monitor.status ();
+    assert (snapshot.abi_version == ZLINK_MONITOR_STATUS_ABI_VERSION);
+    assert (snapshot.struct_size == sizeof (zlink_monitor_status_t));
     (void) snapshot.auto_hwm_profile;
     (void) snapshot.auto_hwm_policy_class;
     (void) snapshot.auto_hwm_unit_budget_bytes;
@@ -209,6 +219,14 @@ void test_socket_monitor_open_recv_snapshot ()
     (void) snapshot.auto_hwm_socket_message_slots;
     (void) snapshot.auto_hwm_effective_sndbuf;
     (void) snapshot.auto_hwm_effective_rcvbuf;
+    (void) snapshot.auto_hwm_planned_sndhwm_bytes;
+    (void) snapshot.auto_hwm_planned_rcvhwm_bytes;
+    (void) snapshot.auto_hwm_applied_sndhwm_bytes;
+    (void) snapshot.auto_hwm_applied_rcvhwm_bytes;
+    (void) snapshot.auto_hwm_deferred_sndhwm_valid;
+    (void) snapshot.auto_hwm_deferred_rcvhwm_valid;
+    (void) snapshot.snd_bytes_in_flight;
+    (void) snapshot.rcv_bytes_in_flight;
 }
 
 void test_socket_monitor_ignore_event_and_poller_size ()

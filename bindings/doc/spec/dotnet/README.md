@@ -481,6 +481,41 @@ SPOT is a service-layer API, not a raw socket leak.
 - Actor location and stream session binding are independent. A bound stream
   session is not required for an actor to join a user Spot.
 
+## Byte HWM And Monitoring ABI v2
+
+An HWM limits accounted bytes computed by Core, not the number of queued
+messages. Its public type is `ulong`, which preserves the full range of Core's
+`uint64_t`. Zero means unlimited, and the manual default is `4_096_000 bytes`.
+The binding passes an exact eight-byte value to Core. It does not provide the
+former `int` overload, an alias, or a count-unit adapter.
+
+```csharp
+public interface IContextOptions
+{
+    ulong AutoHwmMessageUnitBytes { get; set; } // Zero selects the socket-type planning-unit default.
+}
+
+public partial class CommonSocketOptions
+{
+    public ulong SendHighWaterMark { get; set; }    // Outbound accounted-byte limit.
+    public ulong ReceiveHighWaterMark { get; set; } // Inbound accounted-byte limit.
+}
+```
+
+`MonitorStatus` exposes the same fields as native `zlink_monitor_status_t` ABI
+version 2. Planned, applied, and deferred HWMs and in-flight usage are `ulong`
+byte values. A deferred value is meaningful only when its matching
+`AutoHwmDeferredSendHighWaterMarkValid` or
+`AutoHwmDeferredReceiveHighWaterMarkValid` property is `true`. Pending messages
+remain count diagnostics named `SndPendingMsgs` and `RcvPendingMsgs`; byte fields
+do not reuse those names. A snapshot whose `AbiVersion` is not `2` or whose
+`StructSize` differs from the binding layout causes `NotSupportedException`.
+The former 32-bit monitoring layout is not accepted.
+
+Request/reply APIs do not take an HWM argument. Core owns backpressure and
+completion handling, while the binding preserves the existing request/reply
+lifetime and ownership contract.
+
 ## Error And Validation Policy
 
 - Fixed-size native boundary values are validated before calling core.

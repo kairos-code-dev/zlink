@@ -51,6 +51,16 @@ public sealed record MonitorEvent(
 public sealed partial class MonitorStatus
 {
     /// <summary>
+    ///     Gets the native monitor snapshot ABI version.
+    /// </summary>
+    public uint AbiVersion { get; }
+
+    /// <summary>
+    ///     Gets the native snapshot structure size in bytes.
+    /// </summary>
+    public uint StructSize { get; }
+
+    /// <summary>
     ///     Gets the source kind.
     /// </summary>
     public MonitorSourceKind SourceKind { get; }
@@ -141,14 +151,28 @@ public sealed partial class MonitorStatus
     public ulong AutoHwmEffectiveMessageBytes { get; }
 
     /// <summary>
-    ///     Gets the automatic high water mark applied snd hwm.
+    ///     Gets the send HWM selected by the current automatic plan, in
+    ///     accounted bytes.
     /// </summary>
-    public int AutoHwmAppliedSndHwm { get; }
+    public ulong AutoHwmPlannedSendHighWaterMarkBytes { get; }
 
     /// <summary>
-    ///     Gets the automatic high water mark applied rcv hwm.
+    ///     Gets the receive HWM selected by the current automatic plan, in
+    ///     accounted bytes.
     /// </summary>
-    public int AutoHwmAppliedRcvHwm { get; }
+    public ulong AutoHwmPlannedReceiveHighWaterMarkBytes { get; }
+
+    /// <summary>
+    ///     Gets the send HWM currently applied to the socket, in accounted
+    ///     bytes.
+    /// </summary>
+    public ulong AutoHwmAppliedSendHighWaterMarkBytes { get; }
+
+    /// <summary>
+    ///     Gets the receive HWM currently applied to the socket, in accounted
+    ///     bytes.
+    /// </summary>
+    public ulong AutoHwmAppliedReceiveHighWaterMarkBytes { get; }
 
     /// <summary>
     ///     Gets the automatic high water mark effective sndbuf.
@@ -176,14 +200,52 @@ public sealed partial class MonitorStatus
     public uint AutoHwmSendBlockedRatioPpm { get; }
 
     /// <summary>
-    ///     Gets the automatic high water mark deferred snd hwm.
+    ///     Gets the target send HWM while a shrink is deferred, in accounted
+    ///     bytes.
     /// </summary>
-    public int AutoHwmDeferredSndHwm { get; }
+    public ulong AutoHwmDeferredSendHighWaterMarkBytes { get; }
 
     /// <summary>
-    ///     Gets the automatic high water mark deferred rcv hwm.
+    ///     Gets the target receive HWM while a shrink is deferred, in accounted
+    ///     bytes.
     /// </summary>
-    public int AutoHwmDeferredRcvHwm { get; }
+    public ulong AutoHwmDeferredReceiveHighWaterMarkBytes { get; }
+
+    /// <summary>
+    ///     Gets whether the deferred send HWM value is valid.
+    /// </summary>
+    public bool AutoHwmDeferredSendHighWaterMarkValid { get; }
+
+    /// <summary>
+    ///     Gets whether the deferred receive HWM value is valid.
+    /// </summary>
+    public bool AutoHwmDeferredReceiveHighWaterMarkValid { get; }
+
+    /// <summary>
+    ///     Gets the bytes retained by outbound pipe directions.
+    /// </summary>
+    public ulong SendBytesInFlight { get; }
+
+    /// <summary>
+    ///     Gets the bytes retained by inbound pipe directions.
+    /// </summary>
+    public ulong ReceiveBytesInFlight { get; }
+
+    /// <summary>
+    ///     Gets the minimum accounted charge for one Core frame.
+    /// </summary>
+    public ulong MinimumCoreMessageChargeBytes { get; }
+
+    /// <summary>
+    ///     Gets the number of messages admitted by the empty-pipe oversize rule.
+    /// </summary>
+    public ulong OversizeMessageAdmissionCount { get; }
+
+    /// <summary>
+    ///     Gets the largest accounted message admitted by the empty-pipe
+    ///     oversize rule.
+    /// </summary>
+    public ulong OversizeMessageAdmissionMaxBytes { get; }
 
     /// <summary>
     ///     Gets whether the monitored socket source is in the ready state.

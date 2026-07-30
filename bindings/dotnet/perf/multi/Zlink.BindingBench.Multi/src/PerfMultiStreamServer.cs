@@ -143,9 +143,12 @@ internal static class PerfMultiStreamServer
     private static int ResolvePendingCapacity(PerfOptions options)
     {
         int clients = options.Clients;
-        int hwm = options.MultiHwm;
-        long capacity = Math.Max(64L, Math.Max(clients, Math.Max(1, hwm)) * 2L);
-        return capacity > int.MaxValue ? int.MaxValue : (int)capacity;
+        ulong hwm = options.MultiHwm;
+        ulong basis = Math.Max(64UL,
+            Math.Max((ulong)Math.Max(1, clients), Math.Max(1UL, hwm)));
+        if (basis > (ulong)int.MaxValue / 2UL)
+            return int.MaxValue;
+        return (int)(basis * 2UL);
     }
 
     private static bool FlushPendingMessages(ISocket server,

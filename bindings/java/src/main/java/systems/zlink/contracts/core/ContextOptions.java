@@ -120,17 +120,20 @@ public final class ContextOptions {
             profile.value());
     }
 
-    public int autoHwmMessageUnitBytes() {
-        return ContractAccess.contextGetOption(context,
+    /**
+     * Returns the planning unit as an unsigned 64-bit byte value.
+     */
+    public long autoHwmMessageUnitBytes() {
+        return ContractAccess.contextGetUInt64Option(context,
             ContextOption.AUTO_HWM_MSG_UNIT_BYTES);
     }
 
-    public void autoHwmMessageUnitBytes(int value) {
-        if (value < 0) {
-            throw new IllegalArgumentException(
-                "autoHwmMessageUnitBytes must be non-negative");
-        }
-        ContractAccess.contextSetOption(context,
+    /**
+     * Sets the planning unit from the unsigned 64-bit bit pattern in
+     * {@code value}; zero selects the socket-type default.
+     */
+    public void autoHwmMessageUnitBytes(long value) {
+        ContractAccess.contextSetUInt64Option(context,
             ContextOption.AUTO_HWM_MSG_UNIT_BYTES, value);
     }
 

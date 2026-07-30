@@ -435,9 +435,11 @@ class dealer_dealer_client_bench_t
         zlink::dealer_socket_options_t options = socket.options ();
         if (perf::multi::manual_socket_overrides_enabled ()) {
             options.send_hwm (
-              zlink::message_count_t::value (_settings.sndhwm > 0 ? _settings.sndhwm : 1));
+              zlink::byte_count_t::bytes (
+                static_cast<uint64_t> (_settings.sndhwm > 0 ? _settings.sndhwm : 1)));
             options.recv_hwm (
-              zlink::message_count_t::value (_settings.rcvhwm > 0 ? _settings.rcvhwm : 1));
+              zlink::byte_count_t::bytes (
+                static_cast<uint64_t> (_settings.rcvhwm > 0 ? _settings.rcvhwm : 1)));
         }
         options.send_timeout (std::chrono::milliseconds (_settings.sndtimeo_ms));
         options.recv_timeout (std::chrono::milliseconds (_settings.rcvtimeo_ms));

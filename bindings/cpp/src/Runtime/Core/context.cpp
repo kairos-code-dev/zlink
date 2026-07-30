@@ -8,7 +8,6 @@
 #include <zlink.h>
 
 #include <cerrno>
-#include <climits>
 
 namespace zlink
 {
@@ -137,6 +136,28 @@ config_result_t context_t::set_option_data_raw (int option_, std::string_view va
         return config_result_t::invalid_handle;
     return static_cast<config_result_t> (zlink_ctx_set_data (
       _impl->ctx, static_cast<zlink_ctx_option_t> (option_), value_.data (), value_.size ()));
+}
+
+uint64_t context_t::get_option_uint64_raw (int option_) const
+{
+    if (!_impl || !_impl->ctx)
+        throw config_error_t (config_result_t::invalid_handle);
+    uint64_t value = 0;
+    size_t size = sizeof (value);
+    const config_result_t result = static_cast<config_result_t> (zlink_ctx_get_data (
+      _impl->ctx, static_cast<zlink_ctx_option_t> (option_), &value, &size));
+    detail::throw_if_failed<config_error_t> (result);
+    if (size != sizeof (value))
+        throw config_error_t (config_result_t::invalid_argument, EINVAL);
+    return value;
+}
+
+config_result_t context_t::set_option_uint64_raw (int option_, uint64_t value_)
+{
+    if (!_impl || !_impl->ctx)
+        return config_result_t::invalid_handle;
+    return static_cast<config_result_t> (zlink_ctx_set_data (
+      _impl->ctx, static_cast<zlink_ctx_option_t> (option_), &value_, sizeof (value_)));
 }
 
 namespace detail
@@ -315,23 +336,17 @@ void context_options_t::auto_hwm_profile (zlink::auto_hwm_profile profile_)
       context_option_id_value (detail::context_option_id::auto_hwm_profile), static_cast<int> (profile_)));
 }
 
-byte_size_t context_options_t::auto_hwm_msg_unit_bytes () const
+byte_count_t context_options_t::auto_hwm_msg_unit_bytes () const
 {
-    int error = 0;
-    const int value = _ctx.get_option_raw (
-      context_option_id_value (detail::context_option_id::auto_hwm_msg_unit_bytes), &error);
-    if (error != 0)
-        throw config_error_t (static_cast<config_result_t> (error));
-    return byte_size_t::bytes (value);
+    return byte_count_t::bytes (_ctx.get_option_uint64_raw (
+      context_option_id_value (detail::context_option_id::auto_hwm_msg_unit_bytes)));
 }
 
-void context_options_t::auto_hwm_msg_unit_bytes (byte_size_t value_)
+void context_options_t::auto_hwm_msg_unit_bytes (byte_count_t value_)
 {
-    if (value_.bytes () < 0 || value_.bytes () > INT_MAX)
-        throw config_error_t (config_result_t::invalid_argument, EINVAL);
-    detail::throw_if_failed<config_error_t> (
-      _ctx.set_option_raw (context_option_id_value (detail::context_option_id::auto_hwm_msg_unit_bytes),
-                           static_cast<int> (value_.bytes ())));
+    detail::throw_if_failed<config_error_t> (_ctx.set_option_uint64_raw (
+      context_option_id_value (detail::context_option_id::auto_hwm_msg_unit_bytes),
+      value_.bytes ()));
 }
 
 socket_count_t context_options_t::socket_limit () const

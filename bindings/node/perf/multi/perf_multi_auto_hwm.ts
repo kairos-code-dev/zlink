@@ -234,8 +234,8 @@ function emitSpotNodeAutoHwmSnapshot(node, label, transport, msgSize) {
       + `,unit_budget_bytes=${snapshot.autoHwmUnitBudgetBytes}`
       + `,size_cap=${snapshot.autoHwmSizeCap}`
       + `,scope=${scope}`
-      + `,sndhwm=${snapshot.autoHwmAppliedSndHwm}`
-      + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwm}`
+      + `,sndhwm=${snapshot.autoHwmAppliedSndHwmBytes}`
+      + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwmBytes}`
       + `,socket_message_slots=${snapshot.autoHwmSocketMessageSlots}`
       + `,effective_message_bytes=${snapshot.autoHwmEffectiveMessageBytes}`
       + `,effective_sndbuf=${sndbuf}`
@@ -273,8 +273,8 @@ function emitMultiSocketHwmDetail(socket, label, transport, msgSize) {
       label || 'socket',
       msgSize || 0,
       autoHwmRoleName(snapshot.autoHwmRole),
-      snapshot.autoHwmAppliedSndHwm,
-      snapshot.autoHwmAppliedRcvHwm,
+      snapshot.autoHwmAppliedSndHwmBytes,
+      snapshot.autoHwmAppliedRcvHwmBytes,
       snapshot.autoHwmProfile,
       snapshot.autoHwmPolicyClass,
       String(snapshot.autoHwmUnitBudgetBytes),
@@ -306,8 +306,8 @@ function emitMultiSocketHwmDetail(socket, label, transport, msgSize) {
       + `,policy_class_id=${snapshot.autoHwmPolicyClass}`
       + `,unit_budget_bytes=${snapshot.autoHwmUnitBudgetBytes}`
       + `,size_cap=${snapshot.autoHwmSizeCap}`
-      + `,sndhwm=${snapshot.autoHwmAppliedSndHwm}`
-      + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwm}`
+      + `,sndhwm=${snapshot.autoHwmAppliedSndHwmBytes}`
+      + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwmBytes}`
       + `,socket_message_slots=${snapshot.autoHwmSocketMessageSlots}`
       + `,effective_message_bytes=${snapshot.autoHwmEffectiveMessageBytes}`
       + `,effective_sndbuf=${hwmSndBufDisplay(snapshot, socket)}`
@@ -315,8 +315,8 @@ function emitMultiSocketHwmDetail(socket, label, transport, msgSize) {
       + `,last_recalc_ms=${snapshot.autoHwmLastRecalcMs}`
       + `,last_recalc_reason=${autoHwmRecalcReasonName(snapshot.autoHwmLastRecalcReason)}`
       + `,send_blocked_ratio_ppm=${snapshot.autoHwmSendBlockedRatioPpm}`
-      + `,deferred_sndhwm=${snapshot.autoHwmDeferredSndHwm}`
-      + `,deferred_rcvhwm=${snapshot.autoHwmDeferredRcvHwm}`
+      + `,deferred_sndhwm=${snapshot.autoHwmDeferredSndHwmValid ? snapshot.autoHwmDeferredSndHwmBytes : '-'}`
+      + `,deferred_rcvhwm=${snapshot.autoHwmDeferredRcvHwmValid ? snapshot.autoHwmDeferredRcvHwmBytes : '-'}`
     );
   } catch (err) {
     // Diagnostic output must not turn a valid perf run into a failure.

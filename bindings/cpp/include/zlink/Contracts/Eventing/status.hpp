@@ -54,6 +54,8 @@ enum class disconnect_reason : int
 struct monitor_status_t
 {
     monitor_status_t () :
+        abi_version (0),
+        struct_size (0),
         source_kind (monitor_source_kind::socket),
         state_flags (0),
         detail_flags (0),
@@ -72,20 +74,31 @@ struct monitor_status_t
         auto_hwm_connection_bucket_hwm_4k (0),
         auto_hwm_connection_bucket_hysteresis_retained (false),
         auto_hwm_effective_message_bytes (0),
-        auto_hwm_applied_sndhwm (0),
-        auto_hwm_applied_rcvhwm (0),
+        auto_hwm_planned_sndhwm_bytes (0),
+        auto_hwm_planned_rcvhwm_bytes (0),
+        auto_hwm_applied_sndhwm_bytes (0),
+        auto_hwm_applied_rcvhwm_bytes (0),
         auto_hwm_effective_sndbuf (0),
         auto_hwm_effective_rcvbuf (0),
         auto_hwm_last_recalc_ms (0),
         auto_hwm_last_recalc_reason (0),
         auto_hwm_send_blocked_ratio_ppm (0),
-        auto_hwm_deferred_sndhwm (-1),
-        auto_hwm_deferred_rcvhwm (-1)
+        auto_hwm_deferred_sndhwm_bytes (0),
+        auto_hwm_deferred_rcvhwm_bytes (0),
+        auto_hwm_deferred_sndhwm_valid (false),
+        auto_hwm_deferred_rcvhwm_valid (false),
+        snd_bytes_in_flight (0),
+        rcv_bytes_in_flight (0),
+        minimum_core_message_charge_bytes (0),
+        oversize_message_admission_count (0),
+        oversize_message_admission_max_bytes (0)
     {
     }
 
     bool is_ready () const noexcept { return (state_flags & 1) != 0u; }
 
+    uint32_t abi_version;
+    uint32_t struct_size;
     monitor_source_kind source_kind;
     uint32_t state_flags;
     uint32_t detail_flags;
@@ -104,15 +117,24 @@ struct monitor_status_t
     uint32_t auto_hwm_connection_bucket_hwm_4k;
     bool auto_hwm_connection_bucket_hysteresis_retained;
     uint64_t auto_hwm_effective_message_bytes;
-    int32_t auto_hwm_applied_sndhwm;
-    int32_t auto_hwm_applied_rcvhwm;
+    uint64_t auto_hwm_planned_sndhwm_bytes;
+    uint64_t auto_hwm_planned_rcvhwm_bytes;
+    uint64_t auto_hwm_applied_sndhwm_bytes;
+    uint64_t auto_hwm_applied_rcvhwm_bytes;
     int32_t auto_hwm_effective_sndbuf;
     int32_t auto_hwm_effective_rcvbuf;
     uint64_t auto_hwm_last_recalc_ms;
     uint32_t auto_hwm_last_recalc_reason;
     uint32_t auto_hwm_send_blocked_ratio_ppm;
-    int32_t auto_hwm_deferred_sndhwm;
-    int32_t auto_hwm_deferred_rcvhwm;
+    uint64_t auto_hwm_deferred_sndhwm_bytes;
+    uint64_t auto_hwm_deferred_rcvhwm_bytes;
+    bool auto_hwm_deferred_sndhwm_valid;
+    bool auto_hwm_deferred_rcvhwm_valid;
+    uint64_t snd_bytes_in_flight;
+    uint64_t rcv_bytes_in_flight;
+    uint64_t minimum_core_message_charge_bytes;
+    uint64_t oversize_message_admission_count;
+    uint64_t oversize_message_admission_max_bytes;
 };
 
 using monitor_source_kind_t = monitor_source_kind;

@@ -61,15 +61,10 @@ internal sealed class ContextOptions : IContextOptions
         set => _context.SetOption(ContextOption.AutoHwmProfile, (int)value);
     }
 
-    public int AutoHwmMessageUnitBytes
+    public ulong AutoHwmMessageUnitBytes
     {
-        get => _context.GetOption(ContextOption.AutoHwmMsgUnitBytes);
-        set
-        {
-            if (value < 0)
-                throw new ArgumentOutOfRangeException(nameof(value));
-            _context.SetOption(ContextOption.AutoHwmMsgUnitBytes, value);
-        }
+        get => _context.GetUInt64Option(ContextOption.AutoHwmMsgUnitBytes);
+        set => _context.SetUInt64Option(ContextOption.AutoHwmMsgUnitBytes, value);
     }
 
     public bool AutoHwmEnabled

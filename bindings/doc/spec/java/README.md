@@ -719,6 +719,44 @@ Canonical Java names:
 - `recvRouted`
 - `recvActorLifecycle`
 
+## Byte HWM And Monitoring ABI v2
+
+An HWM limits accounted bytes computed by Core, not the number of queued
+messages. The Java interface interprets all 64 bits of a `long` as an unsigned
+value, preserving the complete range of Core's `uint64_t` without loss. Java
+callers use `Long.compareUnsigned` and `Long.toUnsignedString`; Kotlin callers
+convert with `ULong.toLong()` and `Long.toULong()`. Zero means unlimited, and the
+manual default is `4_096_000 bytes`. The former `int` overload, an alias, and a
+count-unit adapter are not provided.
+
+```java
+public final class ContextOptions {
+    public long autoHwmMessageUnitBytes();           // Returns an unsigned 64-bit planning unit.
+    public void autoHwmMessageUnitBytes(long value); // Zero selects the socket-type default.
+}
+
+public class CommonSocketOptions {
+    public long sendHwm();           // Returns the unsigned outbound accounted-byte limit.
+    public void sendHwm(long value); // Passes all 64 bits of value to Core.
+    public long recvHwm();
+    public void recvHwm(long value);
+}
+```
+
+The `MonitorStatus` record exposes the same fields as native
+`zlink_monitor_status_t` ABI version 2. Planned, applied, and deferred HWMs and
+in-flight usage are unsigned `long` byte values. A deferred value is meaningful
+only when its matching `autoHwmDeferredSendHwmValid()` or
+`autoHwmDeferredRecvHwmValid()` method returns `true`. Pending messages remain
+count diagnostics and do not share names with byte fields. A snapshot whose
+`abiVersion()` is not `2` or whose `structSize()` differs from the binding layout
+causes `UnsupportedOperationException`. The former 32-bit monitoring layout is
+not accepted.
+
+Java and Kotlin call the same Java methods. No Kotlin-only adapter or option
+with a different unit is added. Request/reply APIs do not take an HWM argument
+and retain their existing lifetime and ownership contract.
+
 ## Error And Result Policy
 
 Java public errors preserve core result-domain meaning but do not expose native

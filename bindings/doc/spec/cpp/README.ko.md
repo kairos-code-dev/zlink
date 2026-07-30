@@ -431,6 +431,28 @@ C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나
 - `on_send_ready(...)`, `on_packet(...)`, `on_event(...)` 같은 표준 이름 우회나 operation
   별칭을 두지 않는다. 호출 지점은 계층화된 별칭 대신 표준 공개 계약을 그대로 쓴다.
 
+## 64-bit byte HWM과 monitoring 계약
+
+HWM과 Auto HWM planning unit은 `byte_count_t`로 표현한다. 이 값 타입은 `uint64_t` byte만
+보관하며 `bytes(...)` 생성 함수와 `bytes()` 조회 함수로 단위를 드러낸다. 이전
+`message_count_t`는 alias나 adapter로 유지하지 않는다. `0`은 HWM에서 무제한을 뜻하며,
+수동 기본값은 `4,096,000 bytes`다.
+
+```cpp
+auto options = socket.options ();
+options.send_hwm (zlink::byte_count_t::bytes (send_limit)); // Send pipe의 byte HWM을 정한다.
+options.recv_hwm (zlink::byte_count_t::bytes (0));          // 0은 무제한 receive HWM이다.
+
+auto context_options = context.options ();
+context_options.auto_hwm_msg_unit_bytes (
+  zlink::byte_count_t::bytes (planning_unit)); // Auto HWM 계산용 64-bit byte 입력이다.
+```
+
+Monitor snapshot은 Core monitoring ABI v2를 투영한다. Planned, applied, deferred와 in-flight
+HWM field는 `_bytes` 접미사와 `uint64_t`를 사용한다. Deferred field의 유효 여부는 별도
+boolean으로 제공한다. Pending message와 profile slot은 count 진단값으로 남으며 byte field와
+이름을 공유하지 않는다.
+
 ## 기능 범위
 
 완성된 C++ 바인딩의 공개 헤더는 다음 그룹을 다룬다.

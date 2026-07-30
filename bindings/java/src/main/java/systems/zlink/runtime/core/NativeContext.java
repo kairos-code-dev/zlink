@@ -24,6 +24,7 @@ import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.sockets.NativeSockets;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -57,12 +58,19 @@ final class NativeContext implements Context {
             public int getOption(Context context, ContextOption option) {
                 return ((NativeContext) context).getOption(option);
             }
+
         });
         ContractAccess.register(new ContractAccess.ContextOptionsAccess() {
             @Override
             public void setOption(Context context, ContextOption option,
                                   int value) {
                 ((NativeContext) context).setOption(option, value);
+            }
+
+            @Override
+            public void setUInt64Option(Context context, ContextOption option,
+                                        long value) {
+                ((NativeContext) context).setUInt64Option(option, value);
             }
 
             @Override
@@ -74,6 +82,12 @@ final class NativeContext implements Context {
             @Override
             public int getOption(Context context, ContextOption option) {
                 return ((NativeContext) context).getOption(option);
+            }
+
+            @Override
+            public long getUInt64Option(Context context,
+                                        ContextOption option) {
+                return ((NativeContext) context).getUInt64Option(option);
             }
         });
     }
@@ -189,6 +203,20 @@ final class NativeContext implements Context {
         }
     }
 
+    private void setUInt64Option(ContextOption option, long value) {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment bytes = arena.allocate(ValueLayout.JAVA_LONG);
+            bytes.set(ValueLayout.JAVA_LONG, 0, value);
+            int rc = Native.ctxSetData(handle, option.getValue(), bytes,
+                Long.BYTES);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                    systems.zlink.contracts.errors.ErrorCategory.CONFIG);
+            }
+        }
+    }
+
     private int getOption(ContextOption option) {
         ensureOpen();
         int rc = Native.ctxGet(handle, option.getValue());
@@ -197,6 +225,25 @@ final class NativeContext implements Context {
             throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         }
         return rc;
+    }
+
+    private long getUInt64Option(ContextOption option) {
+        ensureOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment value = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment size = arena.allocate(ValueLayout.JAVA_LONG);
+            size.set(ValueLayout.JAVA_LONG, 0, Long.BYTES);
+            int rc = Native.ctxGetData(handle, option.getValue(), value, size);
+            if (rc != 0) {
+                throw ZlinkException.fromLastError(
+                    systems.zlink.contracts.errors.ErrorCategory.CONFIG);
+            }
+            if (size.get(ValueLayout.JAVA_LONG, 0) != Long.BYTES) {
+                throw new IllegalStateException(
+                    "native context option returned an invalid value size");
+            }
+            return value.get(ValueLayout.JAVA_LONG, 0);
+        }
     }
 
     private void ensureOpen() {

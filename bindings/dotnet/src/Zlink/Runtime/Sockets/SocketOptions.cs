@@ -50,8 +50,10 @@ internal static class SocketOptions
     public static SocketOptionKey<long> MaxMsgSize { get; } =
         Int64(SocketOption.MaxMsgSize);
 
-    public static SocketOptionKey<int> SndHwm { get; } = Int(SocketOption.SndHwm);
-    public static SocketOptionKey<int> RcvHwm { get; } = Int(SocketOption.RcvHwm);
+    public static SocketOptionKey<ulong> SndHwm { get; } =
+        UInt64(SocketOption.SndHwm);
+    public static SocketOptionKey<ulong> RcvHwm { get; } =
+        UInt64(SocketOption.RcvHwm);
 
     public static SocketOptionKey<int> MulticastHops { get; } =
         Int(SocketOption.MulticastHops);

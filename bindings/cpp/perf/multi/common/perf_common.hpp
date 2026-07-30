@@ -191,12 +191,12 @@ typedef ::perf::latency_sampler_stats_t bench_latency_stats_t;
 typedef ::perf::latency_sampler_t bench_latency_sampler_t;
 
 template <typename SocketLike>
-inline void apply_benchmark_hwm (SocketLike &socket, int sndhwm, int rcvhwm)
+inline void apply_benchmark_hwm (SocketLike &socket, uint64_t sndhwm, uint64_t rcvhwm)
 {
     if (!manual_socket_overrides_enabled ())
         return;
-    const int snd_value = sndhwm > 0 ? sndhwm : 1;
-    const int rcv_value = rcvhwm > 0 ? rcvhwm : 1;
+    const uint64_t snd_value = sndhwm > 0 ? sndhwm : 1;
+    const uint64_t rcv_value = rcvhwm > 0 ? rcvhwm : 1;
     (void) set_common_socket_option (socket, perf::options::socket_options::sndhwm, snd_value);
     (void) set_common_socket_option (socket, perf::options::socket_options::rcvhwm, rcv_value);
 }
@@ -219,7 +219,7 @@ inline bool apply_benchmark_auto_hwm_msg_unit (ctx_guard_t &ctx, size_t msg_size
     try {
         zlink::context_options_t options = ctx.ctx ().options ();
         options.auto_hwm_msg_unit_bytes (
-          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size)));
+          zlink::byte_count_t::bytes (static_cast<uint64_t> (msg_size)));
         return true;
     }
     catch (const zlink::config_error_t &err) {
@@ -383,8 +383,8 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
     const std::string key = pattern + "|" + transport_value + "|" + component + "|" + label + "|"
                             + std::to_string (msg_size) + "|" + socket_type_value + "|"
                             + std::to_string (snapshot.auto_hwm_role) + "|"
-                            + std::to_string (snapshot.auto_hwm_applied_sndhwm) + "|"
-                            + std::to_string (snapshot.auto_hwm_applied_rcvhwm) + "|"
+                            + std::to_string (snapshot.auto_hwm_applied_sndhwm_bytes) + "|"
+                            + std::to_string (snapshot.auto_hwm_applied_rcvhwm_bytes) + "|"
                             + std::to_string (snapshot.auto_hwm_unit_budget_bytes) + "|"
                             + std::to_string (snapshot.auto_hwm_effective_message_bytes) + "|"
                             + std::to_string (effective_sndbuf) + "|"
@@ -411,8 +411,8 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
               << ",policy_class_id=" << snapshot.auto_hwm_policy_class
               << ",unit_budget_bytes=" << snapshot.auto_hwm_unit_budget_bytes
               << ",size_cap=" << snapshot.auto_hwm_size_cap
-              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
-              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm_bytes
+              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm_bytes
               << ",socket_message_slots=" << snapshot.auto_hwm_socket_message_slots
               << ",effective_message_bytes=" << snapshot.auto_hwm_effective_message_bytes
               << ",effective_sndbuf=" << effective_sndbuf
@@ -420,8 +420,15 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
               << ",last_recalc_ms=" << snapshot.auto_hwm_last_recalc_ms << ",last_recalc_reason="
               << auto_hwm_recalc_reason_name (snapshot.auto_hwm_last_recalc_reason)
               << ",send_blocked_ratio_ppm=" << snapshot.auto_hwm_send_blocked_ratio_ppm
-              << ",deferred_sndhwm=" << snapshot.auto_hwm_deferred_sndhwm
-              << ",deferred_rcvhwm=" << snapshot.auto_hwm_deferred_rcvhwm << std::endl;
+              << ",deferred_sndhwm="
+              << (snapshot.auto_hwm_deferred_sndhwm_valid
+                    ? std::to_string (snapshot.auto_hwm_deferred_sndhwm_bytes)
+                    : "-")
+              << ",deferred_rcvhwm="
+              << (snapshot.auto_hwm_deferred_rcvhwm_valid
+                    ? std::to_string (snapshot.auto_hwm_deferred_rcvhwm_bytes)
+                    : "-")
+              << std::endl;
 }
 
 template <typename SocketLike>

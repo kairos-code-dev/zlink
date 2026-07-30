@@ -60,7 +60,7 @@ public interface IContextOptions
     ///     Gets or sets the assumed message size, in bytes, used when auto-sizing
     ///     high-water marks.
     /// </summary>
-    int AutoHwmMessageUnitBytes { get; set; }
+    ulong AutoHwmMessageUnitBytes { get; set; }
 
     /// <summary>
     ///     Gets or sets whether high-water marks are sized automatically.

@@ -1,33 +1,44 @@
 // SPDX-License-Identifier: MPL-2.0
 
 export interface MonitorStatusRaw {
+  abiVersion: number;
+  structSize: number;
   sourceKind: number;
   stateFlags: number;
   detailFlags: number;
-  sndPendingMsgs: number | bigint;
-  rcvPendingMsgs: number | bigint;
+  sndPendingMsgs: bigint;
+  rcvPendingMsgs: bigint;
   autoHwmEnabled: boolean;
   autoHwmProfile: number;
   autoHwmRole: number;
   autoHwmPolicyClass: number;
-  autoHwmUnitBudgetBytes: number | bigint;
+  autoHwmUnitBudgetBytes: bigint;
   autoHwmSizeCap: number;
-  autoHwmSocketMessageSlots: number | bigint;
+  autoHwmSocketMessageSlots: bigint;
   autoHwmConnectionBucketEnabled: boolean;
   autoHwmConnectionBucketCount: number;
   autoHwmConnectionBucketIndex: number;
   autoHwmConnectionBucketHwm4K: number;
   autoHwmConnectionBucketHysteresisRetained: boolean;
-  autoHwmEffectiveMessageBytes: number | bigint;
-  autoHwmAppliedSndHwm: number;
-  autoHwmAppliedRcvHwm: number;
+  autoHwmEffectiveMessageBytes: bigint;
+  autoHwmPlannedSndHwmBytes: bigint;
+  autoHwmPlannedRcvHwmBytes: bigint;
+  autoHwmAppliedSndHwmBytes: bigint;
+  autoHwmAppliedRcvHwmBytes: bigint;
   autoHwmEffectiveSndBuf?: number;
   autoHwmEffectiveRcvBuf?: number;
-  autoHwmLastRecalcMs: number | bigint;
+  autoHwmLastRecalcMs: bigint;
   autoHwmLastRecalcReason: number;
   autoHwmSendBlockedRatioPpm: number;
-  autoHwmDeferredSndHwm: number;
-  autoHwmDeferredRcvHwm: number;
+  autoHwmDeferredSndHwmBytes: bigint;
+  autoHwmDeferredRcvHwmBytes: bigint;
+  autoHwmDeferredSndHwmValid: boolean;
+  autoHwmDeferredRcvHwmValid: boolean;
+  sndBytesInFlight: bigint;
+  rcvBytesInFlight: bigint;
+  minimumCoreMessageChargeBytes: bigint;
+  oversizeMessageAdmissionCount: bigint;
+  oversizeMessageAdmissionMaxBytes: bigint;
 }
 
 export interface MonitorEventValueRaw {

@@ -23,9 +23,11 @@ void apply_dealer_socket_options (zlink::dealer_socket_t &socket,
     zlink::dealer_socket_options_t options = socket.options ();
     if (perf::multi::manual_socket_overrides_enabled ()) {
         options.send_hwm (
-          zlink::message_count_t::value (settings.sndhwm > 0 ? settings.sndhwm : 1));
+          zlink::byte_count_t::bytes (
+            static_cast<uint64_t> (settings.sndhwm > 0 ? settings.sndhwm : 1)));
         options.recv_hwm (
-          zlink::message_count_t::value (settings.rcvhwm > 0 ? settings.rcvhwm : 1));
+          zlink::byte_count_t::bytes (
+            static_cast<uint64_t> (settings.rcvhwm > 0 ? settings.rcvhwm : 1)));
     }
     options.send_timeout (std::chrono::milliseconds (settings.sndtimeo_ms));
     options.recv_timeout (std::chrono::milliseconds (settings.rcvtimeo_ms));

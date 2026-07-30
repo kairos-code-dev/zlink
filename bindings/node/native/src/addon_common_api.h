@@ -39,6 +39,14 @@ inline void set_int64_property (napi_env env, napi_value obj, const char *name, 
     napi_set_named_property (env, obj, name, out);
 }
 
+inline void set_uint64_bigint_property (napi_env env, napi_value obj, const char *name,
+                                        uint64_t value)
+{
+    napi_value out;
+    napi_create_bigint_uint64 (env, value, &out);
+    napi_set_named_property (env, obj, name, out);
+}
+
 inline void set_string_property (napi_env env, napi_value obj, const char *name, const char *value)
 {
     napi_value out;

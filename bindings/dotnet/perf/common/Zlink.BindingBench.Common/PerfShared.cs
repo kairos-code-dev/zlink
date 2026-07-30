@@ -185,8 +185,8 @@ public static class PerfShared
 
     private static bool SingleAutoHwmStatusVisible(MonitorStatus s)
     {
-        return s.AutoHwmAppliedSndHwm > 0
-            || s.AutoHwmAppliedRcvHwm > 0
+        return s.AutoHwmAppliedSendHighWaterMarkBytes > 0
+            || s.AutoHwmAppliedReceiveHighWaterMarkBytes > 0
             || s.AutoHwmEffectiveMessageBytes > 0
             || s.AutoHwmSocketMessageSlots > 0;
     }
@@ -225,8 +225,8 @@ public static class PerfShared
             + $",socket={component}"
             + $",socket_type={socketType}"
             + $",role={SingleAutoHwmRoleName(snapshot.AutoHwmRole)}"
-            + $",sndhwm={snapshot.AutoHwmAppliedSndHwm}"
-            + $",rcvhwm={snapshot.AutoHwmAppliedRcvHwm}"
+            + $",sndhwm={snapshot.AutoHwmAppliedSendHighWaterMarkBytes}"
+            + $",rcvhwm={snapshot.AutoHwmAppliedReceiveHighWaterMarkBytes}"
             + $",effective_message_bytes={snapshot.AutoHwmEffectiveMessageBytes}"
             + $",effective_sndbuf={snapshot.AutoHwmEffectiveSndbuf}"
             + $",effective_rcvbuf={snapshot.AutoHwmEffectiveRcvbuf}"

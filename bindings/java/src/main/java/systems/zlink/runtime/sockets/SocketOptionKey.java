@@ -62,6 +62,23 @@ public final class SocketOptionKey<T> {
             Long.BYTES);
     }
 
+    public static SocketOptionKey<Long> uint64(String name,
+                                                SocketOption option,
+                                                boolean readable,
+                                                boolean writable) {
+        return new SocketOptionKey<>(name, option.getValue(), Long.class,
+            SocketOptionValueType.UINT64, readable, writable,
+            Long.BYTES);
+    }
+
+    void requireLongValue(long value) {
+        if (valueType != SocketOptionValueType.INT64
+            && valueType != SocketOptionValueType.UINT64) {
+            throw new IllegalArgumentException(
+                name + " does not accept a 64-bit integer");
+        }
+    }
+
     public static SocketOptionKey<String> string(String name,
                                                   SocketOption option,
                                                   boolean readable,

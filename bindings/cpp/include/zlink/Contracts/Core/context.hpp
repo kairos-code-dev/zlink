@@ -5,6 +5,7 @@
 #include "../Errors/errors.hpp"
 
 #include <memory>
+#include <cstdint>
 #include <string_view>
 
 namespace zlink
@@ -56,6 +57,8 @@ class context_t
     int get_option_raw (int option_, int *error_out_) const;
     config_result_t set_option_raw (int option_, int value_);
     config_result_t set_option_data_raw (int option_, std::string_view value_);
+    uint64_t get_option_uint64_raw (int option_) const;
+    config_result_t set_option_uint64_raw (int option_, uint64_t value_);
 
     struct impl;
     std::unique_ptr<impl> _impl;

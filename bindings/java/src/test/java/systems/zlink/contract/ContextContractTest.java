@@ -43,13 +43,15 @@ public class ContextContractTest {
             assertDoesNotThrow(
                 () -> options.autoHwmProfile(AutoHwmProfile.COMPACT));
             assertEquals(AutoHwmProfile.COMPACT, options.autoHwmProfile());
-            assertEquals(0, options.autoHwmMessageUnitBytes());
-            assertDoesNotThrow(() -> options.autoHwmMessageUnitBytes(64));
-            assertEquals(64, options.autoHwmMessageUnitBytes());
-            assertDoesNotThrow(() -> options.autoHwmMessageUnitBytes(0));
-            assertEquals(0, options.autoHwmMessageUnitBytes());
-            assertThrows(IllegalArgumentException.class,
-                () -> options.autoHwmMessageUnitBytes(-1));
+            assertEquals(0L, options.autoHwmMessageUnitBytes());
+            long planningUnit = (long) Integer.MAX_VALUE + 1024L;
+            assertDoesNotThrow(
+                () -> options.autoHwmMessageUnitBytes(planningUnit));
+            assertEquals(planningUnit, options.autoHwmMessageUnitBytes());
+            assertDoesNotThrow(() -> options.autoHwmMessageUnitBytes(0L));
+            assertEquals(0L, options.autoHwmMessageUnitBytes());
+            assertDoesNotThrow(() -> options.autoHwmMessageUnitBytes(-1L));
+            assertEquals(-1L, options.autoHwmMessageUnitBytes());
             assertTrue(options.messageThreadSize() > 0);
         }
     }

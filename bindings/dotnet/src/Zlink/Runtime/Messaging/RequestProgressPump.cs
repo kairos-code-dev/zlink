@@ -79,6 +79,28 @@ internal static class RequestProgressPump
         RemoveExternalProgress(handle);
     }
 
+    internal static void StopSocket(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero)
+            return;
+
+        var key = (nint)handle;
+        if (!States.TryGetValue(key, out var state))
+            return;
+
+        Interlocked.Exchange(ref state.StopRequested, 1);
+        Thread? worker;
+        lock (state.WorkerSync)
+            worker = state.Worker;
+
+        // A callback may dispose its own socket from the progress thread. In
+        // that case the worker observes StopRequested before polling again.
+        if (worker != null && worker != Thread.CurrentThread)
+            state.WorkerStopped.Wait();
+
+        States.TryRemove(key, out _);
+    }
+
     private static int ExternalProgressCount(nint key)
     {
         // External poll loops already drive completion for their handles;
@@ -112,82 +134,91 @@ internal static class RequestProgressPump
     private static void EnsureWorker(nint key, ProgressState state,
         IntPtr handle)
     {
-        if (Interlocked.CompareExchange(ref state.WorkerRunning, 1, 0) != 0)
-            return;
-
-        Thread worker = new(() =>
+        Thread worker;
+        lock (state.WorkerSync)
         {
-            var poller = IntPtr.Zero;
-            try
-            {
-                poller = NativeMethods.zlink_poller_new();
-                if (poller == IntPtr.Zero)
-                    return;
-                if (NativeMethods.zlink_poller_add(poller, handle,
-                        IntPtr.Zero, PollCompletion) != 0)
-                    return;
-                var events =
-                    new ZlinkPollerEvent[PollerEventBatch];
-                long idleDeadlineTicks = 0;
-                while (true)
-                {
-                    var activeCount = Volatile.Read(ref state.ActiveCount);
-                    if (activeCount <= 0)
-                    {
-                        // Keep the worker alive briefly after the last task so
-                        // bursty request batches do not churn background threads.
-                        var nowTicks = Stopwatch.GetTimestamp();
-                        if (idleDeadlineTicks == 0)
-                            idleDeadlineTicks = nowTicks + IdleKeepaliveTicks;
-                        else if (nowTicks >= idleDeadlineTicks)
-                            break;
-                    }
-                    else
-                    {
-                        idleDeadlineTicks = 0;
-                    }
+            if (Volatile.Read(ref state.StopRequested) != 0
+                || Volatile.Read(ref state.WorkerRunning) != 0)
+                return;
 
-                    try
+            state.WorkerStopped.Reset();
+            Volatile.Write(ref state.WorkerRunning, 1);
+            worker = new Thread(() =>
+            {
+                var poller = IntPtr.Zero;
+                try
+                {
+                    poller = NativeMethods.zlink_poller_new();
+                    if (poller == IntPtr.Zero)
+                        return;
+                    if (NativeMethods.zlink_poller_add(poller, handle,
+                            IntPtr.Zero, PollCompletion) != 0)
+                        return;
+                    var events =
+                        new ZlinkPollerEvent[PollerEventBatch];
+                    long idleDeadlineTicks = 0;
+                    while (Volatile.Read(ref state.StopRequested) == 0)
                     {
-                        _ = NativeMethods.zlink_poller_wait(poller, events,
-                            events.Length,
-                            activeCount > 0 ? -1 : PollRecheckTimeoutMs,
-                            out _);
-                    }
-                    catch
-                    {
-                        break;
+                        var activeCount = Volatile.Read(ref state.ActiveCount);
+                        if (activeCount <= 0)
+                        {
+                            // Keep the worker alive briefly after the last task so
+                            // bursty request batches do not churn background threads.
+                            var nowTicks = Stopwatch.GetTimestamp();
+                            if (idleDeadlineTicks == 0)
+                                idleDeadlineTicks = nowTicks + IdleKeepaliveTicks;
+                            else if (nowTicks >= idleDeadlineTicks)
+                                break;
+                        }
+                        else
+                        {
+                            idleDeadlineTicks = 0;
+                        }
+
+                        try
+                        {
+                            _ = NativeMethods.zlink_poller_wait(poller, events,
+                                events.Length, PollRecheckTimeoutMs, out _);
+                        }
+                        catch
+                        {
+                            break;
+                        }
                     }
                 }
-            }
-            finally
-            {
-                if (poller != IntPtr.Zero)
-                    // The progress worker does not own the socket handle.
-                    // During teardown the owner can close that handle
-                    // before this idle worker exits, especially on slower CI
-                    // runners. Destroying the private poller is enough to drop
-                    // its registrations; passing the possibly closed handle
-                    // back into zlink_poller_remove can race native teardown.
-                    try
+                finally
+                {
+                    if (poller != IntPtr.Zero)
+                        try
+                        {
+                            _ = NativeMethods.zlink_poller_destroy(ref poller);
+                        }
+                        catch
+                        {
+                        }
+
+                    bool restart;
+                    lock (state.WorkerSync)
                     {
-                        _ = NativeMethods.zlink_poller_destroy(ref poller);
-                    }
-                    catch
-                    {
+                        state.Worker = null;
+                        Volatile.Write(ref state.WorkerRunning, 0);
+                        restart = Volatile.Read(ref state.ActiveCount) > 0
+                            && Volatile.Read(ref state.StopRequested) == 0;
+                        state.WorkerStopped.Set();
                     }
 
-                Interlocked.Exchange(ref state.WorkerRunning, 0);
-                if (Volatile.Read(ref state.ActiveCount) == 0)
-                    States.TryRemove(key, out _);
-                else
-                    EnsureWorker(key, state, handle);
-            }
-        })
-        {
-            IsBackground = true,
-            Name = "Zlink request progress"
-        };
+                    if (restart)
+                        EnsureWorker(key, state, handle);
+                    else if (Volatile.Read(ref state.ActiveCount) == 0)
+                        States.TryRemove(key, out _);
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "Zlink request progress"
+            };
+            state.Worker = worker;
+        }
         worker.Start();
     }
 
@@ -195,6 +226,10 @@ internal static class RequestProgressPump
     {
         internal int ActiveCount;
         internal int WorkerRunning;
+        internal int StopRequested;
+        internal readonly object WorkerSync = new();
+        internal readonly ManualResetEventSlim WorkerStopped = new(false);
+        internal Thread? Worker;
     }
 
     internal readonly struct ProgressLease

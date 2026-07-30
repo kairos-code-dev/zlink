@@ -460,6 +460,37 @@ SPOT은 서비스 계층 API이며, raw socket의 누출이 아니다.
 - Actor location과 stream session binding은 서로 독립적이다. actor가 사용자
   Spot에 join하기 위해 bound stream session이 반드시 필요하지는 않다.
 
+## Byte HWM 및 monitoring ABI v2
+
+HWM은 queue의 message 수가 아니라 Core가 계산한 accounted byte의 상한이다. 공개 타입은 Core의
+`uint64_t` 범위를 줄이지 않는 `ulong`이다. `0`은 무제한이고 수동 기본값은
+`4_096_000 bytes`다. Binding은 정확히 8-byte 값으로 Core를 호출한다. 이전 `int` overload,
+alias 또는 count 단위 adapter는 제공하지 않는다.
+
+```csharp
+public interface IContextOptions
+{
+    ulong AutoHwmMessageUnitBytes { get; set; } // 0은 socket type별 planning unit 기본값을 선택한다.
+}
+
+public partial class CommonSocketOptions
+{
+    public ulong SendHighWaterMark { get; set; }    // outbound accounted byte 상한이다.
+    public ulong ReceiveHighWaterMark { get; set; } // inbound accounted byte 상한이다.
+}
+```
+
+`MonitorStatus`는 native `zlink_monitor_status_t` ABI version 2와 같은 field를 제공한다.
+Planned, applied, deferred HWM과 in-flight 사용량은 모두 `ulong` byte 값이다. Deferred 값은
+대응하는 `AutoHwmDeferredSendHighWaterMarkValid` 또는
+`AutoHwmDeferredReceiveHighWaterMarkValid`가 `true`일 때만 유효하다. Pending message 값은
+`SndPendingMsgs`와 `RcvPendingMsgs`라는 count 진단값으로 유지하며 byte field와 이름을 공유하지
+않는다. Snapshot의 `AbiVersion`이 `2`가 아니거나 `StructSize`가 binding layout과 다르면
+`NotSupportedException`을 발생시킨다. 이전 32-bit monitoring layout은 받지 않는다.
+
+Request/reply API는 HWM 값을 인자로 받지 않는다. Backpressure와 completion 처리는 Core가 소유하며
+binding은 기존 request/reply lifetime과 ownership 계약을 그대로 전달한다.
+
 ## 에러 및 검증 정책
 
 - 고정 크기 네이티브 경계 값은 core를 호출하기 전에 검증한다.

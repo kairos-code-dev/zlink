@@ -42,7 +42,8 @@ final class SocketOptionSupport {
     <T> T readOption(SocketOptionKey<T> option) {
         return switch (option.valueType()) {
             case INT32 -> (T) Integer.valueOf(getSockOptInt(option.optionId()));
-            case INT64 -> (T) Long.valueOf(getSockOptLong(option.optionId()));
+            case INT64, UINT64 ->
+                (T) Long.valueOf(getSockOptLong(option.optionId()));
             case STRING -> (T) getTypedStringOption(option);
             case BYTES -> (T) getTypedBytesOption(option);
         };

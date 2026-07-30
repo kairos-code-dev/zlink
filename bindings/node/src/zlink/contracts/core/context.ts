@@ -33,8 +33,8 @@ export interface ContextOptions {
   autoHwmRecalcDebounceMs: number;
   /** The profile used to size high-water marks automatically. */
   autoHwmProfile: AutoHwmProfileValue;
-  /** The assumed message size, in bytes, used when auto-sizing high-water marks. */
-  autoHwmMsgUnitBytes: number;
+  /** The byte planning unit used when auto-sizing high-water marks; 0n selects the socket default. */
+  autoHwmMsgUnitBytes: bigint;
   /** The prefix applied to the names of threads the context creates. */
   threadNamePrefix: string;
   /** Pin the context's I/O threads to also run on CPU core `cpu`. */

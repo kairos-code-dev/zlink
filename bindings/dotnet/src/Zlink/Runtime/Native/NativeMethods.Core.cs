@@ -25,6 +25,7 @@ internal static partial class NativeMethods
         "zlink_ctx_new",
         "zlink_ctx_set",
         "zlink_ctx_set_data",
+        "zlink_ctx_get_data",
         "zlink_ctx_shutdown",
         "zlink_ctx_term",
         "zlink_dealer_recv_part",
@@ -132,6 +133,14 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_ctx_set_data(IntPtr context, int option,
         byte[] optval, nuint optvallen);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_ctx_set_data(IntPtr context, int option,
+        in ulong optval, nuint optvallen);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_ctx_get_data(IntPtr context, int option,
+        out ulong optval, ref nuint optvallen);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_ctx_get(IntPtr context, int option,

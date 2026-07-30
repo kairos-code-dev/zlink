@@ -13,6 +13,7 @@ import { validateCString } from '../options/validation';
 import { requireNative } from '../native/native';
 import { getNativeHandle, NativeHandle } from '../handles/native_handle';
 import { ContextOption } from './context_options';
+import { uint64Buffer } from '../options/byte_values';
 
 const OPTION_CREATE_TOKEN = Symbol('OptionFacade.create');
 
@@ -54,13 +55,20 @@ export class ContextOptions {
   set autoHwmRecalcDebounceMs(value: number) { setContextOptionRaw(this._context, ContextOption.AUTO_HWM_RECALC_DEBOUNCE_MS, value | 0); }
   get autoHwmProfile(): AutoHwmProfileValue { return getContextOptionRaw(this._context, ContextOption.AUTO_HWM_PROFILE) as AutoHwmProfileValue; }
   set autoHwmProfile(value: AutoHwmProfileValue) { setContextOptionRaw(this._context, ContextOption.AUTO_HWM_PROFILE, value | 0); }
-  get autoHwmMsgUnitBytes(): number { return getContextOptionRaw(this._context, ContextOption.AUTO_HWM_MSG_UNIT_BYTES); }
-  set autoHwmMsgUnitBytes(value: number) {
-    const normalized = value | 0;
-    if (normalized < 0 || normalized !== value) {
-      throw new RangeError('autoHwmMsgUnitBytes must be a non-negative int32');
-    }
-    setContextOptionRaw(this._context, ContextOption.AUTO_HWM_MSG_UNIT_BYTES, normalized);
+  get autoHwmMsgUnitBytes(): bigint {
+    const value = requireNative().ctxGetOptData(
+      getNativeHandle(this._context),
+      ContextOption.AUTO_HWM_MSG_UNIT_BYTES
+    );
+    if (value.length !== 8) throw new Error('autoHwmMsgUnitBytes option returned an invalid payload');
+    return value.readBigUInt64LE(0);
+  }
+  set autoHwmMsgUnitBytes(value: bigint) {
+    setContextOptionRaw(
+      this._context,
+      ContextOption.AUTO_HWM_MSG_UNIT_BYTES,
+      uint64Buffer(value, 'autoHwmMsgUnitBytes')
+    );
   }
   get threadNamePrefix(): string { return this._threadNamePrefix; }
   set threadNamePrefix(value: string) {

@@ -54,10 +54,10 @@ public final class SocketOptions {
       SocketOptionKey.int64("MAXMSGSIZE", SocketOption.MAXMSGSIZE,
         true, true);
 
-    public static final SocketOptionKey<Integer> SNDHWM =
-      SocketOptionKey.int32("SNDHWM", SocketOption.SNDHWM, true, true);
-    public static final SocketOptionKey<Integer> RCVHWM =
-      SocketOptionKey.int32("RCVHWM", SocketOption.RCVHWM, true, true);
+    public static final SocketOptionKey<Long> SNDHWM =
+      SocketOptionKey.uint64("SNDHWM", SocketOption.SNDHWM, true, true);
+    public static final SocketOptionKey<Long> RCVHWM =
+      SocketOptionKey.uint64("RCVHWM", SocketOption.RCVHWM, true, true);
     public static final SocketOptionKey<Integer> MULTICAST_HOPS =
       SocketOptionKey.int32("MULTICAST_HOPS", SocketOption.MULTICAST_HOPS,
         true, true);

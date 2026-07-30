@@ -10,6 +10,7 @@ import { normalizeMessageLikePayload } from '../buffers/message_conversion';
 import { normalizeRoutingId } from '../core/routing_id';
 import { SocketBase } from './socket_base';
 import { SocketOption } from '../options/option_mapping';
+import { readUInt64Option, uint64Buffer } from '../options/byte_values';
 
 export function int32Buffer(value: number, name: string): Buffer {
   if (!Number.isInteger(value)) throw new TypeError(`${name} must be an integer`);
@@ -110,10 +111,10 @@ export class CommonSocketOptions {
 
   get linger(): number { return this.readInt32(SocketOption.LINGER, 'linger'); }
   set linger(value: number) { this.writeInt32(SocketOption.LINGER, value, 'linger'); }
-  get sendHwm(): number { return this.readInt32(SocketOption.SNDHWM, 'sendHwm'); }
-  set sendHwm(value: number) { this.writeInt32(SocketOption.SNDHWM, value, 'sendHwm'); }
-  get recvHwm(): number { return this.readInt32(SocketOption.RCVHWM, 'recvHwm'); }
-  set recvHwm(value: number) { this.writeInt32(SocketOption.RCVHWM, value, 'recvHwm'); }
+  get sendHwm(): bigint { return readUInt64Option(this._socket.getSockOptRaw(SocketOption.SNDHWM), 'sendHwm'); }
+  set sendHwm(value: bigint) { this._socket.setSockOptRaw(SocketOption.SNDHWM, uint64Buffer(value, 'sendHwm')); }
+  get recvHwm(): bigint { return readUInt64Option(this._socket.getSockOptRaw(SocketOption.RCVHWM), 'recvHwm'); }
+  set recvHwm(value: bigint) { this._socket.setSockOptRaw(SocketOption.RCVHWM, uint64Buffer(value, 'recvHwm')); }
   get sendTimeout(): number { return this.readInt32(SocketOption.SNDTIMEO, 'sendTimeout'); }
   set sendTimeout(value: number) { this.writeInt32(SocketOption.SNDTIMEO, value, 'sendTimeout'); }
   get recvTimeout(): number { return this.readInt32(SocketOption.RCVTIMEO, 'recvTimeout'); }

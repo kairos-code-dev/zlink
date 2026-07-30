@@ -37,6 +37,8 @@ export type MonitorEventType = typeof MonitorEventType[keyof typeof MonitorEvent
  * shrinks).
  */
 export interface MonitorStatus {
+  readonly abiVersion: number;
+  readonly structSize: number;
   readonly sourceKind: MonitorSourceKindValue;
   readonly stateFlags: number;
   readonly detailFlags: number;
@@ -55,15 +57,24 @@ export interface MonitorStatus {
   readonly autoHwmConnectionBucketHwm4K: number;
   readonly autoHwmConnectionBucketHysteresisRetained: boolean;
   readonly autoHwmEffectiveMessageBytes: bigint;
-  readonly autoHwmAppliedSndHwm: number;
-  readonly autoHwmAppliedRcvHwm: number;
+  readonly autoHwmPlannedSndHwmBytes: bigint;
+  readonly autoHwmPlannedRcvHwmBytes: bigint;
+  readonly autoHwmAppliedSndHwmBytes: bigint;
+  readonly autoHwmAppliedRcvHwmBytes: bigint;
   readonly autoHwmEffectiveSndBuf: number;
   readonly autoHwmEffectiveRcvBuf: number;
   readonly autoHwmLastRecalcMs: bigint;
   readonly autoHwmLastRecalcReason: number;
   readonly autoHwmSendBlockedRatioPpm: number;
-  readonly autoHwmDeferredSndHwm: number;
-  readonly autoHwmDeferredRcvHwm: number;
+  readonly autoHwmDeferredSndHwmBytes: bigint;
+  readonly autoHwmDeferredRcvHwmBytes: bigint;
+  readonly autoHwmDeferredSndHwmValid: boolean;
+  readonly autoHwmDeferredRcvHwmValid: boolean;
+  readonly sndBytesInFlight: bigint;
+  readonly rcvBytesInFlight: bigint;
+  readonly minimumCoreMessageChargeBytes: bigint;
+  readonly oversizeMessageAdmissionCount: bigint;
+  readonly oversizeMessageAdmissionMaxBytes: bigint;
   /** Whether the monitored socket is in the ready state. */
   isReady(): boolean;
 }

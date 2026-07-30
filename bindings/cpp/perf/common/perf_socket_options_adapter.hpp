@@ -2,6 +2,7 @@
 #ifndef ZLINK_CPP_PERF_SOCKET_OPTIONS_ADAPTER_HPP
 #define ZLINK_CPP_PERF_SOCKET_OPTIONS_ADAPTER_HPP
 
+#include <cstdint>
 #include <string>
 
 namespace perf
@@ -94,8 +95,8 @@ template <typename T> struct stream_option_key_t
 namespace socket_options
 {
 static const socket_option_key_t<int> linger (socket_option::linger);
-static const socket_option_key_t<int> sndhwm (socket_option::sndhwm);
-static const socket_option_key_t<int> rcvhwm (socket_option::rcvhwm);
+static const socket_option_key_t<uint64_t> sndhwm (socket_option::sndhwm);
+static const socket_option_key_t<uint64_t> rcvhwm (socket_option::rcvhwm);
 static const socket_option_key_t<int> sndtimeo (socket_option::sndtimeo);
 static const socket_option_key_t<int> rcvtimeo (socket_option::rcvtimeo);
 static const socket_option_key_t<std::string> last_endpoint (socket_option::last_endpoint);

@@ -115,6 +115,29 @@ internal sealed class Context : NativeOwner, IContext
         return value;
     }
 
+    internal void SetUInt64Option(ContextOption option, ulong value)
+    {
+        EnsureNotDisposed();
+        EnumValidation.EnsureContextOption(option, nameof(option));
+        var rc = NativeMethods.zlink_ctx_set_data(Handle, (int)option,
+            in value, sizeof(ulong));
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
+    internal ulong GetUInt64Option(ContextOption option)
+    {
+        EnsureNotDisposed();
+        EnumValidation.EnsureContextOption(option, nameof(option));
+        nuint size = sizeof(ulong);
+        var rc = NativeMethods.zlink_ctx_get_data(Handle, (int)option,
+            out var value, ref size);
+        ZlinkException.ThrowConfigIfError(rc);
+        if (size != sizeof(ulong))
+            throw new InvalidOperationException(
+                "The native context option returned an invalid value size.");
+        return value;
+    }
+
     ~Context()
     {
         if (IsClosed)

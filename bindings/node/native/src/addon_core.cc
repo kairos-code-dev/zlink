@@ -1306,6 +1306,26 @@ napi_value ctx_getopt (napi_env env, napi_callback_info info)
     return out;
 }
 
+napi_value ctx_getopt_data (napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *ctx = NULL;
+    napi_get_value_external (env, argv[0], &ctx);
+    int32_t opt = 0;
+    napi_get_value_int32 (env, argv[1], &opt);
+    uint64_t value = 0;
+    size_t size = sizeof (value);
+    const zlink_config_result_t rc = zlink_ctx_get_data (
+      ctx, static_cast<zlink_ctx_option_t> (opt), &value, &size);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error (env, "ctx_getopt_data failed");
+    napi_value out;
+    napi_create_buffer_copy (env, size, &value, NULL, &out);
+    return out;
+}
+
 napi_value ctx_recalculate_auto_hwm (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];

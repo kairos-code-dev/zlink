@@ -174,8 +174,8 @@ internal static partial class PerfRunner
         socket.Options.Linger = TimeSpan.Zero;
         if (ManualSocketOverridesEnabled())
         {
-            int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
-            int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
+            ulong sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
+            ulong rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
             if (sndHwm > 0)
                 socket.Options.SendHighWaterMark = sndHwm;
             if (rcvHwm > 0)
@@ -195,7 +195,7 @@ internal static partial class PerfRunner
             return;
         try
         {
-            ctx.Options.AutoHwmMessageUnitBytes = msgSize;
+            ctx.Options.AutoHwmMessageUnitBytes = (ulong)msgSize;
         }
         catch (ZlinkException)
         {
@@ -328,6 +328,18 @@ internal static partial class PerfRunner
         }
     }
 
+    private static ulong ReadSocketOption(Func<ulong> getter)
+    {
+        try
+        {
+            return getter();
+        }
+        catch (ZlinkException)
+        {
+            return 0;
+        }
+    }
+
     private static SocketType ResolveSocketType(ISocket socket)
         => socket switch
         {
@@ -442,10 +454,11 @@ internal static partial class PerfRunner
         private AutoHwmSnapshotFields(bool enabled, AutoHwmProfile profile, uint role,
             uint policyClass, ulong unitBudgetBytes, uint sizeCap,
             ulong socketMessageSlots, ulong effectiveMessageBytes,
-            int sndHwm, int rcvHwm, int effectiveSndbuf,
+            ulong sndHwm, ulong rcvHwm, int effectiveSndbuf,
             int effectiveRcvbuf, ulong lastRecalcMs,
             AutoHwmRecalcReason lastRecalcReason,
-            uint sendBlockedRatioPpm, int deferredSndHwm, int deferredRcvHwm)
+            uint sendBlockedRatioPpm, ulong deferredSndHwm,
+            ulong deferredRcvHwm)
         {
             Enabled = enabled;
             Profile = profile;
@@ -474,15 +487,15 @@ internal static partial class PerfRunner
         internal uint SizeCap { get; }
         internal ulong SocketMessageSlots { get; }
         internal ulong EffectiveMessageBytes { get; }
-        internal int SndHwm { get; }
-        internal int RcvHwm { get; }
+        internal ulong SndHwm { get; }
+        internal ulong RcvHwm { get; }
         internal int EffectiveSndbuf { get; }
         internal int EffectiveRcvbuf { get; }
         internal ulong LastRecalcMs { get; }
         internal AutoHwmRecalcReason LastRecalcReason { get; }
         internal uint SendBlockedRatioPpm { get; }
-        internal int DeferredSndHwm { get; }
-        internal int DeferredRcvHwm { get; }
+        internal ulong DeferredSndHwm { get; }
+        internal ulong DeferredRcvHwm { get; }
 
         internal static AutoHwmSnapshotFields FromSnapshot(
             MonitorStatus snapshot)
@@ -491,15 +504,15 @@ internal static partial class PerfRunner
                 snapshot.AutoHwmUnitBudgetBytes, snapshot.AutoHwmSizeCap,
                 snapshot.AutoHwmSocketMessageSlots,
                 snapshot.AutoHwmEffectiveMessageBytes,
-                snapshot.AutoHwmAppliedSndHwm,
-                snapshot.AutoHwmAppliedRcvHwm,
+                snapshot.AutoHwmAppliedSendHighWaterMarkBytes,
+                snapshot.AutoHwmAppliedReceiveHighWaterMarkBytes,
                 snapshot.AutoHwmEffectiveSndbuf,
                 snapshot.AutoHwmEffectiveRcvbuf,
                 snapshot.AutoHwmLastRecalcMs,
                 snapshot.AutoHwmLastRecalcReason,
                 snapshot.AutoHwmSendBlockedRatioPpm,
-                snapshot.AutoHwmDeferredSndHwm,
-                snapshot.AutoHwmDeferredRcvHwm);
+                snapshot.AutoHwmDeferredSendHighWaterMarkBytes,
+                snapshot.AutoHwmDeferredReceiveHighWaterMarkBytes);
 
         internal static AutoHwmSnapshotFields FromSocketOptions(ISocket socket)
             => new(false, (AutoHwmProfile)0, 0, 0, 0, 0, 0, 0,

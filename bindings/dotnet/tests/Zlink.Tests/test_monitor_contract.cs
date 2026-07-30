@@ -35,6 +35,10 @@ public sealed class test_monitor_contract
         using var ctx = Zlink.CreateContext();
         using var server = ctx.CreatePairSocket();
         using var client = ctx.CreatePairSocket();
+        const ulong sendHwmBytes = (ulong)int.MaxValue + 4096UL;
+        const ulong receiveHwmBytes = (ulong)int.MaxValue + 8192UL;
+        server.Options.SendHighWaterMark = sendHwmBytes;
+        server.Options.ReceiveHighWaterMark = receiveHwmBytes;
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "monitor-handler");
         server.Bind(endpoint);
 
@@ -49,6 +53,8 @@ public sealed class test_monitor_contract
         Assert.Equal(MonitorEventType.ConnectionReady, evt.Event);
 
         MonitorStatus snapshot = monitor.Status();
+        Assert.Equal(2U, snapshot.AbiVersion);
+        Assert.True(snapshot.StructSize >= 232U);
         Assert.Equal<MonitorSourceKind>(MonitorSourceKind.Socket, snapshot.SourceKind);
         Assert.True(snapshot.SndPendingMsgs >= 0);
         Assert.True(Enum.IsDefined(snapshot.AutoHwmProfile));
@@ -58,6 +64,11 @@ public sealed class test_monitor_contract
         Assert.True(snapshot.AutoHwmSocketMessageSlots >= 0);
         Assert.True(snapshot.AutoHwmConnectionBucketCount >= 0);
         Assert.True(snapshot.AutoHwmConnectionBucketHwm4K >= 0);
+        Assert.Equal(sendHwmBytes,
+            snapshot.AutoHwmAppliedSendHighWaterMarkBytes);
+        Assert.Equal(receiveHwmBytes,
+            snapshot.AutoHwmAppliedReceiveHighWaterMarkBytes);
+        Assert.True(snapshot.MinimumCoreMessageChargeBytes > 0);
 
         monitor.Close();
         Assert.Throws<ObjectDisposedException>(() => monitor.Status());

@@ -31,8 +31,8 @@ final class PerfAutoHwm {
             + ",socket=" + component
             + ",socket_type=" + socketTypeName(socketType)
             + ",role=" + roleName(monitorStatus.autoHwmRole())
-            + ",sndhwm=" + monitorStatus.autoHwmAppliedSndHwm()
-            + ",rcvhwm=" + monitorStatus.autoHwmAppliedRcvHwm()
+            + ",sndhwm=" + monitorStatus.autoHwmAppliedSendHwmBytes()
+            + ",rcvhwm=" + monitorStatus.autoHwmAppliedRecvHwmBytes()
             + ",effective_message_bytes="
             + monitorStatus.autoHwmEffectiveMessageBytes()
             + ",effective_sndbuf=" + monitorStatus.autoHwmAppliedSndBuffer()
@@ -85,13 +85,15 @@ final class PerfAutoHwm {
             + recalcReasonName(monitorStatus.autoHwmLastRecalcReason())
             + ",send_blocked_ratio_ppm="
             + monitorStatus.autoHwmSendBlockedRatioPpm()
-            + ",deferred_sndhwm=" + monitorStatus.autoHwmDeferredSndHwm()
-            + ",deferred_rcvhwm=" + monitorStatus.autoHwmDeferredRcvHwm());
+            + ",deferred_sndhwm="
+            + monitorStatus.autoHwmDeferredSendHwmBytes()
+            + ",deferred_rcvhwm="
+            + monitorStatus.autoHwmDeferredRecvHwmBytes());
     }
 
     private static boolean visible(MonitorStatus monitorStatus) {
-        return monitorStatus.autoHwmAppliedSndHwm() > 0
-            || monitorStatus.autoHwmAppliedRcvHwm() > 0
+        return monitorStatus.autoHwmAppliedSendHwmBytes() > 0
+            || monitorStatus.autoHwmAppliedRecvHwmBytes() > 0
             || monitorStatus.autoHwmEffectiveMessageBytes() > 0
             || monitorStatus.autoHwmSocketMessageSlots() > 0;
     }
@@ -163,8 +165,8 @@ final class PerfAutoHwm {
             return "-";
         }
         return Integer.toString(sendSide
-            ? monitorStatus.autoHwmAppliedSndHwm()
-            : monitorStatus.autoHwmAppliedRcvHwm());
+            ? monitorStatus.autoHwmAppliedSendHwmBytes()
+            : monitorStatus.autoHwmAppliedRecvHwmBytes());
     }
 
     private static String bufferDisplay(MonitorStatus monitorStatus,

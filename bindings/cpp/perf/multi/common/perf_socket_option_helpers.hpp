@@ -31,10 +31,12 @@ inline int set_common_socket_option_impl (SocketLike &socket,
     try {
         switch (key.option) {
             case perf::options::socket_option::sndhwm:
-                socket.options ().send_hwm (zlink::message_count_t::value (value));
+                socket.options ().send_hwm (
+                  zlink::byte_count_t::bytes (static_cast<uint64_t> (value)));
                 return 0;
             case perf::options::socket_option::rcvhwm:
-                socket.options ().recv_hwm (zlink::message_count_t::value (value));
+                socket.options ().recv_hwm (
+                  zlink::byte_count_t::bytes (static_cast<uint64_t> (value)));
                 return 0;
             case perf::options::socket_option::sndtimeo:
                 socket.options ().send_timeout (std::chrono::milliseconds (value));

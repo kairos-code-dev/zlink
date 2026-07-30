@@ -86,19 +86,37 @@ public class CommonSocketOptions {
         ContractAccess.socketSetOption(socket, SocketOptions.LINGER, DurationConversions.toIntMillis(value, "value"));
     }
 
-    public int sendHwm() {
+    /**
+     * Returns the outbound accounted-byte HWM as an unsigned 64-bit value;
+     * zero means unlimited. Use {@link Long#toUnsignedString(long)} when a
+     * decimal representation above {@link Long#MAX_VALUE} is needed.
+     */
+    public long sendHwm() {
         return ContractAccess.socketGetOption(socket, SocketOptions.SNDHWM);
     }
 
-    public void sendHwm(int value) {
+    /**
+     * Sets the outbound accounted-byte HWM from the unsigned bit pattern in
+     * {@code value}; zero means unlimited.
+     */
+    public void sendHwm(long value) {
         ContractAccess.socketSetOption(socket, SocketOptions.SNDHWM, value);
     }
 
-    public int recvHwm() {
+    /**
+     * Returns the inbound accounted-byte HWM as an unsigned 64-bit value;
+     * zero means unlimited. Use {@link Long#toUnsignedString(long)} when a
+     * decimal representation above {@link Long#MAX_VALUE} is needed.
+     */
+    public long recvHwm() {
         return ContractAccess.socketGetOption(socket, SocketOptions.RCVHWM);
     }
 
-    public void recvHwm(int value) {
+    /**
+     * Sets the inbound accounted-byte HWM from the unsigned bit pattern in
+     * {@code value}; zero means unlimited.
+     */
+    public void recvHwm(long value) {
         ContractAccess.socketSetOption(socket, SocketOptions.RCVHWM, value);
     }
 

@@ -75,10 +75,10 @@ function applySocketPolicy(socket, options = {}) {
     if (socket.options) {
         if (manualOverrides || policyOverrides) {
             if (Number.isFinite(sendHwm) && sendHwm > 0) {
-                socket.options.sendHwm = sendHwm;
+                socket.options.sendHwm = BigInt(sendHwm);
             }
             if (Number.isFinite(recvHwm) && recvHwm > 0) {
-                socket.options.recvHwm = recvHwm;
+                socket.options.recvHwm = BigInt(recvHwm);
             }
         }
         socket.options.sendTimeout = sendTimeout;
@@ -137,8 +137,8 @@ function autoHwmRoleName(role) {
     }
 }
 function singleAutoHwmSnapshotVisible(snapshot) {
-    return Number(snapshot.autoHwmAppliedSndHwm) > 0
-        || Number(snapshot.autoHwmAppliedRcvHwm) > 0
+    return snapshot.autoHwmAppliedSndHwmBytes > 0n
+        || snapshot.autoHwmAppliedRcvHwmBytes > 0n
         || BigInt(snapshot.autoHwmEffectiveMessageBytes ?? 0) > 0n
         || BigInt(snapshot.autoHwmSocketMessageSlots ?? 0) > 0n;
 }
@@ -173,8 +173,8 @@ function emitSingleSocketHwmDetail(socket, pattern, transport, component, msgSiz
             + `,socket=${component}`
             + `,socket_type=${socketTypeName(socket)}`
             + `,role=${autoHwmRoleName(snapshot.autoHwmRole)}`
-            + `,sndhwm=${snapshot.autoHwmAppliedSndHwm}`
-            + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwm}`
+            + `,sndhwm=${snapshot.autoHwmAppliedSndHwmBytes}`
+            + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwmBytes}`
             + `,effective_message_bytes=${snapshot.autoHwmEffectiveMessageBytes}`
             + `,effective_sndbuf=${snapshot.autoHwmEffectiveSndBuf}`
             + `,effective_rcvbuf=${snapshot.autoHwmEffectiveRcvBuf}`

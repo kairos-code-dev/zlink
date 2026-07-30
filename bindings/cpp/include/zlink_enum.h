@@ -21,6 +21,7 @@ typedef enum zlink_ctx_option_t
     ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 12,
     ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS = 14,
     ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17,
+    /* uint64_t bytes; use zlink_ctx_set_data()/zlink_ctx_get_data(). */
     ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES = 18
 } zlink_ctx_option_t;
 
@@ -54,6 +55,7 @@ typedef enum zlink_option_t
     ZLINK_OPT_SNDBUF = 0x3005,
     ZLINK_OPT_RCVBUF = 0x3006,
     ZLINK_OPT_MAXMSGSIZE = 0x300E,
+    /* uint64_t directional pipe bytes; 0 means unlimited. */
     ZLINK_OPT_SNDHWM = 0x300F,
     ZLINK_OPT_RCVHWM = 0x3010,
 
@@ -108,6 +110,7 @@ typedef enum zlink_option_t
     ZLINK_OPT_ZMP_METADATA = 0x3030,
     ZLINK_OPT_ROUTE_VALUE_MAX_SIZE = 0x3032,
     ZLINK_OPT_RID_DUPLICATE_POLICY = 0x3033,
+    /* uint64_t Auto HWM planning-unit bytes; 0 selects the default. */
     ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES = 0x3034
 } zlink_option_t;
 

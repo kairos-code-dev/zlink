@@ -27,6 +27,44 @@ public sealed class test_socket_options
     }
 
     [Fact]
+    public void byte_high_water_marks_roundtrip_64_bit_boundaries()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        ctx.Options.AutoHwmEnabled = false;
+        using var pair = ctx.CreatePairSocket();
+
+        Assert.Equal(4_096_000UL, pair.Options.SendHighWaterMark);
+        Assert.Equal(4_096_000UL, pair.Options.ReceiveHighWaterMark);
+
+        const ulong beyondInt32 = (ulong)int.MaxValue + 65_536UL;
+        pair.Options.SendHighWaterMark = beyondInt32;
+        pair.Options.ReceiveHighWaterMark = ulong.MaxValue;
+
+        Assert.Equal(beyondInt32, pair.Options.SendHighWaterMark);
+        Assert.Equal(ulong.MaxValue, pair.Options.ReceiveHighWaterMark);
+
+        pair.Options.SendHighWaterMark = 0UL;
+        pair.Options.ReceiveHighWaterMark = 0UL;
+        Assert.Equal(0UL, pair.Options.SendHighWaterMark);
+        Assert.Equal(0UL, pair.Options.ReceiveHighWaterMark);
+    }
+
+    [Fact]
+    public void high_water_mark_public_properties_reject_32_bit_shape()
+    {
+        var send = typeof(CommonSocketOptions).GetProperty(
+            nameof(CommonSocketOptions.SendHighWaterMark));
+        var receive = typeof(CommonSocketOptions).GetProperty(
+            nameof(CommonSocketOptions.ReceiveHighWaterMark));
+
+        Assert.Equal(typeof(ulong), send?.PropertyType);
+        Assert.Equal(typeof(ulong), receive?.PropertyType);
+    }
+
+    [Fact]
     public void submit_retry_mode_values_match_native_contract()
     {
         Assert.Equal(0, (int)SubmitRetryMode.Off);

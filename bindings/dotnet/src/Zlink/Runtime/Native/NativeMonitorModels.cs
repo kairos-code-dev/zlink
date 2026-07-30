@@ -11,6 +11,10 @@ internal struct ZlinkSocketMonitorOpenOptions
 [StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkMonitorStatus
 {
+    internal const uint CurrentAbiVersion = 2;
+
+    public uint AbiVersion;
+    public uint StructSize;
     public int MonitorSourceKind;
     public uint StateFlags;
     public uint DetailFlags;
@@ -29,13 +33,22 @@ internal struct ZlinkMonitorStatus
     public uint AutoHwmConnectionBucketHwm4K;
     public uint AutoHwmConnectionBucketHysteresisRetained;
     public ulong AutoHwmEffectiveMessageBytes;
-    public int AutoHwmAppliedSndHwm;
-    public int AutoHwmAppliedRcvHwm;
+    public ulong AutoHwmPlannedSndHwmBytes;
+    public ulong AutoHwmPlannedRcvHwmBytes;
+    public ulong AutoHwmAppliedSndHwmBytes;
+    public ulong AutoHwmAppliedRcvHwmBytes;
     public int AutoHwmEffectiveSndbuf;
     public int AutoHwmEffectiveRcvbuf;
     public ulong AutoHwmLastRecalcMs;
     public uint AutoHwmLastRecalcReason;
     public uint AutoHwmSendBlockedRatioPpm;
-    public int AutoHwmDeferredSndHwm;
-    public int AutoHwmDeferredRcvHwm;
+    public ulong AutoHwmDeferredSndHwmBytes;
+    public ulong AutoHwmDeferredRcvHwmBytes;
+    public uint AutoHwmDeferredSndHwmValid;
+    public uint AutoHwmDeferredRcvHwmValid;
+    public ulong SndBytesInFlight;
+    public ulong RcvBytesInFlight;
+    public ulong MinimumCoreMessageChargeBytes;
+    public ulong OversizeMessageAdmissionCount;
+    public ulong OversizeMessageAdmissionMaxBytes;
 }

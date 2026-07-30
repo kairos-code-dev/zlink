@@ -37,6 +37,7 @@ internal sealed class SocketHandle : IDisposable
 
         if (_own)
         {
+            RequestProgressPump.StopSocket(_handle);
             var lastErrno = 0;
             while (true)
             {

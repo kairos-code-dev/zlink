@@ -268,9 +268,11 @@ bool perf_stream_server (const std::string &lib_name, const std::string &transpo
         zlink::stream_socket_options_t options = server.options ();
         if (perf::multi::manual_socket_overrides_enabled ()) {
             options.send_hwm (
-              zlink::message_count_t::value (settings.sndhwm > 0 ? settings.sndhwm : 1));
+              zlink::byte_count_t::bytes (
+                static_cast<uint64_t> (settings.sndhwm > 0 ? settings.sndhwm : 1)));
             options.recv_hwm (
-              zlink::message_count_t::value (settings.rcvhwm > 0 ? settings.rcvhwm : 1));
+              zlink::byte_count_t::bytes (
+                static_cast<uint64_t> (settings.rcvhwm > 0 ? settings.rcvhwm : 1)));
         }
         const int io_timeout_ms = perf::multi::parse_positive_env (
           "PERF_STREAM_TIMEOUT_MS", std::max (settings.sndtimeo_ms, settings.rcvtimeo_ms));

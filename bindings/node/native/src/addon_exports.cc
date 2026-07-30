@@ -30,6 +30,7 @@ void define_core_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("ctxTerm", ctx_term),
       ZLINK_METHOD ("ctxSetOpt", ctx_setopt),
       ZLINK_METHOD ("ctxGetOpt", ctx_getopt),
+      ZLINK_METHOD ("ctxGetOptData", ctx_getopt_data),
       ZLINK_METHOD ("ctxRecalculateAutoHwm", ctx_recalculate_auto_hwm),
       ZLINK_METHOD ("socketNew", socket_new),
       ZLINK_METHOD ("socketClose", socket_close),

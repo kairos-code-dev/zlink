@@ -21,13 +21,22 @@ public sealed class test_ctx_options
         ctx.Options.AutoHwmProfile = AutoHwmProfile.Compact;
         Assert.Equal(AutoHwmProfile.Compact, ctx.Options.AutoHwmProfile);
 
-        Assert.Equal(0, ctx.Options.AutoHwmMessageUnitBytes);
-        ctx.Options.AutoHwmMessageUnitBytes = 64;
-        Assert.Equal(64, ctx.Options.AutoHwmMessageUnitBytes);
-        ctx.Options.AutoHwmMessageUnitBytes = 0;
-        Assert.Equal(0, ctx.Options.AutoHwmMessageUnitBytes);
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            ctx.Options.AutoHwmMessageUnitBytes = -1);
+        Assert.Equal(0UL, ctx.Options.AutoHwmMessageUnitBytes);
+        const ulong planningUnit = (ulong)int.MaxValue + 1024UL;
+        ctx.Options.AutoHwmMessageUnitBytes = planningUnit;
+        Assert.Equal(planningUnit, ctx.Options.AutoHwmMessageUnitBytes);
+        ctx.Options.AutoHwmMessageUnitBytes = 0UL;
+        Assert.Equal(0UL, ctx.Options.AutoHwmMessageUnitBytes);
+    }
+
+    [Fact]
+    public void auto_hwm_planning_unit_public_type_is_64_bit_unsigned()
+    {
+        var property = typeof(IContextOptions).GetProperty(
+            nameof(IContextOptions.AutoHwmMessageUnitBytes));
+
+        Assert.NotNull(property);
+        Assert.Equal(typeof(ulong), property.PropertyType);
     }
 
     [Fact]

@@ -591,6 +591,33 @@ The package entrypoint should group the API around domain concepts.
 - Errors: typed error classes or tagged error objects preserving core result
   domains.
 
+## 64-bit Byte HWM And Monitoring Contract
+
+HWM values and the Auto HWM planning unit use `bigint` so every Core `uint64_t`
+byte value remains lossless. The public API does not also accept `number` or
+change representations at JavaScript's safe-integer boundary. `0n` means an
+unlimited HWM, and the manual default is `4_096_000n` bytes. Negative values or
+values above `2n ** 64n - 1n` throw `RangeError`; `number` and other types throw
+`TypeError`.
+
+```ts
+interface ContextOptions {
+  autoHwmMsgUnitBytes: bigint; // Planning-unit bytes; 0n selects the socket default.
+}
+
+interface CommonSocketOptions {
+  sendHwm: bigint; // Directional send-pipe byte HWM; 0n means unlimited.
+  recvHwm: bigint; // Directional receive-pipe byte HWM; 0n means unlimited.
+}
+```
+
+Monitor snapshots project Core monitoring ABI v2. Planned, applied, deferred,
+and in-flight HWM values include `Bytes` in their names and use `bigint`.
+Separate booleans identify whether deferred values are valid. Pending-message
+and profile-slot values remain count diagnostics and do not share names with
+byte fields. Old count-oriented names such as `autoHwmAppliedSndHwm` are not
+retained as aliases.
+
 ## Required Capability Coverage
 
 The public entrypoint must cover these stable user-facing capabilities when

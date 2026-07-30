@@ -209,7 +209,7 @@ final class SocketCore {
         Objects.requireNonNull(option, "option");
         socket.validateAmbiguousOption(option);
         socket.validateOptionAccess(option.optionId(), option.name());
-        NativeSocketRuntime.validateOptionType(option, SocketOptionValueType.INT64);
+        option.requireLongValue(value);
         option.requireWritable();
         socket.setSockOptLong(option.optionId(), value);
     }

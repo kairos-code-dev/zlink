@@ -23,12 +23,12 @@ final class PerfArgs {
         int duration = intEnv("PERF_SINGLE_DURATION_SECONDS",
             intEnv("PERF_DURATION_SECONDS", 5));
         int ioThreads = intEnv("PERF_IO_THREADS", 0);
-        int sendHwm = intEnv("PERF_SINGLE_SNDHWM",
-            intEnv("PERF_SNDHWM", intEnv("PERF_SINGLE_HWM",
-                intEnv("PERF_HWM", 0))));
-        int recvHwm = intEnv("PERF_SINGLE_RCVHWM",
-            intEnv("PERF_RCVHWM", intEnv("PERF_SINGLE_HWM",
-                intEnv("PERF_HWM", 0))));
+        long sendHwm = unsignedLongEnv("PERF_SINGLE_SNDHWM",
+            unsignedLongEnv("PERF_SNDHWM", unsignedLongEnv("PERF_SINGLE_HWM",
+                unsignedLongEnv("PERF_HWM", 0L))));
+        long recvHwm = unsignedLongEnv("PERF_SINGLE_RCVHWM",
+            unsignedLongEnv("PERF_RCVHWM", unsignedLongEnv("PERF_SINGLE_HWM",
+                unsignedLongEnv("PERF_HWM", 0L))));
         int sendBuffer = parseBufferEnv("PERF_SINGLE_SNDBUF",
             parseBufferEnv("PERF_SNDBUF", 0));
         int recvBuffer = parseBufferEnv("PERF_SINGLE_RCVBUF",
@@ -45,12 +45,12 @@ final class PerfArgs {
                 case "--duration" -> duration = parseIntOption(args, i);
                 case "--io-threads" -> ioThreads = parseIntOption(args, i);
                 case "--hwm" -> {
-                    int hwm = parseIntOption(args, i);
+                    long hwm = parseUnsignedLongOption(args, i);
                     sendHwm = hwm;
                     recvHwm = hwm;
                 }
-                case "--send-hwm" -> sendHwm = parseIntOption(args, i);
-                case "--recv-hwm" -> recvHwm = parseIntOption(args, i);
+                case "--send-hwm" -> sendHwm = parseUnsignedLongOption(args, i);
+                case "--recv-hwm" -> recvHwm = parseUnsignedLongOption(args, i);
                 case "--sndbuf" -> sendBuffer = parseBufferSize(args[i + 1]);
                 case "--rcvbuf" -> recvBuffer = parseBufferSize(args[i + 1]);
                 case "--sndtimeo", "--send-timeout-ms" ->
@@ -104,12 +104,12 @@ final class PerfArgs {
                 streamPattern ? "PERF_MULTI_STREAM_CLIENT_IO_THREADS" : "PERF_MULTI_CLIENT_IO_THREADS",
                 streamPattern ? 4 : defaultIoThreads);
         }
-        int sendHwm = intEnv("PERF_MULTI_SNDHWM",
-            intEnv("PERF_SNDHWM", intEnv("PERF_MULTI_HWM",
-                intEnv("PERF_HWM", 0))));
-        int recvHwm = intEnv("PERF_MULTI_RCVHWM",
-            intEnv("PERF_RCVHWM", intEnv("PERF_MULTI_HWM",
-                intEnv("PERF_HWM", 0))));
+        long sendHwm = unsignedLongEnv("PERF_MULTI_SNDHWM",
+            unsignedLongEnv("PERF_SNDHWM", unsignedLongEnv("PERF_MULTI_HWM",
+                unsignedLongEnv("PERF_HWM", 0L))));
+        long recvHwm = unsignedLongEnv("PERF_MULTI_RCVHWM",
+            unsignedLongEnv("PERF_RCVHWM", unsignedLongEnv("PERF_MULTI_HWM",
+                unsignedLongEnv("PERF_HWM", 0L))));
         int sendBuffer = parseBufferEnv("PERF_MULTI_SNDBUF",
             parseBufferEnv("PERF_SNDBUF", 0));
         int recvBuffer = parseBufferEnv("PERF_MULTI_RCVBUF",
@@ -133,12 +133,12 @@ final class PerfArgs {
                 case "--clients" -> clients = parseIntOption(args, i);
                 case "--io-threads" -> ioThreads = parseIntOption(args, i);
                 case "--hwm" -> {
-                    int hwm = parseIntOption(args, i);
+                    long hwm = parseUnsignedLongOption(args, i);
                     sendHwm = hwm;
                     recvHwm = hwm;
                 }
-                case "--send-hwm" -> sendHwm = parseIntOption(args, i);
-                case "--recv-hwm" -> recvHwm = parseIntOption(args, i);
+                case "--send-hwm" -> sendHwm = parseUnsignedLongOption(args, i);
+                case "--recv-hwm" -> recvHwm = parseUnsignedLongOption(args, i);
                 case "--sndbuf" -> sendBuffer = parseBufferSize(args[i + 1]);
                 case "--rcvbuf" -> recvBuffer = parseBufferSize(args[i + 1]);
                 case "--sndtimeo", "--send-timeout-ms" ->
@@ -173,6 +173,14 @@ final class PerfArgs {
         return Integer.parseInt(value);
     }
 
+    private static long unsignedLongEnv(String name, long fallback) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        return Long.parseUnsignedLong(value);
+    }
+
     private static void requireOptionValue(String[] args, int optionIndex) {
         if (optionIndex + 1 >= args.length || args[optionIndex + 1].startsWith("--")) {
             throw new IllegalArgumentException(
@@ -186,6 +194,17 @@ final class PerfArgs {
         } catch (NumberFormatException ex) {
             throw new IllegalArgumentException(
                 args[optionIndex] + " must be an integer: "
+                    + args[optionIndex + 1], ex);
+        }
+    }
+
+    private static long parseUnsignedLongOption(String[] args,
+                                                int optionIndex) {
+        try {
+            return Long.parseUnsignedLong(args[optionIndex + 1]);
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException(
+                args[optionIndex] + " must be an unsigned 64-bit integer: "
                     + args[optionIndex + 1], ex);
         }
     }

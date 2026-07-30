@@ -18,20 +18,20 @@ public partial class CommonSocketOptions
     }
 
     /// <summary>
-    ///     Gets or sets the maximum number of outbound messages queued before the
-    ///     socket applies back-pressure; 0 means no limit.
+    ///     Gets or sets the accounted byte limit for outbound messages queued
+    ///     before the socket applies back-pressure; 0 means no limit.
     /// </summary>
-    public int SendHighWaterMark
+    public ulong SendHighWaterMark
     {
         get => Socket.GetOption(SocketOptions.SndHwm);
         set => Socket.SetOption(SocketOptions.SndHwm, value);
     }
 
     /// <summary>
-    ///     Gets or sets the maximum number of inbound messages queued before the
-    ///     socket applies back-pressure; 0 means no limit.
+    ///     Gets or sets the accounted byte limit for inbound messages queued
+    ///     before the socket applies back-pressure; 0 means no limit.
     /// </summary>
-    public int ReceiveHighWaterMark
+    public ulong ReceiveHighWaterMark
     {
         get => Socket.GetOption(SocketOptions.RcvHwm);
         set => Socket.SetOption(SocketOptions.RcvHwm, value);

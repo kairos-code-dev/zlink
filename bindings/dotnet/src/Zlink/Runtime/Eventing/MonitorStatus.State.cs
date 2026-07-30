@@ -8,6 +8,8 @@ public sealed partial class MonitorStatus
 {
     internal MonitorStatus(in ZlinkMonitorStatus native)
     {
+        AbiVersion = native.AbiVersion;
+        StructSize = native.StructSize;
         SourceKind = (MonitorSourceKind)native.MonitorSourceKind;
         StateFlags = (MonitorStateFlags)native.StateFlags;
         DetailFlags = (MonitorStatusDetailFlags)native.DetailFlags;
@@ -28,15 +30,33 @@ public sealed partial class MonitorStatus
         AutoHwmConnectionBucketHysteresisRetained =
             native.AutoHwmConnectionBucketHysteresisRetained != 0;
         AutoHwmEffectiveMessageBytes = native.AutoHwmEffectiveMessageBytes;
-        AutoHwmAppliedSndHwm = native.AutoHwmAppliedSndHwm;
-        AutoHwmAppliedRcvHwm = native.AutoHwmAppliedRcvHwm;
+        AutoHwmPlannedSendHighWaterMarkBytes =
+            native.AutoHwmPlannedSndHwmBytes;
+        AutoHwmPlannedReceiveHighWaterMarkBytes =
+            native.AutoHwmPlannedRcvHwmBytes;
+        AutoHwmAppliedSendHighWaterMarkBytes =
+            native.AutoHwmAppliedSndHwmBytes;
+        AutoHwmAppliedReceiveHighWaterMarkBytes =
+            native.AutoHwmAppliedRcvHwmBytes;
         AutoHwmEffectiveSndbuf = native.AutoHwmEffectiveSndbuf;
         AutoHwmEffectiveRcvbuf = native.AutoHwmEffectiveRcvbuf;
         AutoHwmLastRecalcMs = native.AutoHwmLastRecalcMs;
         AutoHwmLastRecalcReason =
             (AutoHwmRecalcReason)native.AutoHwmLastRecalcReason;
         AutoHwmSendBlockedRatioPpm = native.AutoHwmSendBlockedRatioPpm;
-        AutoHwmDeferredSndHwm = native.AutoHwmDeferredSndHwm;
-        AutoHwmDeferredRcvHwm = native.AutoHwmDeferredRcvHwm;
+        AutoHwmDeferredSendHighWaterMarkBytes =
+            native.AutoHwmDeferredSndHwmBytes;
+        AutoHwmDeferredReceiveHighWaterMarkBytes =
+            native.AutoHwmDeferredRcvHwmBytes;
+        AutoHwmDeferredSendHighWaterMarkValid =
+            native.AutoHwmDeferredSndHwmValid != 0;
+        AutoHwmDeferredReceiveHighWaterMarkValid =
+            native.AutoHwmDeferredRcvHwmValid != 0;
+        SendBytesInFlight = native.SndBytesInFlight;
+        ReceiveBytesInFlight = native.RcvBytesInFlight;
+        MinimumCoreMessageChargeBytes = native.MinimumCoreMessageChargeBytes;
+        OversizeMessageAdmissionCount = native.OversizeMessageAdmissionCount;
+        OversizeMessageAdmissionMaxBytes =
+            native.OversizeMessageAdmissionMaxBytes;
     }
 }

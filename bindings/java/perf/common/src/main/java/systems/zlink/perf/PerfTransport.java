@@ -109,10 +109,10 @@ final class PerfTransport {
     }
 
     private static void applyManualSocketSizing(Socket socket, PerfUtil.Config config) {
-        if (config.sendHwm() > 0) {
+        if (config.sendHwm() != 0L) {
             socket.options().sendHwm(config.sendHwm());
         }
-        if (config.recvHwm() > 0) {
+        if (config.recvHwm() != 0L) {
             socket.options().recvHwm(config.recvHwm());
         }
         if (config.sendBuffer() > 0) {

@@ -12,7 +12,7 @@ function applyAutoHwmMsgUnit(ctx, msgSize) {
     if (msgSize <= 0 || !ctx?.options || !('autoHwmMsgUnitBytes' in ctx.options)) {
         return;
     }
-    ctx.options.autoHwmMsgUnitBytes = msgSize;
+    ctx.options.autoHwmMsgUnitBytes = BigInt(msgSize);
 }
 function resolveAutoHwmProfile(zlink) {
     const env = process.env.PERF_CTX_AUTO_HWM_PROFILE || process.env.PERF_AUTO_HWM_PROFILE || '';

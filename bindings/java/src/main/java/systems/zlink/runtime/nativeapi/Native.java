@@ -47,6 +47,11 @@ public final class Native {
     private static final MethodHandle MH_CTX_GET = downcall("zlink_ctx_get",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_CTX_GET_DATA = downcall(
+            "zlink_ctx_get_data",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_CTX_SHUTDOWN = downcall("zlink_ctx_shutdown",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_CTX_AUTO_HWM_RECALCULATE = downcall(
@@ -449,6 +454,17 @@ public final class Native {
             return (int) MH_CTX_GET.invokeExact(ctx, option, errorOut);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_ctx_get failed", t);
+        }
+    }
+
+    public static int ctxGetData(MemorySegment ctx, int option,
+                                 MemorySegment value,
+                                 MemorySegment valueLength) {
+        try {
+            return (int) MH_CTX_GET_DATA.invokeExact(ctx, option, value,
+              valueLength);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_ctx_get_data failed", t);
         }
     }
 

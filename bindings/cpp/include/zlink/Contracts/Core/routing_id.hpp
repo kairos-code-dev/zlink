@@ -193,19 +193,6 @@ class peer_weight_t
     uint32_t _value;
 };
 
-class message_count_t
-{
-  public:
-    static message_count_t value (int value_) noexcept { return message_count_t (value_); }
-
-    int value () const noexcept { return _value; }
-
-  private:
-    explicit message_count_t (int value_) noexcept : _value (value_) {}
-
-    int _value;
-};
-
 class socket_backlog_t
 {
   public:

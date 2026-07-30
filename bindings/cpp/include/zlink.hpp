@@ -3,6 +3,7 @@
 #define ZLINK_CPP_HPP_INCLUDED
 
 #include "zlink/Contracts/Core/capability.hpp"
+#include "zlink/Contracts/Core/byte_count.hpp"
 #include "zlink/Contracts/Core/context.hpp"
 #include "zlink/Contracts/Core/context_options.hpp"
 #include "zlink/Contracts/Core/routing_id.hpp"

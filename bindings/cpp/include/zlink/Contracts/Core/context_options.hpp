@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "byte_count.hpp"
 #include "../Errors/results.hpp"
 
 #include <chrono>
@@ -38,8 +39,8 @@ class context_options_t
     void auto_hwm_recalc_debounce (std::chrono::milliseconds value_);
     zlink::auto_hwm_profile auto_hwm_profile () const;
     void auto_hwm_profile (zlink::auto_hwm_profile profile_);
-    byte_size_t auto_hwm_msg_unit_bytes () const;
-    void auto_hwm_msg_unit_bytes (byte_size_t value_);
+    byte_count_t auto_hwm_msg_unit_bytes () const;
+    void auto_hwm_msg_unit_bytes (byte_count_t value_);
     socket_count_t socket_limit () const;
     byte_size_t msg_t_size () const;
     void add_thread_affinity (cpu_index_t cpu_);

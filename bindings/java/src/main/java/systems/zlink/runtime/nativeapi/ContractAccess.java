@@ -68,9 +68,13 @@ public final class ContractAccess {
     public interface ContextOptionsAccess {
         void setOption(Context context, ContextOption option, int value);
 
+        void setUInt64Option(Context context, ContextOption option, long value);
+
         void setOptionData(Context context, ContextOption option, String value);
 
         int getOption(Context context, ContextOption option);
+
+        long getUInt64Option(Context context, ContextOption option);
     }
 
     public interface SocketOptionsAccess {
@@ -410,6 +414,12 @@ public final class ContractAccess {
         contextOptionsAccess().setOption(context, option, value);
     }
 
+    public static void contextSetUInt64Option(Context context,
+                                              ContextOption option,
+                                              long value) {
+        contextOptionsAccess().setUInt64Option(context, option, value);
+    }
+
     public static void contextSetOptionData(Context context,
                                             ContextOption option,
                                             String value) {
@@ -418,6 +428,11 @@ public final class ContractAccess {
 
     public static int contextGetOption(Context context, ContextOption option) {
         return contextOptionsAccess().getOption(context, option);
+    }
+
+    public static long contextGetUInt64Option(Context context,
+                                              ContextOption option) {
+        return contextOptionsAccess().getUInt64Option(context, option);
     }
 
     public static void socketSetOption(Socket socket,

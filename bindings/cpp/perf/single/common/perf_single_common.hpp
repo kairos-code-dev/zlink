@@ -56,6 +56,7 @@ using ::perf::socket_guard_t;
 
 // Reads positive integer env var; returns default when missing/invalid/non-positive.
 int parse_positive_env (const char *name_, int default_value_);
+uint64_t parse_positive_uint64_env (const char *name_, uint64_t default_value_);
 int resolve_single_duration_seconds ();
 size_t resolve_single_latency_sample_cap ();
 int resolve_single_send_timeout_ms ();
@@ -63,7 +64,7 @@ int resolve_single_recv_timeout_ms ();
 int resolve_single_pubsub_recv_timeout_ms ();
 int resolve_single_pubsub_ready_settle_ms ();
 int resolve_single_connect_ready_timeout_ms ();
-int resolve_single_socket_hwm (bool send_);
+uint64_t resolve_single_socket_hwm (bool send_);
 zlink::auto_hwm_profile resolve_single_ctx_auto_hwm_profile ();
 bool single_manual_socket_overrides_enabled ();
 
@@ -74,6 +75,10 @@ void apply_ctx_options (zlink::context_t &ctx_);
 bool set_sockopt_int (perf_socket_t &socket_,
                       perf::options::socket_option_key_t<int> option_,
                       int value_,
+                      const char *name_);
+bool set_sockopt_hwm (perf_socket_t &socket_,
+                      perf::options::socket_option_key_t<uint64_t> option_,
+                      uint64_t value_,
                       const char *name_);
 template <typename SocketLike>
 bool set_sockopt_int (SocketLike &socket_,
@@ -88,10 +93,10 @@ bool set_sockopt_int (SocketLike &socket_,
                 options.linger (std::chrono::milliseconds (value_));
                 return true;
             case perf::options::socket_option::sndhwm:
-                options.send_hwm (zlink::message_count_t::value (value_));
+                options.send_hwm (zlink::byte_count_t::bytes (static_cast<uint64_t> (value_)));
                 return true;
             case perf::options::socket_option::rcvhwm:
-                options.recv_hwm (zlink::message_count_t::value (value_));
+                options.recv_hwm (zlink::byte_count_t::bytes (static_cast<uint64_t> (value_)));
                 return true;
             case perf::options::socket_option::sndtimeo:
                 options.send_timeout (std::chrono::milliseconds (value_));
@@ -120,6 +125,39 @@ bool set_sockopt_int (SocketLike &socket_,
         return false;
     }
 }
+template <typename SocketLike>
+bool set_sockopt_hwm (SocketLike &socket_,
+                      perf::options::socket_option_key_t<uint64_t> option_,
+                      uint64_t value_,
+                      const char *name_)
+{
+    try {
+        zlink::common_socket_options_t options = socket_.options ();
+        switch (option_.option) {
+            case perf::options::socket_option::sndhwm:
+                options.send_hwm (zlink::byte_count_t::bytes (value_));
+                return true;
+            case perf::options::socket_option::rcvhwm:
+                options.recv_hwm (zlink::byte_count_t::bytes (value_));
+                return true;
+            default:
+                errno = EOPNOTSUPP;
+                if (bench_debug_enabled ()) {
+                    std::cerr << "setsockopt(" << (name_ ? name_ : "?")
+                              << ") failed: unsupported byte option" << std::endl;
+                }
+                return false;
+        }
+    }
+    catch (const zlink::config_error_t &err) {
+        errno = err.internal_errno ();
+        if (bench_debug_enabled ()) {
+            std::cerr << "setsockopt(" << (name_ ? name_ : "?") << ") failed: " << err.what ()
+                      << std::endl;
+        }
+        return false;
+    }
+}
 void apply_single_hwm (perf_socket_t &socket_);
 bool apply_single_auto_hwm_msg_unit (ctx_guard_t &ctx_, size_t msg_size_);
 bool recalculate_single_auto_hwm (ctx_guard_t &ctx_);
@@ -128,10 +166,10 @@ template <typename SocketLike> void apply_single_hwm (SocketLike &socket_)
 {
     if (!single_manual_socket_overrides_enabled ())
         return;
-    const int sndhwm = resolve_single_socket_hwm (true);
-    const int rcvhwm = resolve_single_socket_hwm (false);
-    (void) set_sockopt_int (socket_, perf::options::socket_options::sndhwm, sndhwm, "sndhwm");
-    (void) set_sockopt_int (socket_, perf::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
+    const uint64_t sndhwm = resolve_single_socket_hwm (true);
+    const uint64_t rcvhwm = resolve_single_socket_hwm (false);
+    (void) set_sockopt_hwm (socket_, perf::options::socket_options::sndhwm, sndhwm, "sndhwm");
+    (void) set_sockopt_hwm (socket_, perf::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
 }
 // Applies linger/send/recv timeout defaults for benchmark sockets.
 void apply_single_benchmark_socket_options (perf_socket_t &socket_, const std::string &transport_);
@@ -297,8 +335,8 @@ inline const char *single_auto_hwm_role_name (uint32_t role_)
 
 inline bool single_auto_hwm_monitor_status_visible (const zlink::monitor_status_t &monitor_status_)
 {
-    return monitor_status_.auto_hwm_applied_sndhwm > 0
-           || monitor_status_.auto_hwm_applied_rcvhwm > 0
+    return monitor_status_.auto_hwm_applied_sndhwm_bytes > 0
+           || monitor_status_.auto_hwm_applied_rcvhwm_bytes > 0
            || monitor_status_.auto_hwm_effective_message_bytes > 0
            || monitor_status_.auto_hwm_socket_message_slots > 0;
 }
@@ -332,8 +370,8 @@ inline void emit_single_socket_hwm_detail (const SocketLike &socket_,
               << ",component=" << component_ << ",msg_size=" << msg_size_ << ",owner=socket"
               << ",owner_id=0" << ",socket=" << component_ << ",socket_type=" << socket_type_
               << ",role=" << single_auto_hwm_role_name (snapshot.auto_hwm_role)
-              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
-              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm_bytes
+              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm_bytes
               << ",effective_message_bytes=" << snapshot.auto_hwm_effective_message_bytes
               << ",effective_sndbuf=" << snapshot.auto_hwm_effective_sndbuf
               << ",effective_rcvbuf=" << snapshot.auto_hwm_effective_rcvbuf

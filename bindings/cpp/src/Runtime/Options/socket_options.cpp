@@ -60,28 +60,28 @@ void common_socket_options_t::linger (std::chrono::milliseconds value)
                                           detail::native_option_ms (value));
 }
 
-message_count_t common_socket_options_t::send_hwm () const
+byte_count_t common_socket_options_t::send_hwm () const
 {
-    return message_count_t::value (detail::get_typed_option_value<int> (
+    return byte_count_t::bytes (detail::get_typed_option_value<uint64_t> (
       detail::native_option_handle (_socket), detail::socket_option_id::sndhwm));
 }
 
-void common_socket_options_t::send_hwm (message_count_t value)
+void common_socket_options_t::send_hwm (byte_count_t value)
 {
-    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
-                                          detail::socket_option_id::sndhwm, value.value ());
+    detail::set_typed_option_value<uint64_t> (detail::native_option_handle (_socket),
+                                               detail::socket_option_id::sndhwm, value.bytes ());
 }
 
-message_count_t common_socket_options_t::recv_hwm () const
+byte_count_t common_socket_options_t::recv_hwm () const
 {
-    return message_count_t::value (detail::get_typed_option_value<int> (
+    return byte_count_t::bytes (detail::get_typed_option_value<uint64_t> (
       detail::native_option_handle (_socket), detail::socket_option_id::rcvhwm));
 }
 
-void common_socket_options_t::recv_hwm (message_count_t value)
+void common_socket_options_t::recv_hwm (byte_count_t value)
 {
-    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
-                                          detail::socket_option_id::rcvhwm, value.value ());
+    detail::set_typed_option_value<uint64_t> (detail::native_option_handle (_socket),
+                                               detail::socket_option_id::rcvhwm, value.bytes ());
 }
 
 std::chrono::milliseconds common_socket_options_t::send_timeout () const

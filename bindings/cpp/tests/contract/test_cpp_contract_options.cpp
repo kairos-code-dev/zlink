@@ -20,9 +20,9 @@ template <typename T> class has_common_socket_options_facade_t
                    std::declval<U &> ().submit_retry_attempts (),
                    std::declval<U &> ().submit_retry_attempts (0),
                    std::declval<U &> ().send_hwm (),
-                   std::declval<U &> ().send_hwm (zlink::message_count_t::value (0)),
+                   std::declval<U &> ().send_hwm (zlink::byte_count_t::bytes (0)),
                    std::declval<U &> ().recv_hwm (),
-                   std::declval<U &> ().recv_hwm (zlink::message_count_t::value (0)),
+                   std::declval<U &> ().recv_hwm (zlink::byte_count_t::bytes (0)),
                    std::declval<U &> ().last_endpoint (),
                    std::true_type ());
 
@@ -138,7 +138,7 @@ template <typename T> class has_context_options_facade_t
                    std::declval<U &> ().auto_hwm_profile (),
                    std::declval<U &> ().auto_hwm_profile (zlink::auto_hwm_profile::balanced),
                    std::declval<U &> ().auto_hwm_msg_unit_bytes (),
-                   std::declval<U &> ().auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (64)),
+                   std::declval<U &> ().auto_hwm_msg_unit_bytes (zlink::byte_count_t::bytes (64)),
                    std::declval<U &> ().socket_limit (),
                    std::declval<U &> ().msg_t_size (),
                    std::declval<U &> ().add_thread_affinity (zlink::cpu_index_t::value (0)),
@@ -165,6 +165,16 @@ template <typename T> class has_socket_options_entry_t
 
 static_assert (has_common_socket_options_facade_t<zlink::common_socket_options_t>::value,
                "common_socket_options_t must expose canonical methods");
+static_assert (
+  std::is_same<decltype (std::declval<zlink::common_socket_options_t &> ().send_hwm ()),
+               zlink::byte_count_t>::value,
+  "send_hwm must return a byte-specific 64-bit type");
+static_assert (
+  std::is_same<decltype (std::declval<zlink::common_socket_options_t &> ().recv_hwm ()),
+               zlink::byte_count_t>::value,
+  "recv_hwm must return a byte-specific 64-bit type");
+static_assert (std::is_same<decltype (zlink::byte_count_t::bytes (0).bytes ()), uint64_t>::value,
+               "byte_count_t must preserve uint64_t values");
 static_assert (has_router_socket_options_facade_t<zlink::router_socket_options_t>::value,
                "router_socket_options_t must expose canonical methods");
 static_assert (has_dealer_socket_options_facade_t<zlink::dealer_socket_options_t>::value,
@@ -190,9 +200,12 @@ void test_context_options ()
     assert (options.auto_hwm_profile () == zlink::auto_hwm_profile::compact);
     options.auto_hwm_profile (zlink::auto_hwm_profile::throughput);
     assert (options.auto_hwm_profile () == zlink::auto_hwm_profile::throughput);
-    options.auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (64));
+    const uint64_t boundary = UINT64_MAX / 512u;
+    options.auto_hwm_msg_unit_bytes (zlink::byte_count_t::bytes (boundary));
+    assert (options.auto_hwm_msg_unit_bytes ().bytes () == boundary);
+    options.auto_hwm_msg_unit_bytes (zlink::byte_count_t::bytes (64));
     assert (options.auto_hwm_msg_unit_bytes ().bytes () == 64);
-    options.auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (0));
+    options.auto_hwm_msg_unit_bytes (zlink::byte_count_t::bytes (0));
     assert (options.auto_hwm_msg_unit_bytes ().bytes () == 0);
 
     options.io_threads (zlink::io_thread_count_t::value (2));
@@ -213,8 +226,16 @@ void test_context_options ()
 void test_socket_common_and_router_options ()
 {
     zlink::context_t ctx;
+    ctx.options ().auto_hwm_enabled (false);
     zlink::router_socket_t router (ctx);
     zlink::common_socket_options_t common = router.options ();
+    assert (common.send_hwm ().bytes () == UINT64_C (4096000));
+    assert (common.recv_hwm ().bytes () == UINT64_C (4096000));
+    const uint64_t boundary = UINT64_MAX;
+    common.send_hwm (zlink::byte_count_t::bytes (boundary));
+    common.recv_hwm (zlink::byte_count_t::bytes (0));
+    assert (common.send_hwm ().bytes () == boundary);
+    assert (common.recv_hwm ().bytes () == 0);
     common.linger (std::chrono::milliseconds (0));
     assert (common.linger () == std::chrono::milliseconds (0));
     assert (common.submit_retry_mode () == zlink::submit_retry_mode_t::off);

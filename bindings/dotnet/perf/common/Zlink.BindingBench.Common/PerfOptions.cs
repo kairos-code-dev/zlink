@@ -22,12 +22,12 @@ public sealed record PerfOptions(
     int LatencySampleCap,
     int IoThreads,
     int MaxSockets,
-    int SingleHwm,
-    int SingleSndHwm,
-    int SingleRcvHwm,
-    int MultiHwm,
-    int MultiSndHwm,
-    int MultiRcvHwm,
+    ulong SingleHwm,
+    ulong SingleSndHwm,
+    ulong SingleRcvHwm,
+    ulong MultiHwm,
+    ulong MultiSndHwm,
+    ulong MultiRcvHwm,
     int MultiSndBuf,
     int MultiRcvBuf,
     int ServerBindPort,
@@ -109,9 +109,9 @@ public sealed record PerfOptions(
             PerfEnv.ReadPositive("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200000),
             PerfEnv.ReadNonNegative("PERF_IO_THREADS", 0),
             0,
-            PerfEnv.ReadNonNegative("PERF_SINGLE_HWM", 0),
-            PerfEnv.ReadNonNegative("PERF_SINGLE_SNDHWM", 0),
-            PerfEnv.ReadNonNegative("PERF_SINGLE_RCVHWM", 0),
+            PerfEnv.ReadUInt64("PERF_SINGLE_HWM", 0),
+            PerfEnv.ReadUInt64("PERF_SINGLE_SNDHWM", 0),
+            PerfEnv.ReadUInt64("PERF_SINGLE_RCVHWM", 0),
             0,
             0,
             0,
@@ -151,22 +151,22 @@ public sealed record PerfOptions(
             0,
             0,
             0,
-            PerfEnv.ReadNonNegative("PERF_MULTI_HWM", 0),
-            PerfEnv.ReadNonNegative("PERF_MULTI_SNDHWM", 0),
-            PerfEnv.ReadNonNegative("PERF_MULTI_RCVHWM", 0),
+            PerfEnv.ReadUInt64("PERF_MULTI_HWM", 0),
+            PerfEnv.ReadUInt64("PERF_MULTI_SNDHWM", 0),
+            PerfEnv.ReadUInt64("PERF_MULTI_RCVHWM", 0),
             PerfEnv.ReadByteSize("PERF_MULTI_SNDBUF", 0),
             PerfEnv.ReadByteSize("PERF_MULTI_RCVBUF", 0),
             PerfEnv.ReadNonNegative("PERF_MULTI_SERVER_BIND_PORT", 0),
             PerfEnv.ReadPositive("PERF_MULTI_PUBSUB_XPUB_NODROP", 0));
     }
 
-    public int ResolveSingleHwm(string specificName)
+    public ulong ResolveSingleHwm(string specificName)
     {
-        int specific = PerfEnv.ReadPositive(specificName, 0);
+        ulong specific = PerfEnv.ReadUInt64(specificName, 0);
         return specific > 0 ? specific : SingleHwm;
     }
 
-    public int ResolveMultiHwm(string specificName)
+    public ulong ResolveMultiHwm(string specificName)
     {
         return specificName switch
         {

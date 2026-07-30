@@ -7,6 +7,7 @@ package systems.zlink.runtime.sockets;
 public enum SocketOptionValueType {
     INT32,
     INT64,
+    UINT64,
     STRING,
     BYTES
 }

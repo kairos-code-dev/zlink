@@ -7,6 +7,7 @@ import systems.zlink.contracts.sockets.PairSocket;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MonitorContractTest {
     @Test
@@ -16,7 +17,20 @@ public class MonitorContractTest {
         try (Context ctx = Zlink.createContext();
              PairSocket socket = ctx.createPairSocket();
              var monitor = socket.monitorOpen()) {
-            assertTrue(monitor.status().sndPendingMsgs() >= 0L);
+            long sendHwmBytes = (long) Integer.MAX_VALUE + 4096L;
+            long recvHwmBytes = (long) Integer.MAX_VALUE + 8192L;
+            socket.options().sendHwm(sendHwmBytes);
+            socket.options().recvHwm(recvHwmBytes);
+
+            var status = monitor.status();
+            assertEquals(2, status.abiVersion());
+            assertEquals(232, status.structSize());
+            assertTrue(status.sndPendingMsgs() >= 0L);
+            assertEquals(sendHwmBytes,
+                status.autoHwmAppliedSendHwmBytes());
+            assertEquals(recvHwmBytes,
+                status.autoHwmAppliedRecvHwmBytes());
+            assertTrue(status.minimumCoreMessageChargeBytes() > 0L);
         }
     }
 }

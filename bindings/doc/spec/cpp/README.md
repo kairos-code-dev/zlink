@@ -951,6 +951,30 @@ artifact. The completed binding therefore maintains these build rules:
   `on_packet(...)`, `on_event(...)`, or operation aliases. Call sites use the
   canonical public contract instead of layered aliases.
 
+## 64-bit Byte HWM And Monitoring Contract
+
+HWM values and the Auto HWM planning unit use `byte_count_t`. This value type
+stores only `uint64_t` bytes and makes the unit explicit through its
+`bytes(...)` factory and `bytes()` accessor. The former `message_count_t` is
+not retained as an alias or adapter. Zero means an unlimited HWM, and the
+manual default is `4,096,000 bytes`.
+
+```cpp
+auto options = socket.options ();
+options.send_hwm (zlink::byte_count_t::bytes (send_limit)); // Set the send-pipe byte HWM.
+options.recv_hwm (zlink::byte_count_t::bytes (0));          // Zero is an unlimited receive HWM.
+
+auto context_options = context.options ();
+context_options.auto_hwm_msg_unit_bytes (
+  zlink::byte_count_t::bytes (planning_unit)); // Supply the 64-bit Auto HWM planning input.
+```
+
+Monitor snapshots project Core monitoring ABI v2. Planned, applied, deferred,
+and in-flight HWM fields use an `_bytes` suffix and `uint64_t`. Separate
+booleans identify whether deferred fields are valid. Pending-message and
+profile-slot values remain count diagnostics and do not share names with byte
+fields.
+
 ## Capability Coverage
 
 The public headers cover these groups in the completed C++ binding.

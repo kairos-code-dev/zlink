@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "../Core/byte_count.hpp"
 #include "../Core/routing_id.hpp"
 #include "../Messaging/message.hpp"
 
@@ -43,10 +44,10 @@ class common_socket_options_t
 
     std::chrono::milliseconds linger () const;
     void linger (std::chrono::milliseconds value);
-    message_count_t send_hwm () const;
-    void send_hwm (message_count_t value);
-    message_count_t recv_hwm () const;
-    void recv_hwm (message_count_t value);
+    byte_count_t send_hwm () const;
+    void send_hwm (byte_count_t value);
+    byte_count_t recv_hwm () const;
+    void recv_hwm (byte_count_t value);
     std::chrono::milliseconds send_timeout () const;
     void send_timeout (std::chrono::milliseconds value);
     std::chrono::milliseconds recv_timeout () const;

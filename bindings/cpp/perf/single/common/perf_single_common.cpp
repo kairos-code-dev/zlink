@@ -39,6 +39,23 @@ int parse_positive_env (const char *name_, int default_value_)
     return static_cast<int> (parsed);
 }
 
+uint64_t parse_positive_uint64_env (const char *name_, uint64_t default_value_)
+{
+    if (!name_)
+        return default_value_;
+
+    const char *env = std::getenv (name_);
+    if (!env || !*env || *env == '-')
+        return default_value_;
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long parsed = std::strtoull (env, &end, 10);
+    if (errno != 0 || end == env || *end != '\0' || parsed == 0)
+        return default_value_;
+    return static_cast<uint64_t> (parsed);
+}
+
 int parse_nonnegative_env (const char *name_, int default_value_)
 {
     if (!name_)
@@ -97,11 +114,11 @@ int resolve_single_connect_ready_timeout_ms ()
     return parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 3000);
 }
 
-int resolve_single_socket_hwm (bool send_)
+uint64_t resolve_single_socket_hwm (bool send_)
 {
-    const int base_hwm = parse_positive_env ("PERF_SINGLE_HWM", 1000);
-    return send_ ? parse_positive_env ("PERF_SINGLE_SNDHWM", base_hwm)
-                 : parse_positive_env ("PERF_SINGLE_RCVHWM", base_hwm);
+    const uint64_t base_hwm = parse_positive_uint64_env ("PERF_SINGLE_HWM", 1000);
+    return send_ ? parse_positive_uint64_env ("PERF_SINGLE_SNDHWM", base_hwm)
+                 : parse_positive_uint64_env ("PERF_SINGLE_RCVHWM", base_hwm);
 }
 
 zlink::auto_hwm_profile resolve_single_ctx_auto_hwm_profile ()
@@ -159,14 +176,27 @@ bool set_sockopt_int (perf_socket_t &socket_,
     return rc == 0;
 }
 
+bool set_sockopt_hwm (perf_socket_t &socket_,
+                      perf::options::socket_option_key_t<uint64_t> option_,
+                      uint64_t value_,
+                      const char *name_)
+{
+    const int rc = socket_.set (option_, value_);
+    if (rc != 0 && bench_debug_enabled ()) {
+        std::cerr << "setsockopt(" << (name_ ? name_ : "?")
+                  << ") failed: " << zlink::last_error ().what () << std::endl;
+    }
+    return rc == 0;
+}
+
 void apply_single_hwm (perf_socket_t &socket_)
 {
     if (!single_manual_socket_overrides_enabled ())
         return;
-    const int sndhwm = resolve_single_socket_hwm (true);
-    const int rcvhwm = resolve_single_socket_hwm (false);
-    (void) set_sockopt_int (socket_, perf::options::socket_options::sndhwm, sndhwm, "sndhwm");
-    (void) set_sockopt_int (socket_, perf::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
+    const uint64_t sndhwm = resolve_single_socket_hwm (true);
+    const uint64_t rcvhwm = resolve_single_socket_hwm (false);
+    (void) set_sockopt_hwm (socket_, perf::options::socket_options::sndhwm, sndhwm, "sndhwm");
+    (void) set_sockopt_hwm (socket_, perf::options::socket_options::rcvhwm, rcvhwm, "rcvhwm");
 }
 
 bool apply_single_auto_hwm_msg_unit (ctx_guard_t &ctx_, size_t msg_size_)
@@ -176,7 +206,7 @@ bool apply_single_auto_hwm_msg_unit (ctx_guard_t &ctx_, size_t msg_size_)
     try {
         zlink::context_options_t options = ctx_.ctx ().options ();
         options.auto_hwm_msg_unit_bytes (
-          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)));
+          zlink::byte_count_t::bytes (static_cast<uint64_t> (msg_size_)));
         return true;
     }
     catch (const zlink::config_error_t &err) {

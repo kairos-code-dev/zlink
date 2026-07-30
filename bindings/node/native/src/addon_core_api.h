@@ -17,6 +17,7 @@ napi_value ctx_shutdown (napi_env env, napi_callback_info info);
 napi_value ctx_term (napi_env env, napi_callback_info info);
 napi_value ctx_setopt (napi_env env, napi_callback_info info);
 napi_value ctx_getopt (napi_env env, napi_callback_info info);
+napi_value ctx_getopt_data (napi_env env, napi_callback_info info);
 napi_value ctx_recalculate_auto_hwm (napi_env env, napi_callback_info info);
 
 napi_value socket_new (napi_env env, napi_callback_info info);

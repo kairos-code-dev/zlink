@@ -74,8 +74,8 @@ function applySocketPolicy(
       const hwm = integerEnv('PERF_MULTI_HWM', 1000);
       const sendHwm = integerEnv('PERF_MULTI_SNDHWM', hwm);
       const recvHwm = integerEnv('PERF_MULTI_RCVHWM', hwm);
-      socket.options.sendHwm = sendHwm;
-      socket.options.recvHwm = recvHwm;
+      socket.options.sendHwm = BigInt(sendHwm);
+      socket.options.recvHwm = BigInt(recvHwm);
     }
     if (!isInproc) {
       socket.options.sendTimeout = sendTimeout;

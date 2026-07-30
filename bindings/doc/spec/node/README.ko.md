@@ -551,6 +551,31 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`, `poller.ts`,
 - Errors: 타입 있는 에러 클래스 또는 core result 도메인을 보존하는 태그된 에러
   객체.
 
+## 64-bit byte HWM과 monitoring 계약
+
+HWM과 Auto HWM planning unit은 `uint64_t` byte 값을 손실 없이 표현해야 하므로 공개
+TypeScript 타입으로 `bigint`를 사용한다. `number`를 함께 받거나 안전한 정수 범위에 따라
+표현을 바꾸지 않는다. `0n`은 HWM에서 무제한을 뜻하며, 수동 HWM 기본값은
+`4_096_000n` bytes다. 음수나 `2n ** 64n - 1n`을 넘는 값은 `RangeError`, `number`와
+그 밖의 타입은 `TypeError`로 거부한다.
+
+```ts
+interface ContextOptions {
+  autoHwmMsgUnitBytes: bigint; // 64-bit planning-unit bytes; 0n selects the socket default.
+}
+
+interface CommonSocketOptions {
+  sendHwm: bigint; // Directional send-pipe byte HWM; 0n means unlimited.
+  recvHwm: bigint; // Directional receive-pipe byte HWM; 0n means unlimited.
+}
+```
+
+Monitor snapshot은 Core monitoring ABI v2를 그대로 투영한다. Planned, applied, deferred와
+in-flight HWM 값은 이름에 `Bytes`를 포함하고 `bigint`로 제공한다. Deferred 값의 유효
+여부는 별도 boolean으로 제공한다. Pending message와 profile slot은 count 진단값이며 byte
+field와 이름을 공유하지 않는다. 이전 `autoHwmAppliedSndHwm` 같은 count 이름은 alias로
+유지하지 않는다.
+
 ## 필수 기능 범위
 
 공유 .NET-기준 정책에 정렬되었을 때 공개 entrypoint는 다음의 안정적인 사용자

@@ -250,7 +250,15 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  coupled outbound invariants that future `_out_sync` refactors must
     //  preserve: `_out_pipe` lifetime, `_state`, `_out_active`, and
     //  `_peers_msgs_read` move together across write/flush/terminate paths.
-    bool write_message_unlocked (const msg_t *msg_, bool enforce_hwm_);
+    //  enforce_incremental_hwm_ rejects a multipart as soon as the frames
+    //  accumulated so far exceed the HWM, instead of waiting for the final
+    //  frame. Only writers that check the HWM per call may ask for it: the
+    //  *_no_recursive_hwm_check writers admit a whole message up front, so
+    //  rejecting one of its later frames would break that guarantee and make
+    //  the caller drop a message it was told it could send.
+    bool write_message_unlocked (const msg_t *msg_,
+                                 bool enforce_hwm_,
+                                 bool enforce_incremental_hwm_ = false);
     void rollback_unlocked ();
     void flush_unlocked ();
     uint64_t frame_accounted_bytes (const msg_t *msg_) const;

@@ -557,7 +557,7 @@ bool zlink::pipe_t::write (const msg_t *msg_)
         return false;
     }
 
-    return write_message_unlocked (msg_, true);
+    return write_message_unlocked (msg_, true, true);
 }
 
 bool zlink::pipe_t::write_no_hwm_check (const msg_t *msg_)
@@ -598,7 +598,7 @@ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
     }
 
     const bool more = (msg_->flags () & msg_t::more) != 0;
-    if (!write_message_unlocked (msg_, true))
+    if (!write_message_unlocked (msg_, true, true))
         return false;
     if (!more)
         flush_unlocked ();
@@ -1282,7 +1282,9 @@ bool zlink::pipe_t::can_commit_bytes_unlocked (uint64_t message_bytes_) const
     return in_flight + message_bytes_ <= _hwm;
 }
 
-bool zlink::pipe_t::write_message_unlocked (const msg_t *msg_, bool enforce_hwm_)
+bool zlink::pipe_t::write_message_unlocked (const msg_t *msg_,
+                                            bool enforce_hwm_,
+                                            bool enforce_incremental_hwm_)
 {
     const uint64_t incomplete_before = _out_incomplete_bytes;
     if (!append_outbound_frame_bytes_unlocked (msg_))
@@ -1290,7 +1292,8 @@ bool zlink::pipe_t::write_message_unlocked (const msg_t *msg_, bool enforce_hwm_
 
     const bool more = (msg_->flags () & msg_t::more) != 0;
     const bool commits_bytes = !more && !msg_->is_delimiter ();
-    if (enforce_hwm_ && !can_commit_bytes_unlocked (_out_incomplete_bytes)) {
+    if ((commits_bytes || enforce_incremental_hwm_) && enforce_hwm_
+        && !can_commit_bytes_unlocked (_out_incomplete_bytes)) {
         _out_incomplete_bytes = incomplete_before;
         _out_active = false;
         return false;

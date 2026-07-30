@@ -33,16 +33,16 @@ make_monitor_ready_endpoint_prefix (const zlink::endpoint_uri_pair_t &endpoint_u
     return prefix;
 }
 
+//  A transport pair is identified by its pair id and generation. The peer
+//  routing id is deliberately left out: the two lanes of one pair can learn
+//  the peer identity at different moments, and a key that included it would
+//  split the pair into two half-ready entries that never complete.
 std::string make_transport_pair_ready_key (
   const zlink::endpoint_uri_pair_t &endpoint_uri_pair_,
-  const unsigned char *routing_id_,
-  size_t routing_id_size_,
   uint64_t pair_id_,
   uint64_t generation_)
 {
     std::string key = make_monitor_ready_endpoint_prefix (endpoint_uri_pair_);
-    if (routing_id_ && routing_id_size_ > 0)
-        key.append (reinterpret_cast<const char *> (routing_id_), routing_id_size_);
     key.push_back ('\0');
     key.append (reinterpret_cast<const char *> (&pair_id_), sizeof (pair_id_));
     key.append (reinterpret_cast<const char *> (&generation_), sizeof (generation_));
@@ -105,15 +105,12 @@ bool zlink::socket_monitor_runtime_t::erase_ready_connection_for_endpoint (
 
 bool zlink::socket_monitor_runtime_t::mark_transport_pair_lane_ready (
   const endpoint_uri_pair_t &endpoint_uri_pair_,
-  const unsigned char *routing_id_,
-  size_t routing_id_size_,
   transport_lane_t lane_,
   uint64_t pair_id_,
   uint64_t generation_)
 {
     const std::string key =
-      make_transport_pair_ready_key (endpoint_uri_pair_, routing_id_, routing_id_size_,
-                                     pair_id_, generation_);
+      make_transport_pair_ready_key (endpoint_uri_pair_, pair_id_, generation_);
     uint8_t &lanes = transport_pair_ready_lanes[key];
     lanes |= lane_ == transport_lane_completion ? 0x02 : 0x01;
     if (lanes != 0x03)

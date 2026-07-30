@@ -237,13 +237,12 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
                     new_pipes[1]->hold_writes_until_transport_pair_ready ();
                 }
                 send_bind (peer.socket, new_pipes[1], false);
-                if (!paired_transport)
-                    peer.socket->emit_inproc_connection_ready (new_pipes[1]);
+                peer.socket->emit_inproc_connection_ready (new_pipes[1]);
                 connected_inproc_now = true;
             }
 
             attach_pipe (new_pipes[0], false, true);
-            if (connected_inproc_now && !paired_transport)
+            if (connected_inproc_now)
                 emit_inproc_connection_ready (new_pipes[0]);
             endpoint_runtime ().inprocs.emplace (endpoint_uri_, new_pipes[0]);
         }

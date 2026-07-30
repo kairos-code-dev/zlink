@@ -157,11 +157,6 @@ void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
                 pair_id, pipe_->get_transport_pair_generation ())].application;
         xattach_pipe (application, subscribe_to_all_,
                       locally_initiated_ || application->is_locally_initiated ());
-        if (pair_id != 0
-            && application->get_endpoint_pair ().identifier ().find (
-                 "inproc://")
-                 == 0)
-            emit_inproc_connection_ready (application);
         if (dispatch_runtime ().send_recovery_pending () && transport_has_out ()) {
             dispatch_runtime ().mark_send_recovery_ready ();
             static_cast<mailbox_t *> (_mailbox)->signal ();

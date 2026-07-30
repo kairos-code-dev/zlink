@@ -408,8 +408,7 @@ void zlink::socket_base_t::event_transport_pair_lane_ready (
     {
         scoped_lock_t lock (monitor_runtime ().sync);
         pair_ready = monitor_runtime ().mark_transport_pair_lane_ready (
-          endpoint_uri_pair_, routing_id_, routing_id_size_, lane_, pair_id_,
-          generation_);
+          endpoint_uri_pair_, lane_, pair_id_, generation_);
     }
     if (pair_ready)
         event_connection_ready_changed (
@@ -427,6 +426,17 @@ void zlink::socket_base_t::emit_inproc_connection_ready (pipe_t *pipe_)
     const endpoint_uri_pair_t &endpoint_pair = pipe_->get_endpoint_pair ();
     const blob_t &routing_id = pipe_->get_routing_id ();
     const unsigned char *routing_id_data = routing_id.size () > 0 ? routing_id.data () : NULL;
+    const uint64_t pair_id = pipe_->get_transport_pair_id ();
+    if (pair_id != 0) {
+        //  inproc has no engine handshake, so the socket reports lane
+        //  readiness itself. The pair-aware entry keeps the public contract of
+        //  one ready event per Application·Completion pair, exactly as the
+        //  engine transports report it.
+        event_transport_pair_lane_ready (endpoint_pair, routing_id_data, routing_id.size (),
+                                         pipe_->get_transport_lane (), pair_id,
+                                         pipe_->get_transport_pair_generation ());
+        return;
+    }
     event_connection_ready_changed (endpoint_pair, routing_id_data, routing_id.size ());
 }
 

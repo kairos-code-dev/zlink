@@ -1219,6 +1219,139 @@ void run_stream_ready_matrix (monitor_mode_t monitor_mode_, socket_mode_t socket
     test_context_socket_close_zero_linger (server);
 #endif
 }
+
+size_t count_extra_ready_events (void *monitor_)
+{
+    //  Readiness has already been observed, so any further ready event is a
+    //  second report of the same connection.
+    msleep (200);
+    size_t extra = 0;
+    for (;;) {
+        zlink_monitor_event_t event;
+        if (recv_monitor_event_from_socket (monitor_, &event, ZLINK_DONTWAIT) != 0)
+            break;
+        if (event.event == ZLINK_EVENT_CONNECTION_READY)
+            ++extra;
+    }
+    return extra;
+}
+
+//  inproc has no engine handshake, so a paired transport reports its
+//  Application and Completion lane readiness from the socket itself. Both
+//  sockets must observe exactly one ready event per connection, whichever of
+//  bind and connect happens first.
+void run_inproc_dealer_router_ready (bool connect_before_bind_, const char *endpoint_)
+{
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *client = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+    configure_pair_socket (server);
+    configure_pair_socket (client);
+
+    const char dealer_id[] = "MRXIN";
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, dealer_id, sizeof (dealer_id) - 1));
+
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events = ZLINK_EVENT_CONNECTION_READY;
+    void *server_monitor = zlink_socket_monitor_open (server, &monitor_opts);
+    void *client_monitor = zlink_socket_monitor_open (client, &monitor_opts);
+    TEST_ASSERT_NOT_NULL (server_monitor);
+    TEST_ASSERT_NOT_NULL (client_monitor);
+    configure_pair_socket (server_monitor);
+    configure_pair_socket (client_monitor);
+
+    if (connect_before_bind_) {
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint_));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, endpoint_));
+    } else {
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, endpoint_));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint_));
+    }
+
+    unsigned char routing_id[255];
+    size_t routing_id_size = 0;
+    TEST_ASSERT_TRUE (wait_for_monitor_ready_recv_with_activity (
+      server_monitor, server, 3000, routing_id, &routing_id_size));
+    TEST_ASSERT_TRUE (wait_for_monitor_ready_recv (client_monitor, 3000));
+
+    TEST_ASSERT_EQUAL_UINT64 (0, count_extra_ready_events (server_monitor));
+    TEST_ASSERT_EQUAL_UINT64 (0, count_extra_ready_events (client_monitor));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (client, "ping", 4, 0));
+
+    const zlink_routing_id_t *source_node_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_recv (server, &source_node_rid, &request_seq, &parts, &part_count, 0));
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_UINT64 (4, zlink_msg_size (&parts[0]));
+    TEST_ASSERT_EQUAL_MEMORY ("ping", zlink_msg_data (&parts[0]), 4);
+    TEST_ASSERT_EQUAL_UINT64 (sizeof (dealer_id) - 1, source_node_rid->size);
+    TEST_ASSERT_EQUAL_MEMORY (dealer_id, source_node_rid->data, sizeof (dealer_id) - 1);
+    zlink_multipart_close (parts, part_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&client_monitor));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&server_monitor));
+    test_context_socket_close_zero_linger (client);
+    test_context_socket_close_zero_linger (server);
+}
+
+//  Two paired peers on one inproc endpoint must be reported as two separate
+//  ready connections. A pair readiness key that mixed up the two peers would
+//  either merge their lanes into one event or leave one peer unreported.
+void run_inproc_two_dealers_ready ()
+{
+    const char *endpoint = "inproc://monitor_inproc_ready_two_dealers";
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (server);
+    configure_pair_socket (server);
+
+    zlink_socket_monitor_open_options_t monitor_opts;
+    memset (&monitor_opts, 0, sizeof (monitor_opts));
+    monitor_opts.events = ZLINK_EVENT_CONNECTION_READY;
+    void *server_monitor = zlink_socket_monitor_open (server, &monitor_opts);
+    TEST_ASSERT_NOT_NULL (server_monitor);
+    configure_pair_socket (server_monitor);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, endpoint));
+
+    void *clients[2] = {NULL, NULL};
+    const char *client_ids[2] = {"MRXI1", "MRXI2"};
+    for (size_t i = 0; i != 2; ++i) {
+        clients[i] = test_context_socket (ZLINK_SOCKET_DEALER);
+        TEST_ASSERT_NOT_NULL (clients[i]);
+        configure_pair_socket (clients[i]);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (clients[i], client_ids[i], 5));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (clients[i], endpoint));
+        TEST_ASSERT_TRUE (wait_for_monitor_ready_recv (server_monitor, 3000));
+    }
+
+    TEST_ASSERT_EQUAL_UINT64 (0, count_extra_ready_events (server_monitor));
+
+    for (size_t i = 0; i != 2; ++i) {
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_send (clients[i], "ping", 4, 0));
+
+        const zlink_routing_id_t *source_node_rid = NULL;
+        uint64_t request_seq = 0;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_router_recv (server, &source_node_rid, &request_seq, &parts, &part_count, 0));
+        TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+        TEST_ASSERT_EQUAL_UINT64 (5, source_node_rid->size);
+        TEST_ASSERT_EQUAL_MEMORY (client_ids[i], source_node_rid->data, 5);
+        zlink_multipart_close (parts, part_count);
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&server_monitor));
+    for (size_t i = 0; i != 2; ++i)
+        test_context_socket_close_zero_linger (clients[i]);
+    test_context_socket_close_zero_linger (server);
+}
 } // namespace
 
 void test_pair_ready_with_monitor_recv_and_socket_recv ()
@@ -1259,6 +1392,21 @@ void test_dealer_router_ready_with_monitor_callback_and_socket_recv ()
 void test_dealer_router_ready_with_monitor_callback_and_socket_callback ()
 {
     run_dealer_router_ready_matrix (monitor_callback_mode, socket_callback_mode);
+}
+
+void test_inproc_dealer_router_ready_after_bind ()
+{
+    run_inproc_dealer_router_ready (false, "inproc://monitor_inproc_ready_after_bind");
+}
+
+void test_inproc_dealer_router_ready_after_pending_connect ()
+{
+    run_inproc_dealer_router_ready (true, "inproc://monitor_inproc_ready_pending_connect");
+}
+
+void test_inproc_two_dealers_ready_once_each ()
+{
+    run_inproc_two_dealers_ready ();
 }
 
 void test_router_router_ready_with_monitor_recv_and_socket_recv ()
@@ -1529,6 +1677,9 @@ int main ()
     RUN_TEST (test_pair_ready_with_monitor_recv_and_socket_callback);
     RUN_TEST (test_dealer_router_ready_with_monitor_recv_and_socket_recv);
     RUN_TEST (test_dealer_router_ready_with_monitor_recv_and_socket_callback);
+    RUN_TEST (test_inproc_dealer_router_ready_after_bind);
+    RUN_TEST (test_inproc_dealer_router_ready_after_pending_connect);
+    RUN_TEST (test_inproc_two_dealers_ready_once_each);
     RUN_TEST (test_router_router_ready_with_monitor_recv_and_socket_recv);
     RUN_TEST (test_router_router_ready_with_monitor_recv_and_socket_callback);
     RUN_TEST (test_pubsub_ready_with_monitor_recv_and_socket_recv);

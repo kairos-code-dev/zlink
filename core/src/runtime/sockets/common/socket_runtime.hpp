@@ -148,8 +148,6 @@ struct socket_monitor_runtime_t
                                               uint32_t *ready_count_out_);
     bool mark_transport_pair_lane_ready (
       const endpoint_uri_pair_t &endpoint_uri_pair_,
-      const unsigned char *routing_id_,
-      size_t routing_id_size_,
       transport_lane_t lane_,
       uint64_t pair_id_,
       uint64_t generation_);

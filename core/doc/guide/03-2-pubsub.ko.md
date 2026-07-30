@@ -285,7 +285,8 @@ zlink_connect(sub, "tcp://pub2:5557");
 ### Slow Subscriber (HWM 처리)
 
 PUB/XPUB는 기본적으로 **NODROP 모드**로 동작한다 — `ZLINK_PUB_OPT_NODROP`의
-기본값이 `1`이다. 느린 구독자의 송신 큐가 HWM(High-Water Mark, 큐 최대 허용 메시지 수)에
+기본값이 `1`이다. 느린 구독자의 송신 queue가 HWM(High-Water Mark, 보관할 수 있는
+accounted byte 상한)에
 도달하면 메시지를 버리지 않고 `zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를
 반환해 호출자가 대응할 수 있다.
 

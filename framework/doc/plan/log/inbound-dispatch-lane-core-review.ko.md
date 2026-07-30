@@ -41,7 +41,7 @@ Candidate에 포함된 stage 1 수정 이력은 다음과 같다.
 | Reviewer | Model | Reasoning | 실행 시각 | 판정 |
 | --- | --- | --- | --- | --- |
 | Codex 5.6 High | `gpt-5.6-sol` | high | 2026-07-30 11:57 | `NOT CLEAN` |
-| Claude Fable | 보고서 기록값 | 보고서 기록값 | 2026-07-30 11:58 시작 | 실행 중 |
+| Claude Fable | `claude-fable-5` | interleaved extended thinking | 2026-07-30 12:17 | `NOT CLEAN` |
 
 Codex는 read-only sandbox로 실행했으므로 지정한 경로에 report file을 쓰지 못하고 stdout으로
 보고했다. 아래 finding은 그 보고서를 옮긴 것이다. 다음 round에서는 reviewer가 report를 쓸 수
@@ -161,8 +161,137 @@ metadata 파싱, pair 전체 disconnect 처리, completion pipe에서 callback�
 `internal_pair_queue_internal.*` 제거를 확인했다. Hot path에서 `Medium` 이상 근거는 찾지
 못했다. Benchmark·Valgrind 수치는 재실행하지 않고 기록된 증거만 확인했다.
 
+### Claude Fable 추가 finding
+
+Claude Fable은 같은 candidate와 비교 기준을 전체 검토하여 `High` 3건, `Medium` 4건,
+`Low` 6건을 보고했다. Codex와 중복된 빈 pipe oversize finding은 CR1-03에 통합했다.
+
+| ID | Severity | Category | 위치 | 요지 |
+| --- | --- | --- | --- | --- |
+| CR1-F01 | `High` | lifecycle | `core/src/runtime/sockets/common/socket_base_endpoint.cpp:330,409` | 명시적 disconnect가 Completion session을 endpoint map에 남겨 재연결을 반복한다 |
+| CR1-F02 | `High` | concurrency | `core/src/runtime/sockets/common/socket_base_api.cpp:113,452,586` | `_transport_pairs` map과 Completion pipe drain의 동기화 owner가 없다 |
+| CR1-F03 | `High` | contract | `core/src/runtime/sockets/common/socket_base_api.cpp:312,447` | reply callback이 completion wait owner가 아닌 임의 API·I/O thread에서 실행될 수 있다 |
+| CR1-F04 | `Medium` | contract | `core/src/api/core/zlink.cpp:253` | `zlink_poller_modify()`가 spec과 달리 `ZLINK_POLLCOMPLETION`을 허용한다 |
+| CR1-F05 | `Medium` | migration | `core/src/api/monitoring/monitor_socket_api.cpp:86` | 내부 monitor HWM 4,096 messages를 4,096 bytes로 조용히 재해석했다 |
+| CR1-F06 | `Medium` | contract | `core/src/api/core/context_api.cpp:162` | 64-bit get 구현은 exact size를 요구하지만 spec은 capacity 의미로 설명한다 |
+| CR1-F07 | `Medium` | contract | `core/tests/integration/test_zmp_request_reply.cpp` | paired endpoint disconnect와 reconnect 후 route 유지 회귀가 부족하다 |
+
+#### CR1-F01 — 명시적 disconnect 뒤 Completion session이 재연결된다
+
+- 근거: 두 lane을 `endpoint`와 `endpoint#completion`이라는 서로 다른 key로 등록했다.
+  `zlink_disconnect(endpoint)`는 Application lane만 제거하므로 Completion session이 peer
+  종료를 transport failure로 처리하고 재연결한다.
+- 위반: 설계 §4.9와 §8.1은 lane 하나를 명시적으로 종료하면 pair 전체를 종료하도록 정한다.
+- 대안 A: disconnect 경로가 두 key를 모두 찾아 shared pair reconnect를 비활성화한다.
+- 대안 B: 두 lane을 endpoint multimap의 같은 key로 등록하고 pair state에서 reconnect
+  허용 여부를 함께 관리한다.
+- 선택: B를 적용한다. Endpoint 연산마다 `#completion` 예외를 반복하지 않고 기존
+  endpoint 범위 연산이 pair 전체에 적용된다.
+
+#### CR1-F02 — pair table과 Completion pipe drain에 동기화 owner가 없다
+
+- 근거: command를 처리하는 thread가 `_transport_pairs`를 변경하는 동안 reply submit
+  thread가 같은 `std::map`을 조회할 수 있다. Completion pipe도 여러 command 처리 thread가
+  동시에 읽을 수 있다.
+- 위반: pair lifecycle과 reply completion invariant의 owner가 분명해야 한다는 §8.2 검토
+  기준과 POSD 정보 은닉 원칙을 위반한다.
+- 대안 A: pair registry가 map, transition과 drain claim을 mutex 하나로 관리한다.
+- 대안 B: 기존 socket dispatch lock으로 모든 table 접근과 drain을 보호한다.
+- 선택: 현재 단계에서는 pair table 전용 mutex와 per-pair drain claim을 적용한다. Reply
+  handler는 table lock 밖에서 실행하여 user callback 재진입과 table invariant를 분리한다.
+  Registry 추출은 동작과 측정값을 바꾸는 후속 구조 개선으로 남긴다.
+
+#### CR1-F03 — reply callback 실행 thread 계약이 지켜지지 않는다
+
+- 근거: Completion pipe의 `read_activated()`가 실행되는 모든 command 처리 thread에서
+  callback을 실행할 수 있었다. `get_events()`도 요청 event mask와 무관하게 completion을
+  drain했다.
+- 위반: polling spec은 callback이 completion wait를 실행한 thread에서 dispatch되며 일반
+  `recv_part`가 completion을 drain하지 않는다고 정한다.
+- 대안 A: `read_activated()`는 readiness만 기록하고 completion owner가 있는 wait 또는 async
+  mailbox drain 지점에서만 pipe를 읽는다.
+- 대안 B: 임의 API thread와 I/O thread callback을 public contract로 허용한다.
+- 선택: A를 적용한다. `ZLINK_POLLCOMPLETION`을 요청한 wait와 명시적인 async mailbox drain
+  scope만 handler 실행 권한을 가진다.
+
+#### CR1-F04 — poller modify가 completion mode를 잘못 허용한다
+
+- 근거: bare `ZLINK_POLLCOMPLETION`은 `zlink_poller_modify()` 검증을 통과하지만 add 경로의
+  ownership acquire를 수행하지 않는다.
+- 대안 A: spec대로 modify에서 해당 bit를 항상 거부한다.
+- 대안 B: modify 전환에 acquire·release와 contract test를 추가하고 spec을 바꾼다.
+- 선택: A를 적용한다. 승인된 계약에 mode 전환이 없으므로 새 상태 전이를 추가하지 않는다.
+
+#### CR1-F05 — monitor HWM count를 byte로 잘못 옮겼다
+
+- 근거: `4096 messages`였던 내부 monitor pipe 값을 타입만 `uint64_t`로 바꾸어
+  `4096 bytes`가 되었다. 작은 event만 사용해도 보관 가능한 record 수가 크게 줄어든다.
+- 대안 A: 이전 count에 minimum Core charge를 곱한 byte 값으로 옮긴다.
+- 대안 B: 수동 override를 제거하고 Auto HWM을 사용한다.
+- 선택: A를 적용한다. 기존 monitor burst capacity를 유지하고 Auto profile 변화와 분리한다.
+
+#### CR1-F06 — 64-bit get의 buffer 크기 계약이 다르다
+
+- 근거: 구현과 test는 `sizeof(uint64_t)`와 정확히 같은 buffer만 허용하지만 spec은 그보다
+  큰 capacity도 허용하는 문장으로 작성되었다.
+- 대안 A: exact-size 계약을 spec에 명시하고 큰 buffer 거부 test를 추가한다.
+- 대안 B: 구현을 capacity 계약으로 바꾼다.
+- 선택: A를 적용한다. Set과 get이 같은 exact-size 규칙으로 4-byte legacy 호출을 거부한다.
+
+#### CR1-F07 — paired endpoint disconnect 회귀가 부족하다
+
+- 근거: 기존 reconnect test는 application payload만 확인하고 두 lane 중 하나가 명시적
+  disconnect 뒤 계속 연결되는지 검사하지 않았다.
+- 대안 A: 기존 request/reply test에 monitor event 기반 pair disconnect 회귀를 추가한다.
+- 대안 B: 별도 pair lifecycle fixture를 만든다.
+- 선택: A로 명시적 disconnect 뒤 추가 connect event가 없음을 검증하고, raw ZMP fixture에서
+  같은 pair identity와 다른 generation을 가진 두 lane이 Application pipe로 결합되지 않음을
+  별도로 검증한다.
+
+#### `Low` finding 처리
+
+| ID | 내용 | 처리 |
+| --- | --- | --- |
+| CR1-F08 | 제거한 dispatch 시대 state와 no-op helper가 남아 있음 | Core 동작 gate를 바꾸지 않는 cleanup이다. bindings 완료 뒤 별도 정리 대상으로 둔다. |
+| CR1-F09 | ZMP internals 문서가 paired transport의 강제 metadata 예외를 설명하지 않음 | 다음 candidate의 문서 동기화에 포함한다. |
+| CR1-F10 | req/rep hot path의 lock·vector·linear scan | C-07 측정에서 regression이 없었다. CPU/message에서 2%를 넘을 때만 구조 변경을 검토한다. |
+| CR1-F11 | lane 2 connect 실패 시 lane 1 unwind가 원자적이지 않음 | OOM·resolver failure fault injection을 추가하는 후속 lifecycle 작업으로 남긴다. |
+| CR1-F12 | blocking send의 retry errno remap이 오류 문서에 없음 | 다음 candidate의 오류 문서 동기화에 포함한다. |
+| CR1-F13 | `zlink_ctx_get_data()`가 현재 option 하나만 지원함 | 승인 범위에 새 public API 일반화를 추가하지 않는다. Exact 지원 목록을 contract에 명시한다. |
+
 ### 판정 (CR-07)
 
-Round 1은 `NOT CLEAN`이다. Codex 보고서만으로도 `Critical` 2건, `High` 1건, `Medium` 2건이
-남아 있다. Claude Fable review가 끝나면 finding을 합치고, 수정 후 새 candidate SHA로 두
-reviewer의 전체 review를 다시 받아야 한다.
+Round 1은 `NOT CLEAN`이다. 통합 결과는 `Critical` 2건, `High` 4건, `Medium` 6건이다.
+CR1-03과 Claude Fable의 empty-pipe finding은 같은 원인으로 합쳤다. 수정 후 새 candidate
+SHA에서 두 reviewer의 전체 review를 다시 받아야 한다.
+
+## Round 2
+
+Candidate `d314e96fd8`을 `/tmp/zlink-core-candidate-d314e96fd8`에 고정하고 비교 기준
+`8bc2aa6786`, rubric v1로 전체 범위를 다시 검토했다.
+
+| Reviewer | Model | Reasoning | 실행 시각 | Report | 판정 |
+| --- | --- | --- | --- | --- | --- |
+| Codex 5.6 High | `gpt-5.6-sol` | high | 2026-07-30 14:07 | `/tmp/zlink-review-results/codex-round2.md` | `NOT CLEAN` |
+| Claude Fable | `claude-fable-5` | high | 2026-07-30 13:57 | `/tmp/zlink-review-results/fable-round2.md` | `NOT CLEAN` |
+
+두 reviewer는 unbounded completion control queue를 `Critical`로 함께 보고했다. Codex는
+incomplete multipart가 빈 pipe 예외를 반복해서 사용할 수 있는 문제를 `Critical`, inproc에서
+`MaxMessageSize`를 독립적으로 강제하지 않는 문제를 `High`로 추가 확인했다. 통합한
+`Medium` finding은 pair lifecycle wire matrix, completion poll의 전체 peer scan과 C benchmark의
+4-byte HWM 호출이다.
+
+대안 검토 결과는 다음과 같다.
+
+- Request admission 때 유한한 completion slot을 예약하고 callback 실행 직전에 반환한다.
+  Timeout과 disconnect는 새 memory를 확보하지 않고 기존 예약을 control record로 바꾼다.
+- Multipart는 누적 payload와 accounted byte를 따로 관리한다. `MaxMessageSize`는 HWM과
+  무관하게 payload에 먼저 적용하고, incomplete `MORE` frame은 일반 HWM을 넘지 못하게 한다.
+- Completion readiness는 pair table 전체를 다시 훑지 않고 ready key를 한 번만 queue에 넣어
+  실제 ready pair만 drain한다.
+- Raw wire fixture는 pair id, generation, peer identity, duplicate lane과 reconnect 뒤 이전
+  generation completion frame을 각각 검증한다.
+- C benchmark는 HWM을 `uint64_t` byte로 전달하고 설정 실패를 즉시 중단한다.
+
+수정 candidate `5329e79a2f`은 CPU concurrency를 2로 제한한 Core build와 82/82 test를
+통과했다. Round 3에서 같은 SHA의 두 전체 review를 다시 수행한다.

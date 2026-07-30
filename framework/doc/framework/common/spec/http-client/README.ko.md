@@ -28,7 +28,6 @@ public type과 signature로 표현한다.
 | 10 | [개정 후보](10-revision-candidates.ko.md) | **비계약** — 승격 전 검토 항목(R1~R14) |
 | 11 | [회귀 테스트 계약](11-regression-tests.ko.md) | 공통 계약 케이스 매트릭스, 게이트, 커버리지 갭 |
 | — | [언어별 인터페이스 대조표](language-interfaces.ko.md) | **비규범** — 5개 언어 표면을 나란히 보는 대조표. 계약을 고정하지 않는다 |
-| — | [성능 측정과 비교](../../../../http-client/perf/README.ko.md) | perf 시나리오 매트릭스·지표·회귀 판정 정본 |
 
 ## 언어별 public API
 
@@ -54,6 +53,6 @@ public type과 signature로 표현한다.
 
 ## 관련 문서
 
-- 언어별 사용자 가이드: `framework/doc/framework/<lang>/http-client/`
+- 언어별 사용자 가이드: `framework/doc/framework/<lang>/guide/http-client/`
 - [Codec extension 공유 계약](../06-framework-api.ko.md)
 - [공통 E2E 계약](../../e2e/README.ko.md)

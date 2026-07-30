@@ -51,11 +51,13 @@
 - framework(서버) 패키지 계약: `framework/doc/framework/common/spec/` (+ `server/languages/<lang>/`)
 - HTTP client 패키지 계약: `framework/doc/framework/common/spec/http-client/` (+ `http-client/languages/<lang>/`)
 - stream connector 패키지 계약: `framework/doc/framework/common/spec/stream-connector/` (+ `stream-connector/languages/<lang>/`)
-- 언어별 사용 안내: `framework/doc/framework/<lang>/` — `guide/`(서버), `http-client/`,
-  `stream-connector/`, `internals/`. **계약은 패키지로, 사용 안내는 언어로 나눈다.**
-- 언어별 HTTP client와 stream connector 사용 안내는
-  `framework/doc/framework/<lang>/http-client/`와
-  `framework/doc/framework/<lang>/stream-connector/`에서 관리한다.
+- 언어별 사용 안내: `framework/doc/framework/<lang>/guide/` 아래의 `server/`,
+  `http-client/`, `stream-connector/`. 유지보수자용 내부 설명은 같은 언어 디렉터리의
+  `internals/`에 둔다. **계약은 패키지로, 사용 안내는 언어로 나눈다.**
+- 언어별 server, HTTP client와 stream connector 사용 안내는 각각
+  `framework/doc/framework/<lang>/guide/server/`,
+  `framework/doc/framework/<lang>/guide/http-client/`,
+  `framework/doc/framework/<lang>/guide/stream-connector/`에서 관리한다.
 - `framework/doc/http-client/`와 `framework/doc/stream-connector/`에는 공통 안내와 계획만 두고,
   언어별 사용 안내를 추가하지 않는다.
 

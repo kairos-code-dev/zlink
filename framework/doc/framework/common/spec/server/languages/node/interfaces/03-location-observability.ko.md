@@ -109,78 +109,14 @@ export interface ZLinkLocationReadiness {
 
 Spot·Actor·route 저장 행 query, 저장 key, `ZLinkLocationAutoConnectType`, watch store와 change stamp는 runtime 내부 계약이다. Application은 aggregate topology와 service summary를 조회한다.
 
-## 3. Monitoring event
+## 3. Runtime 상태와 structured log
 
-```ts
-export interface ZLinkMonitoringOptions {
-  socket?: ZLinkSocketMonitoringRegistration[];
-  locationRuntime?: ZLinkPollingMonitoringRegistration[];
-}
+Application은 이 문서의 runtime interface가 반환하는 immutable status와 변화 stream으로
+현재 상태를 확인한다. Socket·Location raw event DTO, event handler, sink와 monitoring
+source 등록 option은 public contract가 아니다.
 
-export interface ZLinkRuntimeEvent {
-  readonly sourceName: string;
-  readonly timestamp: Date;
-}
-
-export interface ZLinkRuntimeEventHandler<TEvent extends ZLinkRuntimeEvent> {
-  handle(event: TEvent): Promise<void>;
-}
-
-export interface ZLinkSocketEvent extends ZLinkRuntimeEvent {
-  readonly event: ZLinkSocketEventKind;
-  readonly routingId?: RoutingId;
-  readonly localAddr: string;
-  readonly remoteAddr: string;
-}
-
-export type ZLinkLocationRuntimeEvent =
-  | (ZLinkRuntimeEvent & {
-      readonly event: ZLinkLocationRuntimeEventKind.StatusChanged;
-      readonly status: ZLinkLocationRuntimeStatus;
-    })
-  | (ZLinkRuntimeEvent & {
-      readonly event: ZLinkLocationRuntimeEventKind.TopologyChanged;
-      readonly topology: readonly ZLinkLocationTopologyEntry[];
-    })
-  | (ZLinkRuntimeEvent & {
-      readonly event: ZLinkLocationRuntimeEventKind.ServiceSummaryChanged;
-      readonly serviceSummary: readonly ZLinkLocationServiceSummary[];
-    })
-  | (ZLinkRuntimeEvent & {
-      readonly event:
-        | ZLinkLocationRuntimeEventKind.StoreFailure
-        | ZLinkLocationRuntimeEventKind.StoreRecovered;
-    });
-
-export enum ZLinkSpotEventKind {
-  TimerHandlerFailed = 'timerHandlerFailed',
-  TimerStoppedAfterUnhandledException = 'timerStoppedAfterUnhandledException'
-}
-
-export interface ZLinkSpotTimerDiagnostic {
-  readonly spotId: SpotId;
-  readonly isEntrySpot: boolean;
-  readonly timerName: string;
-  readonly handlerType: string;
-  readonly deliveryIndex: bigint;
-  readonly scheduledIndex: bigint;
-  readonly exceptionType: string;
-  readonly exceptionMessage: string;
-}
-
-export type ZLinkSpotEvent = ZLinkRuntimeEvent & {
-  readonly event:
-    | ZLinkSpotEventKind.TimerHandlerFailed
-    | ZLinkSpotEventKind.TimerStoppedAfterUnhandledException;
-  readonly timerDiagnostic: ZLinkSpotTimerDiagnostic;
-};
-```
-
-Application은 handler를 등록한다. `ZLinkRuntimeEventPublisher`, native socket event number·diagnostic, location row별 event emitter는 runtime composition에만 사용하므로 package root에서 공개하지 않는다.
-
-MeshNode readiness와 peer 상태는 `ZLinkRouteMeshRuntime.snapshot()`과 `observe()`로 확인한다. Monitoring
-option은 같은 정보를 Spot polling event로 중복 발행하지 않는다. Spot event는 application이 대응해야 하는
-timer handler 실패 두 종류만 제공한다.
+상태가 바뀐 이유는 application이 구성한 표준 structured logger에 기록한다. Native socket
+event, Location 저장 행 변화와 Spot timer 실패를 public callback으로 전달하지 않는다.
 
 ## 4. Host relocation과 termination runtime
 

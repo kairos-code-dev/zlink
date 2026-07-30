@@ -23,8 +23,8 @@ HTTP를 직접 제공한다.**
 
 | 산출물 | 문서 |
 |--------|------|
-| HTTP client (`zlink::http_client`) | [가이드](http-client/README.ko.md) · [spec](../common/spec/http-client/languages/cpp/cpp-http-client.ko.md) |
-| Stream connector (`zlink::stream_connector`) | [사용자 가이드](stream-connector/guide/INDEX.ko.md) |
+| HTTP client (`zlink::http_client`) | [가이드](guide/http-client/README.ko.md) · [spec](../common/spec/http-client/languages/cpp/cpp-http-client.ko.md) |
+| Stream connector (`zlink::stream_connector`) | [사용자 가이드](guide/stream-connector/INDEX.ko.md) |
 
 ## internals 목록
 

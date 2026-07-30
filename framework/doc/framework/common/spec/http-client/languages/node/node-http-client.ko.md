@@ -1,6 +1,6 @@
 # Spec -- ZLink HTTP Client For Node
 
-> 사용법 중심 문서는 [사용자 가이드](../../../../../node/http-client/README.ko.md)를 본다.
+> 사용법 중심 문서는 [사용자 가이드](../../../../../node/guide/http-client/README.ko.md)를 본다.
 > **언어 중립 공통 계약은 [공통 spec](../../README.ko.md)이 정본**이며,
 > 이 문서는 공통 계약에 대한 Node 고유 편차와 구현 매핑만 기술한다.
 > 실제 계약의 단일 기준은 공통 spec + `packages/http-client/src/**` 공개 타입과

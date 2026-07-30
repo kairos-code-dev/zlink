@@ -15,7 +15,7 @@ Framework spec이 동작을 정하고 다음 문서가 namespace, type, member, 
 | [Actors](05-actors.ko.md) | Global ActorId·ActorRef, relocation adapter, ID-only messaging, manager create와 exact mutation·bind를 정의한다. |
 | [STREAM session](06-stream-session.ko.md) | `streams`의 packet session과 Actor가 소유한 bound session의 연동 interface를 정의한다. |
 | [Location·Relocation Store·Redis](07-location-store.ko.md) | opaque atomic Location Store, immutable Relocation Store, operational query와 공식 Redis provider를 정의한다. |
-| [Monitoring](08-monitoring.ko.md) | application이 사용하는 runtime status·관찰 interface와 topology health 결과를 정의한다. |
+| [Monitoring](08-monitoring.ko.md) | application이 사용하는 runtime status·snapshot·health와 structured logging 경계를 정의한다. |
 
 `zlink/framework.hpp`는 위 installed header를 모으는 facade다. Application-facing API에는 Core service
 handle, claim, receive batch, reply token, service liveness command와 [authority](../../../../01-glossary.ko.md#authority)/relocation 내부 transaction을

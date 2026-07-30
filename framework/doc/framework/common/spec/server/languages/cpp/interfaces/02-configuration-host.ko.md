@@ -167,8 +167,6 @@ public:
 
     config_builder_t &config() noexcept;
     logging_builder_t &logging() noexcept;
-    monitoring_builder_t &monitoring() noexcept;
-    metrics_builder_t &metrics() noexcept;
     health_builder_t &health() noexcept;
 
     app_t &add_module(module_t &module);
@@ -319,7 +317,7 @@ concept framework_module_contract_t =
 } // namespace zlink::framework
 ```
 
-module은 서비스 등록, runtime 구성, handler 등록, monitoring 구성을 `zlink_framework_options_t` 하나로
+module은 서비스 등록, runtime 구성과 handler 등록을 `zlink_framework_options_t` 하나로
 묶는다. 별도 low-level builder와 handler registry를 넘겨 runtime wiring 순서를 application에 노출하지 않는다.
 
 `app_t::add_zlink_framework(options_callback)`는 `.NET`의
@@ -598,7 +596,6 @@ public:
     mesh_node_builder_t add_route_mesh(std::string mesh_name);
     stream_node_options_builder_t add_stream_node(std::string stream_name);
     stream_compression_options_builder_t configure_stream_compression();
-    monitoring_builder_t &monitoring() noexcept;
     http_options_builder_t &http() noexcept;
     template <typename TFilter>
     zlink_framework_options_t &use_filter();
@@ -940,12 +937,12 @@ public:
 ```
 
 JSON loader는 `nlohmann/json`을 사용한다. YAML은 필요하면 configuration extension으로
-둔다. metrics와 health 표면은 기본 관찰 기능으로 둔다. exporter, label schema,
-tracing hook은 공통 message-flow tracing 계약의 observer와 runtime control을 구현한다.
+둔다. Application은 표준 logging provider와 health 표면을 구성한다. Runtime event DTO,
+metric payload callback, exporter lifecycle과 provider 내부 registry는 public contract가 아니다.
 
 ### 5.1 Instance Spot metric
 
-`add_runtime_metrics()`가 활성화한 provider는 Instance activation에 대해 다음 여섯 이름을 byte 단위로
+Framework가 표준 metric provider에 기록하는 Instance activation 계기는 다음 여섯 이름을 byte 단위로
 그대로 사용한다. 종류, 단위, label과 닫힌 outcome 값은
 [Runtime metrics §4](../../../../25-runtime-metrics.ko.md#4-object와-stream)가 소유한다.
 

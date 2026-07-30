@@ -312,161 +312,20 @@ public:
 **`readiness`와 `liveness`를 분리한다.** 트래픽을 받을 준비(readiness)와 프로세스 생존(liveness)은
 다른 질문이다. **`degraded`는 `ready()`·`live()`를 막지 않는다.**
 
-## 4. Runtime event
+## 4. Structured logging과 metric provider 경계
 
-```cpp
-enum class runtime_event_severity_t {
-    trace = 0,
-    info = 1,
-    warning = 2,
-    error = 3
-};
-enum class socket_event_kind_t {
-    connected = 0,
-    connection_ready = 1,
-    disconnected = 2,
-    handshake_failed = 3,
-    closed = 4
-};
-enum class spot_event_kind_t {
-    timer_handler_failed = 0,
-    timer_stopped_after_unhandled_exception = 1
-};
-enum class stream_event_kind_t {
-    connected = 0,
-    disconnected = 1,
-    transport_error = 2,
-    handler_exception = 3
-};
-enum class actor_event_kind_t {
-    bound = 0,
-    unbound = 1,
-    relay_failed = 2,
-    session_disconnected = 3
-};
-struct runtime_event_base_t {
-    std::string source_name;
-    std::chrono::system_clock::time_point timestamp =
-      std::chrono::system_clock::now();
-    runtime_event_severity_t severity = runtime_event_severity_t::info;
-    std::string node_name;
-    std::string correlation_id;
-    health_status_t health = health_status_t::healthy;
-};
+Application은 [Configuration과 host](02-configuration-host.ko.md)의
+`logging_builder_t`로 표준 logging provider를 구성한다. Runtime 상태 변화와 진단 정보는
+`log_record_t`의 identifier와 field로 전달한다.
 
-struct socket_event_payload_t : runtime_event_base_t {
-    socket_event_kind_t event = socket_event_kind_t::connected;
-};
+다음 타입과 등록 API는 public contract가 아니다.
 
-struct spot_timer_diagnostic_t {
-    spot_id_t spot_id;
-    bool entry_spot = false;
-    std::string timer_name;
-    std::string handler_type;
-    std::uint64_t delivery_index = 0;
-    std::uint64_t scheduled_index = 0;
-    std::string exception_type;
-    std::string exception_message;
-};
+- socket·Spot·Actor·STREAM별 raw event DTO
+- raw event handler와 source 등록 builder
+- metric sample DTO와 application callback
+- exporter lifecycle, registry와 provider 내부 상태
 
-struct spot_event_payload_t : runtime_event_base_t {
-    spot_event_kind_t event = spot_event_kind_t::timer_handler_failed;
-    std::optional<spot_timer_diagnostic_t> timer_diagnostic;
-};
-
-struct stream_event_payload_t : runtime_event_base_t {
-    stream_event_kind_t event = stream_event_kind_t::connected;
-    std::string stream_name;
-    std::string session_id;
-    std::string message;
-};
-
-struct actor_event_payload_t : runtime_event_base_t {
-    actor_event_kind_t event = actor_event_kind_t::bound;
-    std::string actor_type;
-    std::string actor_id;
-    std::string session_id;
-    std::string message;
-};
-class monitoring_builder_t {
-public:
-    monitoring_builder_t();
-    ~monitoring_builder_t();
-    monitoring_builder_t(monitoring_builder_t &&) noexcept;
-    monitoring_builder_t &operator=(monitoring_builder_t &&) noexcept;
-    monitoring_builder_t(const monitoring_builder_t &) = delete;
-    monitoring_builder_t &operator=(const monitoring_builder_t &) = delete;
-
-    monitoring_builder_t &add_socket_events(std::string source_name);
-    monitoring_builder_t &add_socket_events(
-      std::string source_name,
-      std::initializer_list<socket_event_kind_t> events);
-    monitoring_builder_t &add_location_events(
-      std::string source_name,
-      std::chrono::milliseconds interval);
-    monitoring_builder_t &add_stream_events(std::string source_name);
-    monitoring_builder_t &add_actor_events(std::string source_name);
-    monitoring_builder_t &on_trace(
-      std::function<void(const runtime_event_base_t &)> hook);
-    template <typename TEvent>
-    monitoring_builder_t &on(std::function<void(const TEvent &)> handler);
-};
-```
-
-Application은 `monitoring_builder_t::on<TEvent>(...)`으로 Framework가 발행한 event를
-관찰한다. 임의 runtime event를 주입하는 publisher는 공개하지 않는다. Event 생성과 발행은
-Framework runtime의 내부 책임이다.
-
-Peer admission 단계, socket의 local·remote endpoint, Location Store topology payload와
-drain state event는 public event DTO로 제공하지 않는다. Peer·Channel 변화는
-`route_mesh_runtime_t::observe(...)`가 전달하는 완전한 snapshot으로 확인한다. Host
-종료 상태는 `framework_runtime_t`의 status와 observation으로 확인한다.
-
-**source별로 표면을 나누는 근거는 [runtime-monitoring §2](../../../../24-runtime-monitoring.ko.md)가
-소유한다.** Spot 상태·peer·subject 목록은 별도 polling source로 공개하지 않고
-`route_mesh_runtime_t`의 snapshot과 event로 관찰한다. Spot timer failure handler는 별도 Spot source
-등록 없이 받을 수 있으며, **timer 실행을 계속하는 실패**와 **timer가 중단된 실패**를 구분한다.
-
-**metric:**
-
-```cpp
-enum class metric_instrument_kind_t {
-    counter,
-    updown,
-    observable,
-    histogram
-};
-enum class metric_temporality_t {
-    delta,
-    current,
-    sample
-};
-struct metric_event_payload_t : runtime_event_base_t {
-    std::string name;
-    double value = 0;
-    std::string unit;
-    metric_instrument_kind_t instrument_kind =
-      metric_instrument_kind_t::counter;
-    metric_temporality_t temporality = metric_temporality_t::delta;
-    std::map<std::string, std::string> tags;
-};
-
-class metrics_builder_t {
-public:
-    metrics_builder_t();
-    ~metrics_builder_t();
-    metrics_builder_t(metrics_builder_t &&) noexcept;
-    metrics_builder_t &operator=(metrics_builder_t &&) noexcept;
-    metrics_builder_t(const metrics_builder_t &) = delete;
-    metrics_builder_t &operator=(const metrics_builder_t &) = delete;
-
-    metrics_builder_t &add_runtime_metrics();
-    bool runtime_metrics_enabled() const noexcept;
-    metrics_builder_t &record_runtime_metric(
-      std::string name,
-      double value,
-      std::map<std::string, std::string> tags = {});
-};
-```
-
-계기 카탈로그는 [runtime-metrics](../../../../25-runtime-metrics.ko.md)가 소유한다.
+Peer와 Channel의 현재 상태는 `route_mesh_runtime_t`의 snapshot과 observation으로 확인한다.
+Host 상태는 `app_t::runtime_state()`, `is_ready()`, `relocate(...)`와 `shutdown(...)` 결과로
+확인한다. Metric 이름, 종류, 단위와 label은
+[Runtime metric과 집계 규칙](../../../../25-runtime-metrics.ko.md)이 소유한다.

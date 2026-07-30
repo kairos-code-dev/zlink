@@ -26,8 +26,8 @@ Node framework의 공개 API와 동작은 아래 정식 spec에서 확인한다.
 [Node 샘플](../../../languages/node/samples/README.ko.md)에서 확인할 수 있다.
 
 서버 framework와 별도로 사용하는 client library의 사용법은
-[HTTP client 가이드](http-client/README.ko.md)와
-[Stream connector 가이드](stream-connector/README.ko.md)에서 확인한다.
+[HTTP client 가이드](guide/http-client/README.ko.md)와
+[Stream connector 가이드](guide/stream-connector/README.ko.md)에서 확인한다.
 
 ## 2. 공개 계약 spec
 

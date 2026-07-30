@@ -198,13 +198,7 @@ public interface ZLinkFanoutRuntime {
 Connection intent, discovery source와 lifecycle generation은 Framework 내부 상태다. Application은
 publisher의 Node RID와 현재 peer 상태만 확인한다.
 
-## 6. Runtime 오류
+## 6. Runtime 오류 기록
 
-Framework가 복구할 수 없고 Application 대응이 필요한 오류만 error sink로 전달한다. Raw native
-monitor event, socket address와 generic event publisher는 public contract가 아니다.
-
-```java
-public interface ZLinkRuntimeErrorSink {
-    CompletionStage<Void> onRuntimeError(ZLinkRuntimeErrorEvent error);
-}
-```
+Runtime 내부 callback이나 observer에서 발생한 오류는 Framework가 structured log로 기록한다.
+Application이 구현하거나 등록하는 error sink와 raw event DTO는 public contract가 아니다.

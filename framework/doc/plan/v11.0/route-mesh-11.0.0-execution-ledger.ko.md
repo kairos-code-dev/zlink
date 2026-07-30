@@ -10634,3 +10634,50 @@ JVM `isReady()`는 native node state를 별도로 읽지 않고 public snapshot�
 readiness 계산을 사용하도록 정렬했다. 필수 peer degraded와 `NotRequired` 정상
 대조 test가 통과했다. JVM의 남은 최소 public monitoring boundary와 client-only
 Channel projection은 별도 lane에서 수정 중이다.
+
+### R5A 최소 public boundary 정식 gate와 JVM 후속 review
+
+.NET, Node.js와 C++는 raw runtime event DTO와 public monitoring sink를 제거한
+현재 계약으로 새 candidate를 만들고 정식 회귀를 다시 실행했다.
+
+- .NET: `M6-RUNTIME` 8/8, `ROW-GATE` 61 files·8 commands 통과
+  - 결과:
+    `.artifacts/v11/evidence/V11-M6A-DN/m6-result-r5a-20260730T141956.json`
+  - SHA-256:
+    `8e3c7d59a43f275daf8db0adf34a3d47d5dbe162957582f757659994b143e0c2`
+- Node.js: `M6-RUNTIME` 9/9, `ROW-GATE` 193 files·9 commands 통과
+  - 결과:
+    `.artifacts/v11/evidence/V11-M6A-NODE/m6-result-r5a-20260730T142436.json`
+  - SHA-256:
+    `17096d6601dd92b9c71b4cfbcf5187afd4ece8e034867535680c1eb816af0175`
+- C++: `M6-RUNTIME` 12/12, `ROW-GATE` 통과
+  - 결과:
+    `.artifacts/v11/evidence/V11-M6A-CPP/result-r5a-public-boundary-20260730.json`
+  - SHA-256:
+    `11f08cfa8157ad4d0140ac394428148968a46f98174e980185167006cc9c7739`
+
+C++ public contract trace는 document 51, declaration owner 1,178,
+member 3,996이며 unclassified·ambiguous·unknown-or-unowned가 모두 0이다.
+Glossary의 `DeadlineExceeded` 내부 링크를 실제 heading anchor로 정렬한 뒤
+`verify-framework-doc-contracts.sh`도 `FRAMEWORK DOC CONTRACTS CLEAN`으로
+통과했다.
+
+JVM 변경을 대상으로 별도 read-only review를 실행했다. P0는 없지만 다음 P1이
+남아 있어 `V11-R5A`와 JVM 후속 join은 완료하지 않는다.
+
+1. 같은 options가 아닌 동시 `Relocate`가 기존 operation에 합류한다.
+2. target이 없을 때 deadline까지 기다리지 않으며, 정상 target이 있어도 다른
+   stale descriptor 때문에 preflight가 실패할 수 있다.
+3. target filter 순서·wave 적용·오류 분류가 공통 계약과 다르다.
+4. preflight에서 만든 target·capacity plan을 실제 relocation이 다시 선택한다.
+5. workload inventory를 고정한 뒤 `Relocating` admission fence를 설정하기 전까지
+   새 Actor·Spot이 plan에서 누락될 수 있다.
+6. shutdown·deadline 경쟁을 `ShutdownRequested`·`DeadlineExceeded`가 아니라
+   성공 또는 일반 `RelocationFailed`로 분류한다.
+7. topology status가 host lifecycle을 완전히 반영하지 않으며 느린 observer가
+   lifecycle publication을 막을 수 있다.
+8. public lifecycle에 internal MeshNode source accessor가 남아 있다.
+9. Java/Kotlin exact interface의 target 선택 순서가 공통 spec과 다르다.
+
+JVM lane은 위 항목을 수정하고 새 candidate의 focused test, 전체
+`M6-RUNTIME`과 `ROW-GATE`를 다시 통과해야 한다.

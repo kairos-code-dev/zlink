@@ -11,7 +11,7 @@
 
 [기술문서 작성 원칙](documentation-principles.ko.md) ·
 [스펙 작성 가이드](spec-writing-guide.ko.md) ·
-[작성 예시: `dotnet/guide/`](../../../framework/doc/framework/dotnet/guide/01-overview.ko.md)
+[작성 예시: `dotnet/guide/`](../../../framework/doc/framework/dotnet/guide/server/01-overview.ko.md)
 
 ## 1. spec 문서와 다른 점
 
@@ -36,7 +36,7 @@ spec은 공개 계약을 **서술**한다. guide는 독자가 무엇을 왜 쓸�
 4. 자료가 충돌하면 spec과 exact interface를 우선한다.
 
 챕터를 열 때 소유 spec 문서를 명시하고("정식 계약은 spec이 다루며, 이 챕터는
-사용법을 다룬다"), 닫을 때 [13-interface-catalog](../../../framework/doc/framework/dotnet/guide/13-interface-catalog.ko.md)의
+사용법을 다룬다"), 닫을 때 [13-interface-catalog](../../../framework/doc/framework/dotnet/guide/server/13-interface-catalog.ko.md)의
 해당 절 번호와 검증 클래스를 가리킨다. 개별 문장마다 출처를 달지 않는다 —
 입력 확인과 대조는 챕터 시작과 끝, 두 지점에 구조적으로 둔다.
 
@@ -82,7 +82,7 @@ ZLink를 써라"가 아니라 "내부 서비스 통신을 gRPC로 고민 중이�
 ### 2.3 용어를 먼저 정리한다
 
 guide는 spec의 공통 용어집(`01-glossary.ko.md`)을 직접 링크하지 않는다. 핵심 개념의
-정의 자리는 [03-concepts](../../../framework/doc/framework/dotnet/guide/03-concepts.ko.md)의
+정의 자리는 [03-concepts](../../../framework/doc/framework/dotnet/guide/server/03-concepts.ko.md)의
 해당 절이며, 이것이 [기술문서 작성 원칙](documentation-principles.ko.md) 원칙 2
 "용어는 문서 단위로 다시 소개한다"에서 말하는 정식 정의 자리다.
 
@@ -140,7 +140,7 @@ Q→원인 표 안에서뿐이다 — 원인, 조건, 관련 코드, 주의사�
 ### 2.5 정확한 계약을 다시 대조한다
 
 spec처럼 항목별 대조표를 절마다 쓰지 않는다. 대신 대조는
-[13-interface-catalog](../../../framework/doc/framework/dotnet/guide/13-interface-catalog.ko.md)
+[13-interface-catalog](../../../framework/doc/framework/dotnet/guide/server/13-interface-catalog.ko.md)
 한 곳에 모은다 — 모든 interface 그룹이 그 문서에서 검증 클래스·테스트 메서드에
 연결된다. 05~12 각 챕터는 닫는 절에서 그 절 번호와 검증 클래스를 가리키는 한
 줄을 반드시 둔다.

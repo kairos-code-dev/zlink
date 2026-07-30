@@ -19,8 +19,8 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 `@ConfigurationPropertie
 > Java 사용 guide는 11.0 public interface와 sample이 확정된 뒤 이 위치에 다시 작성한다.
 
 서버 framework와 별도로 사용하는 client library의 사용법은
-[HTTP client 가이드](http-client/README.ko.md)와
-[Stream connector 가이드](stream-connector/README.ko.md)에서 확인한다.
+[HTTP client 가이드](guide/http-client/README.ko.md)와
+[Stream connector 가이드](guide/stream-connector/README.ko.md)에서 확인한다.
 
 ## 2. 공개 계약 spec
 

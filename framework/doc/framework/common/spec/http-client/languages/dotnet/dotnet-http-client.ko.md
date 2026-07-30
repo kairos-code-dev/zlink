@@ -1,6 +1,6 @@
 # Spec -- ZLink HTTP Client For .NET
 
-> 사용법 중심 문서는 [사용자 가이드](../../../../../dotnet/http-client/README.ko.md)를 본다.
+> 사용법 중심 문서는 [사용자 가이드](../../../../../dotnet/guide/http-client/README.ko.md)를 본다.
 > **언어 중립 공통 계약은 [공통 spec](../../README.ko.md)이 정본**이며,
 > 이 문서는 공통 계약에 대한 .NET 고유 편차와 구현 매핑만 기술한다.
 > 공개 계약의 기준은 공통 spec과 이 언어별 spec이다. `src/Zlink.HttpClient/**`의 공개 타입과

@@ -147,7 +147,6 @@ export interface ZLinkNestFrameworkAdditionalOptions {
     readonly filters?: readonly Type<ZLinkHandlerFilter>[];
     readonly worker?: ZLinkWorkerOptions;
     readonly dispatch?: ZLinkDispatchOptions;
-    readonly monitoring?: ZLinkMonitoringOptions;
     readonly metrics?: ZLinkMetricsOptions;
 }
 
@@ -339,7 +338,6 @@ export declare function zlinkPublishHandler(groupName: string, packetName?: stri
 
 export declare function zlinkRequestHandler(groupName: string, packetName?: string, options?: ZLinkNestHandlerOptions): ClassDecorator;
 
-export declare function zlinkRuntimeEventHandler(): ClassDecorator;
 ```
 
 ## 6. Spot handler decorator

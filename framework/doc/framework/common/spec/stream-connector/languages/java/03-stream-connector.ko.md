@@ -28,8 +28,8 @@ codec, compression, reconnect, dispatch queue처럼 client 실행에 필요한 �
 봇)이며, 게임 엔진과 브라우저는 담당하지 않는다.
 
 대상이 하나뿐이라 이 배정이 Java/Kotlin 표면에 남기는 결과는 없다. 사용 안내는
-[Java guide](../../../../../java/stream-connector/README.ko.md)와
-[Kotlin guide](../../../../../kotlin/stream-connector/README.ko.md)에서 언어별 비동기 사용법만
+[Java guide](../../../../../java/guide/stream-connector/README.ko.md)와
+[Kotlin guide](../../../../../kotlin/guide/stream-connector/README.ko.md)에서 언어별 비동기 사용법만
 나누어 설명한다.
 
 ## 2. 모듈

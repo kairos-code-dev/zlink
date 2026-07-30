@@ -166,9 +166,6 @@ export interface ZLinkOutboundRouteConfig {
 export declare function ZLinkPacket(packetName: string): ClassDecorator;
 ```
 
-Monitoring 등록 타입과 `ZLinkMonitoringOptions`의 exact declaration은
-[Location과 observability](03-location-observability.ko.md)가 한 번만 소유한다.
-
 Node runtime은 Instance Spot 관측값도 `ZLinkMeter`로 기록한다. 이 언어에서 사용하는 [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
 계기 이름 카탈로그는 다음 여섯 값이며, 이름·종류·단위와 attribute 제한은
 [runtime-metrics](../../../../25-runtime-metrics.ko.md)가 소유한다.
@@ -190,11 +187,6 @@ One-way placement·activation 실패는 `zlink.mesh_node.messages.dropped`에
 ## 3. Location peer와 Logical Multicast
 
 ```ts
-export interface ZLinkPollingMonitoringRegistration {
-    readonly sourceName: string;
-    readonly intervalMs: number;
-}
-
 export declare function ZLinkPublish(packetName?: string): MethodDecorator;
 
 export interface ZLinkPublishCall {

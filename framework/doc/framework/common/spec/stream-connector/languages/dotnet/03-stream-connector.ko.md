@@ -10,7 +10,7 @@
 > **대상 실행 환경, transport, wire 계약, packet 모델, 연결 생명주기, 오류 의미, 기본값은 공통
 > 스펙이 소유한다.** 이 문서는 그 의미가 `.NET`에서 갖는 **정확한 public 표면**만 고정한다.
 >
-> 사용법은 [.NET Stream Connector 가이드](../../../../../dotnet/stream-connector/INDEX.ko.md)가
+> 사용법은 [.NET Stream Connector 가이드](../../../../../dotnet/guide/stream-connector/INDEX.ko.md)가
 > 소유한다.
 
 ## 1. Package와 경계

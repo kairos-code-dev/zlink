@@ -105,9 +105,9 @@ if (rc == ZLINK_RECV_OK) {
    TERMINATED, INVALID_HANDLE, NOT_SUPPORTED */
 ```
 
-> HWM(High-Water Mark, 큐 최대 허용 메시지 수) 도달 시 `zlink_send()`는 대기(기본) 또는 `ZLINK_DONTWAIT`로
+> HWM(High-Water Mark, queue가 보관할 수 있는 accounted byte 상한) 도달 시 `zlink_send()`는 대기(기본) 또는 `ZLINK_DONTWAIT`로
 > `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 배압(backpressure) 패턴은
-> [성능 가이드](10-performance.ko.md)를 참고.
+> [socket option 가이드](12-socket-options.ko.md)를 참고.
 
 ## 3. 사용 예제
 

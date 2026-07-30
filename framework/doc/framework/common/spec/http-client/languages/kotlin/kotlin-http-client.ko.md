@@ -1,6 +1,6 @@
 # Spec -- ZLink HTTP Client For Kotlin
 
-> 사용법 중심 문서는 [사용자 가이드](../../../../../kotlin/http-client/README.ko.md)를 본다.
+> 사용법 중심 문서는 [사용자 가이드](../../../../../kotlin/guide/http-client/README.ko.md)를 본다.
 > **언어 중립 공통 계약은 [공통 spec](../../README.ko.md)이 정본**이며,
 > 이 문서는 java 런타임 위 Kotlin idiom 레이어의 편차만 기술한다.
 > 전송 의미론의 검증 책임은 [java spec](../java/java-http-client.ko.md)이 진다.

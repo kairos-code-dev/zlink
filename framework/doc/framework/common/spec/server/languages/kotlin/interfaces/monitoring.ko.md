@@ -34,6 +34,9 @@ Fanout ready 의미도 Java 계약을 그대로 사용한다. Publisher 전용 S
 record 또는 liveness beacon까지 받아야 한다. 15초 inbound timeout은 해당 publisher의 peer state를
 `NOT_CONNECTED`로 바꾼다.
 
+Runtime 내부 callback이나 observer에서 발생한 오류는 Framework가 structured log로 기록한다.
+Kotlin application이 구현하거나 등록하는 error sink와 raw event DTO는 public contract가 아니다.
+
 [RouteMesh](../../../../01-glossary.ko.md#routemesh) placement status는 새 object 수락 가능 여부와
 현재 process의 active Actor·Spot 수만 제공한다. Node-wide placement weight, stable type별 capacity,
 pending activation과 reservation failure는 내부 배치 판단 값이므로 공개하지 않는다.

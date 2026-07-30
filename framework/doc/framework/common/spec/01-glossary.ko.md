@@ -868,6 +868,20 @@ send, publish, timer 등록, close와 destroy에는 `Yield`를 제공하지 않�
 One-way call의 정상 완료는 source-local outbound admission이 operation을 수락했다는 뜻이다. Public
 status나 result 값을 반환하지 않으며 target handler 실행이나 remote queue 수락을 확인하지 않는다.
 
+<a id="backpressure"></a>
+### Backpressure
+
+송신 queue의 상한으로 송신 속도를 제한하는 흐름 제어다. Node는 상대별 송신 queue를
+가지며, 아직 상대가 가져가지 않은 message 수가 그 queue의 high-water mark에 닿으면 그
+상대로 가는 새 제출을 잠근다. 한도는 remote가 보내는 신호가 아니라 **자기 process 안의
+값**이다. 다만 remote가 느리면 connection의 흐름 제어가 전송 속도를 낮추고 그만큼 송신
+queue도 비워지지 않으므로, remote의 지연은 별도 신호가 아니라 송신 대기로 전달된다.
+
+[One-way submit](05-async-execution-policy.ko.md#13-one-way-submit)이 비동기인 이유가 이
+대기다. Capacity가 부족하면 Framework는 family별 send timeout까지 기다렸다가 정확히 한 번
+제출하고, 그 안에 자리가 나지 않으면 [DeadlineExceeded](#deadlineexceeded)로 완료한다. 이때의
+내부 상태를 [Backpressured](#backpressured)라 하며 public terminal result로 노출하지 않는다.
+
 <a id="backpressured"></a>
 ### Backpressured
 

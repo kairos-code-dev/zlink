@@ -6,18 +6,18 @@
   "baseline": {
     "revision": "86258cb9a3ecbc7db2dfd86a8c18de45a562734a",
     "reviewedV11FirstMembers": {
-      "count": 2851,
-      "sha256": "8ffdf2e81d269492680ed0982fa6a1f09e08bbbc563e8fc9771bce4c97d7fb66",
+      "count": 2759,
+      "sha256": "e2b07237e0d1060e9a002066ea0ea971364e503428b24c084c179749375e666e",
       "specReason": "The v11 formal contract and exact interfaces introduce this reviewed member after the frozen 10.x baseline."
     },
     "reviewedV11FirstOwners": {
-      "count": 731,
-      "sha256": "9d49769bbc3f52d884316178dd0616e6e0e75c28b9b3d6a43483820ab0e2400e",
+      "count": 725,
+      "sha256": "072bb7def43b1e9f0128c823354019450bf88840b59f6f88de82dd3b66ac7f70",
       "specReason": "The v11 exact interface introduces this reviewed declaration owner after the frozen 10.x baseline."
     },
     "reviewedIntentionalRemovals": {
-      "count": 2045,
-      "sha256": "2fbdbc526cdc395cdc6eff49a15a55a8d1c5462a6c30af914e0d24df99fde6bd",
+      "count": 2080,
+      "sha256": "3f9e81db372fd222e517631e5c224d3aa66c9b36081ac5ff3d28df2ed62cc7db",
       "specReason": "The v11 formal contract intentionally omits this exact frozen-baseline member; the target exact-interface absence and POSD removal policies own the change."
     },
     "overrideReasons": {
@@ -125,14 +125,6 @@
         "baselineSignatureSha256": "77a8dd4f2682b4b15e5875daae0b8e7358942c7acab3a9c61b184e40153db956",
         "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::app_t.logging#d53122833c63f24b",
         "targetSignatureSha256": "d53122833c63f24b3c666fa6a479fa0d460b9cd76563603548c50dfabb1c50d0",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::app_t.monitoring#7a231e9fa4e3768a",
-        "baselineSignatureSha256": "7a231e9fa4e3768a99f0972d14ce787f4307a79d4a21448559baf8eb0e6cbd4b",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::app_t.monitoring#a7f25742749ffd43",
-        "targetSignatureSha256": "a7f25742749ffd43bfc0730f97a2cbf9acb0e1821d7cd2b259f571d9d0963e3a",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2069,30 +2061,6 @@
         "baselineSignatureSha256": "c34da3cbc7d6d1881d76489a3e22c8c76ebc6ba7797271dd047f24d463067b61",
         "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotCommonContext.spotId#baa8f550bb5259ae",
         "targetSignatureSha256": "baa8f550bb5259aeed5fdd608d7796e15bdea886cb3143126ff0aec06b6c8217",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotEvent.event#eec64949ab138d33",
-        "baselineSignatureSha256": "eec64949ab138d33cf840d9a8eab312c3495c9bcec51426b8738c1399936e8ea",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotEvent.event#673add1eb544d71e",
-        "targetSignatureSha256": "673add1eb544d71ee6ab5540307ed8b432d2ec401820095dbe03daa46a1db829",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotEventKind.TimerHandlerFailed#16c4ec3ea06b0889",
-        "baselineSignatureSha256": "16c4ec3ea06b0889fc2c5dc66e8427c32611a6956c63ff969eac40c9683b472e",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotEventKind.TimerHandlerFailed#e6db9ecf0f449d18",
-        "targetSignatureSha256": "e6db9ecf0f449d18c441a2c95421182175537f21f35a71d221bdbaf159311651",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotEventKind.TimerStoppedAfterUnhandledException#62ec9497f3c3a4c4",
-        "baselineSignatureSha256": "62ec9497f3c3a4c4e606b11005172ea19000dbbaebe82bb9d0e335f2ce1f086e",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotEventKind.TimerStoppedAfterUnhandledException#6b37ace33d2caefa",
-        "targetSignatureSha256": "6b37ace33d2caefaa4edc2da480b9d995e135bb40bd1ab1526633181829bb020",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },

@@ -1363,9 +1363,28 @@ queue 제거가 반영되었다. `cmake --build core/build -j 6`과
 통과했다. 여기에는 public surface contract, TCP·IPC·inproc transport, request/reply,
 pair reconnect, byte backpressure와 monitoring 회귀가 포함된다. `test_connect_rid` 20회
 반복과 동시 connect·disconnect case도 통과했고, 동시 case는 Valgrind error 0건을
-확인했다. C-07의 기존 count HWM 대비 memory·throughput·tail latency 비교가 남았으므로
-Core 1단계 전체는 아직 완료하지 않았다. Clean review, perf smoke와 bindings 작업도
-시작하지 않았다.
+확인했다.
+
+그 뒤 req/rep 경로에서 byte HWM이 드러낸 세 결함을 수정했다. 처리 내역과 근거는
+[reqrep multipart rollback review](log/inbound-dispatch-lane-reqrep-multipart-rollback-review.ko.md)
+§9에 있다.
+
+| 결함 | 근본 원인 | commit |
+|---|---|---|
+| Completion reply가 약 4 MiB 뒤 backpressure에서 회복하지 못함 | Reply는 `send()`를 거치지 않으므로 submit 경로가 socket command를 배수하지 않았고, peer의 activate-write command가 mailbox에 남아 `_out_active`가 false로 고정됨 | `563e11d614` |
+| 실패한 multipart의 앞선 frame이 다음 message와 병합됨 | `lb` one-pipe fast path·DEALER `xrollback`·`dist` per-pipe 실패 경로가 rollback하지 않음 | `563e11d614` |
+| PUB blocking publish가 block 대신 drop | Multipart byte admission을 모든 frame에 적용해 `*_no_recursive_hwm_check` writer의 whole-message 보장을 깨뜨림 | `58aa55df8b` |
+
+수정 뒤 `ctest --test-dir core/build -j 4`를 다시 실행해 80/80이 통과했다. TCP DEALER·ROUTER
+completion backpressure 회복 회귀(`test_zmp_request_reply`)를 추가했고, 수정을 되돌리면 이
+case가 실패하는 것도 확인했다.
+
+`perf_dealer_router_reqrep current tcp 64`도 더 이상 정지하지 않는다. 1초 실행
+5회에서 317k~358k msg/s이며 count HWM baseline(`8bc2aa6786`) median 265,830 msg/s와 비교할
+때는 fixture 변경을 baseline worktree에도 적용한 뒤 다시 측정해야 한다.
+
+C-07의 기존 count HWM 대비 memory·throughput·tail latency 비교가 남았으므로 Core 1단계
+전체는 아직 완료하지 않았다. Clean review, perf smoke와 bindings 작업도 시작하지 않았다.
 
 | ID | 단계 | 작업 | 완료 증거 | 상태 |
 |---|---|---|---|---|
@@ -1375,7 +1394,7 @@ Core 1단계 전체는 아직 완료하지 않았다. Clean review, perf smoke�
 | C-04 | Core | Monitoring ABI version과 byte field 적용 | Monitoring ABI v2 header·snapshot·contract test 통과 | 완료 |
 | C-05 | Core | Application·Completion connection pair와 handshake | Request/reply·handover·reconnect·transport matrix를 포함한 Core 80/80 통과 | 완료 |
 | C-06 | Core | 내부 PAIR receive queue와 completion deque 제거 | Payload queue source 제거와 request/reply 전체 회귀 통과 | 완료 |
-| C-07 | Core | Core memory·성능·wire regression 검증 | Core 80/80, targeted 20회와 Valgrind error 0건. 비교 benchmark·memory 측정 대기 | 진행 중 |
+| C-07 | Core | Core memory·성능·wire regression 검증 | Core 80/80, targeted 20회와 Valgrind error 0건. req/rep 결함 3건 수정 뒤 회귀 재통과(`58aa55df8b`)와 req/rep perf 회복 확인. 비교 benchmark·memory 측정 대기 | 진행 중 |
 | C-08 | Core | Core 정식 spec·monitoring·오류 문서 갱신 | Socket·context·polling·monitoring 정식 spec과 internals 동기화, public surface contract 통과 | 완료 |
 | CR-01 | Core review | Candidate SHA, 비교 기준과 공통 review 입력 고정 | §8.2 입력 manifest | 승인 대기 |
 | CR-02 | Core review | Codex 5.6 High 독립 전체 review | Model·prompt 정보와 finding report | 승인 대기 |

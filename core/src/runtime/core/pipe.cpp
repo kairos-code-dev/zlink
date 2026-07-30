@@ -171,6 +171,7 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _in_active (true),
     _out_active (true),
     _transport_pair_write_held (false),
+    _waiting_for_byte_credit (false),
     _hwm (outhwm_),
     _lwm (compute_lwm (inhwm_)),
     _inhwm (inhwm_),
@@ -183,6 +184,8 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _msgs_written (0),
     _bytes_read (0),
     _bytes_written (0),
+    _published_msgs_read (0),
+    _published_bytes_read (0),
     _last_credit_bytes_read (0),
     _in_incomplete_bytes (0),
     _out_incomplete_bytes (0),
@@ -289,24 +292,43 @@ void zlink::pipe_t::set_peer_routing_id (const unsigned char *data_, size_t size
         _connected_time = static_cast<uint64_t> (time (NULL));
 }
 
+void zlink::pipe_t::set_transport_peer_identity (const unsigned char *data_, size_t size_)
+{
+    if (!data_ || size_ == 0)
+        return;
+    if (_transport_peer_identity.size () == 0) {
+        _transport_peer_identity.set (data_, size_);
+        return;
+    }
+    zlink_assert (_transport_peer_identity.size () == size_);
+    zlink_assert (memcmp (_transport_peer_identity.data (), data_, size_) == 0);
+}
+
+const zlink::blob_t &zlink::pipe_t::get_transport_peer_identity () const
+{
+    return _transport_peer_identity;
+}
+
 uint64_t zlink::pipe_t::get_msgs_written () const
 {
+    scoped_optional_fast_lock_t lock (const_cast<fast_mutex_t *> (&_out_sync));
     return _msgs_written;
 }
 
 uint64_t zlink::pipe_t::get_msgs_read () const
 {
-    return _msgs_read;
+    return _published_msgs_read.load (std::memory_order_relaxed);
 }
 
 uint64_t zlink::pipe_t::get_bytes_written () const
 {
+    scoped_optional_fast_lock_t lock (const_cast<fast_mutex_t *> (&_out_sync));
     return _bytes_written;
 }
 
 uint64_t zlink::pipe_t::get_bytes_read () const
 {
-    return _bytes_read;
+    return _published_bytes_read.load (std::memory_order_relaxed);
 }
 
 uint64_t zlink::pipe_t::get_snd_pending_msgs () const
@@ -323,9 +345,10 @@ uint64_t zlink::pipe_t::get_rcv_pending_msgs_approx () const
         return 0;
 
     const uint64_t peer_written = _peer->get_msgs_written ();
-    if (peer_written <= _msgs_read)
+    const uint64_t msgs_read = get_msgs_read ();
+    if (peer_written <= msgs_read)
         return 0;
-    return peer_written - _msgs_read;
+    return peer_written - msgs_read;
 }
 
 uint64_t zlink::pipe_t::get_snd_pending_bytes () const
@@ -342,9 +365,10 @@ uint64_t zlink::pipe_t::get_rcv_pending_bytes_approx () const
         return 0;
 
     const uint64_t peer_written = _peer->get_bytes_written ();
-    if (peer_written <= _bytes_read)
+    const uint64_t bytes_read = get_bytes_read ();
+    if (peer_written <= bytes_read)
         return 0;
-    return peer_written - _bytes_read;
+    return peer_written - bytes_read;
 }
 
 uint64_t zlink::pipe_t::get_oversize_message_admission_count () const
@@ -374,8 +398,10 @@ void zlink::pipe_t::refresh_write_credit (uint64_t peer_msgs_read_, uint64_t pee
         _peers_bytes_read = peer_bytes_read_;
 
     if (!_transport_pair_write_held && !_out_active && _state == active
-        && check_hwm_unlocked ())
+        && check_hwm_unlocked ()) {
         _out_active = true;
+        _waiting_for_byte_credit.store (false, std::memory_order_release);
+    }
 }
 
 bool zlink::pipe_t::mark_stream_connect_event_emitted ()
@@ -516,10 +542,11 @@ zlink::pipe_write_status_t zlink::pipe_t::check_write_status ()
     if (unlikely (_state != active))
         return pipe_write_inactive;
 
-    const bool full = !check_hwm_unlocked ();
+    const bool full = !check_hwm_with_peer_snapshot_unlocked ();
 
     if (unlikely (full)) {
         _out_active = false;
+        _waiting_for_byte_credit.store (true, std::memory_order_release);
         return pipe_write_hwm_full;
     }
 
@@ -554,9 +581,10 @@ bool zlink::pipe_t::write (const msg_t *msg_)
     if (unlikely (!_out_active || _state != active))
         return false;
 
-    const bool full = !check_hwm_unlocked ();
+    const bool full = !check_hwm_with_peer_snapshot_unlocked ();
     if (unlikely (full)) {
         _out_active = false;
+        _waiting_for_byte_credit.store (true, std::memory_order_release);
         return false;
     }
 
@@ -594,9 +622,10 @@ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
     if (unlikely (!_out_active || _state != active))
         return false;
 
-    const bool full = !check_hwm_unlocked ();
+    const bool full = !check_hwm_with_peer_snapshot_unlocked ();
     if (unlikely (full)) {
         _out_active = false;
+        _waiting_for_byte_credit.store (true, std::memory_order_release);
         return false;
     }
 
@@ -615,8 +644,9 @@ bool zlink::pipe_t::write_no_recursive_hwm_check (const msg_t *msg_)
     if (unlikely (!_out_active || _state != active))
         return false;
 
-    if (unlikely (!check_hwm_unlocked ())) {
+    if (unlikely (!check_hwm_with_peer_snapshot_unlocked ())) {
         _out_active = false;
+        _waiting_for_byte_credit.store (true, std::memory_order_release);
         return false;
     }
 
@@ -629,8 +659,9 @@ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
     if (unlikely (!_out_active || _state != active))
         return false;
 
-    if (unlikely (!check_hwm_unlocked ())) {
+    if (unlikely (!check_hwm_with_peer_snapshot_unlocked ())) {
         _out_active = false;
+        _waiting_for_byte_credit.store (true, std::memory_order_release);
         return false;
     }
 
@@ -649,8 +680,9 @@ bool zlink::pipe_t::write_single_message_and_flush_no_recursive_hwm_check (const
     if (unlikely (!_out_active || _state != active))
         return false;
 
-    if (unlikely (!check_hwm_unlocked ())) {
+    if (unlikely (!check_hwm_with_peer_snapshot_unlocked ())) {
         _out_active = false;
+        _waiting_for_byte_credit.store (true, std::memory_order_release);
         return false;
     }
 
@@ -1104,7 +1136,7 @@ zlink::pipe_t::check_hwm_for_message (const msg_t *msg_)
     scoped_optional_fast_lock_t lock (&_out_sync);
     if (_state != active)
         return pipe_message_admission_inactive;
-    if (!_out_active || !check_hwm_unlocked ())
+    if (!_out_active || !check_hwm_with_peer_snapshot_unlocked ())
         return pipe_message_admission_hwm_full;
     if (msg_->is_delimiter ())
         return pipe_message_admission_ready;
@@ -1124,10 +1156,11 @@ zlink::pipe_t::check_hwm_for_message (const msg_t *msg_)
     if ((msg_->flags () & msg_t::more) != 0)
         return pipe_message_admission_ready;
 
-    if (!can_commit_bytes_unlocked (
+    if (!can_commit_bytes_with_peer_snapshot_unlocked (
           _out_incomplete_bytes + frame_bytes, prospective_payload,
           _out_incomplete_bytes == 0 || _out_multipart_started_empty)) {
         _out_active = false;
+        _waiting_for_byte_credit.store (true, std::memory_order_release);
         return pipe_message_admission_hwm_full;
     }
     return pipe_message_admission_ready;
@@ -1145,6 +1178,29 @@ bool zlink::pipe_t::check_hwm_unlocked () const
       _bytes_written > _peers_bytes_read ? _bytes_written - _peers_bytes_read : 0;
     const bool full = _hwm > 0 && in_flight >= _hwm;
     return !full;
+}
+
+void zlink::pipe_t::refresh_peer_credit_snapshot_unlocked ()
+{
+    if (!_peer)
+        return;
+
+    const uint64_t peer_msgs_read =
+      _peer->_published_msgs_read.load (std::memory_order_relaxed);
+    const uint64_t peer_bytes_read =
+      _peer->_published_bytes_read.load (std::memory_order_relaxed);
+    if (peer_msgs_read > _peers_msgs_read)
+        _peers_msgs_read = peer_msgs_read;
+    if (peer_bytes_read > _peers_bytes_read)
+        _peers_bytes_read = peer_bytes_read;
+}
+
+bool zlink::pipe_t::check_hwm_with_peer_snapshot_unlocked ()
+{
+    if (check_hwm_unlocked ())
+        return true;
+    refresh_peer_credit_snapshot_unlocked ();
+    return check_hwm_unlocked ();
 }
 
 void zlink::pipe_t::send_hwms_to_peer (uint64_t inhwm_, uint64_t outhwm_)
@@ -1298,14 +1354,27 @@ bool zlink::pipe_t::can_commit_bytes_unlocked (
       _bytes_written > _peers_bytes_read ? _bytes_written - _peers_bytes_read : 0;
     if (allow_empty_pipe_exception_ && _msgs_written <= _peers_msgs_read) {
         //  An empty pipe admits one message larger than the HWM so that a
-        //  valid large message is not rejected for a small HWM alone. The
-        //  exception stops at the reader's maximum message size, which is what
-        //  keeps the retained bytes of this direction finite.
+        //  complete message is not rejected for a small HWM alone. An
+        //  incomplete multipart may use this exception only when a finite
+        //  reader maximum bounds its retained bytes.
         return true;
     }
     if (UINT64_MAX - in_flight < message_bytes_)
         return false;
     return in_flight + message_bytes_ <= _hwm;
+}
+
+bool zlink::pipe_t::can_commit_bytes_with_peer_snapshot_unlocked (
+  uint64_t message_bytes_,
+  uint64_t payload_bytes_,
+  bool allow_empty_pipe_exception_)
+{
+    if (can_commit_bytes_unlocked (
+          message_bytes_, payload_bytes_, allow_empty_pipe_exception_))
+        return true;
+    refresh_peer_credit_snapshot_unlocked ();
+    return can_commit_bytes_unlocked (
+      message_bytes_, payload_bytes_, allow_empty_pipe_exception_);
 }
 
 void zlink::pipe_t::set_max_message_bytes (uint64_t max_message_bytes_)
@@ -1346,17 +1415,20 @@ bool zlink::pipe_t::write_message_unlocked (const msg_t *msg_,
         _out_multipart_started_empty =
           _msgs_written <= _peers_msgs_read;
     if ((commits_bytes || enforce_incremental_hwm_) && enforce_hwm_
-        && !can_commit_bytes_unlocked (
+        && !can_commit_bytes_with_peer_snapshot_unlocked (
           _out_incomplete_bytes, _out_incomplete_payload_bytes,
-          incomplete_before == 0 || _out_multipart_started_empty)) {
+          (!more || _max_message_bytes != 0)
+            && (incomplete_before == 0 || _out_multipart_started_empty))) {
         const bool exceeds_max_message_size =
           _max_message_bytes != 0
           && _out_incomplete_payload_bytes > _max_message_bytes;
         _out_incomplete_bytes = incomplete_before;
         _out_incomplete_payload_bytes = payload_before;
         _out_multipart_started_empty = multipart_started_empty_before;
-        if (!exceeds_max_message_size)
+        if (!exceeds_max_message_size) {
             _out_active = false;
+            _waiting_for_byte_credit.store (true, std::memory_order_release);
+        }
         errno = exceeds_max_message_size ? EMSGSIZE : EAGAIN;
         return false;
     }
@@ -1413,12 +1485,17 @@ void zlink::pipe_t::account_inbound_frame (const msg_t *msg_)
         : _bytes_read + _in_incomplete_bytes;
     if (!msg_->is_routing_id () && !msg_->is_credential ())
         ++_msgs_read;
+    _published_msgs_read.store (_msgs_read, std::memory_order_relaxed);
+    _published_bytes_read.store (_bytes_read, std::memory_order_relaxed);
     _in_incomplete_bytes = 0;
 
     const uint64_t credit_delta = _bytes_read - _last_credit_bytes_read;
+    const bool writer_waiting =
+      _peer && _peer->_waiting_for_byte_credit.load (std::memory_order_acquire);
     const bool drained_visible_input = _in_pipe && !_in_pipe->check_read ();
     if (credit_delta > 0
-        && ((_lwm > 0 && credit_delta >= _lwm) || drained_visible_input)) {
+        && ((_lwm > 0 && credit_delta >= _lwm)
+            || (writer_waiting && drained_visible_input))) {
         _last_credit_bytes_read = _bytes_read;
         send_activate_write (_peer, _msgs_read, _bytes_read);
     }

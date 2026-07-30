@@ -22,6 +22,43 @@ namespace socket_reqrep_internal
 {
 const size_t stack_request_reply_part_capacity = 8;
 
+class reply_target_reservation_t
+{
+  public:
+    explicit reply_target_reservation_t (
+      const std::shared_ptr<socket_request_reply_state_t> &state_) :
+        _state (state_),
+        _active (false)
+    {
+    }
+
+    bool acquire ()
+    {
+        if (!_state)
+            return false;
+        std::lock_guard<std::mutex> lock (_state->mutex);
+        if (_state->reply_target_slots >= max_reply_target_slots) {
+            errno = EAGAIN;
+            return false;
+        }
+        ++_state->reply_target_slots;
+        _active = true;
+        return true;
+    }
+
+    void commit () { _active = false; }
+
+    ~reply_target_reservation_t ()
+    {
+        if (_active)
+            release_reply_target_slot (_state);
+    }
+
+  private:
+    const std::shared_ptr<socket_request_reply_state_t> _state;
+    bool _active;
+};
+
 uint64_t allocate_dealer_reply_token (socket_request_reply_state_t *state_)
 {
     if (!state_)
@@ -120,15 +157,29 @@ void forget_router_reply_targets_for_pipe (
     if (!state_ || !application_pipe_)
         return;
     std::lock_guard<std::mutex> lock (state_->mutex);
+    size_t erased = 0;
     for (std::unordered_map<pending_key_t, zlink::pipe_t *,
                             pending_key_hash_t>::iterator it =
            state_->router_reply_targets.begin ();
          it != state_->router_reply_targets.end ();) {
-        if (it->second == application_pipe_)
+        if (it->second == application_pipe_) {
             it = state_->router_reply_targets.erase (it);
-        else
+            ++erased;
+        } else
             ++it;
     }
+    zlink_assert (state_->reply_target_slots >= erased);
+    state_->reply_target_slots -= erased;
+}
+
+void release_reply_target_slot (
+  const std::shared_ptr<socket_request_reply_state_t> &state_)
+{
+    if (!state_)
+        return;
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    zlink_assert (state_->reply_target_slots > 0);
+    --state_->reply_target_slots;
 }
 
 int export_router_payload_parts (zlink_msg_t *parts_,
@@ -168,6 +219,12 @@ int recv_router_message_direct (socket_handle_t handle_,
         errno = EFAULT;
         return -1;
     }
+
+    std::shared_ptr<socket_request_reply_state_t> state =
+      find_or_create_request_reply_state (handle_);
+    reply_target_reservation_t reply_target_reservation (state);
+    if (!reply_target_reservation.acquire ())
+        return -1;
 
     zlink::msg_t current;
     const int current_init_rc = current.init ();
@@ -253,8 +310,6 @@ int recv_router_message_direct (socket_handle_t handle_,
         *request_seq_out_ = envelope.request_seq;
         if (envelope.message_type == zlink::request_reply::request_type
             && envelope.request_seq != 0 && source_pipe) {
-            std::shared_ptr<socket_request_reply_state_t> state =
-              find_or_create_request_reply_state (handle_);
             if (!state) {
                 zlink::close_msg_frames (&raw_parts);
                 zlink::recv_tls_view::abort ();
@@ -265,7 +320,16 @@ int recv_router_message_direct (socket_handle_t handle_,
               reinterpret_cast<const char *> (source_rid.data),
               source_rid.size);
             key.request_seq = envelope.request_seq;
-            restore_router_reply_target (state, key, source_pipe);
+            {
+                std::lock_guard<std::mutex> lock (state->mutex);
+                if (!state->router_reply_targets.emplace (key, source_pipe).second) {
+                    zlink::close_msg_frames (&raw_parts);
+                    zlink::recv_tls_view::abort ();
+                    errno = EPROTO;
+                    return -1;
+                }
+            }
+            reply_target_reservation.commit ();
         }
         for (size_t i = 0; i < start_index; ++i)
             zlink_msg_close (&raw_parts[i]);
@@ -293,6 +357,10 @@ int recv_dealer_message_direct (
         errno = EFAULT;
         return -1;
     }
+
+    reply_target_reservation_t reply_target_reservation (state_);
+    if (!reply_target_reservation.acquire ())
+        return -1;
 
     zlink::msg_t current;
     const int current_init_rc = current.init ();
@@ -358,6 +426,7 @@ int recv_dealer_message_direct (
             target.request_seq = envelope.request_seq;
             state_->dealer_reply_targets[exported_seq] = target;
         }
+        reply_target_reservation.commit ();
         exported_type = ZLINK_DEALER_MESSAGE_REQUEST;
         start_index = zlink::request_reply::control_part_count;
         for (size_t i = 0; i < start_index; ++i)
@@ -463,6 +532,8 @@ int send_request_reply_message (void *socket_handle_,
                   state, reply_key, application_pipe);
             return -1;
         }
+        if (target_taken)
+            release_reply_target_slot (state);
         errno = 0;
         return 0;
     }

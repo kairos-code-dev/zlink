@@ -320,6 +320,7 @@ class socket_base_t : public own_t,
       transport_lane_t lane_,
       uint64_t pair_id_,
       uint64_t generation_);
+    void validate_inproc_connection (pipe_t *pipe_);
     void emit_inproc_connection_ready (pipe_t *pipe_);
 
     //  Query the state of a specific peer. The default implementation

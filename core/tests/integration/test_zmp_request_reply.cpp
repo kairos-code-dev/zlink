@@ -4,6 +4,7 @@
 #include "testutil_monitoring.hpp"
 #include "testutil_unity.hpp"
 #include "api/socket/socket_api_internal.hpp"
+#include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 
@@ -97,6 +98,35 @@ void init_string_part (zlink_msg_t *part_, const char *text_)
     const size_t size = strlen (text_);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (part_, size));
     memcpy (zlink_msg_data (part_), text_, size);
+}
+
+void send_raw_request_frame (void *dealer_,
+                             const void *data_,
+                             size_t size_,
+                             zlink_part_flag_t part_flag_)
+{
+    zlink_msg_t part;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, size_));
+    if (size_ > 0)
+        memcpy (zlink_msg_data (&part), data_, size_);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part (dealer_, &part, ZLINK_SEND_FLAGS_NONE, part_flag_));
+}
+
+void send_raw_request_envelope (void *dealer_, uint64_t request_seq_)
+{
+    const unsigned char protocol = zlink::request_reply::protocol_id;
+    const unsigned char version = zlink::request_reply::version;
+    const unsigned char type = zlink::request_reply::request_type;
+    unsigned char sequence[8];
+    zlink::request_reply::encode_u64_be (request_seq_, sequence);
+    const unsigned char payload = 'r';
+    send_raw_request_frame (dealer_, &protocol, sizeof (protocol), ZLINK_PART_MORE);
+    send_raw_request_frame (dealer_, &version, sizeof (version), ZLINK_PART_MORE);
+    send_raw_request_frame (dealer_, &type, sizeof (type), ZLINK_PART_MORE);
+    send_raw_request_frame (dealer_, sequence, sizeof (sequence), ZLINK_PART_MORE);
+    send_raw_request_frame (dealer_, &payload, sizeof (payload), ZLINK_PART_FINAL);
 }
 
 void configure_submit_retry (void *socket_)
@@ -2034,6 +2064,78 @@ void test_dealer_request_uses_socket_default_timeout_when_reply_is_missing ()
     test_context_socket_close_zero_linger (dealer);
     test_context_socket_close_zero_linger (router);
 }
+
+void test_router_reply_target_slots_are_bounded_and_released ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+    set_routing_id_text (dealer, "bounded-target-peer");
+
+    const uint64_t large_hwm = 128u * 1024u * 1024u;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (dealer, ZLINK_OPT_SNDHWM, &large_hwm, sizeof (large_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_RCVHWM, &large_hwm, sizeof (large_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "inproc://bounded-reply-targets"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, "inproc://bounded-reply-targets"));
+
+    zlink_routing_id_t first_peer;
+    memset (&first_peer, 0, sizeof (first_peer));
+    uint64_t first_sequence = 0;
+    for (size_t i = 0;
+         i < zlink::socket_reqrep_internal::max_reply_target_slots;
+         ++i) {
+        send_raw_request_envelope (dealer, static_cast<uint64_t> (i + 1));
+        const zlink_routing_id_t *source_rid = NULL;
+        uint64_t request_seq = 0;
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_RECV_OK,
+          zlink_router_recv (router, &source_rid, &request_seq, &parts,
+                             &part_count, ZLINK_RECV_FLAGS_NONE));
+        TEST_ASSERT_NOT_NULL (source_rid);
+        if (i == 0) {
+            first_peer = *source_rid;
+            first_sequence = request_seq;
+        }
+        zlink_multipart_close (parts, part_count);
+    }
+
+    send_raw_request_envelope (
+      dealer,
+      static_cast<uint64_t> (
+        zlink::socket_reqrep_internal::max_reply_target_slots + 1));
+    const zlink_routing_id_t *source_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_NO_DATA,
+      zlink_router_recv (router, &source_rid, &request_seq, &parts,
+                         &part_count, ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+
+    zlink_msg_t reply;
+    init_string_part (&reply, "released");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_router_reply (router, &first_peer, first_sequence, &reply, 1));
+
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_router_recv (router, &source_rid, &request_seq, &parts,
+                         &part_count, ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_UINT64 (
+      zlink::socket_reqrep_internal::max_reply_target_slots + 1,
+      request_seq);
+    zlink_multipart_close (parts, part_count);
+
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
+}
 }
 
 int main ()
@@ -2071,6 +2173,7 @@ int main ()
     RUN_SELECTED (test_dealer_request_receive_without_reply_closes_cleanly);
     RUN_SELECTED (test_router_request_rejects_non_router_target);
     RUN_SELECTED (test_dealer_request_uses_socket_default_timeout_when_reply_is_missing);
+    RUN_SELECTED (test_router_reply_target_slots_are_bounded_and_released);
     RUN_SELECTED (test_request_reply_process_exits_cleanly_after_round_trip);
 #undef RUN_SELECTED
     const int rc = UNITY_END ();

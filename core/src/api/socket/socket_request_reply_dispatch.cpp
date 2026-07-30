@@ -210,6 +210,7 @@ int drain_close_request_reply_socket (socket_handle_t handle_)
         state->pending_sequences.clear ();
         state->dealer_reply_targets.clear ();
         state->router_reply_targets.clear ();
+        state->reply_target_slots = 0;
     }
 
     for (size_t i = 0; i < pending.size (); ++i) {
@@ -245,6 +246,7 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
             state->pending_sequences.clear ();
             state->dealer_reply_targets.clear ();
             state->router_reply_targets.clear ();
+            state->reply_target_slots = 0;
             zlink::request_completion::close (&state->completion);
         }
     }

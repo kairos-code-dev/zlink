@@ -16,15 +16,10 @@ bool same_pair_peer_identity (const zlink::pipe_t *first_, const zlink::pipe_t *
 {
     if (!first_ || !second_)
         return false;
-    const zlink::pipe_t *first_peer = first_->get_peer ();
-    const zlink::pipe_t *second_peer = second_->get_peer ();
-    const zlink::blob_t &first =
-      first_peer ? first_peer->get_routing_id () : first_->get_routing_id ();
-    const zlink::blob_t &second =
-      second_peer ? second_peer->get_routing_id () : second_->get_routing_id ();
-    return first.size () == second.size ()
-           && (first.size () == 0
-               || memcmp (first.data (), second.data (), first.size ()) == 0);
+    const zlink::blob_t &first = first_->get_transport_peer_identity ();
+    const zlink::blob_t &second = second_->get_transport_peer_identity ();
+    return first.size () > 0 && first.size () == second.size ()
+           && memcmp (first.data (), second.data (), first.size ()) == 0;
 }
 }
 

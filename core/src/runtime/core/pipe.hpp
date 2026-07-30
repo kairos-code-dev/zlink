@@ -111,6 +111,8 @@ class pipe_t ZLINK_FINAL : public object_t,
     const blob_t &get_routing_id () const;
     pipe_t *get_peer () const;
     void set_peer_routing_id (const unsigned char *data_, size_t size_);
+    void set_transport_peer_identity (const unsigned char *data_, size_t size_);
+    const blob_t &get_transport_peer_identity () const;
     uint64_t get_msgs_written () const;
     uint64_t get_msgs_read () const;
     uint64_t get_bytes_written () const;
@@ -210,10 +212,9 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  Set the boost to high water marks, used by inproc sockets so total hwm are sum of connect and bind sockets watermarks
     void set_hwms_boost (uint64_t inhwmboost_, uint64_t outhwmboost_);
 
-    //  Bound for the empty-pipe oversize exception, in accounted bytes, or 0
-    //  for no bound. Callers pass the reader's inbound maximum message size,
-    //  which only inproc can supply: a network reader rejects an oversize
-    //  message in its decoder before the message reaches a pipe.
+    //  Payload bound for a complete message, or 0 when the reader has no
+    //  finite bound. The empty-pipe oversize exception is enabled only when
+    //  this value is finite.
     void set_max_message_bytes (uint64_t max_message_bytes_);
 
     // send command to peer for notify the change of hwm
@@ -281,6 +282,12 @@ class pipe_t ZLINK_FINAL : public object_t,
     bool can_commit_bytes_unlocked (uint64_t message_bytes_,
                                     uint64_t payload_bytes_,
                                     bool allow_empty_pipe_exception_) const;
+    bool can_commit_bytes_with_peer_snapshot_unlocked (
+      uint64_t message_bytes_,
+      uint64_t payload_bytes_,
+      bool allow_empty_pipe_exception_);
+    bool check_hwm_with_peer_snapshot_unlocked ();
+    void refresh_peer_credit_snapshot_unlocked ();
     void account_inbound_frame (const msg_t *msg_);
 
     //  Constructor is private. Pipe can only be created using
@@ -312,6 +319,7 @@ class pipe_t ZLINK_FINAL : public object_t,
     bool _in_active;
     bool _out_active;
     bool _transport_pair_write_held;
+    std::atomic<bool> _waiting_for_byte_credit;
 
     //  High watermark for the outbound pipe.
     uint64_t _hwm;
@@ -332,6 +340,8 @@ class pipe_t ZLINK_FINAL : public object_t,
     uint64_t _msgs_written;
     uint64_t _bytes_read;
     uint64_t _bytes_written;
+    std::atomic<uint64_t> _published_msgs_read;
+    std::atomic<uint64_t> _published_bytes_read;
     uint64_t _last_credit_bytes_read;
     uint64_t _in_incomplete_bytes;
     uint64_t _out_incomplete_bytes;
@@ -382,6 +392,7 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     //  Routing id of the writer. Used uniquely by the reader side.
     blob_t _router_socket_routing_id;
+    blob_t _transport_peer_identity;
     //  Routing id of the writer. Used uniquely by the reader side.
     int _server_socket_routing_id;
 

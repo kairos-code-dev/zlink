@@ -216,6 +216,19 @@ void zlink::ctx_inproc_registry_t::connect_inproc_sockets (
             pending_connection_.endpoint.options.maxmsgsize)
         : 0);
 
+    if (pending_connection_.connect_pipe->get_transport_pair_id () != 0) {
+        const uintptr_t bind_instance =
+          reinterpret_cast<uintptr_t> (bind_socket_);
+        const uintptr_t connect_instance =
+          reinterpret_cast<uintptr_t> (pending_connection_.endpoint.socket);
+        pending_connection_.connect_pipe->set_transport_peer_identity (
+          reinterpret_cast<const unsigned char *> (&bind_instance),
+          sizeof (bind_instance));
+        pending_connection_.bind_pipe->set_transport_peer_identity (
+          reinterpret_cast<const unsigned char *> (&connect_instance),
+          sizeof (connect_instance));
+    }
+
     if (!get_effective_conflate_option (pending_connection_.endpoint.options)) {
         pending_connection_.connect_pipe->set_hwms_boost (bind_options_.sndhwm,
                                                           bind_options_.rcvhwm);
@@ -236,6 +249,8 @@ void zlink::ctx_inproc_registry_t::connect_inproc_sockets (
         cmd.type = command_t::bind;
         cmd.args.bind.pipe = pending_connection_.bind_pipe;
         bind_socket_->process_command (cmd);
+        pending_connection_.endpoint.socket->validate_inproc_connection (
+          pending_connection_.connect_pipe);
         bind_socket_->emit_inproc_connection_ready (pending_connection_.bind_pipe);
         pending_connection_.endpoint.socket->emit_inproc_connection_ready (
           pending_connection_.connect_pipe);

@@ -493,6 +493,7 @@ zlink_submit_result_t zlink_dealer_reply_part (void *dealer_,
         return zlink::submit_result_internal::from_errno (saved_errno);
     }
 
+    reqrep::release_reply_target_slot (request_state);
     zlink::part_helper_internal::complete_send_step (state, part_flag_);
     return ZLINK_SUBMIT_OK;
 }

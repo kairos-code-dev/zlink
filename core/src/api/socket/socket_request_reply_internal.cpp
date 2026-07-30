@@ -48,6 +48,7 @@ socket_request_reply_state_t::socket_request_reply_state_t (zlink::socket_base_t
                                                             int socket_type_) :
     socket (socket_),
     socket_type (socket_type_),
+    reply_target_slots (0),
     dealer_next_reply_token (1),
     closing (false)
 {

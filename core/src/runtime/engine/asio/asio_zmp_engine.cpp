@@ -415,6 +415,13 @@ int zlink::asio_zmp_engine_t::process_ready_message (msg_t *msg_)
         return -1;
     }
 
+    uint64_t peer_max_message_bytes = 0;
+    if (zmp_metadata::parse_max_message_size (properties, &peer_max_message_bytes) < 0) {
+        set_last_error (zmp_error_internal, "maximum message size metadata invalid");
+        return -1;
+    }
+    session ()->set_peer_max_message_bytes (peer_max_message_bytes);
+
     transport_lane_t lane = transport_lane_application;
     uint64_t pair_id = 0;
     uint64_t generation = 0;

@@ -456,12 +456,18 @@ limit, further writes wait until the receiver returns enough byte credit. An
 empty pipe may admit one message whose accounted size is larger than its HWM,
 so a finite HWM does not reject every legal large message. The message must
 still satisfy `ZLINK_OPT_MAXMSGSIZE`. This exception admits at most one such
-message before further writes wait. Core returns credit at
-`ceil(hwm_bytes / 2)`; this pipe threshold is fixed and is independent of a
-Framework receive-resume threshold. If the receiver drains all currently
-visible input and the pipe becomes empty, Core may return accumulated credit
-before the LWM is reached. The LWM is therefore the maximum batching threshold
-for credit returns; it does not prohibit an early return for an empty pipe.
+message before further writes wait. When `ZLINK_OPT_MAXMSGSIZE` is unlimited,
+the exception applies only to one complete message. An unfinished multipart
+still follows the ordinary byte HWM, so `MORE` frames cannot accumulate
+without a bound.
+
+Core normally batches credit at `ceil(hwm_bytes / 2)`. If a sender actually
+reaches its HWM, it first checks the monotonic bytes already read by its peer.
+If the receiver later drains all currently visible input, it may return one
+credit update before the LWM. This recovery applies only to an HWM-blocked
+sender and therefore does not create a cross-thread command for every normal
+low-depth message. This pipe threshold is independent of a Framework
+receive-resume threshold.
 
 ##### Timing
 

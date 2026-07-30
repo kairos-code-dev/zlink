@@ -113,6 +113,23 @@ bool send_zmp_control (fd_t fd_, const unsigned char *body_, size_t body_len_)
     return send_zmp_frame (fd_, zlink::zmp_flag_control, body_, body_len_);
 }
 
+bool send_basic_handshake (fd_t fd_, int socket_type_)
+{
+    unsigned char hello[3];
+    hello[0] = zlink::zmp_control_hello;
+    hello[1] = static_cast<unsigned char> (socket_type_);
+    hello[2] = 0;
+    if (!send_zmp_control (fd_, hello, sizeof (hello)))
+        return false;
+
+    std::vector<unsigned char> ready;
+    ready.push_back (zlink::zmp_control_ready);
+    const char *socket_type_name = socket_type_ == ZLINK_SOCKET_PAIR ? "PAIR" : "DEALER";
+    zlink::zmp_metadata::append_property (
+      ready, "Socket-Type", socket_type_name, strlen (socket_type_name));
+    return send_zmp_control (fd_, &ready[0], ready.size ());
+}
+
 bool send_paired_dealer_handshake (fd_t fd_,
                                    const char *routing_id_,
                                    uint64_t pair_id_,
@@ -184,6 +201,20 @@ bool read_zmp_frame (fd_t fd_,
 
     flags_ = header[2];
     return true;
+}
+
+bool wait_for_raw_close (fd_t fd_)
+{
+    set_recv_timeout (fd_, 100);
+    for (size_t attempt = 0; attempt < 30; ++attempt) {
+        unsigned char flags = 0;
+        std::vector<unsigned char> body;
+        bool closed = false;
+        (void) read_zmp_frame (fd_, flags, body, closed);
+        if (closed)
+            return true;
+    }
+    return false;
 }
 
 uint64_t read_raw_request_sequence (fd_t fd_)
@@ -273,9 +304,10 @@ void assert_paired_handshake_not_dispatchable (
       completion, completion_routing_id_, completion_pair_id_,
       completion_generation_, completion_lane_));
 
-    const unsigned char payload[] = {'s', 't', 'a', 'l', 'e'};
-    TEST_ASSERT_TRUE (send_zmp_frame (application, 0, payload, sizeof (payload)));
-    msleep (SETTLE_TIME * 10);
+    // Pair admission must reject mismatched handshake metadata before either
+    // connection needs application traffic to populate mutable routing state.
+    TEST_ASSERT_TRUE (wait_for_raw_close (application));
+    TEST_ASSERT_TRUE (wait_for_raw_close (completion));
 
     zlink_msg_t msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
@@ -295,6 +327,28 @@ void assert_paired_handshake_not_dispatchable (
     close (application);
     test_context_socket_close_zero_linger (server);
 }
+}
+
+void test_network_incomplete_multipart_stops_at_receiver_max_message_size ()
+{
+    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+    const int64_t max_message_size = 10;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server, ZLINK_OPT_MAXMSGSIZE, &max_message_size, sizeof (max_message_size)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+    fd_t raw = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
+    TEST_ASSERT_NOT_EQUAL (retired_fd, raw);
+    TEST_ASSERT_TRUE (send_basic_handshake (raw, ZLINK_SOCKET_PAIR));
+
+    const unsigned char payload[6] = {'b', 'o', 'u', 'n', 'd', 's'};
+    TEST_ASSERT_TRUE (send_zmp_frame (raw, zlink::zmp_flag_more, payload, sizeof (payload)));
+    TEST_ASSERT_TRUE (send_zmp_frame (raw, zlink::zmp_flag_more, payload, sizeof (payload)));
+    TEST_ASSERT_TRUE (wait_for_raw_close (raw));
+
+    close (raw);
+    test_context_socket_close_zero_linger (server);
 }
 
 void test_zmp_error_invalid_hello ()
@@ -442,6 +496,7 @@ int main (void)
     setup_test_environment ();
 
     RUN_TEST (test_zmp_error_invalid_hello);
+    RUN_TEST (test_network_incomplete_multipart_stops_at_receiver_max_message_size);
     RUN_TEST (test_paired_ready_generation_mismatch_is_not_attached);
     RUN_TEST (test_paired_ready_pair_id_mismatch_is_not_attached);
     RUN_TEST (test_paired_ready_peer_identity_mismatch_is_not_attached);

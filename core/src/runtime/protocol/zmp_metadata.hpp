@@ -80,6 +80,13 @@ static inline void add_basic_properties (const options_t &options_,
         append_property (buf_, "Routing-Id", options_.routing_id, options_.routing_id_size);
     }
 
+    unsigned char max_message_size[8];
+    const uint64_t finite_max_message_size =
+      options_.maxmsgsize > 0 ? static_cast<uint64_t> (options_.maxmsgsize) : 0;
+    put_uint64 (max_message_size, finite_max_message_size);
+    append_property (buf_, "Zlink-Max-Message-Size", max_message_size,
+                     sizeof (max_message_size));
+
     if (options_.transport_pair_id != 0) {
         unsigned char pair_id[8];
         unsigned char generation[8];
@@ -91,6 +98,25 @@ static inline void add_basic_properties (const options_t &options_,
         append_property (buf_, "Zlink-Pair-Generation", generation, sizeof (generation));
         append_property (buf_, "Zlink-Lane", &lane, sizeof (lane));
     }
+}
+
+static inline int parse_max_message_size (const properties_t &properties_,
+                                          uint64_t *max_message_size_out_)
+{
+    if (max_message_size_out_)
+        *max_message_size_out_ = 0;
+    const properties_t::const_iterator it =
+      properties_.find ("Zlink-Max-Message-Size");
+    if (it == properties_.end ())
+        return 0;
+    if (it->second.size () != 8) {
+        errno = EPROTO;
+        return -1;
+    }
+    if (max_message_size_out_)
+        *max_message_size_out_ = get_uint64 (
+          reinterpret_cast<const unsigned char *> (it->second.data ()));
+    return 1;
 }
 
 static inline int parse_transport_pair (const properties_t &properties_,

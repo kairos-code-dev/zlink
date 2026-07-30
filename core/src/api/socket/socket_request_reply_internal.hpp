@@ -25,6 +25,8 @@ class socket_base_t;
 
 namespace socket_reqrep_internal
 {
+static const size_t max_reply_target_slots = 65536;
+
 void process_completion_pipe (zlink::socket_base_t *socket_, zlink::pipe_t *pipe_);
 struct pending_key_t
 {
@@ -70,6 +72,7 @@ struct socket_request_reply_state_t : public zlink::request_reply_runtime::seque
     std::unordered_map<uint64_t, dealer_reply_target_t> dealer_reply_targets;
     std::unordered_map<pending_key_t, zlink::pipe_t *, pending_key_hash_t>
       router_reply_targets;
+    size_t reply_target_slots;
     uint64_t dealer_next_reply_token;
     bool closing;
     zlink::request_completion::queue_state_t completion;
@@ -114,6 +117,8 @@ void restore_router_reply_target (
 void forget_router_reply_targets_for_pipe (
   const std::shared_ptr<socket_request_reply_state_t> &state_,
   zlink::pipe_t *application_pipe_);
+void release_reply_target_slot (
+  const std::shared_ptr<socket_request_reply_state_t> &state_);
 int send_request_reply_message (void *socket_handle_,
                                 const zlink_routing_id_t *peer_rid_,
                                 zlink_msg_t *parts_,

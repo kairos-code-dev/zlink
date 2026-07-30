@@ -295,3 +295,142 @@ incomplete multipart가 빈 pipe 예외를 반복해서 사용할 수 있는 문
 
 수정 candidate `5329e79a2f`은 CPU concurrency를 2로 제한한 Core build와 82/82 test를
 통과했다. Round 3에서 같은 SHA의 두 전체 review를 다시 수행한다.
+
+## Round 3
+
+Candidate `5329e79a2f`을 `/tmp/zlink-core-candidate-5329e79a2f`에 고정하고 비교 기준
+`8bc2aa6786`, rubric v1로 전체 범위를 다시 검토했다.
+
+| Reviewer | Model | Reasoning | 실행 시각 | Report | 판정 |
+| --- | --- | --- | --- | --- | --- |
+| Codex 5.6 High | `gpt-5.6-sol` | high | 2026-07-30 15:01 | `/tmp/zlink-review-results/codex-round3.md` | `NOT CLEAN` |
+| Claude Fable | `claude-fable-5` | high | 2026-07-30 15:00 | `/tmp/zlink-review-results/fable-round3.md` | `NOT CLEAN` |
+
+Codex는 `High` 4건과 `Medium` 1건을 보고했다. Completion reservation을 callback 종료 전에
+반환하던 문제, `EMSGSIZE`를 `EAGAIN`으로 바꾸면서 pipe를 비활성화하던 문제, 빈 pipe의
+유효한 oversize multipart를 거부하던 문제, connect-before-bind conflate 경로가 실제 reader의
+`MaxMessageSize`를 적용하지 않던 문제와 이전 count 단위가 남은 한국어 guide다.
+
+Claude Fable은 `Critical` 2건, `Medium` 3건과 `Low` 2건을 보고했다. Completion pipe write
+실패 때 reply frame 소유권을 반환하지 않던 문제, byte admission 거부 뒤 pipe가 회복되지 않던
+문제, 호출되지 않는 router requester stack, DEALER peer 하나가 끊겼을 때 모든 pending request를
+실패시키던 문제와 두 C monitor header 사이의 drift gate 부재다. Pipe 비활성화 finding은 Codex
+finding과 같은 원인으로 통합했다. `Low` 2건은 hiccup 뒤 작은 accounting 잔여값과 monitor ABI의
+caller-size negotiation 부재다. 첫 항목은 bounded skew이고 두 번째는 Core 11 breaking release의
+동일 release header/runtime 계약 안에서 허용하므로 이번 gate의 수정 대상에 포함하지 않았다.
+
+수정 방향은 다음과 같이 결정했다.
+
+- Completion reservation은 각 callback이 반환한 직후 한 건씩 반환한다. Blocking callback을
+  사용해 callback 실행 중에도 총 미완료 request가 65,536건을 넘지 않는 회귀를 추가했다.
+- `MaxMessageSize` 위반은 pipe를 비활성화하지 않고 `EMSGSIZE`를 유지한다. Oversize 거부 뒤
+  정상 message를 보낼 수 있는 회귀를 추가했다.
+- 빈 pipe에서 시작한 multipart는 transaction 수명 동안 empty-pipe exception을 한 번 유지하고,
+  누적 payload에는 `MaxMessageSize`를 계속 적용한다.
+- Pending inproc connection도 conflate 여부와 무관하게 실제 reader의 최대 message 크기를 각
+  방향 pipe에 적용한다.
+- Completion send helper가 성공과 실패 모두에서 남은 frame 소유권을 소비하도록 통일했다.
+- 호출되지 않는 router requester state와 lifecycle bridge를 제거했다.
+- DEALER request admission에 load balancer가 선택한 transport pair id와 generation을 기록하고,
+  pair가 끊겼을 때 그 pair의 request만 `ZLINK_REQUEST_NOT_CONNECTED`로 끝낸다.
+- Core와 C binding monitor ABI mirror가 달라지면 CTest가 실패하는 build-time 검사와 한국어 guide
+  수정을 추가했다.
+- Binding 사전 적용에서 찾은 `AUTO_HWM_MSG_UNIT_BYTES=UINT64_MAX` 거부도 함께 수정했다. Auto
+  계산은 overflow 때 `UINT64_MAX`로 saturate하고 context·socket set/get과 snapshot 회귀로
+  경계값을 고정했다.
+
+수정 candidate `d9df28edee`는 `taskset -c 0,1`, `nice -n 10`, build `-j 2` 조건에서
+최종 build를 통과했다. 같은 제한으로 targeted CTest 6/6과 전체 CTest 83/83이 통과했다.
+DEALER selective disconnect case는 1/1이 통과했다. Completion backpressure case의 Valgrind는
+definite·indirect leak 0 byte, error 0건이다. Round 4에서 같은 SHA의 두 전체 review를 다시
+수행한다.
+
+## Round 4
+
+Candidate `d9df28edee`를 `/tmp/zlink-core-candidate-d9df28edee`에 고정했다. 비교 기준은
+`8bc2aa6786`이고 두 reviewer에게 rubric v1과 전체 `core`, `bindings/c` 범위를 동일하게
+제공했다.
+
+| Reviewer | Model | Reasoning | 실행 시각 | Report | 판정 |
+| --- | --- | --- | --- | --- | --- |
+| Codex 5.6 High | `gpt-5.6-sol` | high | 2026-07-30 | `/tmp/zlink-review-results/codex-round4.md` | `NOT CLEAN` |
+| Claude Fable | `claude-fable-5` | high | 2026-07-30 | `/tmp/zlink-review-results/fable-round4.md` | `NOT CLEAN` |
+
+Codex는 `Critical` 2건, `Medium` 2건과 `Low` 1건을 보고했다. PUB/XPUB의 incomplete
+multipart가 finite `MaxMessageSize`를 넘을 수 있는 문제, ROUTER completion이 sequence만으로
+다른 peer의 pending request와 결합될 수 있는 문제, C multi perf의 4-byte HWM, C umbrella
+header version drift와 제거되지 않은 dispatch lifecycle state다.
+
+Fable은 C binding header tree에 제거된 Core 10 service ABI가 남은 문제를 `High`, WS/WSS
+paired transport가 lane마다 `CONNECTION_READY`를 내는 문제를 `Medium`으로 보고했다. 조기
+credit 반환의 spec 누락, dead dispatch state, options pair lifecycle, ZMP/WS ready state 중복,
+ROUTER cold-path peer scan과 일부 failure unwind는 `Low`다.
+
+수정 방향은 다음과 같이 결정했다.
+
+- PUB/XPUB admission은 typed result로 size 위반과 HWM을 구분하고 incomplete multipart의 매
+  frame에서 누적 payload를 검사한다. Oversize 거부 뒤 정상 message가 통과하는 회귀를 추가했다.
+- ROUTER completion correlation은 peer identity, transport pair id와 generation을 모두
+  일치시킨다. Sequence-only fallback을 제거하고 다른 peer가 같은 sequence를 보내도 pending
+  request를 소비하지 않는 회귀를 추가했다.
+- C와 C++ perf의 HWM parser·storage·option 전달을 끝까지 `uint64_t`로 통일하고 경계값 test를
+  추가했다.
+- C binding public header tree를 Core 11 raw-only header tree와 byte 단위로 맞추고 service
+  header·test·sample을 제거했다. 일부 ABI만 비교하던 gate를 전체 header tree 비교로 넓혔다.
+- WS/WSS engine은 negotiated pair identity를 보관하고 두 lane이 모두 준비된 뒤에만 연결당 한
+  번 `CONNECTION_READY`를 보고한다. WS와 WSS 회귀를 추가했다.
+- 사용되지 않는 dispatch lifecycle state와 설치 helper를 제거했다. Empty pipe에서 input을
+  모두 배수하면 LWM 이전에도 credit을 반환할 수 있다는 동작을 정식 socket spec에 명시했다.
+- 나머지 `Low` finding은 실제 측정에서 병목이 확인될 때 registry나 ready state를 통합하고,
+  fault injection 범위를 확장할 때 lifecycle unwind를 함께 다루는 후속 대상으로 둔다.
+
+### 이후 reviewer 정책
+
+2026-07-30 사용자 결정에 따라 Round 4 이후의 새 review는 Codex review만 수행한다. Round 4까지
+완료된 Fable finding은 폐기하지 않고 위 수정에 반영하지만, 새 candidate 재검토와 bindings
+review에는 Fable을 실행하지 않는다. 새 candidate에서 Codex 전체 review의 `Medium` 이상
+finding이 0건일 때 `CLEAN`으로 판정한다.
+
+## Round 5
+
+Candidate `3c62117865`를 `/tmp/zlink-core-candidate-3c62117865`에 고정하고 비교 기준
+`8bc2aa6786`, rubric v1로 Codex 전체 review를 수행했다. 사용자 정책에 따라 Fable review는
+추가하지 않았다.
+
+| Reviewer | Model | Reasoning | 실행 시각 | Report | 판정 |
+| --- | --- | --- | --- | --- | --- |
+| Codex 5.6 High | `gpt-5.6-sol` | high | 2026-07-30 | `/tmp/zlink-review-results/codex-round5.md` | `NOT CLEAN` |
+
+Codex는 `Critical` 2건, `High` 1건과 `Medium` 2건을 보고했다. Network pipe의 unfinished
+multipart 전체 크기에 유한한 상한이 없던 문제, 수신 request의 reply-target map이 제한 없이
+증가하던 문제, paired lane이 handshake에서 확인한 peer identity 대신 mutable routing state를
+비교하던 문제, receive byte monitoring의 data race와 input이 빌 때마다 LWM 전에 credit
+command를 보낼 수 있던 문제다.
+
+POSD의 두 번 설계 원칙에 따라 다음 대안을 비교했다.
+
+- Network message 상한은 peer limit를 READY metadata로 교환하는 방법과 empty-pipe exception을
+  전부 제거하는 방법을 비교했다. 전자를 선택해 local reader limit와 peer limit를 방향별 pipe에
+  한 번 설정했다. `MaxMessageSize`가 무제한인 경우 complete message 한 건의 liveness 예외는
+  유지하지만 unfinished multipart에는 일반 byte HWM을 적용한다.
+- Reply target은 수신 전에 bounded slot을 예약하는 방법과 public opaque reply handle로
+  correlation을 옮기는 방법을 비교했다. Public contract를 바꾸지 않고 lifecycle owner가
+  admission과 release를 함께 관리하는 65,536 slot reservation을 선택했다.
+- Pair identity는 handshake identity 전용 immutable field와 기존 routing ID를 양 endpoint에
+  복사하는 방법을 비교했다. Routing handover와 transport 검증을 분리하는 immutable field를
+  선택했다. Inproc에는 실제 peer socket instance를 identity로 사용하고, pending connect는 peer가
+  정해질 때까지 pair validation을 보류한다.
+- Monitoring counter는 모든 write를 atomic으로 바꾸는 방법과 진단 getter에서 writer lock을
+  사용하는 방법을 비교했다. Message write hot path를 바꾸지 않는 lock snapshot을 선택했다.
+- Credit은 LWM-only 방식과 HWM-blocked recovery를 비교했다. LWM-only는 낮은 backlog가 먼저
+  배수된 뒤 sender가 HWM에 도달하면 회복 command가 없어 실제 stall을 만들었다. Sender가 HWM
+  판정에 실패할 때만 peer의 monotonic read snapshot을 확인하고, 이후 input이 모두 배수되면
+  한 번 조기 credit을 보내는 방식을 선택했다. 정상 ping-pong에서는 LWM batching을 유지한다.
+
+회귀 검증은 network에서 6 byte `MORE` frame 두 개가 `MaxMessageSize=10`을 넘는 경우, 서로 다른
+peer identity의 두 lane이 payload 전송 전에 종료되는 경우, ROUTER reply target 65,536개 상한과
+reply 뒤 slot 재사용을 포함한다. Targeted CTest는 9/9, 전체 build는 `taskset -c 0-9`,
+`nice -n 10`, `-j10`으로 통과했다. 전체 CTest는 non-serial 20/20(`-j10`)과 serial
+63/63(`-j1`)으로 나누어 83/83이 통과했다. 실행 log는 각각
+`/tmp/zlink-r5-target-ctest-final.log`, `/tmp/zlink-r5-full-build.log`,
+`/tmp/zlink-r5-ctest-nonserial.log`, `/tmp/zlink-r5-ctest-serial.log`에 있다.

@@ -248,6 +248,18 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
                                                    peer.options.routing_id_size);
                 new_pipes[1]->set_peer_routing_id (options.routing_id,
                                                    options.routing_id_size);
+                if (paired_transport) {
+                    const uintptr_t peer_instance =
+                      reinterpret_cast<uintptr_t> (peer.socket);
+                    const uintptr_t local_instance =
+                      reinterpret_cast<uintptr_t> (this);
+                    new_pipes[0]->set_transport_peer_identity (
+                      reinterpret_cast<const unsigned char *> (&peer_instance),
+                      sizeof (peer_instance));
+                    new_pipes[1]->set_transport_peer_identity (
+                      reinterpret_cast<const unsigned char *> (&local_instance),
+                      sizeof (local_instance));
+                }
                 if (paired_transport && lane == transport_lane_application) {
                     new_pipes[0]->hold_writes_until_transport_pair_ready ();
                     new_pipes[1]->hold_writes_until_transport_pair_ready ();
@@ -257,7 +269,7 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
                 connected_inproc_now = true;
             }
 
-            attach_pipe (new_pipes[0], false, true);
+            attach_pipe (new_pipes[0], false, true, connected_inproc_now);
             if (connected_inproc_now)
                 emit_inproc_connection_ready (new_pipes[0]);
             endpoint_runtime ().inprocs.emplace (endpoint_uri_, new_pipes[0]);

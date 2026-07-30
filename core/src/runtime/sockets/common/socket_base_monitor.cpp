@@ -440,6 +440,17 @@ void zlink::socket_base_t::emit_inproc_connection_ready (pipe_t *pipe_)
     event_connection_ready_changed (endpoint_pair, routing_id_data, routing_id.size ());
 }
 
+void zlink::socket_base_t::validate_inproc_connection (pipe_t *pipe_)
+{
+    if (!pipe_)
+        return;
+
+    // Pending inproc pipes enter the socket before a bind peer exists. Repeat
+    // pair admission only after the registry has assigned the immutable peer
+    // instance identity to this lane.
+    attach_pipe (pipe_, false, true, true);
+}
+
 void zlink::socket_base_t::emit_socket_monitor_value_event (
   uint64_t event_, uint64_t value_, const endpoint_uri_pair_t &endpoint_uri_pair_)
 {

@@ -64,6 +64,7 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     int set_peer_transport_pair (transport_lane_t lane_,
                                  uint64_t pair_id_,
                                  uint64_t generation_);
+    void set_peer_max_message_bytes (uint64_t max_message_bytes_);
 
   protected:
     session_base_t (zlink::io_thread_t *io_thread_,
@@ -123,6 +124,7 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     //  Peer routing id received during handshake before the pipe exists.
     blob_t _pending_peer_routing_id;
     bool _pending_peer_routing_id_valid;
+    uint64_t _peer_max_message_bytes;
     transport_lane_t _transport_lane;
     uint64_t _transport_pair_id;
     uint64_t _transport_pair_generation;

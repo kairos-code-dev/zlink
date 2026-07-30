@@ -446,11 +446,15 @@ HWM은 각 directional pipe에 적용합니다. Accounted byte가 limit에 도�
 accounted 크기가 HWM보다 큰 message 한 건을 허용할 수 있습니다. 따라서 유효한 큰
 message를 HWM이 작다는 이유만으로 모두 거절하지 않습니다. 이 message도
 `ZLINK_OPT_MAXMSGSIZE`를 만족해야 하며, 한 건을 허용한 뒤에는 이후 write가 대기합니다.
-Core는 `ceil(hwm_bytes / 2)`에서 credit을 반환합니다. 이 pipe 기준은 고정값이며
-Framework의 receive 재개 기준과 별개입니다. 다만 receiver가 현재 확인할 수 있는 input을
-모두 읽어 pipe가 비면 LWM에 도달하지 않았더라도 누적 credit을 즉시 반환할 수 있습니다.
-따라서 LWM은 credit 반환의 최대 batching 기준이며, 빈 pipe에서의 조기 반환을 금지하지
+`ZLINK_OPT_MAXMSGSIZE`가 무제한인 방향에서는 complete message 한 건에만 이 예외를 적용합니다.
+끝나지 않은 multipart에는 일반 byte HWM을 적용하므로 `MORE` frame이 제한 없이 누적되지
 않습니다.
+
+Core는 보통 `ceil(hwm_bytes / 2)`에서 credit을 묶어서 반환합니다. Sender가 실제 HWM에
+도달한 경우에는 이미 읽힌 누적 byte를 직접 확인하고, 그 뒤 receiver가 현재 보이는 입력을
+모두 읽으면 LWM 전에도 한 번 credit을 반환할 수 있습니다. 이 복구는 HWM에 도달한 sender에만
+적용하므로 낮은 queue depth의 정상 message마다 cross-thread command를 만들지 않습니다. 이
+pipe 기준은 Framework의 receive 재개 기준과 별개입니다.
 
 ##### Timing
 

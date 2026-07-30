@@ -75,6 +75,7 @@ zlink::session_base_t::session_base_t (class io_thread_t *io_thread_,
     _socket (socket_),
     _pending_peer_routing_id (),
     _pending_peer_routing_id_valid (false),
+      _peer_max_message_bytes (0),
       _transport_lane (options_.transport_lane),
       _transport_pair_id (options_.transport_pair_id),
       _transport_pair_generation (options_.transport_pair_generation),
@@ -97,6 +98,8 @@ void zlink::session_base_t::set_peer_routing_id (const unsigned char *data_, siz
         _pipe->set_peer_routing_id (data_, size_);
         pipe_t *socket_pipe = _pipe->get_peer ();
         if (socket_pipe) {
+            if (socket_pipe->get_transport_pair_id () != 0)
+                socket_pipe->set_transport_peer_identity (data_, size_);
             const bool preserve_connect_routing_id =
               socket_pipe->is_locally_initiated ()
               && socket_pipe->get_transport_lane ()
@@ -115,6 +118,13 @@ void zlink::session_base_t::set_peer_routing_id (const unsigned char *data_, siz
         _pending_peer_routing_id.clear ();
         _pending_peer_routing_id_valid = false;
     }
+}
+
+void zlink::session_base_t::set_peer_max_message_bytes (uint64_t max_message_bytes_)
+{
+    _peer_max_message_bytes = max_message_bytes_;
+    if (_pipe && _pipe->get_peer ())
+        _pipe->get_peer ()->set_max_message_bytes (max_message_bytes_);
 }
 
 const zlink::blob_t &zlink::session_base_t::peer_routing_id () const
@@ -310,6 +320,9 @@ void zlink::session_base_t::engine_ready ()
         pipes[1]->set_transport_pair (
           _transport_lane, _transport_pair_id, _transport_pair_generation);
         pipes[1]->set_locally_initiated (_active);
+        pipes[0]->set_max_message_bytes (
+          options.maxmsgsize > 0 ? static_cast<uint64_t> (options.maxmsgsize) : 0);
+        pipes[1]->set_max_message_bytes (_peer_max_message_bytes);
         if (_transport_pair_id != 0
             && _transport_lane == transport_lane_application)
             pipes[1]->hold_writes_until_transport_pair_ready ();
@@ -339,6 +352,9 @@ void zlink::session_base_t::engine_ready ()
             // so routing sockets can identify the peer before reading data.
             pipes[1]->set_peer_routing_id (_pending_peer_routing_id.data (),
                                            _pending_peer_routing_id.size ());
+            if (_transport_pair_id != 0)
+                pipes[1]->set_transport_peer_identity (
+                  _pending_peer_routing_id.data (), _pending_peer_routing_id.size ());
             _pending_peer_routing_id.clear ();
             _pending_peer_routing_id_valid = false;
         }

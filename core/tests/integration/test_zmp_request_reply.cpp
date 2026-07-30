@@ -1032,6 +1032,14 @@ void test_concurrent_dispatch_install_and_close_terminates_cleanly ()
     (void) drain_result;
 }
 
+//  Keeps the compiler from constant-folding the intentionally impossible
+//  allocation size into the memcpy bound (-Wstringop-overflow false positive).
+size_t oversized_prefix_size ()
+{
+    volatile size_t size = std::numeric_limits<size_t>::max ();
+    return size;
+}
+
 void test_prefixed_multipart_second_prefix_allocation_failure_rolls_back ()
 {
     void *sender = test_context_socket (ZLINK_SOCKET_DEALER);
@@ -1054,7 +1062,7 @@ void test_prefixed_multipart_second_prefix_allocation_failure_rolls_back ()
       -1,
       zlink::logical_multipart_send_prefixed_frames (
         sender_handle.socket, &first_prefix, sizeof (first_prefix), 0, &second_prefix,
-        std::numeric_limits<size_t>::max (), 0, &failed_payload, 1, 0));
+        oversized_prefix_size (), 0, &failed_payload, 1, 0));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&failed_payload));
 
     zlink_msg_t after_failure;
@@ -1126,6 +1134,190 @@ void test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id ()
                                       reply_probe.payload.size ());
     }
 
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
+}
+
+//  Regression for the completion-lane credit recovery defect: replies bypass
+//  send()/recv(), so the reply submit entry itself must drain pending socket
+//  commands. Before the fix the router kept ZLINK_SUBMIT_BACKPRESSURED forever
+//  because the completion pipe's activate-write command was never processed.
+namespace completion_backpressure
+{
+const size_t payload_bytes = 8192;
+const size_t batch_size = 8;
+const size_t cycle_count = 6;
+
+struct probe_t
+{
+    std::mutex mutex;
+    size_t completed;
+    bool payload_mismatch;
+    bool result_failure;
+
+    probe_t () : completed (0), payload_mismatch (false), result_failure (false) {}
+};
+
+unsigned char payload_byte_at (uint32_t ordinal_, size_t index_)
+{
+    return static_cast<unsigned char> ((ordinal_ * 31u + index_) & 0xFFu);
+}
+
+void fill_payload (zlink_msg_t *part_, uint32_t ordinal_)
+{
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (part_, payload_bytes));
+    unsigned char *data = static_cast<unsigned char *> (zlink_msg_data (part_));
+    memcpy (data, &ordinal_, sizeof (ordinal_));
+    for (size_t i = sizeof (ordinal_); i < payload_bytes; ++i)
+        data[i] = payload_byte_at (ordinal_, i);
+}
+
+void capture_completion (zlink_request_result_t result_,
+                         zlink_msg_t *parts_,
+                         size_t part_count_,
+                         void *userdata_)
+{
+    probe_t *probe = static_cast<probe_t *> (userdata_);
+    std::lock_guard<std::mutex> lock (probe->mutex);
+    ++probe->completed;
+    if (result_ != ZLINK_REQUEST_OK || part_count_ != 1
+        || zlink_msg_size (&parts_[0]) != payload_bytes) {
+        probe->result_failure = true;
+        return;
+    }
+    const unsigned char *data =
+      static_cast<const unsigned char *> (zlink_msg_data (&parts_[0]));
+    uint32_t ordinal = 0;
+    memcpy (&ordinal, data, sizeof (ordinal));
+    for (size_t i = sizeof (ordinal); i < payload_bytes; ++i)
+        if (data[i] != payload_byte_at (ordinal, i)) {
+            probe->payload_mismatch = true;
+            return;
+        }
+}
+
+uint32_t ordinal_of_request (size_t cycle_, size_t index_)
+{
+    return static_cast<uint32_t> (cycle_ * batch_size + index_);
+}
+
+bool deadline_passed (const std::chrono::steady_clock::time_point &deadline_)
+{
+    return std::chrono::steady_clock::now () >= deadline_;
+}
+}
+
+void test_router_reply_completion_backpressure_recovers_over_tcp ()
+{
+    using namespace completion_backpressure;
+
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    //  A small reply-lane byte HWM makes a burst of replies cross HWM and LWM
+    //  on every cycle. Requests keep the default capacity.
+    const uint64_t reply_lane_hwm = 4 * payload_bytes;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (router, ZLINK_OPT_SNDHWM, &reply_lane_hwm,
+                                                 sizeof (reply_lane_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (dealer, ZLINK_OPT_RCVHWM, &reply_lane_hwm,
+                                                 sizeof (reply_lane_hwm)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (router, endpoint, sizeof (endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "bp-dealer", 9));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
+    msleep (SETTLE_TIME * 10);
+
+    //  1. The completion poller is registered before the first request.
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK, zlink_poller_add (poller, dealer, NULL, ZLINK_POLLCOMPLETION));
+
+    probe_t probe;
+    size_t backpressure_hits = 0;
+    uint32_t ordinal = 0;
+    const std::chrono::steady_clock::time_point test_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (30);
+
+    for (size_t cycle = 0; cycle < cycle_count; ++cycle) {
+        for (size_t i = 0; i < batch_size; ++i) {
+            zlink_msg_t request_part;
+            fill_payload (&request_part, ordinal++);
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_dealer_request (dealer, &request_part, 1, &capture_completion, &probe,
+                                    ZLINK_SEND_FLAGS_NONE, 30000));
+        }
+
+        for (size_t i = 0; i < batch_size; ++i) {
+            const zlink_routing_id_t *peer_rid = NULL;
+            uint64_t request_seq = 0;
+            zlink_msg_t *parts = NULL;
+            size_t part_count = 0;
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (router, &peer_rid, &request_seq,
+                                                          &parts, &part_count, 0));
+            TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+
+            //  2. The reply reuses the payload message received on the
+            //     application connection. 7. That message still carries the
+            //     application connection ID, so this also pins the completion
+            //     connection ID rewrite: without it the reply is discarded as
+            //     stale and the completion below never arrives.
+            zlink_routing_id_t reply_rid = *peer_rid;
+            zlink_submit_result_t rc = zlink_router_reply_part (
+              router, &reply_rid, request_seq, &parts[0], ZLINK_PART_FINAL);
+            zlink_multipart_close (parts, part_count);
+
+            //  The submit entry consumed the message either way, so a retry
+            //  rebuilds an equivalent payload instead of reusing it.
+            while (rc != ZLINK_SUBMIT_OK) {
+                //  6. Only backpressure is acceptable here.
+                TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED, rc);
+                ++backpressure_hits;
+                //  5. Consuming completions on the requester returns credit to
+                //     the router's completion pipe.
+                zlink_poller_event_t event;
+                (void) zlink_poller_wait (poller, &event, 1, 10, NULL);
+                TEST_ASSERT_FALSE_MESSAGE (
+                  deadline_passed (test_deadline),
+                  "router reply never recovered from completion backpressure");
+
+                zlink_msg_t retry_part;
+                fill_payload (&retry_part, ordinal_of_request (cycle, i));
+                rc = zlink_router_reply_part (router, &reply_rid, request_seq, &retry_part,
+                                              ZLINK_PART_FINAL);
+            }
+        }
+
+        //  3./4. Drain this cycle's completions before the next burst so the
+        //  completion lane crosses HWM and LWM again on every cycle.
+        const size_t expected = (cycle + 1) * batch_size;
+        for (;;) {
+            {
+                std::lock_guard<std::mutex> lock (probe.mutex);
+                if (probe.completed >= expected)
+                    break;
+            }
+            zlink_poller_event_t event;
+            (void) zlink_poller_wait (poller, &event, 1, 10, NULL);
+            TEST_ASSERT_FALSE_MESSAGE (deadline_passed (test_deadline),
+                                       "completions stalled while draining a cycle");
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_EQUAL_UINT64 (cycle_count * batch_size, probe.completed);
+        TEST_ASSERT_FALSE_MESSAGE (probe.result_failure,
+                                   "a completion reported a non-OK result or wrong shape");
+        TEST_ASSERT_FALSE_MESSAGE (probe.payload_mismatch,
+                                   "a completion payload did not match its request");
+    }
+
+    (void) zlink_poller_remove (poller, dealer);
+    (void) zlink_poller_destroy (&poller);
     test_context_socket_close_zero_linger (dealer);
     test_context_socket_close_zero_linger (router);
 }
@@ -1787,6 +1979,7 @@ int main ()
     RUN_SELECTED (test_concurrent_dispatch_install_and_close_terminates_cleanly);
     RUN_SELECTED (test_prefixed_multipart_second_prefix_allocation_failure_rolls_back);
     RUN_SELECTED (test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id);
+    RUN_SELECTED (test_router_reply_completion_backpressure_recovers_over_tcp);
     RUN_SELECTED (test_router_to_router_request_reply_basic);
     RUN_SELECTED (test_connect_only_router_requester_receives_reply);
     RUN_SELECTED (test_multiple_in_flight_requests_complete_independently);

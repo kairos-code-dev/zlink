@@ -266,6 +266,14 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
         const bool more = (msg_->flags () & msg_t::more) != 0;
         const bool ok = more ? pipe->write (msg_) : pipe->write_and_flush (msg_);
         if (!ok) {
+            if (_more) {
+                pipe->rollback ();
+                _weighted_multipart_pipe = NULL;
+                _dropping = more;
+                _more = false;
+                errno = EAGAIN;
+                return -2;
+            }
             _active = 0;
             errno = EAGAIN;
             return -1;
@@ -363,6 +371,18 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
     errno_assert (rc == 0);
 
     return 0;
+}
+
+void zlink::lb_t::rollback ()
+{
+    if (_weighted_multipart_pipe)
+        _weighted_multipart_pipe->rollback ();
+    else if (_more && _current < _pipes.size ())
+        _pipes[_current]->rollback ();
+
+    _more = false;
+    _dropping = false;
+    _weighted_multipart_pipe = NULL;
 }
 
 bool zlink::lb_t::has_out ()

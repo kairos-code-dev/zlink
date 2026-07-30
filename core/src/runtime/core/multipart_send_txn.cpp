@@ -23,7 +23,8 @@ struct multipart_send_facade_t
                             int flags_,
                             socket_public_send_scope_t &scope_)
     {
-        return socket_->send_scoped (msg_, flags_, scope_);
+        return socket_->send_direct_with_retry (
+          NULL, msg_, flags_, scope_, NULL, 0, true);
     }
 
     static int rollback_scoped (socket_base_t *socket_, socket_public_send_scope_t &scope_)

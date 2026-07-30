@@ -234,6 +234,8 @@ bool zlink::dist_t::write_at (pipes_t::size_type index_, msg_t *msg_)
     const bool ok = more ? pipe->write_no_recursive_hwm_check (msg_)
                          : pipe->write_and_flush_no_recursive_hwm_check (msg_);
     if (!ok) {
+        if (_more)
+            pipe->rollback ();
         deactivate_matching_pipe (index_);
         return false;
     }

@@ -38,6 +38,9 @@ class lb_t
     //  being dropped. For the first frame, this will never happen.
     int sendpipe (msg_t *msg_, pipe_t **pipe_);
 
+    //  Removes an unfinished multipart message and resets send sequencing.
+    void rollback ();
+
     bool has_out ();
 
   private:

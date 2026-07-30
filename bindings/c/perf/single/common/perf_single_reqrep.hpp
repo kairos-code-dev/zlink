@@ -182,8 +182,15 @@ inline submit_step_t submit_request (request_state_t *state_,
     zlink_msg_close (&part);
     state_->in_flight.fetch_sub (1, std::memory_order_release);
     if (rc == ZLINK_SUBMIT_BACKPRESSURED || err == EAGAIN || err == EWOULDBLOCK || err == EINTR
-        || err == ETIMEDOUT || err == EHOSTUNREACH || err == ENOTCONN)
+        || err == ETIMEDOUT || err == EHOSTUNREACH || err == ENOTCONN) {
+        if (bench_debug_enabled ()) {
+            static std::atomic<unsigned int> blocked_debug_count (0);
+            if (blocked_debug_count.fetch_add (1, std::memory_order_relaxed) < 4)
+                std::cerr << "[perf-single-reqrep] request submit blocked rc=" << rc
+                          << " errno=" << err << std::endl;
+        }
         return submit_step_blocked;
+    }
     if (bench_debug_enabled ())
         std::cerr << "[perf-single-reqrep] request submit failed rc=" << rc << " errno=" << err
                   << std::endl;
@@ -290,14 +297,27 @@ inline bool run_requester (void *requester_,
     // replier has stopped. Destroying a completion poller while the peer can
     // still publish replies can stall the measured shutdown path.
     *completion_poller_out_ = poller;
-    if (state_->fatal.load (std::memory_order_acquire))
+    if (state_->fatal.load (std::memory_order_acquire)) {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-single-reqrep] requester fatal after completion poll"
+                      << std::endl;
         return false;
-    if (state_->in_flight.load (std::memory_order_acquire) != 0)
+    }
+    if (state_->in_flight.load (std::memory_order_acquire) != 0) {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-single-reqrep] completion drain timed out in_flight="
+                      << state_->in_flight.load (std::memory_order_acquire)
+                      << " completed=" << state_->completed.load (std::memory_order_acquire)
+                      << std::endl;
         return false;
+    }
 
     *completed_out_ = state_->completed.load (std::memory_order_relaxed);
-    if (*completed_out_ == 0)
+    if (*completed_out_ == 0) {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-single-reqrep] no completed request" << std::endl;
         return false;
+    }
     {
         std::lock_guard<std::mutex> guard (state_->latency_mutex);
         if (state_->latency.count () == 0)
@@ -317,18 +337,30 @@ inline int recv_router_request (void *router_,
 
     const zlink_routing_id_t *source_rid = NULL;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-    if (zlink_msg_init (payload_out_) != 0)
+    if (zlink_msg_init (payload_out_) != 0) {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-single-reqrep] payload init failed errno="
+                      << zlink_errno () << std::endl;
         return -1;
-    const int rc = zlink_router_recv_part (router_, &source_rid, request_seq_out_, payload_out_,
-                                           &has_more, ZLINK_RECV_FLAGS_NONE);
-    if (rc != 0) {
+    }
+    const zlink_recv_result_t rc =
+      zlink_router_recv_part (router_, &source_rid, request_seq_out_, payload_out_,
+                              &has_more, ZLINK_RECV_FLAGS_NONE);
+    if (rc != ZLINK_RECV_OK) {
         zlink_msg_close (payload_out_);
-        const int err = zlink_errno ();
-        if (err == EAGAIN || err == EINTR)
+        if (rc == ZLINK_RECV_NO_DATA)
             return 0;
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-single-reqrep] zlink_router_recv_part rc=" << rc
+                      << " errno=" << zlink_errno () << std::endl;
         return -1;
     }
     if (!source_rid || source_rid->size == 0 || has_more != ZLINK_PART_FINAL) {
+        if (bench_debug_enabled ())
+            std::cerr << "[perf-single-reqrep] invalid router recv metadata source_rid="
+                      << (source_rid ? static_cast<unsigned int> (source_rid->size) : 0)
+                      << " has_more=" << has_more
+                      << " request_seq=" << *request_seq_out_ << std::endl;
         zlink_msg_close (payload_out_);
         return -1;
     }
@@ -350,6 +382,9 @@ inline void run_router_replier (void *router_, reply_state_t *state_)
         if (recv_rc == 0)
             continue;
         if (recv_rc < 0) {
+            if (bench_debug_enabled ())
+                std::cerr << "[perf-single-reqrep] router recv failed rc=" << recv_rc
+                          << " errno=" << zlink_errno () << std::endl;
             state_->fatal.store (true, std::memory_order_release);
             return;
         }
@@ -363,15 +398,36 @@ inline void run_router_replier (void *router_, reply_state_t *state_)
             continue;
         }
 
-        // This is the measured reply hot path. The reply API consumes the
-        // received message, matching the C++ binding's ownership transfer and
-        // avoiding a C-only allocation and full-payload copy.
-        if (zlink_router_reply_part (router_, &source_rid, request_seq, &request,
-                                     ZLINK_PART_FINAL)
-            != ZLINK_SUBMIT_OK) {
+        // Zero-copy on the first attempt: the received payload is handed
+        // straight back as the reply. The submit entry consumes the message
+        // either way, so a backpressured retry rebuilds a same-size payload
+        // instead of keeping a copy of every reply on the hot path.
+        const size_t reply_size = zlink_msg_size (&request);
+        zlink_submit_result_t reply_rc = zlink_router_reply_part (
+          router_, &source_rid, request_seq, &request, ZLINK_PART_FINAL);
+        const auto retry_deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (resolve_completion_drain_timeout_ms ());
+        while (reply_rc == ZLINK_SUBMIT_BACKPRESSURED
+               && std::chrono::steady_clock::now () < retry_deadline
+               && !state_->stop.load (std::memory_order_acquire)) {
+            zlink_msg_t retry;
+            if (zlink_msg_init_size (&retry, reply_size) != 0) {
+                state_->fatal.store (true, std::memory_order_release);
+                return;
+            }
+            std::this_thread::yield ();
+            reply_rc = zlink_router_reply_part (
+              router_, &source_rid, request_seq, &retry, ZLINK_PART_FINAL);
+        }
+        if (reply_rc != ZLINK_SUBMIT_OK) {
+            if (bench_debug_enabled ())
+                std::cerr << "[perf-single-reqrep] router reply failed rc=" << reply_rc
+                          << " errno=" << zlink_errno () << std::endl;
             state_->fatal.store (true, std::memory_order_release);
             return;
         }
+
         state_->replied.fetch_add (1, std::memory_order_relaxed);
     }
 }

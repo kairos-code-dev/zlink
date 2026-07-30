@@ -100,6 +100,11 @@ int zlink::socket_base_t::process_commands (int timeout_, bool throttle_)
     return 0;
 }
 
+int zlink::socket_base_t::process_submit_commands ()
+{
+    return process_commands (0, true);
+}
+
 int zlink::socket_base_t::start_async_mailbox_processing (io_thread_t *io_thread_)
 {
     return lifecycle_coordinator ().start_async_mailbox_processing (

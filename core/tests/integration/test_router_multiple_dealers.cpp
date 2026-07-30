@@ -4,6 +4,7 @@
 #include "testutil_unity.hpp"
 #include "core/object.hpp"
 #include "core/pipe.hpp"
+#include "sockets/internal/dist.hpp"
 #include "sockets/internal/lb.hpp"
 
 #include <unity.h>
@@ -351,6 +352,235 @@ void test_weighted_lb_reactivation_keeps_configured_weight ()
     close_sync_socket (owner_handle);
 }
 
+void test_single_pipe_lb_rolls_back_byte_hwm_rejected_multipart ()
+{
+    void *owner_handle = create_sync_socket (ZLINK_SOCKET_PAIR);
+    zlink::object_t *owner = static_cast<zlink::object_t *> (owner_handle);
+    zlink::object_t *parents[] = {owner, owner};
+    const uint64_t frame_bytes = sizeof (zlink::msg_t) + 1;
+    const uint64_t hwms[] = {frame_bytes * 2, frame_bytes * 2};
+    const bool conflate[] = {false, false};
+    zlink::pipe_t *pipes[2];
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::pipepair (parents, pipes, hwms, conflate));
+
+    pipe_cleanup_sink_t cleanup_sink;
+    pipes[0]->set_event_sink (&cleanup_sink);
+    pipes[1]->set_event_sink (&cleanup_sink);
+
+    zlink::lb_t lb;
+    lb.attach (pipes[0]);
+
+    zlink::msg_t filler;
+    TEST_ASSERT_SUCCESS_ERRNO (filler.init_size (1));
+    *static_cast<unsigned char *> (filler.data ()) = 0x11;
+    TEST_ASSERT_SUCCESS_ERRNO (lb.send (&filler));
+
+    zlink::msg_t first_part;
+    TEST_ASSERT_SUCCESS_ERRNO (first_part.init_size (1));
+    *static_cast<unsigned char *> (first_part.data ()) = 0x22;
+    first_part.set_flags (zlink::msg_t::more);
+    TEST_ASSERT_SUCCESS_ERRNO (lb.send (&first_part));
+
+    zlink::msg_t rejected_final;
+    TEST_ASSERT_SUCCESS_ERRNO (rejected_final.init_size (1));
+    *static_cast<unsigned char *> (rejected_final.data ()) = 0x33;
+    TEST_ASSERT_EQUAL_INT (-2, lb.send (&rejected_final));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+    lb.rollback ();
+
+    zlink::msg_t received;
+    TEST_ASSERT_SUCCESS_ERRNO (received.init ());
+    TEST_ASSERT_TRUE (pipes[1]->read (&received));
+    TEST_ASSERT_EQUAL_UINT8 (
+      0x11, *static_cast<unsigned char *> (received.data ()));
+    TEST_ASSERT_FALSE ((received.flags () & zlink::msg_t::more) != 0);
+    TEST_ASSERT_SUCCESS_ERRNO (received.close ());
+
+    pipes[0]->refresh_write_credit (
+      pipes[1]->get_msgs_read (), pipes[1]->get_bytes_read ());
+    lb.activated (pipes[0]);
+
+    zlink::msg_t after_failure;
+    TEST_ASSERT_SUCCESS_ERRNO (after_failure.init_size (1));
+    *static_cast<unsigned char *> (after_failure.data ()) = 0x44;
+    TEST_ASSERT_SUCCESS_ERRNO (lb.send (&after_failure));
+
+    TEST_ASSERT_SUCCESS_ERRNO (received.init ());
+    TEST_ASSERT_TRUE (pipes[1]->read (&received));
+    TEST_ASSERT_EQUAL_UINT8 (
+      0x44, *static_cast<unsigned char *> (received.data ()));
+    TEST_ASSERT_FALSE ((received.flags () & zlink::msg_t::more) != 0);
+    TEST_ASSERT_SUCCESS_ERRNO (received.close ());
+    TEST_ASSERT_FALSE (pipes[1]->check_read ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (filler.close ());
+    TEST_ASSERT_SUCCESS_ERRNO (first_part.close ());
+    TEST_ASSERT_SUCCESS_ERRNO (rejected_final.close ());
+    TEST_ASSERT_SUCCESS_ERRNO (after_failure.close ());
+    lb.pipe_terminated (pipes[0]);
+    pipes[0]->terminate (false);
+    pipes[1]->terminate (false);
+    int events = 0;
+    size_t events_size = sizeof (events);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (owner_handle, ZLINK_OPT_EVENTS, &events, &events_size));
+    TEST_ASSERT_EQUAL_INT (2, cleanup_sink.terminated_count);
+    close_sync_socket (owner_handle);
+}
+
+void test_single_pipe_dist_rolls_back_byte_hwm_rejected_multipart ()
+{
+    void *owner_handle = create_sync_socket (ZLINK_SOCKET_PAIR);
+    zlink::object_t *owner = static_cast<zlink::object_t *> (owner_handle);
+    zlink::object_t *parents[] = {owner, owner};
+    const uint64_t frame_bytes = sizeof (zlink::msg_t) + 1;
+    const uint64_t hwms[] = {frame_bytes * 2, frame_bytes * 2};
+    const bool conflate[] = {false, false};
+    zlink::pipe_t *pipes[2];
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::pipepair (parents, pipes, hwms, conflate));
+
+    pipe_cleanup_sink_t cleanup_sink;
+    pipes[0]->set_event_sink (&cleanup_sink);
+    pipes[1]->set_event_sink (&cleanup_sink);
+
+    zlink::dist_t dist;
+    dist.attach (pipes[0]);
+
+    zlink::msg_t filler;
+    TEST_ASSERT_SUCCESS_ERRNO (filler.init_size (1));
+    *static_cast<unsigned char *> (filler.data ()) = 0x11;
+    TEST_ASSERT_SUCCESS_ERRNO (dist.send_to_all (&filler));
+    const uint64_t committed_before_failure = pipes[0]->get_bytes_written ();
+
+    zlink::msg_t first_part;
+    TEST_ASSERT_SUCCESS_ERRNO (first_part.init_size (1));
+    *static_cast<unsigned char *> (first_part.data ()) = 0x22;
+    first_part.set_flags (zlink::msg_t::more);
+    TEST_ASSERT_SUCCESS_ERRNO (dist.send_to_all (&first_part));
+
+    zlink::msg_t rejected_final;
+    TEST_ASSERT_SUCCESS_ERRNO (rejected_final.init_size (1));
+    *static_cast<unsigned char *> (rejected_final.data ()) = 0x33;
+    TEST_ASSERT_SUCCESS_ERRNO (dist.send_to_all (&rejected_final));
+    TEST_ASSERT_EQUAL_UINT64 (
+      committed_before_failure, pipes[0]->get_bytes_written ());
+
+    zlink::msg_t received;
+    TEST_ASSERT_SUCCESS_ERRNO (received.init ());
+    TEST_ASSERT_TRUE (pipes[1]->read (&received));
+    TEST_ASSERT_EQUAL_UINT8 (
+      0x11, *static_cast<unsigned char *> (received.data ()));
+    TEST_ASSERT_FALSE ((received.flags () & zlink::msg_t::more) != 0);
+    TEST_ASSERT_SUCCESS_ERRNO (received.close ());
+    TEST_ASSERT_FALSE (pipes[1]->check_read ());
+
+    pipes[0]->refresh_write_credit (
+      pipes[1]->get_msgs_read (), pipes[1]->get_bytes_read ());
+    dist.activated (pipes[0]);
+
+    zlink::msg_t after_failure;
+    TEST_ASSERT_SUCCESS_ERRNO (after_failure.init_size (1));
+    *static_cast<unsigned char *> (after_failure.data ()) = 0x44;
+    TEST_ASSERT_SUCCESS_ERRNO (dist.send_to_all (&after_failure));
+
+    TEST_ASSERT_SUCCESS_ERRNO (received.init ());
+    TEST_ASSERT_TRUE (pipes[1]->read (&received));
+    TEST_ASSERT_EQUAL_UINT8 (
+      0x44, *static_cast<unsigned char *> (received.data ()));
+    TEST_ASSERT_FALSE ((received.flags () & zlink::msg_t::more) != 0);
+    TEST_ASSERT_SUCCESS_ERRNO (received.close ());
+    TEST_ASSERT_FALSE (pipes[1]->check_read ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (filler.close ());
+    TEST_ASSERT_SUCCESS_ERRNO (first_part.close ());
+    TEST_ASSERT_SUCCESS_ERRNO (rejected_final.close ());
+    TEST_ASSERT_SUCCESS_ERRNO (after_failure.close ());
+    dist.pipe_terminated (pipes[0]);
+    pipes[0]->terminate (false);
+    pipes[1]->terminate (false);
+    int events = 0;
+    size_t events_size = sizeof (events);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (owner_handle, ZLINK_OPT_EVENTS, &events, &events_size));
+    TEST_ASSERT_EQUAL_INT (2, cleanup_sink.terminated_count);
+    close_sync_socket (owner_handle);
+}
+
+void test_pipe_rejects_multipart_before_partial_bytes_exceed_hwm ()
+{
+    void *owner_handle = create_sync_socket (ZLINK_SOCKET_PAIR);
+    zlink::object_t *owner = static_cast<zlink::object_t *> (owner_handle);
+    zlink::object_t *parents[] = {owner, owner};
+    const uint64_t frame_bytes = sizeof (zlink::msg_t) + 1;
+    const uint64_t hwms[] = {frame_bytes * 3, frame_bytes * 3};
+    const bool conflate[] = {false, false};
+    zlink::pipe_t *pipes[2];
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::pipepair (parents, pipes, hwms, conflate));
+
+    pipe_cleanup_sink_t cleanup_sink;
+    pipes[0]->set_event_sink (&cleanup_sink);
+    pipes[1]->set_event_sink (&cleanup_sink);
+
+    zlink::msg_t filler;
+    TEST_ASSERT_SUCCESS_ERRNO (filler.init_size (1));
+    TEST_ASSERT_TRUE (pipes[0]->write_and_flush (&filler));
+    const uint64_t committed_before_failure = pipes[0]->get_bytes_written ();
+
+    zlink::msg_t first_part;
+    TEST_ASSERT_SUCCESS_ERRNO (first_part.init_size (1));
+    first_part.set_flags (zlink::msg_t::more);
+    TEST_ASSERT_TRUE (pipes[0]->write (&first_part));
+
+    zlink::msg_t second_part;
+    TEST_ASSERT_SUCCESS_ERRNO (second_part.init_size (1));
+    second_part.set_flags (zlink::msg_t::more);
+    TEST_ASSERT_TRUE (pipes[0]->write (&second_part));
+
+    zlink::msg_t rejected_more;
+    TEST_ASSERT_SUCCESS_ERRNO (rejected_more.init_size (1));
+    rejected_more.set_flags (zlink::msg_t::more);
+    TEST_ASSERT_FALSE (pipes[0]->write (&rejected_more));
+    TEST_ASSERT_EQUAL_UINT64 (
+      committed_before_failure, pipes[0]->get_bytes_written ());
+    pipes[0]->rollback ();
+
+    zlink::msg_t received;
+    TEST_ASSERT_SUCCESS_ERRNO (received.init ());
+    TEST_ASSERT_TRUE (pipes[1]->read (&received));
+    TEST_ASSERT_FALSE ((received.flags () & zlink::msg_t::more) != 0);
+    TEST_ASSERT_SUCCESS_ERRNO (received.close ());
+    TEST_ASSERT_FALSE (pipes[1]->check_read ());
+
+    pipes[0]->refresh_write_credit (
+      pipes[1]->get_msgs_read (), pipes[1]->get_bytes_read ());
+
+    zlink::msg_t after_failure;
+    TEST_ASSERT_SUCCESS_ERRNO (after_failure.init_size (1));
+    TEST_ASSERT_TRUE (pipes[0]->write_and_flush (&after_failure));
+    TEST_ASSERT_SUCCESS_ERRNO (received.init ());
+    TEST_ASSERT_TRUE (pipes[1]->read (&received));
+    TEST_ASSERT_FALSE ((received.flags () & zlink::msg_t::more) != 0);
+    TEST_ASSERT_SUCCESS_ERRNO (received.close ());
+    TEST_ASSERT_FALSE (pipes[1]->check_read ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (filler.close ());
+    TEST_ASSERT_SUCCESS_ERRNO (first_part.close ());
+    TEST_ASSERT_SUCCESS_ERRNO (second_part.close ());
+    TEST_ASSERT_SUCCESS_ERRNO (rejected_more.close ());
+    TEST_ASSERT_SUCCESS_ERRNO (after_failure.close ());
+    pipes[0]->terminate (false);
+    pipes[1]->terminate (false);
+    int events = 0;
+    size_t events_size = sizeof (events);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (owner_handle, ZLINK_OPT_EVENTS, &events, &events_size));
+    TEST_ASSERT_EQUAL_INT (2, cleanup_sink.terminated_count);
+    close_sync_socket (owner_handle);
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -361,5 +591,8 @@ int main ()
     RUN_TEST (test_router_multiple_dealers_inproc);
     RUN_TEST (test_weighted_dealer_preserves_peer_weight_after_backpressure);
     RUN_TEST (test_weighted_lb_reactivation_keeps_configured_weight);
+    RUN_TEST (test_single_pipe_lb_rolls_back_byte_hwm_rejected_multipart);
+    RUN_TEST (test_single_pipe_dist_rolls_back_byte_hwm_rejected_multipart);
+    RUN_TEST (test_pipe_rejects_multipart_before_partial_bytes_exceed_hwm);
     return UNITY_END ();
 }

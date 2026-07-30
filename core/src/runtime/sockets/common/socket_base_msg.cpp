@@ -126,7 +126,8 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
                                                   int flags_,
                                                   socket_public_send_scope_t &send_scope,
                                                   uint64_t *connection_id_out_,
-                                                  uint64_t expected_connection_id_)
+                                                  uint64_t expected_connection_id_,
+                                                  bool report_multipart_abort_)
 {
     zlink_assert (send_scope.acquired ());
     if (connection_id_out_)
@@ -167,6 +168,11 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
         return 0;
     }
     if (unlikely (rc == -2)) {
+        if (report_multipart_abort_) {
+            dispatch_runtime ().clear_send_recovery_pending ();
+            errno = EAGAIN;
+            return -1;
+        }
         if (!((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0)) {
             rc = msg_->close ();
             errno_assert (rc == 0);

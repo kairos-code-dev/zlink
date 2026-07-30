@@ -431,6 +431,16 @@ int send_request_reply_message (void *socket_handle_,
     }
 
     if (message_type_ != zlink::request_reply::request_type) {
+        //  Replies bypass send()/recv(), so this entry has to drain pending
+        //  socket commands itself. Without it the completion pipe stays
+        //  backpressured forever: the peer's activate-write command sits in
+        //  the mailbox and every retry keeps failing with EAGAIN.
+        if (handle.socket->process_submit_commands () != 0) {
+            const int saved_errno = errno;
+            zlink::request_reply::close_built_parts (combined, total_part_count);
+            errno = saved_errno;
+            return -1;
+        }
         std::shared_ptr<socket_request_reply_state_t> state;
         pending_key_t reply_key;
         zlink::pipe_t *application_pipe = NULL;
@@ -503,6 +513,8 @@ int send_completion_frames (zlink::socket_base_t *socket_,
             msg->set_flags (zlink::msg_t::more);
         else
             msg->reset_flags (zlink::msg_t::more);
+        msg->set_transport_connection_id (
+          completion->get_transport_connection_id ());
         const bool written =
           i + 1 < part_count_ ? completion->write (msg) : completion->write_and_flush (msg);
         if (!written) {

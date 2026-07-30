@@ -153,6 +153,12 @@ bool zlink::dealer_t::xhas_out ()
     return _lb.has_out ();
 }
 
+int zlink::dealer_t::xrollback ()
+{
+    _lb.rollback ();
+    return 0;
+}
+
 void zlink::dealer_t::xread_activated (pipe_t *pipe_)
 {
     socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();

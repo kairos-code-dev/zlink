@@ -171,6 +171,12 @@ class socket_base_t : public own_t,
                      zlink::pipe_t **source_pipe_out_ = NULL);
     pipe_t *completion_pipe_for_application (pipe_t *application_pipe_) const;
     pipe_t *completion_pipe_for_peer (const zlink_routing_id_t *peer_rid_) const;
+    //  Request/reply submit entries write to transport pipes directly instead
+    //  of going through send()/recv(). They still have to drain pending socket
+    //  commands (throttled, exactly like the send() entry does); otherwise a
+    //  backpressured completion pipe never observes the peer's activate-write
+    //  command and every submit retry fails with EAGAIN.
+    int process_submit_commands ();
     int close ();
     int close (int handoff_timeout_ms_);
     int socket_msg_dispatch_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
@@ -462,7 +468,8 @@ class socket_base_t : public own_t,
                                 int flags_,
                                 socket_public_send_scope_t &scope_,
                                 uint64_t *connection_id_out_ = NULL,
-                                uint64_t expected_connection_id_ = 0);
+                                uint64_t expected_connection_id_ = 0,
+                                bool report_multipart_abort_ = false);
 
     enum
     {

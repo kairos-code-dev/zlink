@@ -372,20 +372,101 @@ message별 atomic, 새 wire state를 추가하지 않았다.
   새로 만든다.
 - request timeout을 늘리거나 HWM을 키워 증상을 숨기지 않았다.
 
-measured(1초, `PERF_SINGLE_DURATION_SECONDS=1`, tcp/64, 공식 런타임
-`core/build/lib/libzlink.so`):
+정식 비교는 baseline worktree(`8bc2aa6786`)에 같은 reply 경로를 이식한 뒤 같은
+runner 호출로 측정했다. 측정 경로의 code는 양쪽이 동일하다.
 
-| 실행 | throughput (msg/s) |
+```bash
+bindings/c/perf/run_benchmarks.sh --pattern DEALER_ROUTER_REQREP \
+  --msg-sizes 64 --runs 3
+```
+
+| transport | count HWM (msg/s) | byte HWM (msg/s) | 변화 | count HWM p99 | byte HWM p99 |
+| --- | --- | --- | --- | --- | --- |
+| tcp | 261,030 | 330,500 | +26.6 % | 0.376 ms | 0.282 ms |
+| tls | 227,870 | 357,470 | +56.9 % | 0.430 ms | 0.265 ms |
+| ws | 234,520 | 360,570 | +53.8 % | 0.431 ms | 0.274 ms |
+| wss | 215,340 | 272,690 | +26.6 % | 0.455 ms | 0.321 ms |
+| inproc | 347,740 | 578,370 | +66.3 % | 0.262 ms | 0.113 ms |
+| ipc | 252,450 | 362,210 | +43.5 % | 0.390 ms | 0.228 ms |
+
+세 실행의 median이고 두 report 모두 `status=complete`다. Byte HWM이 모든
+transport에서 throughput이 높고 tail latency가 낮다. inproc 값은 9.6 수정
+이후의 것이다. 수정 전에는 byte HWM 쪽 inproc이 readiness timeout으로
+실행되지 않았다.
+
+### 9.7 memory amplification 측정
+
+설계 문서 §4.4의 정의대로 측정했다.
+
+```text
+coreMemoryAmplification = processMemoryIncrease / accountedApplicationMessageBytes
+```
+
+하네스는 `core/study/hwm-bytes/`다. inproc pipe 하나를 reader가 받지 않는 상태로
+채우므로 backlog가 kernel buffer로 새지 않고 process 안에 남는다. 분모는 payload
+추정이 아니라 monitor snapshot의 `snd_bytes_in_flight`를 읽어 routing frame,
+metadata와 frame별 최소 과금을 포함한다. RSS는 채우기가 멈춘 뒤 읽고, 기준선은
+process 시작이 아니라 connection 성립 직후 값이다.
+
+```bash
+cmake -S core/study/hwm-bytes -B core/study/hwm-bytes/build -DCMAKE_BUILD_TYPE=Release
+cmake --build core/study/hwm-bytes/build -j 4
+core/study/hwm-bytes/build/hwm_memory_amplification <payload_bytes> 67108864
+```
+
+| payload | 적재 message 수 | accounted byte | RSS 증가 | accounted 기준 비율 | payload 기준 비율 |
+| --- | --- | --- | --- | --- | --- |
+| 64 B | 1,048,576 | 134,217,728 | 184,811,520 | **1.377** | 2.754 |
+| 1 KiB | 123,361 | 134,216,768 | 140,083,200 | 1.044 | 1.109 |
+| 64 KiB | 2,046 | 134,217,600 | 134,348,800 | 1.001 | 1.002 |
+
+Accounted byte가 설정한 HWM(64 MiB)의 두 배인 것은 inproc이 sender와 receiver의
+HWM을 합산하기 때문이다. 최소 frame 과금은 64 B이므로 64 B payload는 message마다
+128 B로 계산된다.
+
+기록하는 값은 작은 message의 최악값 **1.38**이다. Message가 커지면 payload가
+지배해 1.0에 수렴한다. Framework가 payload byte만 센다면 같은 조건에서 2.75를
+사용해야 한다.
+
+### 9.6 review 범위 밖에서 확정한 근본 원인 — inproc pair readiness
+
+C perf runner를 pattern 전체로 돌리자 `DEALER_ROUTER_REQREP`,
+`DEALER_DEALER`, `ROUTER_ROUTER`가 inproc에서만 실패했다. `PAIR`와 `PUBSUB`은
+같은 transport에서 통과한다. 최소 재현 program으로 확인한 증상은 데이터 경로가
+아니라 monitor event다. inproc DEALER→ROUTER에서 send·recv는 정상인데
+`ZLINK_EVENT_CONNECTION_READY`가 양쪽 socket 모두에 오지 않았다. 같은 program을
+tcp로 돌리면 양쪽 모두 1건을 받는다. perf fixture는 request 전에 readiness를
+기다리므로 그 대기에서 timeout이 났다.
+
+원인은 두 가지가 겹쳤다.
+
+| 지점 | 원인 |
 | --- | --- |
-| 1 | 338,456 |
-| 2 | 357,678 |
-| 3 | 338,976 |
-| 4 | 317,381 |
-| 5 | 337,379 |
+| `socket_base_endpoint.cpp` inproc connect | paired transport일 때 ready 발행을 건너뛰고 `attach_pipe`에 맡겼다 |
+| `socket_base_api.cpp` `attach_pipe` | pipe endpoint identifier가 `inproc://`로 시작할 때만 발행했다. inproc pipe는 endpoint pair를 갖지 않으므로 이 조건은 성립하지 않는다 |
 
-count-HWM baseline(`8bc2aa6786`) DEALER_ROUTER_REQREP median은 265,830 msg/s다.
-Fixture를 변경했으므로 정식 비교는 baseline worktree에 같은 fixture를 적용한 뒤
-다시 측정해야 한다. 위 수치는 회복 여부와 대략적인 수준 확인용이다.
+여기에 pair readiness key 자체의 결함이 하나 더 있었다. key가 peer routing id를
+포함하고 있어서, 두 lane이 peer identity를 서로 다른 시점에 알게 되는 경우 같은
+pair가 서로 다른 key로 갈라졌다. bind가 나중에 오는 pending connect에서 실제로
+그렇다. 이 경우 두 lane이 각각 절반만 ready로 표시되어 0x03에 도달하지 못한다.
+
+수정은 inproc 경로가 lane마다 pair-aware 발행 entry를 호출하게 하고, pair
+readiness key에서 routing id를 제거해 `(endpoint, pair id, generation)`으로
+식별하게 했다. pair id는 connect마다 새로 만드는 64-bit random 값이고 handshake로
+peer에 전달되므로 pair를 단독으로 식별한다. routing id는 식별에 아무 것도 더하지
+않으면서 위의 분열만 만들었다.
+
+| 항목 | 내용 |
+| --- | --- |
+| 회귀 test | `test_monitor_socket_contract`의 `test_inproc_dealer_router_ready_after_bind`, `test_inproc_dealer_router_ready_after_pending_connect`, `test_inproc_two_dealers_ready_once_each` |
+| test가 고정하는 것 | bind 선행·connect 선행 두 순서, socket마다 ready event 정확히 1건, 한 inproc endpoint의 두 peer가 각각 1건, ready 후 실제 data 전달 |
+| 음성 확인 | inproc 발행을 되돌리면 `..._after_bind`가 실패한다 |
+| commit | `0830b29317` |
+
+이 결함은 byte HWM 회귀가 아니라 Application·Completion pair(C-05)의 inproc
+누락이다. Core test 80/80이 통과하던 이유는 paired transport의 inproc readiness
+coverage가 없었기 때문이다. 그래서 1단계 transport matrix가 통과했다는 기존
+기록은 inproc paired readiness를 포함하지 않는다. 위 test 3건이 그 공백을 메운다.
 
 ### 9.5 남은 위험 갱신
 

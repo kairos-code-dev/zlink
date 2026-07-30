@@ -1375,16 +1375,29 @@ pair reconnect, byte backpressure와 monitoring 회귀가 포함된다. `test_co
 | 실패한 multipart의 앞선 frame이 다음 message와 병합됨 | `lb` one-pipe fast path·DEALER `xrollback`·`dist` per-pipe 실패 경로가 rollback하지 않음 | `563e11d614` |
 | PUB blocking publish가 block 대신 drop | Multipart byte admission을 모든 frame에 적용해 `*_no_recursive_hwm_check` writer의 whole-message 보장을 깨뜨림 | `58aa55df8b` |
 
-수정 뒤 `ctest --test-dir core/build -j 4`를 다시 실행해 80/80이 통과했다. TCP DEALER·ROUTER
-completion backpressure 회복 회귀(`test_zmp_request_reply`)를 추가했고, 수정을 되돌리면 이
-case가 실패하는 것도 확인했다.
+이어서 C perf runner를 transport 전체로 돌리자 paired transport(DEALER·ROUTER)가 inproc에서
+`ZLINK_EVENT_CONNECTION_READY`를 전혀 발행하지 않는 결함이 드러났다. Data 경로는 정상인데
+readiness 대기가 timeout된다. Application·Completion pair(C-05)의 inproc 누락이며, Core test
+80/80이 통과한 이유는 paired transport의 inproc readiness coverage가 없었기 때문이다. inproc
+경로가 lane마다 pair-aware 발행을 호출하도록 고치고, pair readiness key에서 peer routing id를
+제거해 `(endpoint, pair id, generation)`으로 식별하게 했다(`0830b29317`). 회귀 test 3건을
+`test_monitor_socket_contract`에 추가했다.
 
-`perf_dealer_router_reqrep current tcp 64`도 더 이상 정지하지 않는다. 1초 실행
-5회에서 317k~358k msg/s이며 count HWM baseline(`8bc2aa6786`) median 265,830 msg/s와 비교할
-때는 fixture 변경을 baseline worktree에도 적용한 뒤 다시 측정해야 한다.
+수정 뒤 `ctest --test-dir core/build -j 4`가 80/80으로 통과했고, 각 수정은 되돌리면 해당
+회귀 test가 실패하는 것까지 확인했다.
 
-C-07의 기존 count HWM 대비 memory·throughput·tail latency 비교가 남았으므로 Core 1단계
-전체는 아직 완료하지 않았다. Clean review, perf smoke와 bindings 작업도 시작하지 않았다.
+C-07 비교는 baseline worktree(`8bc2aa6786`)에 같은 perf fixture reply 경로를 이식해 측정
+경로 code를 동일하게 맞춘 뒤, 양쪽에서 같은 runner 호출로 실행했다. Byte HWM이 여섯
+transport 모두에서 throughput이 높고 tail latency가 낮다. tcp는 261,030 → 330,500 msg/s
+(+26.6 %), inproc은 347,740 → 578,370 msg/s(+66.3 %)이고 두 report 모두
+`status=complete`다. Memory amplification은 설계 문서 §4.4 정의대로 `core/study/hwm-bytes/`
+하네스로 측정했다. Accounted byte 기준으로 64 B payload에서 1.38, 1 KiB에서 1.04,
+64 KiB에서 1.00이다. 측정 방법과 전체 수치는
+[reqrep multipart rollback review](log/inbound-dispatch-lane-reqrep-multipart-rollback-review.ko.md)
+§9.6과 §9.7에 있다.
+
+이로써 Core 1단계 완료 조건을 모두 만족한다. Clean review, perf smoke와 bindings 작업은
+아직 시작하지 않았다.
 
 | ID | 단계 | 작업 | 완료 증거 | 상태 |
 |---|---|---|---|---|
@@ -1394,7 +1407,7 @@ C-07의 기존 count HWM 대비 memory·throughput·tail latency 비교가 남�
 | C-04 | Core | Monitoring ABI version과 byte field 적용 | Monitoring ABI v2 header·snapshot·contract test 통과 | 완료 |
 | C-05 | Core | Application·Completion connection pair와 handshake | Request/reply·handover·reconnect·transport matrix를 포함한 Core 80/80 통과 | 완료 |
 | C-06 | Core | 내부 PAIR receive queue와 completion deque 제거 | Payload queue source 제거와 request/reply 전체 회귀 통과 | 완료 |
-| C-07 | Core | Core memory·성능·wire regression 검증 | Core 80/80, targeted 20회와 Valgrind error 0건. req/rep 결함 3건 수정 뒤 회귀 재통과(`58aa55df8b`)와 req/rep perf 회복 확인. 비교 benchmark·memory 측정 대기 | 진행 중 |
+| C-07 | Core | Core memory·성능·wire regression 검증 | Core 80/80, targeted 20회와 Valgrind error 0건. req/rep 결함 3건(`563e11d614`, `58aa55df8b`)과 inproc pair readiness(`0830b29317`) 수정 뒤 재통과. 같은 fixture로 측정한 count HWM 대비 여섯 transport throughput·tail latency 비교와 memory amplification 1.38(64 B)·1.00(64 KiB) 기록 | 완료 |
 | C-08 | Core | Core 정식 spec·monitoring·오류 문서 갱신 | Socket·context·polling·monitoring 정식 spec과 internals 동기화, public surface contract 통과 | 완료 |
 | CR-01 | Core review | Candidate SHA, 비교 기준과 공통 review 입력 고정 | §8.2 입력 manifest | 승인 대기 |
 | CR-02 | Core review | Codex 5.6 High 독립 전체 review | Model·prompt 정보와 finding report | 승인 대기 |

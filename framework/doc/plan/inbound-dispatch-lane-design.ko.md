@@ -133,20 +133,36 @@ Framework는 queue나 실행 중인 handler를 순회하여 `applicationPendingP
 다시 순회하지 않는다. 이 값은 내부 accounting에만 사용하며 public HandlerContext API로
 노출하지 않는다.
 
-Framework는 다음 상태 변경에서만 host 전체 합계를 갱신한다.
+Framework는 Core pipe의 byte credit과 같이 수신한 누적 payload와 완료한 누적 payload의 차이로
+현재 처리 중인 payload를 계산한다.
+
+```text
+applicationPendingPayloadBytes =
+    cumulativeReceivedPayloadBytes
+    - cumulativeCompletedPayloadBytes
+```
+
+두 누적값은 감소시키거나 message마다 다시 계산하지 않는다. Framework는 다음 상태 변경에서만
+해당 누적값을 증가시킨다.
 
 1. Complete message의 `Recv`가 성공하면 HandlerContext에 저장한 payload byte를 합계에 한 번
-   더한다.
-2. Job이 queue 사이를 이동하거나 handler 실행을 시작할 때는 합계를 변경하지 않는다.
+   더해 `cumulativeReceivedPayloadBytes`를 갱신한다.
+2. Job이 queue 사이를 이동하거나 handler 실행을 시작할 때는 두 누적값을 변경하지 않는다.
 3. Handler가 정상 완료, 실패 또는 cancellation로 terminal 상태에 도달하면 HandlerContext에
-   저장한 payload byte를 합계에서 한 번 뺀다.
+   저장한 payload byte를 `cumulativeCompletedPayloadBytes`에 한 번 더한다.
 4. Handler를 시작하기 전에 shutdown, routing failure 또는 cancellation로 job이 terminal
-   상태에 도달해도 같은 완료 경로에서 저장한 payload byte를 한 번 뺀다.
+   상태에 도달해도 같은 완료 경로에서 저장한 payload byte를 완료 누적값에 한 번 더한다.
 
-HandlerContext에는 payload byte 값만 추가하며 별도의 accounting object를 만들지 않는다. 모든
-terminal 처리는 기존 공통 완료 경로를 사용하여 같은 payload byte를 두 번 빼지 않는다. 여러
-thread가 합계를 변경하면 host 전체 64-bit atomic counter를 사용하며, counter 때문에 새 lock을
-추가하지 않는다.
+HandlerContext에는 payload byte 값만 추가하며 별도의 accounting object를 만들지 않는다.
+Handler thread는 host 전체 counter를 직접 변경하지 않는다. 기존 handler terminal 통지에
+payload byte를 포함하고 Application HWM owner가 그 통지를 처리할 때 완료 누적값을 갱신한다.
+모든 terminal 처리는 기존 공통 완료 경로를 사용하여 같은 payload byte를 두 번 반영하지 않는다.
+
+Application HWM owner는 두 누적값을 일반 64-bit 값으로 관리한다. Ingress poller와 handler
+terminal 경로가 이미 사용하는 dispatch·완료 통지에 byte를 함께 전달하며, HWM 계산만을 위한
+새 lock, queue, event, allocation 또는 cross-thread wakeup을 추가하지 않는다. 완료 통지가
+owner에 반영되기 전까지 pending payload가 실제보다 크게 보일 수 있지만, 이 지연은 새 수신을
+더 허용하지 않고 보수적으로 늦출 뿐이다.
 
 ### 4.2 설정값은 어떻게 해석하는가
 
@@ -233,8 +249,8 @@ application job이 없으면 수신할 수 있다.
    이유로 message를 제거하거나 application error로 완료하지 않는다.
 3. Framework queue에서 기다리는 application job은 계속 dispatch한다.
 4. 이미 보낸 request의 reply와 Framework 처리에 필요한 control message는 계속 수신한다.
-5. Handler가 terminal 상태에 도달하면 HandlerContext에 저장한 payload byte를 합계에서
-   차감한다.
+5. Handler가 terminal 상태에 도달하면 HandlerContext에 저장한 payload byte를 완료 누적값에
+   더한다. Pending payload는 수신 누적값과 완료 누적값의 차이만큼 감소한다.
 6. 처리 중인 payload 합계가 HWM보다 작아지면 application message의 `Recv`를 재개한다.
 
 Framework가 application `Recv`를 중단하면 이후 message는 Core receive queue에 남는다. Core
@@ -582,9 +598,10 @@ C++ binding처럼 현재 HWM을 `message_count_t`로 표현하는 binding은 값
     추가되지 않았는지 확인하고 throughput, CPU/message와 p99 latency를 기록한다.
 19. 복수 MeshNode와 복수 I/O thread에서 작은 message를 처리하여 현재 MeshNode별 병렬 drain
     대비 aggregate throughput과 scaling이 허용 범위 안에 있는지 검증한다.
-20. 한 Spot이나 Actor가 대부분의 pending payload byte를 보유하면 host 전체 합계와 queued,
-    active handler, unattributed, infrastructure 합계가 일치하며, 명시적 top-N 진단에서 해당
-    owner가 확인되는지 검증한다.
+20. 수신 누적 payload에서 완료 누적 payload를 뺀 값이 host pending payload와 일치하는지
+    검증한다. 한 Spot이나 Actor가 대부분의 pending payload byte를 보유하면 queued, active
+    handler, unattributed, infrastructure 합계와 명시적 top-N 진단에서도 같은 owner가
+    확인되어야 한다.
 21. A와 B가 동시에 HWM에 도달한 상태에서 양방향 nested request를 보내고, Completion
     connection과 local timeout이 계속 진행되어 handler terminal 뒤 pending payload 합계가
     줄고 completion reserve와 ingress가 회복되는지 검증한다.
@@ -863,8 +880,9 @@ bindings source가 바뀌면 5단계 review를 다시 수행한다. Core source�
    Application `Recv`만 중단한다. Core에서 받은 application message를 다른 payload queue로
    복사하거나 이동하지 않는다.
 4. Host 전체 `applicationPendingPayloadBytes`를 관리한다. Complete message를 `Recv`하면 내부
-   HandlerContext에 payload byte를 저장하고 합계에 더한다. Handler terminal 공통 경로에서
-   저장한 값을 합계에서 빼며 기존 ingress poller 병렬성을 유지한다.
+   HandlerContext에 payload byte를 저장하고 수신 누적값에 더한다. 기존 handler terminal 통지에
+   저장한 값을 포함하고 Application HWM owner가 완료 누적값에 더한다. 두 누적값의 차이로
+   pending payload를 계산하며 기존 ingress poller 병렬성을 유지한다.
 5. Request handler를 실행하기 전에 completion send permit을 확보한다. Permit 상한에
    도달하면 request를 Application queue와 budget에 남긴다. Handler 실행을 시작하면 request의
    queue lease를 반환한다. Handler terminal에서는 completion permit을 실제 reply byte로
@@ -954,22 +972,22 @@ Accounted byte 기준으로 64 B payload에서 1.38, 1 KiB에서 1.04,
 | CR-05 | Core review | `Medium` 이상 finding 수정과 회귀 검증 | Round 6의 `High` 4건·`Medium` 3건과 `Low` 1건을 모두 반영. Core non-serial 20/20, serial 63/63 통과 | 완료 |
 | CR-06 | Core review | 변경 candidate의 Codex 전체 재검토 | Candidate `84d01c95c7`, `gpt-5.6-sol` high Round 6 전체 report는 `NOT CLEAN` | 완료 |
 | CR-07 | Core review | 마지막 review finding 반영 확인 | 사용자 결정으로 Round 6을 마지막 review로 고정. Report를 `CLEAN`으로 바꾸지 않고 finding 전체 반영과 83/83 검증으로 종료 | 완료 |
-| CP-01 | Core perf smoke | `core/build` 공식 runtime 재build와 provenance 확인 | Candidate·runtime SHA-256과 출력 경로 | 승인 대기 |
-| CP-02 | Core perf smoke | C single 전체 64B smoke 실행 | 검증 27의 `status=complete` report | 승인 대기 |
-| CP-03 | Core perf smoke | C multi 전체 64B smoke 실행 | 검증 27의 `status=complete` report | 승인 대기 |
-| B-01 | Bindings | .NET binding과 package 갱신 | .NET contract·consumer test와 artifact | 승인 대기 |
-| B-02 | Bindings | Java binding과 package 갱신 | Java·Kotlin contract·consumer test와 artifact | 승인 대기 |
-| B-03 | Bindings | Node.js binding과 package 갱신 | Node.js 경계값·consumer test와 artifact | 승인 대기 |
-| B-04 | Bindings | C++ binding과 package 갱신 | C++ compile-time·consumer test와 artifact | 승인 대기 |
-| B-05 | Bindings | 네 binding의 타입·단위·monitoring parity 확인 | 검증 8과 package version 목록 | 승인 대기 |
-| BR-01 | Bindings review | Candidate SHA, 비교 기준과 review 입력 고정 | §8.5 입력 manifest | 승인 대기 |
-| BR-02 | Bindings review | Codex 5.6 High 전체 review | Model·prompt 정보와 finding report | 승인 대기 |
-| BR-03 | Bindings review | `Medium` 이상 finding 수정과 회귀 검증 | Fix commit과 contract·consumer test 결과 | 승인 대기 |
-| BR-04 | Bindings review | 변경 candidate의 Codex 전체 재검토 | 최신 candidate SHA의 review report | 승인 대기 |
-| BR-05 | Bindings review | `Medium` 이상 0건 확인 | `CLEAN` 판정과 남은 `Low` disposition | 승인 대기 |
-| BP-01 | Bindings perf smoke | Candidate package와 `core/build` runtime provenance 확인 | Package manifest와 runtime SHA-256 | 승인 대기 |
-| BP-02 | Bindings perf smoke | C single 전체 64B smoke 재실행 | 검증 28의 `status=complete` report | 승인 대기 |
-| BP-03 | Bindings perf smoke | C multi 전체 64B smoke 재실행 | 검증 28의 `status=complete` report | 승인 대기 |
+| CP-01 | Core perf smoke | `core/build` 공식 runtime 재build와 provenance 확인 | Candidate `6985cf1a61`, `/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.11.0.0`, SHA-256 `cc3e0968cd076e0c4807a8ebb25d9b42882622972242c7178defb5a955a1d51e` | 완료 |
+| CP-02 | Core perf smoke | C single 전체 64B smoke 실행 | [single report](../../../bindings/c/perf/results/single/report/perf_c_single_linux_20260730_192736_core-r6.txt): 7 patterns·6 transports, 210/210, `status=complete` | 완료 |
+| CP-03 | Core perf smoke | C multi 전체 64B smoke 실행 | [multi report](../../../bindings/c/perf/results/multi/report/perf_c_multi_linux_20260730_193614_core-r6-64b.txt): 8 patterns·4 transports, 160/160, fail 0, `status=complete` | 완료 |
+| B-01 | Bindings | .NET binding과 package 갱신 | Contract 22/22, 전체 132/132 두 번, NuGet clean consumer 통과. `Systems.Zlink.11.0.0.nupkg` | 완료 |
+| B-02 | Bindings | Java binding과 package 갱신 | Java 62/62, targeted 7/7, Kotlin consumer 1/1 통과. Maven `zlink-11.0.0.jar` | 완료 |
+| B-03 | Bindings | Node.js binding과 package 갱신 | HWM contract 2/2, raw 31/31, npm clean consumer 통과. `zlink-systems-zlink-11.0.0.tgz` | 완료 |
+| B-04 | Bindings | C++ binding과 package 갱신 | Contract 10/10과 isolated CMake consumer 통과. `install/zlink-cpp/11.0.0` | 완료 |
+| B-05 | Bindings | 네 binding의 타입·단위·monitoring parity 확인 | 64-bit byte HWM·monitor ABI v2 parity와 package version 11.0.0 확인 | 완료 |
+| BR-01 | Bindings review | Candidate SHA, 비교 기준과 review 입력 고정 | Candidate `9f08fdefec`, base `6985cf1a61`, [review log](log/inbound-dispatch-lane-bindings-review.ko.md) | 완료 |
+| BR-02 | Bindings review | Codex 5.6 High 전체 review | `gpt-5.6-sol` high, `NOT CLEAN`(`Medium` 2, `Low` 1) | 완료 |
+| BR-03 | Bindings review | `Medium` 이상 finding 수정과 회귀 검증 | Fix candidate `37f4f394b1`, finding 3건 모두 반영. C++ 10/10, Node 2/2·31/31 | 완료 |
+| BR-04 | Bindings review | 변경 candidate의 검증 | 사용자 지시에 따라 추가 review 없이 Round 1 finding 반영 candidate의 contract test로 종료 | 완료 |
+| BR-05 | Bindings review | 마지막 review finding 반영 확인 | Round 1 report는 `NOT CLEAN`으로 유지하고 세 finding 전체 반영을 확인 | 완료 |
+| BP-01 | Bindings perf smoke | Candidate package와 `core/build` runtime provenance 확인 | [package manifest](../../../.artifacts/v11/evidence/BP-01/bindings-package-manifest-37f4f394b1.json), Core runtime SHA-256 `cc3e0968cd076e0c4807a8ebb25d9b42882622972242c7178defb5a955a1d51e` | 완료 |
+| BP-02 | Bindings perf smoke | C single 전체 64B smoke 재실행 | [single report](../../../bindings/c/perf/results/single/report/perf_c_single_linux_20260730_200222_bindings-37f4f394b1.txt): 210/210, `status=complete` | 완료 |
+| BP-03 | Bindings perf smoke | C multi 전체 64B smoke 재실행 | [multi report](../../../bindings/c/perf/results/multi/report/perf_c_multi_linux_20260730_200647_bindings-37f4f394b1.txt): 160/160, fail 0, `status=complete` | 완료 |
 | F-01 | Framework | 공통 spec과 다섯 언어 exact interface 확정 | Contract review와 문서 검증 결과 | 범위 밖 |
 | F-02 | Framework | 6단계 통과 binding package version 적용 | 언어별 중앙 dependency 변경과 restore log | 범위 밖 |
 | F-03 | Framework | 두 connection poll과 직접 Application `Recv` 적용 | 검증 11, 12, 15 결과 | 범위 밖 |
@@ -999,18 +1017,16 @@ latency가 낮으며, memory amplification은 accounted byte 기준 64 B에서 1
 [reqrep multipart rollback review](log/inbound-dispatch-lane-reqrep-multipart-rollback-review.ko.md)
 §9에 있다.
 
-**진행 중인 것.** Round 6 Codex review의 finding을 모두 반영했고 CPU 10개 제한에서 Core
-non-serial 20/20과 serial 63/63을 통과했다. Round 6 report는 `NOT CLEAN`이지만, 사용자 결정에
-따라 이번 finding 반영을 마지막 Core review cycle로 고정하고 추가 review 없이 Core perf
-smoke(CP-01~CP-03)로 진행한다.
+**끝난 것.** 이 문서에서 승인한 C-01~BP-03을 모두 마쳤다. Core candidate는 `6985cf1a61`,
+bindings finding 반영 candidate는 `37f4f394b1`이다. 네 binding package는 모두 11.0.0으로
+생성했고 contract·consumer test를 통과했다. Bindings 이후 C single 210/210과 multi 160/160
+64B smoke도 모두 `status=complete`로 끝났다.
 
 **다음에 할 일.**
 
-1. Round 6 반영 source를 commit하고 공식 `core/build` runtime의 candidate·SHA-256을 기록한다.
-2. C single·multi 전체 pattern과 transport를 64B로 실행하여 두 report의
-   `status=complete`를 확인한다.
-3. Binding 사전 적용분을 확정한 Core runtime과 header에 다시 맞추고 package·consumer test를
-   실행한다.
+1. 이 문서의 다음 범위는 없다. Framework F-01 이후는 별도 지시가 있을 때 시작한다.
+2. Framework를 진행하면 BP-01 package manifest의 11.0.0 artifact만 언어별 중앙 dependency에서
+   참조하고 binding source를 직접 참조하지 않는다.
 
 **작업 규칙.** 작업 tree(`/home/hep7/project/kairos/zlink`)에는 다른 담당자의 미완료 변경이
 있다. `git reset`, `git checkout`, `git clean`을 쓰지 않고, 이 작업과 관련된 file만 stage해서
@@ -1021,15 +1037,14 @@ build 결과를 쓰지 않는다. count HWM 비교 기준 worktree는
 
 ## 10. 언제 적용할 수 있는가
 
-작성자가 C-01부터 BP-03까지의 적용을 승인했으므로 1단계부터 순서대로 진행한다. 각 clean
-review와 perf smoke gate를 건너뛰지 않는다. Framework F-01 이후 작업은 별도 지시가 있을
-때까지 시작하지 않는다.
+작성자가 C-01부터 BP-03까지의 적용을 승인했으며 해당 범위는 완료됐다. Framework F-01 이후
+작업은 별도 지시가 있을 때까지 시작하지 않는다.
 
-1단계가 완료되기 전에 Core review를 시작하지 않는다. 2단계에서 Codex가 Core candidate를
-`CLEAN`으로 판정하고 3단계 C perf smoke가 통과하기 전에는 binding을 새 의미로
-바꾸지 않는다. 4단계의 네 binding과 package 검증, 5단계 Codex `CLEAN` 판정과 6단계 C perf
-smoke가 모두 끝나기 전에 Framework 구현을 시작하지 않는다. 지정한 reviewer를 사용할 수
-없거나 `Medium` 이상 finding이 남으면 다음 단계로 넘어가지 않는다.
+원래 gate는 새 candidate가 `CLEAN` 판정을 받을 때까지 review를 반복하도록 정했다. 그러나
+2026-07-30 사용자 지시에 따라 Core Round 6과 bindings Round 1을 각각 마지막 review로 삼고,
+각 report의 finding을 모두 반영한 뒤 추가 review 없이 다음 단계로 진행했다. 두 report는
+`NOT CLEAN` 기록을 그대로 유지하며 `CLEAN`으로 소급 변경하지 않는다. 이 예외와 수정 뒤 test,
+package, perf smoke 결과는 각 review log와 진행표에 기록했다.
 
 이전 count 동작을 보존하는 option, alias, adapter나 runtime 자동 변환은 어느 단계에도
 추가하지 않는다. Review나 smoke failure를 수정하면서 앞 단계의 source·contract가 바뀌면

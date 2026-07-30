@@ -1321,8 +1321,12 @@ napi_value ctx_getopt_data (napi_env env, napi_callback_info info)
       ctx, static_cast<zlink_ctx_option_t> (opt), &value, &size);
     if (rc != ZLINK_CONFIG_OK)
         return throw_last_error (env, "ctx_getopt_data failed");
+    if (size != sizeof (value)) {
+        napi_throw_error (env, NULL, "ctx_getopt_data returned an unexpected value size");
+        return NULL;
+    }
     napi_value out;
-    napi_create_buffer_copy (env, size, &value, NULL, &out);
+    napi_create_buffer_copy (env, sizeof (value), &value, NULL, &out);
     return out;
 }
 
@@ -2524,6 +2528,11 @@ napi_value monitor_status (napi_env env, napi_callback_info info)
     int rc = zlink_monitor_status (monitor, &snapshot);
     if (rc != 0)
         return throw_last_error (env, "monitor_status failed");
+    if (snapshot.abi_version != ZLINK_MONITOR_STATUS_ABI_VERSION
+        || snapshot.struct_size != sizeof (zlink_monitor_status_t)) {
+        napi_throw_error (env, NULL, "monitor_status returned an incompatible ABI snapshot");
+        return NULL;
+    }
 
     return create_monitor_status_value (env, snapshot);
 }

@@ -9,6 +9,8 @@
 
 #include <zlink.h>
 
+#include <cerrno>
+
 namespace zlink
 {
 
@@ -31,6 +33,10 @@ monitor_event_t make_monitor_event (const zlink_monitor_event_t &native_)
 
 monitor_status_t make_monitor_status (const zlink_monitor_status_t &native_)
 {
+    if (native_.abi_version != ZLINK_MONITOR_STATUS_ABI_VERSION
+        || native_.struct_size != sizeof (zlink_monitor_status_t))
+        throw config_error_t (config_result_t::invalid_state, EPROTO);
+
     monitor_status_t status;
     status.abi_version = native_.abi_version;
     status.struct_size = native_.struct_size;

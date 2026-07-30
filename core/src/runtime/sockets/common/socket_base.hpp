@@ -681,6 +681,8 @@ class socket_base_t : public own_t,
     //  table locked.
     mutable mutex_t _transport_pairs_sync;
     transport_pairs_t _transport_pairs;
+    std::deque<transport_pair_key_t> _ready_completion_pairs;
+    std::set<transport_pair_key_t> _ready_completion_pair_set;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 };

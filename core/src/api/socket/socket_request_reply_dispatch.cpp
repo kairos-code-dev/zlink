@@ -62,6 +62,7 @@ void complete_reply_from_transport (
         callback_part_count = 0;
     }
     zlink::request_completion::claim_owner_thread (&state_->completion);
+    zlink::request_completion::release_reservation (&state_->completion);
     zlink::request_completion::invoke_callback (
       state_->socket, pending.handler, callback_errno, callback_parts,
       callback_part_count, pending.userdata);

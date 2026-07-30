@@ -454,6 +454,7 @@ if(TARGET test_transport_matrix)
   # perform twice as many transport handshakes.
 set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 120)
 set_tests_properties(test_router_concurrent_routed_recv PROPERTIES TIMEOUT 120)
+set_tests_properties(test_zmp_metadata PROPERTIES TIMEOUT 30)
 endif()
 if(TARGET test_xpub_nodrop)
   set_tests_properties(test_xpub_nodrop PROPERTIES TIMEOUT 45)

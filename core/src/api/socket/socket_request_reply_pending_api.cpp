@@ -41,8 +41,10 @@ void reqrep::erase_socket_pending_request (
         return;
 
     reqrep::pending_request_t pending;
-    if (reqrep::remove_socket_pending_request (state_, key_, false, &pending))
+    if (reqrep::remove_socket_pending_request (state_, key_, false, &pending)) {
         zlink::request_timeout::cancel (pending.timeout_task);
+        zlink::request_completion::release_reservation (&state_->completion);
+    }
 }
 
 int reqrep::ensure_socket_pending_request (
@@ -65,6 +67,8 @@ int reqrep::ensure_socket_pending_request (
     if (!state || !handle_.socket
         || handle_.socket->ensure_completion_processing () != 0)
         return -1;
+    if (!zlink::request_completion::try_reserve (&state->completion))
+        return -1;
 
     reqrep::pending_key_t key;
     reqrep::pending_request_t pending;
@@ -73,7 +77,10 @@ int reqrep::ensure_socket_pending_request (
         const uint64_t request_seq =
           zlink::request_reply_runtime::allocate_request_sequence (state.get ());
         if (request_seq == 0)
+        {
+            zlink::request_completion::release_reservation (&state->completion);
             return -1;
+        }
 
         key.request_seq = request_seq;
         if (handle_.socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER
@@ -89,6 +96,7 @@ int reqrep::ensure_socket_pending_request (
         if (reqrep::schedule_socket_pending_timeout (state, key, resolved_timeout_ms,
                                                      &pending.timeout_task)
             != 0) {
+            zlink::request_completion::release_reservation (&state->completion);
             return -1;
         }
 

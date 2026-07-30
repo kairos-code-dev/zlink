@@ -269,7 +269,9 @@ class pipe_t ZLINK_FINAL : public object_t,
     void flush_unlocked ();
     uint64_t frame_accounted_bytes (const msg_t *msg_) const;
     bool append_outbound_frame_bytes_unlocked (const msg_t *msg_);
-    bool can_commit_bytes_unlocked (uint64_t message_bytes_) const;
+    bool can_commit_bytes_unlocked (uint64_t message_bytes_,
+                                    uint64_t payload_bytes_,
+                                    bool allow_empty_pipe_exception_) const;
     void account_inbound_frame (const msg_t *msg_);
 
     //  Constructor is private. Pipe can only be created using
@@ -324,8 +326,9 @@ class pipe_t ZLINK_FINAL : public object_t,
     uint64_t _last_credit_bytes_read;
     uint64_t _in_incomplete_bytes;
     uint64_t _out_incomplete_bytes;
-    //  Bound for the empty-pipe oversize exception in accounted bytes, or 0
-    //  when the reader has no maximum message size.
+    uint64_t _out_incomplete_payload_bytes;
+    bool _out_multipart_started_empty;
+    //  Public payload bound for one complete message, or 0 when unlimited.
     uint64_t _max_message_bytes;
     uint64_t _oversize_message_admission_count;
     uint64_t _oversize_message_admission_max_bytes;

@@ -6,6 +6,8 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <stdint.h>
 #include <string>
@@ -65,9 +67,10 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
     (void) zlink_set_option (socket, ZLINK_OPT_BACKLOG, &opt.backlog, sizeof (opt.backlog));
     (void) zlink_set_option (socket, ZLINK_OPT_TCP_NODELAY, &opt.tcp_nodelay,
                              sizeof (opt.tcp_nodelay));
-    const int hwm = 100;
-    (void) zlink_set_option (socket, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm));
-    (void) zlink_set_option (socket, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm));
+    const uint64_t hwm = 100;
+    if (zlink_set_option (socket, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)) != 0
+        || zlink_set_option (socket, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)) != 0)
+        std::abort ();
 }
 
 bool build_packet_frame (zlink_msg_t *packet_out,

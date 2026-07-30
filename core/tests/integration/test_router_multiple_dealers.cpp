@@ -581,6 +581,46 @@ void test_pipe_rejects_multipart_before_partial_bytes_exceed_hwm ()
     close_sync_socket (owner_handle);
 }
 
+void test_empty_pipe_incomplete_multipart_cannot_reuse_oversize_exception ()
+{
+    void *owner_handle = create_sync_socket (ZLINK_SOCKET_PAIR);
+    zlink::object_t *owner = static_cast<zlink::object_t *> (owner_handle);
+    zlink::object_t *parents[] = {owner, owner};
+    const uint64_t frame_bytes = sizeof (zlink::msg_t) + 1;
+    const uint64_t hwms[] = {frame_bytes * 3, frame_bytes * 3};
+    const bool conflate[] = {false, false};
+    zlink::pipe_t *pipes[2];
+    TEST_ASSERT_SUCCESS_ERRNO (zlink::pipepair (parents, pipes, hwms, conflate));
+
+    pipe_cleanup_sink_t cleanup_sink;
+    pipes[0]->set_event_sink (&cleanup_sink);
+    pipes[1]->set_event_sink (&cleanup_sink);
+
+    zlink::msg_t frames[4];
+    for (size_t i = 0; i < 4; ++i) {
+        TEST_ASSERT_SUCCESS_ERRNO (frames[i].init_size (1));
+        frames[i].set_flags (zlink::msg_t::more);
+    }
+    TEST_ASSERT_TRUE (pipes[0]->write (&frames[0]));
+    TEST_ASSERT_TRUE (pipes[0]->write (&frames[1]));
+    TEST_ASSERT_TRUE (pipes[0]->write (&frames[2]));
+    TEST_ASSERT_FALSE (pipes[0]->write (&frames[3]));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+    TEST_ASSERT_FALSE (pipes[1]->check_read ());
+    pipes[0]->rollback ();
+
+    for (size_t i = 0; i < 4; ++i)
+        TEST_ASSERT_SUCCESS_ERRNO (frames[i].close ());
+    pipes[0]->terminate (false);
+    pipes[1]->terminate (false);
+    int events = 0;
+    size_t events_size = sizeof (events);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (owner_handle, ZLINK_OPT_EVENTS, &events, &events_size));
+    TEST_ASSERT_EQUAL_INT (2, cleanup_sink.terminated_count);
+    close_sync_socket (owner_handle);
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -594,5 +634,6 @@ int main ()
     RUN_TEST (test_single_pipe_lb_rolls_back_byte_hwm_rejected_multipart);
     RUN_TEST (test_single_pipe_dist_rolls_back_byte_hwm_rejected_multipart);
     RUN_TEST (test_pipe_rejects_multipart_before_partial_bytes_exceed_hwm);
+    RUN_TEST (test_empty_pipe_incomplete_multipart_cannot_reuse_oversize_exception);
     return UNITY_END ();
 }

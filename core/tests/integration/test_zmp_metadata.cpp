@@ -6,7 +6,9 @@
 #include "protocol/wire.hpp"
 #include "protocol/zmp_metadata.hpp"
 #include "protocol/zmp_protocol.hpp"
+#include "api/socket/request_reply_protocol_internal.hpp"
 
+#include <atomic>
 #include <errno.h>
 #include <string.h>
 #include <vector>
@@ -115,14 +117,15 @@ bool send_paired_dealer_handshake (fd_t fd_,
                                    const char *routing_id_,
                                    uint64_t pair_id_,
                                    uint64_t generation_,
-                                   unsigned char lane_)
+                                   unsigned char lane_,
+                                   int socket_type_ = ZLINK_SOCKET_DEALER)
 {
     unsigned char hello[3 + 255];
     const size_t routing_id_size = strlen (routing_id_);
     if (routing_id_size > 255)
         return false;
     hello[0] = zlink::zmp_control_hello;
-    hello[1] = static_cast<unsigned char> (ZLINK_SOCKET_DEALER);
+    hello[1] = static_cast<unsigned char> (socket_type_);
     hello[2] = static_cast<unsigned char> (routing_id_size);
     memcpy (hello + 3, routing_id_, routing_id_size);
     if (!send_zmp_control (fd_, hello, 3 + routing_id_size))
@@ -130,8 +133,10 @@ bool send_paired_dealer_handshake (fd_t fd_,
 
     std::vector<unsigned char> ready;
     ready.push_back (zlink::zmp_control_ready);
+    const char *socket_type_name =
+      socket_type_ == ZLINK_SOCKET_ROUTER ? "ROUTER" : "DEALER";
     zlink::zmp_metadata::append_property (
-      ready, "Socket-Type", "DEALER", strlen ("DEALER"));
+      ready, "Socket-Type", socket_type_name, strlen (socket_type_name));
     zlink::zmp_metadata::append_property (
       ready, "Routing-Id", routing_id_, routing_id_size);
 
@@ -179,6 +184,116 @@ bool read_zmp_frame (fd_t fd_,
 
     flags_ = header[2];
     return true;
+}
+
+uint64_t read_raw_request_sequence (fd_t fd_)
+{
+    size_t data_frame_index = 0;
+    for (size_t attempt = 0; attempt < 16; ++attempt) {
+        unsigned char flags = 0;
+        std::vector<unsigned char> body;
+        bool closed = false;
+        TEST_ASSERT_TRUE (read_zmp_frame (fd_, flags, body, closed));
+        TEST_ASSERT_FALSE (closed);
+        if ((flags & zlink::zmp_flag_control) != 0)
+            continue;
+        if (data_frame_index++ == 3) {
+            TEST_ASSERT_EQUAL_UINT64 (8, body.size ());
+            return zlink::request_reply::decode_u64_be (&body[0]);
+        }
+    }
+    TEST_FAIL_MESSAGE ("request sequence frame was not received");
+    return 0;
+}
+
+bool send_raw_reply (fd_t fd_, uint64_t request_seq_)
+{
+    const unsigned char protocol = zlink::request_reply::protocol_id;
+    const unsigned char version = zlink::request_reply::version;
+    const unsigned char type = zlink::request_reply::reply_type;
+    unsigned char sequence[8];
+    zlink::request_reply::encode_u64_be (request_seq_, sequence);
+    return send_zmp_frame (fd_, zlink::zmp_flag_more, &protocol, 1)
+           && send_zmp_frame (fd_, zlink::zmp_flag_more, &version, 1)
+           && send_zmp_frame (fd_, zlink::zmp_flag_more, &type, 1)
+           && send_zmp_frame (fd_, 0, sequence, sizeof (sequence));
+}
+
+struct reply_probe_t
+{
+    reply_probe_t () : calls (0), result (ZLINK_REQUEST_INTERNAL_ERROR) {}
+    std::atomic<int> calls;
+    zlink_request_result_t result;
+};
+
+void capture_reply (zlink_request_result_t result_,
+                    zlink_msg_t *parts_,
+                    size_t part_count_,
+                    void *userdata_)
+{
+    reply_probe_t *probe = static_cast<reply_probe_t *> (userdata_);
+    probe->result = result_;
+    for (size_t i = 0; i < part_count_; ++i)
+        zlink_msg_close (&parts_[i]);
+    probe->calls.fetch_add (1, std::memory_order_release);
+}
+
+bool wait_for_calls (reply_probe_t *probe_, int expected_)
+{
+    for (int i = 0; i < 200; ++i) {
+        if (probe_->calls.load (std::memory_order_acquire) >= expected_)
+            return true;
+        msleep (5);
+    }
+    return false;
+}
+
+void assert_paired_handshake_not_dispatchable (
+  const char *application_routing_id_,
+  uint64_t application_pair_id_,
+  uint64_t application_generation_,
+  unsigned char application_lane_,
+  const char *completion_routing_id_,
+  uint64_t completion_pair_id_,
+  uint64_t completion_generation_,
+  unsigned char completion_lane_)
+{
+    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    fd_t application = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
+    fd_t completion = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
+    TEST_ASSERT_NOT_EQUAL (retired_fd, application);
+    TEST_ASSERT_NOT_EQUAL (retired_fd, completion);
+    TEST_ASSERT_TRUE (send_paired_dealer_handshake (
+      application, application_routing_id_, application_pair_id_,
+      application_generation_, application_lane_));
+    TEST_ASSERT_TRUE (send_paired_dealer_handshake (
+      completion, completion_routing_id_, completion_pair_id_,
+      completion_generation_, completion_lane_));
+
+    const unsigned char payload[] = {'s', 't', 'a', 'l', 'e'};
+    TEST_ASSERT_TRUE (send_zmp_frame (application, 0, payload, sizeof (payload)));
+    msleep (SETTLE_TIME * 10);
+
+    zlink_msg_t msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
+    const zlink_routing_id_t *source_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_NO_DATA,
+      zlink_router_recv_part (
+        server, &source_rid, &request_seq, &msg, &has_more,
+        static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
+
+    close (completion);
+    close (application);
+    test_context_socket_close_zero_linger (server);
 }
 }
 
@@ -229,43 +344,94 @@ void test_zmp_error_invalid_hello ()
 
 void test_paired_ready_generation_mismatch_is_not_attached ()
 {
-    void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
+    assert_paired_handshake_not_dispatchable (
+      "raw-paired-peer", 41, 7, 0, "raw-paired-peer", 41, 8, 1);
+}
+
+void test_paired_ready_pair_id_mismatch_is_not_attached ()
+{
+    assert_paired_handshake_not_dispatchable (
+      "raw-paired-peer", 41, 7, 0, "raw-paired-peer", 42, 7, 1);
+}
+
+void test_paired_ready_peer_identity_mismatch_is_not_attached ()
+{
+    assert_paired_handshake_not_dispatchable (
+      "raw-paired-peer-a", 41, 7, 0, "raw-paired-peer-b", 41, 7, 1);
+}
+
+void test_paired_ready_duplicate_lane_is_not_attached ()
+{
+    assert_paired_handshake_not_dispatchable (
+      "raw-paired-peer", 41, 7, 0, "raw-paired-peer", 41, 7, 0);
+}
+
+void test_stale_completion_lane_cannot_complete_reconnected_request ()
+{
+    void *server = test_context_socket (ZLINK_SOCKET_DEALER);
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
-
-    fd_t application = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
-    fd_t completion = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
-    TEST_ASSERT_NOT_EQUAL (retired_fd, application);
-    TEST_ASSERT_NOT_EQUAL (retired_fd, completion);
-
-    //  Both lanes claim the same pair and peer, but a different generation.
-    //  The server must not combine them into a dispatchable Application pipe.
+    const char peer_name[] = "raw-reconnect-peer";
+    fd_t old_application = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
+    fd_t old_completion = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
+    set_recv_timeout (old_application, 2000);
     TEST_ASSERT_TRUE (
-      send_paired_dealer_handshake (application, "raw-paired-peer", 41, 7, 0));
+      send_paired_dealer_handshake (
+        old_application, peer_name, 73, 1, 0, ZLINK_SOCKET_ROUTER));
     TEST_ASSERT_TRUE (
-      send_paired_dealer_handshake (completion, "raw-paired-peer", 41, 8, 1));
+      send_paired_dealer_handshake (
+        old_completion, peer_name, 73, 1, 1, ZLINK_SOCKET_ROUTER));
+    msleep (SETTLE_TIME * 20);
 
-    const unsigned char payload[] = {'s', 't', 'a', 'l', 'e'};
-    TEST_ASSERT_TRUE (
-      send_zmp_frame (application, 0, payload, sizeof (payload)));
-    msleep (SETTLE_TIME * 10);
-
-    zlink_msg_t msg;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
-    const zlink_routing_id_t *source_rid = NULL;
-    uint64_t request_seq = 0;
-    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-    errno = 0;
+    zlink_msg_t first_request;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&first_request, 1));
+    reply_probe_t first_probe;
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_RECV_NO_DATA,
-      zlink_router_recv_part (
-        server, &source_rid, &request_seq, &msg, &has_more,
-        static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
-    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
+      ZLINK_SUBMIT_OK,
+      zlink_dealer_request_part (
+        server, &first_request, ZLINK_SEND_FLAGS_NONE,
+        ZLINK_PART_FINAL, 5000, &capture_reply, &first_probe));
+    TEST_ASSERT_TRUE (read_raw_request_sequence (old_application) != 0);
 
-    close (completion);
-    close (application);
+    close (old_application);
+    TEST_ASSERT_TRUE (wait_for_calls (&first_probe, 1));
+
+    fd_t new_application = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
+    fd_t new_completion = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
+    set_recv_timeout (new_application, 2000);
+    TEST_ASSERT_TRUE (
+      send_paired_dealer_handshake (
+        new_application, peer_name, 73, 2, 0, ZLINK_SOCKET_ROUTER));
+    TEST_ASSERT_TRUE (
+      send_paired_dealer_handshake (
+        new_completion, peer_name, 73, 2, 1, ZLINK_SOCKET_ROUTER));
+    msleep (SETTLE_TIME * 20);
+
+    zlink_msg_t second_request;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&second_request, 1));
+    reply_probe_t second_probe;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_dealer_request_part (
+        server, &second_request, ZLINK_SEND_FLAGS_NONE,
+        ZLINK_PART_FINAL, 5000, &capture_reply, &second_probe));
+    const uint64_t second_sequence =
+      read_raw_request_sequence (new_application);
+
+    // The old generation may still accept bytes in the local TCP send buffer,
+    // but Core must not apply them to the new generation's pending request.
+    (void) send_raw_reply (old_completion, second_sequence);
+    msleep (SETTLE_TIME * 2);
+    TEST_ASSERT_EQUAL_INT (
+      0, second_probe.calls.load (std::memory_order_acquire));
+
+    TEST_ASSERT_TRUE (send_raw_reply (new_completion, second_sequence));
+    TEST_ASSERT_TRUE (wait_for_calls (&second_probe, 1));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, second_probe.result);
+
+    close (new_completion);
+    close (new_application);
+    close (old_completion);
     test_context_socket_close_zero_linger (server);
 }
 
@@ -277,6 +443,10 @@ int main (void)
 
     RUN_TEST (test_zmp_error_invalid_hello);
     RUN_TEST (test_paired_ready_generation_mismatch_is_not_attached);
+    RUN_TEST (test_paired_ready_pair_id_mismatch_is_not_attached);
+    RUN_TEST (test_paired_ready_peer_identity_mismatch_is_not_attached);
+    RUN_TEST (test_paired_ready_duplicate_lane_is_not_attached);
+    RUN_TEST (test_stale_completion_lane_cannot_complete_reconnected_request);
 
     return UNITY_END ();
 }

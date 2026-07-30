@@ -205,6 +205,8 @@ int start_request (socket_handle_t handle_,
       find_or_create_request_reply_state (handle_);
     if (!state || handle_.socket->ensure_completion_processing () != 0)
         return -1;
+    if (!zlink::request_completion::try_reserve (&state->completion))
+        return -1;
 
     pending_key_t key;
     pending_request_t pending;
@@ -214,7 +216,10 @@ int start_request (socket_handle_t handle_,
         const uint64_t request_seq =
           zlink::request_reply_runtime::allocate_request_sequence (state.get ());
         if (request_seq == 0)
+        {
+            zlink::request_completion::release_reservation (&state->completion);
             return -1;
+        }
 
         key.request_seq = request_seq;
         if (handle_.socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER
@@ -230,6 +235,7 @@ int start_request (socket_handle_t handle_,
         if (schedule_socket_pending_timeout (state, key, resolved_timeout_ms,
                                              &pending.timeout_task)
             != 0) {
+            zlink::request_completion::release_reservation (&state->completion);
             return -1;
         }
         add_socket_pending_request_locked (state.get (), key, pending);
@@ -242,6 +248,7 @@ int start_request (socket_handle_t handle_,
         std::lock_guard<std::mutex> lock (state->mutex);
         zlink::request_timeout::cancel (pending.timeout_task);
         (void) remove_socket_pending_request_locked (state.get (), key, false, NULL);
+        zlink::request_completion::release_reservation (&state->completion);
         return -1;
     }
     return 0;

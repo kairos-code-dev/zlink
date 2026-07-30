@@ -131,6 +131,13 @@ the callback. `result_` represents request completion as a
 async operation completion surface, not a data-plane receive callback,
 and is used only through the request APIs of `DEALER` and `ROUTER`.
 
+A socket permits at most 65,536 requests whose callbacks have not completed.
+Core reserves a completion slot before transmitting a request. If no slot is
+available, submission returns `ZLINK_SUBMIT_BACKPRESSURED` with `errno` set to
+`EAGAIN`. Replies, timeouts, and disconnect completions consume that same
+reservation, so pausing callback processing cannot grow the control queue past
+this bound.
+
 ## Constants
 
 ### Socket Types

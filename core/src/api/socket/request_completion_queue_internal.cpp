@@ -32,9 +32,34 @@ class request_completion_callback_scope_t
 }
 
 zlink::request_completion::queue_state_t::queue_state_t () :
+    reserved (0),
     owner_thread_valid (false),
     closed (false)
 {
+}
+
+bool zlink::request_completion::try_reserve (queue_state_t *state_)
+{
+    if (!state_) {
+        errno = EFAULT;
+        return false;
+    }
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    if (state_->closed || state_->reserved >= max_pending_completions) {
+        errno = state_->closed ? ETERM : EAGAIN;
+        return false;
+    }
+    ++state_->reserved;
+    return true;
+}
+
+void zlink::request_completion::release_reservation (queue_state_t *state_)
+{
+    if (!state_)
+        return;
+    std::lock_guard<std::mutex> lock (state_->mutex);
+    zlink_assert (state_->reserved > 0);
+    --state_->reserved;
 }
 
 zlink::request_completion::control_t::control_t () :
@@ -102,6 +127,11 @@ int zlink::request_completion::drain (queue_state_t *state_, void *owner_handle_
         controls.swap (state_->controls);
     }
 
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        zlink_assert (state_->reserved >= controls.size ());
+        state_->reserved -= controls.size ();
+    }
     for (std::deque<control_t>::iterator it = controls.begin (); it != controls.end (); ++it)
         invoke_callback (owner_handle_, it->handler, it->errnum, NULL, 0, it->userdata);
 
@@ -116,6 +146,7 @@ void zlink::request_completion::close (queue_state_t *state_)
     std::lock_guard<std::mutex> lock (state_->mutex);
     state_->closed = true;
     state_->controls.clear ();
+    state_->reserved = 0;
     state_->owner_thread_valid = false;
 }
 

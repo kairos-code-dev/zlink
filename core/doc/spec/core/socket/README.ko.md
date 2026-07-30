@@ -126,6 +126,12 @@ NULL입니다. 성공 시 `result_`는 `ZLINK_REQUEST_OK`이고 모든 메시지
 콜백은 data-plane receive가 아니라 async operation completion 통지 축이며,
 `DEALER`/`ROUTER`의 request API에서만 사용됩니다.
 
+Socket 하나에서 callback이 끝나지 않은 request는 최대 65,536건입니다. Core는
+request를 전송하기 전에 completion slot을 예약합니다. Slot이 없으면 submit 결과는
+`ZLINK_SUBMIT_BACKPRESSURED`이고 `errno`는 `EAGAIN`입니다. Reply, timeout과
+disconnect completion은 같은 예약을 사용하므로 owner thread가 callback 처리를
+중단해도 control queue가 이 상한을 넘어 증가하지 않습니다.
+
 ## 상수
 
 ### 소켓 타입

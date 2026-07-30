@@ -186,6 +186,8 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _last_credit_bytes_read (0),
     _in_incomplete_bytes (0),
     _out_incomplete_bytes (0),
+    _out_incomplete_payload_bytes (0),
+    _out_multipart_started_empty (false),
     _max_message_bytes (0),
     _oversize_message_admission_count (0),
     _oversize_message_admission_max_bytes (0),
@@ -737,6 +739,8 @@ void zlink::pipe_t::process_hiccup (void *pipe_)
             errno_assert (rc == 0);
         }
         _out_incomplete_bytes = 0;
+        _out_incomplete_payload_bytes = 0;
+        _out_multipart_started_empty = false;
         LIBZLINK_DELETE (_out_pipe);
 
         //  Plug in the new outpipe.
@@ -1110,7 +1114,12 @@ bool zlink::pipe_t::check_hwm_for_message (const msg_t *msg_)
         errno = EMSGSIZE;
         return false;
     }
-    if (!can_commit_bytes_unlocked (_out_incomplete_bytes + frame_bytes)) {
+    const uint64_t payload_bytes = static_cast<uint64_t> (msg_->size ());
+    if (UINT64_MAX - _out_incomplete_payload_bytes < payload_bytes
+        || !can_commit_bytes_unlocked (
+          _out_incomplete_bytes + frame_bytes,
+          _out_incomplete_payload_bytes + payload_bytes,
+          _out_incomplete_bytes == 0 || _out_multipart_started_empty)) {
         _out_active = false;
         errno = EAGAIN;
         return false;
@@ -1269,15 +1278,19 @@ bool zlink::pipe_t::append_outbound_frame_bytes_unlocked (const msg_t *msg_)
     return true;
 }
 
-bool zlink::pipe_t::can_commit_bytes_unlocked (uint64_t message_bytes_) const
+bool zlink::pipe_t::can_commit_bytes_unlocked (
+  uint64_t message_bytes_,
+  uint64_t payload_bytes_,
+  bool allow_empty_pipe_exception_) const
 {
+    if (_max_message_bytes != 0 && payload_bytes_ > _max_message_bytes)
+        return false;
     if (_hwm == 0)
         return true;
 
     const uint64_t in_flight =
       _bytes_written > _peers_bytes_read ? _bytes_written - _peers_bytes_read : 0;
-    if (_msgs_written <= _peers_msgs_read
-        && (_max_message_bytes == 0 || message_bytes_ <= _max_message_bytes)) {
+    if (allow_empty_pipe_exception_ && _msgs_written <= _peers_msgs_read) {
         //  An empty pipe admits one message larger than the HWM so that a
         //  valid large message is not rejected for a small HWM alone. The
         //  exception stops at the reader's maximum message size, which is what
@@ -1299,15 +1312,37 @@ bool zlink::pipe_t::write_message_unlocked (const msg_t *msg_,
                                             bool enforce_incremental_hwm_)
 {
     const uint64_t incomplete_before = _out_incomplete_bytes;
+    const uint64_t payload_before = _out_incomplete_payload_bytes;
+    const bool multipart_started_empty_before =
+      _out_multipart_started_empty;
     if (!append_outbound_frame_bytes_unlocked (msg_))
         return false;
+    const uint64_t frame_payload_bytes = static_cast<uint64_t> (msg_->size ());
+    if (UINT64_MAX - _out_incomplete_payload_bytes < frame_payload_bytes) {
+        _out_incomplete_bytes = incomplete_before;
+        errno = EMSGSIZE;
+        return false;
+    }
+    _out_incomplete_payload_bytes += frame_payload_bytes;
 
     const bool more = (msg_->flags () & msg_t::more) != 0;
     const bool commits_bytes = !more && !msg_->is_delimiter ();
+    if (more && incomplete_before == 0)
+        _out_multipart_started_empty =
+          _msgs_written <= _peers_msgs_read;
     if ((commits_bytes || enforce_incremental_hwm_) && enforce_hwm_
-        && !can_commit_bytes_unlocked (_out_incomplete_bytes)) {
+        && !can_commit_bytes_unlocked (
+          _out_incomplete_bytes, _out_incomplete_payload_bytes,
+          commits_bytes
+            && (incomplete_before == 0 || _out_multipart_started_empty))) {
+        const bool exceeds_max_message_size =
+          _max_message_bytes != 0
+          && _out_incomplete_payload_bytes > _max_message_bytes;
         _out_incomplete_bytes = incomplete_before;
+        _out_incomplete_payload_bytes = payload_before;
+        _out_multipart_started_empty = multipart_started_empty_before;
         _out_active = false;
+        errno = exceeds_max_message_size ? EMSGSIZE : EAGAIN;
         return false;
     }
 
@@ -1340,6 +1375,8 @@ bool zlink::pipe_t::write_message_unlocked (const msg_t *msg_,
                 ++_msgs_written;
         }
         _out_incomplete_bytes = 0;
+        _out_incomplete_payload_bytes = 0;
+        _out_multipart_started_empty = false;
     }
     return true;
 }
@@ -1384,6 +1421,8 @@ void zlink::pipe_t::rollback_unlocked ()
         }
     }
     _out_incomplete_bytes = 0;
+    _out_incomplete_payload_bytes = 0;
+    _out_multipart_started_empty = false;
 }
 
 void zlink::pipe_t::flush_unlocked ()

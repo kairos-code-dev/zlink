@@ -978,6 +978,35 @@ void test_empty_pipe_oversize_stops_at_max_message_size ()
     run_empty_pipe_oversize_bound (smaller_than_message, false);
 }
 
+void test_unlimited_hwm_still_enforces_max_message_size ()
+{
+    const char *endpoint = "inproc://maxmsg_with_unlimited_hwm";
+    const int64_t max_message_size = 8192;
+    const uint64_t unlimited_hwm = 0;
+
+    void *receiver = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *sender = test_context_socket (ZLINK_SOCKET_PAIR);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      receiver, ZLINK_OPT_MAXMSGSIZE, &max_message_size, sizeof (max_message_size)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      receiver, ZLINK_OPT_RCVHWM, &unlimited_hwm, sizeof (unlimited_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      sender, ZLINK_OPT_SNDHWM, &unlimited_hwm, sizeof (unlimited_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sender, endpoint));
+
+    zlink_msg_t msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&msg, 64u * 1024u));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_BACKPRESSURED,
+      zlink_send_part (
+        sender, &msg, ZLINK_SEND_FLAGS_DONTWAIT, ZLINK_PART_FINAL));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
+
+    test_context_socket_close_zero_linger (sender);
+    test_context_socket_close_zero_linger (receiver);
+}
+
 static bool should_run_case (const char *name_)
 {
     const char *selected = getenv ("ZLINK_TEST_CASE");
@@ -997,6 +1026,8 @@ int main (int, char **)
         RUN_TEST (test_empty_pipe_oversize_admits_without_max_message_size);
     if (should_run_case ("test_empty_pipe_oversize_stops_at_max_message_size"))
         RUN_TEST (test_empty_pipe_oversize_stops_at_max_message_size);
+    if (should_run_case ("test_unlimited_hwm_still_enforces_max_message_size"))
+        RUN_TEST (test_unlimited_hwm_still_enforces_max_message_size);
     const int status = UNITY_END ();
     fflush (NULL);
     return status;

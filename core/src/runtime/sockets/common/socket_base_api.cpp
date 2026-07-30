@@ -178,8 +178,12 @@ void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
             if (completion_drain_permitted ())
                 socket_reqrep_internal::process_completion_pipe (
                   this, ready_completion);
-            else
+            else {
+                scoped_lock_t lock (_transport_pairs_sync);
+                if (_ready_completion_pair_set.insert (pair_key).second)
+                    _ready_completion_pairs.push_back (pair_key);
                 notify_request_completion ();
+            }
         }
         if (ready_application && ready_application->check_read ())
             xread_activated (ready_application);
@@ -192,8 +196,12 @@ void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
         if (pair_ready && pipe_->check_read ()) {
             if (completion_drain_permitted ())
                 socket_reqrep_internal::process_completion_pipe (this, pipe_);
-            else
+            else {
+                scoped_lock_t lock (_transport_pairs_sync);
+                if (_ready_completion_pair_set.insert (pair_key).second)
+                    _ready_completion_pairs.push_back (pair_key);
                 notify_request_completion ();
+            }
         }
     }
     if (get_ctx ())
@@ -508,13 +516,16 @@ void zlink::socket_base_t::process_ready_completion_pipes ()
     std::vector<transport_pair_key_t> claimed;
     {
         scoped_lock_t lock (_transport_pairs_sync);
-        for (transport_pairs_t::iterator it = _transport_pairs.begin (),
-                                         end = _transport_pairs.end ();
-             it != end; ++it) {
-            if (!it->second.ready || !it->second.completion || it->second.draining)
+        while (!_ready_completion_pairs.empty ()) {
+            const transport_pair_key_t key = _ready_completion_pairs.front ();
+            _ready_completion_pairs.pop_front ();
+            _ready_completion_pair_set.erase (key);
+            transport_pairs_t::iterator it = _transport_pairs.find (key);
+            if (it == _transport_pairs.end () || !it->second.ready
+                || !it->second.completion || it->second.draining)
                 continue;
             it->second.draining = true;
-            claimed.push_back (it->first);
+            claimed.push_back (key);
         }
     }
 
@@ -557,6 +568,9 @@ void zlink::socket_base_t::read_activated (pipe_t *pipe_)
         if (!completion_drain_permitted ()) {
             //  No owner is draining on this thread. Record the readiness so the
             //  completion owner wakes up and drains the pipe itself.
+            scoped_lock_t lock (_transport_pairs_sync);
+            if (_ready_completion_pair_set.insert (pair_key).second)
+                _ready_completion_pairs.push_back (pair_key);
             notify_request_completion ();
             return;
         }

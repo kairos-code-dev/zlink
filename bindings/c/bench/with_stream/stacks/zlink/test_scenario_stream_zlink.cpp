@@ -8,6 +8,8 @@
 #include <csignal>
 #include <cstdio>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <unordered_map>
 #include <stdint.h>
 #include <mutex>
@@ -75,9 +77,10 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
     (void) zlink_set_option (socket, ZLINK_OPT_BACKLOG, &opt.backlog, sizeof (opt.backlog));
     (void) zlink_set_option (socket, ZLINK_OPT_TCP_NODELAY, &opt.tcp_nodelay,
                              sizeof (opt.tcp_nodelay));
-    const int hwm = 100;
-    (void) zlink_set_option (socket, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm));
-    (void) zlink_set_option (socket, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm));
+    const uint64_t hwm = 100;
+    if (zlink_set_option (socket, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)) != 0
+        || zlink_set_option (socket, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)) != 0)
+        std::abort ();
 }
 
 uint32_t routing_id_key (const zlink_routing_id_t *rid_)

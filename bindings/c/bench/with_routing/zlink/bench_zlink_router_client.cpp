@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <thread>
@@ -23,13 +24,16 @@ void apply_socket_options (void *socket)
     const int linger = 0;
     const int rcvtimeo = 100;
     const int sndtimeo = 100;
-    const int rcvhwm = static_cast<int> (parse_long_env ("BENCH_HWM", 1000, 1));
-    const int sndhwm = static_cast<int> (parse_long_env ("BENCH_CLIENT_SNDHWM", 10, 1));
+    const uint64_t rcvhwm =
+      static_cast<uint64_t> (parse_long_env ("BENCH_HWM", 1000, 1));
+    const uint64_t sndhwm =
+      static_cast<uint64_t> (parse_long_env ("BENCH_CLIENT_SNDHWM", 10, 1));
     (void) zlink_set_option (socket, ZLINK_OPT_LINGER, &linger, sizeof (linger));
     (void) zlink_set_option (socket, ZLINK_OPT_RCVTIMEO, &rcvtimeo, sizeof (rcvtimeo));
     (void) zlink_set_option (socket, ZLINK_OPT_SNDTIMEO, &sndtimeo, sizeof (sndtimeo));
-    (void) zlink_set_option (socket, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
-    (void) zlink_set_option (socket, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm));
+    if (zlink_set_option (socket, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm)) != 0
+        || zlink_set_option (socket, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm)) != 0)
+        std::abort ();
     const int nodelay = 1;
     (void) zlink_set_option (socket, ZLINK_OPT_TCP_NODELAY, &nodelay, sizeof (nodelay));
 }

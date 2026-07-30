@@ -182,15 +182,8 @@ inline submit_step_t submit_request (request_state_t *state_,
     zlink_msg_close (&part);
     state_->in_flight.fetch_sub (1, std::memory_order_release);
     if (rc == ZLINK_SUBMIT_BACKPRESSURED || err == EAGAIN || err == EWOULDBLOCK || err == EINTR
-        || err == ETIMEDOUT || err == EHOSTUNREACH || err == ENOTCONN) {
-        if (bench_debug_enabled ()) {
-            static std::atomic<unsigned int> blocked_debug_count (0);
-            if (blocked_debug_count.fetch_add (1, std::memory_order_relaxed) < 4)
-                std::cerr << "[perf-single-reqrep] request submit blocked rc=" << rc
-                          << " errno=" << err << std::endl;
-        }
+        || err == ETIMEDOUT || err == EHOSTUNREACH || err == ENOTCONN)
         return submit_step_blocked;
-    }
     if (bench_debug_enabled ())
         std::cerr << "[perf-single-reqrep] request submit failed rc=" << rc << " errno=" << err
                   << std::endl;
@@ -405,20 +398,24 @@ inline void run_router_replier (void *router_, reply_state_t *state_)
         const size_t reply_size = zlink_msg_size (&request);
         zlink_submit_result_t reply_rc = zlink_router_reply_part (
           router_, &source_rid, request_seq, &request, ZLINK_PART_FINAL);
-        const auto retry_deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::milliseconds (resolve_completion_drain_timeout_ms ());
-        while (reply_rc == ZLINK_SUBMIT_BACKPRESSURED
-               && std::chrono::steady_clock::now () < retry_deadline
-               && !state_->stop.load (std::memory_order_acquire)) {
-            zlink_msg_t retry;
-            if (zlink_msg_init_size (&retry, reply_size) != 0) {
-                state_->fatal.store (true, std::memory_order_release);
-                return;
+        if (reply_rc == ZLINK_SUBMIT_BACKPRESSURED) {
+            //  Only a backpressured reply pays for the clock read and the
+            //  rebuilt payload, so the measured path keeps one submit call.
+            const auto retry_deadline =
+              std::chrono::steady_clock::now ()
+              + std::chrono::milliseconds (resolve_completion_drain_timeout_ms ());
+            while (reply_rc == ZLINK_SUBMIT_BACKPRESSURED
+                   && std::chrono::steady_clock::now () < retry_deadline
+                   && !state_->stop.load (std::memory_order_acquire)) {
+                zlink_msg_t retry;
+                if (zlink_msg_init_size (&retry, reply_size) != 0) {
+                    state_->fatal.store (true, std::memory_order_release);
+                    return;
+                }
+                std::this_thread::yield ();
+                reply_rc = zlink_router_reply_part (
+                  router_, &source_rid, request_seq, &retry, ZLINK_PART_FINAL);
             }
-            std::this_thread::yield ();
-            reply_rc = zlink_router_reply_part (
-              router_, &source_rid, request_seq, &retry, ZLINK_PART_FINAL);
         }
         if (reply_rc != ZLINK_SUBMIT_OK) {
             if (bench_debug_enabled ())

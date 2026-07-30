@@ -134,9 +134,10 @@ void zlink::socket_lifecycle_coordinator_t::unlock_public_api_sync_and_leave ()
     zlink_assert ((old & public_api_inflight_mask) > 0);
 }
 
-zlink::socket_callback_scope_t::socket_callback_scope_t (
-  socket_base_t *socket_, socket_lifecycle_coordinator_t &coordinator_) :
-    _socket (socket_), _coordinator (&coordinator_), _entered (coordinator_.enter_callback_api ())
+zlink::socket_callback_scope_t::socket_callback_scope_t (socket_base_t *socket_) :
+    _socket (socket_),
+    _coordinator (socket_ ? &socket_->lifecycle_coordinator () : NULL),
+    _entered (_coordinator && _coordinator->enter_callback_api ())
 {
 }
 

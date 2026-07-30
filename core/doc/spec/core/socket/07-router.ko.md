@@ -30,6 +30,12 @@ typedef void (*zlink_reply_handler_fn)(
   zlink_msg_t *parts_,
   size_t part_count_,
   void *userdata_);
+
+typedef void (*zlink_completion_control_handler_fn)(
+  const zlink_routing_id_t *source_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
 ```
 
 `ZLINK_PART_MORE`는 같은 multipart record에 뒤따르는 part가 있음을 뜻한다.
@@ -176,7 +182,45 @@ ZLINK_EXPORT zlink_submit_result_t zlink_router_reply_part(
 `request_seq_`는 수신 record가 반환한 값을 그대로 사용한다. 여러 part로 reply할 때 모든 호출에서
 같은 두 값을 사용한다. `ZLINK_PART_FINAL`이 성공하면 reply가 완료된다.
 
-## 9. Result와 readiness
+## 9. Raw completion control
+
+```c
+ZLINK_EXPORT zlink_handler_result_t
+zlink_router_completion_control_handler(
+  void *router_,
+  zlink_completion_control_handler_fn handler_,
+  void *userdata_);
+
+ZLINK_EXPORT zlink_submit_result_t
+zlink_router_completion_control_part(
+  void *router_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
+```
+
+Completion control은 Core가 내용을 해석하지 않는 bounded raw multipart record다. 기존
+Application·Completion connection pair의 Completion connection을 사용한다. 새 socket이나 connection을
+만들지 않으며 일반 directed message와 request는 Application connection에 그대로 둔다.
+
+Handler는 socket마다 하나이며 다시 등록하면 교체한다. `NULL` handler는
+`ZLINK_HANDLER_INVALID_ARGUMENT`, ROUTER가 아닌 socket은 `ZLINK_HANDLER_NOT_SUPPORTED`다. Handler가
+등록되지 않은 상태에서 받은 record는 폐기한다.
+
+Callback이 실행 중이면 같은 socket의 close는 `ZLINK_CLOSE_BUSY`와 `EBUSY`를 반환한다. Callback이
+끝난 뒤 close를 다시 호출할 수 있다.
+
+Handler는 completion owner가 해당 connection을 처리할 때 실행된다. Application receive API를 호출하지
+않아도 `ZLINK_POLLCOMPLETION` poller가 계속 동작하면 control을 받을 수 있다. `source_rid_`는 callback이
+끝날 때까지만 유효하다. Payload part의 소유권은 callback으로 이동하며 callback은 각 part를 정확히 한 번
+해제하거나 소비한다.
+
+Part sequence와 실패 시 소유권은 §4를 따른다. Completion connection은 유한한 byte HWM을 사용한다.
+각 submit 호출은 결과와 관계없이 전달받은 `part_`를 소비한다. Submit이
+`ZLINK_SUBMIT_BACKPRESSURED`이면 caller는 독립적으로 보관해 둔 전체 record를 send-ready 뒤 처음
+part부터 다시 제출한다. Core는 payload의 command 종류, 허용 목록과 업무 의미를 정의하지 않는다.
+
+## 10. Result와 readiness
 
 submit은 `zlink_submit_result_t`, receive는 `zlink_recv_result_t`, option은
 `zlink_config_result_t`를 반환한다. 각 result와 `zlink_errno()`의 대응은

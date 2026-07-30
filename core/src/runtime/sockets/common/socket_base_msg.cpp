@@ -110,6 +110,20 @@ zlink::socket_base_t::begin_public_send_scope (bool force_sync_)
     return send_scope;
 }
 
+std::unique_ptr<zlink::socket_public_api_scope_t>
+zlink::socket_base_t::begin_public_api_scope ()
+{
+    std::unique_ptr<socket_public_api_scope_t> scope (
+      new (std::nothrow) socket_public_api_scope_t (lifecycle_coordinator ()));
+    if (!scope) {
+        errno = ENOMEM;
+        return std::unique_ptr<socket_public_api_scope_t> ();
+    }
+    if (!scope->acquired ())
+        return std::unique_ptr<socket_public_api_scope_t> ();
+    return scope;
+}
+
 bool zlink::socket_base_t::direct_send_needs_public_api_sync () const
 {
     return options.type != ZLINK_CORE_SOCKET_PAIR;

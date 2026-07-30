@@ -21,7 +21,8 @@ enum : uint8_t
     version = 0x01,
     request_type = 0x01,
     reply_type = 0x02,
-    error_reply_type = 0x03
+    error_reply_type = 0x03,
+    completion_control_type = 0x04
 };
 
 const uint32_t default_timeout_ms = 5000;
@@ -97,14 +98,18 @@ inline uint32_t resolve_timeout_ms (uint32_t per_call_timeout_ms_,
 inline bool is_valid_message_type (uint8_t message_type_)
 {
     return message_type_ == request_type || message_type_ == reply_type
-           || message_type_ == error_reply_type;
+           || message_type_ == error_reply_type
+           || message_type_ == completion_control_type;
 }
 
 inline int encode_envelope_control_data (uint8_t message_type_,
                                          uint64_t request_seq_,
                                          envelope_control_data_t *out_)
 {
-    if (!out_ || !is_valid_message_type (message_type_) || request_seq_ == 0) {
+    const bool valid_sequence = message_type_ == completion_control_type
+                                  ? request_seq_ == 0
+                                  : request_seq_ != 0;
+    if (!out_ || !is_valid_message_type (message_type_) || !valid_sequence) {
         errno = EINVAL;
         return -1;
     }
@@ -154,7 +159,7 @@ inline bool parse_envelope (zlink_msg_t *parts_, size_t part_count_, parsed_enve
 
     out_->message_type = type_data[0];
     out_->request_seq = decode_u64_be (static_cast<const unsigned char *> (seq_msg->data ()));
-    if (out_->request_seq == 0)
+    if ((out_->message_type == completion_control_type) != (out_->request_seq == 0))
         return false;
 
     out_->payload_parts = parts_ + control_part_count;

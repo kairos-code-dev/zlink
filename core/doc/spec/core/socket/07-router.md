@@ -31,6 +31,12 @@ typedef void (*zlink_reply_handler_fn)(
   zlink_msg_t *parts_,
   size_t part_count_,
   void *userdata_);
+
+typedef void (*zlink_completion_control_handler_fn)(
+  const zlink_routing_id_t *source_rid_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
 ```
 
 `ZLINK_PART_MORE` means that another part follows in the same multipart
@@ -195,7 +201,52 @@ This sends a reply part for a request returned by
 values returned by that receive record. A multipart reply uses the same two
 values for every part. A successful `ZLINK_PART_FINAL` completes the reply.
 
-## 9. Results and readiness
+## 9. Raw completion control
+
+```c
+ZLINK_EXPORT zlink_handler_result_t
+zlink_router_completion_control_handler(
+  void *router_,
+  zlink_completion_control_handler_fn handler_,
+  void *userdata_);
+
+ZLINK_EXPORT zlink_submit_result_t
+zlink_router_completion_control_part(
+  void *router_,
+  const zlink_routing_id_t *peer_rid_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
+```
+
+A completion control is a bounded raw multipart record whose contents Core
+does not interpret. It uses the Completion connection in the existing
+Application/Completion connection pair. It creates no socket or connection,
+and ordinary directed messages and requests remain on the Application
+connection.
+
+Each socket has one handler, and a later registration replaces it. A null
+handler returns `ZLINK_HANDLER_INVALID_ARGUMENT`; a non-ROUTER socket returns
+`ZLINK_HANDLER_NOT_SUPPORTED`. A record received without a registered handler
+is discarded.
+
+Closing the same socket while the callback is running returns
+`ZLINK_CLOSE_BUSY` with `EBUSY`. Close can be retried after the callback
+returns.
+
+The handler runs when the completion owner processes the connection. A
+`ZLINK_POLLCOMPLETION` poller can therefore receive controls without calling an
+application receive API. `source_rid_` remains valid only until the callback
+returns. Ownership of every payload part moves to the callback, which releases
+or consumes each part exactly once.
+
+Part sequencing and failure ownership follow section 4. Every submit call
+consumes its supplied `part_` on every result. The Completion connection has a
+finite byte HWM. When submit returns `ZLINK_SUBMIT_BACKPRESSURED`, the caller
+keeps independent copies and retries the complete record from its first part
+after send-ready. Core defines no command kind, allowlist, or application
+meaning for the payload.
+
+## 10. Results and readiness
 
 Submit APIs return `zlink_submit_result_t`, receive APIs return
 `zlink_recv_result_t`, and option APIs return `zlink_config_result_t`. The

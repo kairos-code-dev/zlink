@@ -28,6 +28,7 @@ enum send_family_t
     send_family_router_request,
     send_family_dealer_request,
     send_family_router_reply,
+    send_family_router_completion_control,
     send_family_dealer_request_frame,
     send_family_dealer_reply
 };

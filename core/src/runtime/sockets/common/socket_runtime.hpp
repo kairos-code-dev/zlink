@@ -311,7 +311,7 @@ class socket_lifecycle_coordinator_t
 class socket_callback_scope_t
 {
   public:
-    socket_callback_scope_t (socket_base_t *socket_, socket_lifecycle_coordinator_t &coordinator_);
+    explicit socket_callback_scope_t (socket_base_t *socket_);
     ~socket_callback_scope_t ();
 
     bool acquired () const { return _entered; }

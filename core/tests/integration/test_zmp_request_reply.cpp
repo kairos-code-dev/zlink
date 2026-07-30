@@ -88,6 +88,25 @@ struct multi_request_probe_t
     std::vector<request_event_t> events;
 };
 
+struct completion_control_probe_t
+{
+    size_t callback_count;
+    std::string source_rid;
+    std::vector<zlink_msg_t> owned_parts;
+
+    completion_control_probe_t () : callback_count (0) {}
+};
+
+struct blocking_completion_control_probe_t
+{
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool entered;
+    bool release;
+
+    blocking_completion_control_probe_t () : entered (false), release (false) {}
+};
+
 void capture_reply (zlink_request_result_t result_,
                     zlink_msg_t *parts_,
                     size_t part_count_,
@@ -98,6 +117,43 @@ void init_string_part (zlink_msg_t *part_, const char *text_)
     const size_t size = strlen (text_);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (part_, size));
     memcpy (zlink_msg_data (part_), text_, size);
+}
+
+void capture_completion_control (const zlink_routing_id_t *source_rid_,
+                              zlink_msg_t *parts_,
+                              size_t part_count_,
+                              void *userdata_)
+{
+    completion_control_probe_t *probe =
+      static_cast<completion_control_probe_t *> (userdata_);
+    TEST_ASSERT_NOT_NULL (probe);
+    TEST_ASSERT_NOT_NULL (source_rid_);
+    ++probe->callback_count;
+    probe->source_rid.assign (
+      reinterpret_cast<const char *> (source_rid_->data), source_rid_->size);
+    probe->owned_parts.resize (part_count_);
+    for (size_t i = 0; i < part_count_; ++i) {
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&probe->owned_parts[i]));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_msg_move (&probe->owned_parts[i], &parts_[i]));
+    }
+}
+
+void block_completion_control_until_released (
+  const zlink_routing_id_t *,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_)
+{
+    blocking_completion_control_probe_t *probe =
+      static_cast<blocking_completion_control_probe_t *> (userdata_);
+    for (size_t i = 0; i < part_count_; ++i)
+        zlink_msg_close (&parts_[i]);
+
+    std::unique_lock<std::mutex> lock (probe->mutex);
+    probe->entered = true;
+    probe->cv.notify_all ();
+    probe->cv.wait (lock, [probe] { return probe->release; });
 }
 
 void send_raw_request_frame (void *dealer_,
@@ -1498,6 +1554,178 @@ void test_router_to_router_request_reply_basic ()
     test_context_socket_close_zero_linger (server_router);
 }
 
+void test_router_completion_control_bypasses_application_receive ()
+{
+    void *server_router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *client_router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (server_router);
+    TEST_ASSERT_NOT_NULL (client_router);
+
+    const char server_rid[] = "control-srv";
+    const char client_rid[] = "control-cli";
+    const char endpoint[] = "inproc://zmp-router-completion-control";
+    set_routing_id_text (server_router, server_rid);
+    set_routing_id_text (client_router, client_rid);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      client_router, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
+      server_rid, strlen (server_rid)));
+
+    completion_control_probe_t probe;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_HANDLER_INVALID_ARGUMENT,
+      zlink_router_completion_control_handler (server_router, NULL, &probe));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    void *unsupported_dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (unsupported_dealer);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_HANDLER_NOT_SUPPORTED,
+      zlink_router_completion_control_handler (
+        unsupported_dealer, &capture_completion_control, &probe));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
+    test_context_socket_close_zero_linger (unsupported_dealer);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_HANDLER_OK,
+      zlink_router_completion_control_handler (
+        server_router, &capture_completion_control, &probe));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK, zlink_bind (server_router, endpoint));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK, zlink_connect (client_router, endpoint));
+    msleep (SETTLE_TIME);
+
+    zlink_routing_id_t server_routing_id = get_routing_id_value (server_router);
+
+    // Leave one application record unread. Completion control must still be
+    // delivered by the completion poller without calling application Recv.
+    zlink_msg_t application;
+    init_string_part (&application, "application-unread");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part_rid (client_router, &server_routing_id, &application,
+                           ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
+
+    zlink_msg_t first;
+    zlink_msg_t second;
+    init_string_part (&first, "admission");
+    init_string_part (&second, "generation-7");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_router_completion_control_part (
+        client_router, &server_routing_id, &first, ZLINK_PART_MORE));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_router_completion_control_part (
+        client_router, &server_routing_id, &second, ZLINK_PART_FINAL));
+
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_poller_add (
+        poller, server_router, NULL, ZLINK_POLLCOMPLETION));
+    zlink_poller_event_t event;
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 1, 3000, NULL));
+
+    TEST_ASSERT_EQUAL_UINT64 (1, probe.callback_count);
+    TEST_ASSERT_EQUAL_STRING (client_rid, probe.source_rid.c_str ());
+    TEST_ASSERT_EQUAL_UINT64 (2, probe.owned_parts.size ());
+    TEST_ASSERT_EQUAL_STRING (
+      "admission", msg_to_string (&probe.owned_parts[0]).c_str ());
+    TEST_ASSERT_EQUAL_STRING (
+      "generation-7", msg_to_string (&probe.owned_parts[1]).c_str ());
+    for (size_t i = 0; i < probe.owned_parts.size (); ++i)
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&probe.owned_parts[i]));
+
+    const zlink_routing_id_t *source_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_router_recv (server_router, &source_rid, &request_seq,
+                         &parts, &part_count, ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_UINT64 (0, request_seq);
+    TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    TEST_ASSERT_EQUAL_STRING ("application-unread", msg_to_string (&parts[0]).c_str ());
+    zlink_multipart_close (parts, part_count);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_poller_remove (poller, server_router));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_poller_destroy (&poller));
+    test_context_socket_close_zero_linger (client_router);
+    test_context_socket_close_zero_linger (server_router);
+}
+
+void test_router_completion_control_close_waits_for_callback_return ()
+{
+    void *server_router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *client_router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (server_router);
+    TEST_ASSERT_NOT_NULL (client_router);
+
+    const char server_rid[] = "close-race-srv";
+    const char client_rid[] = "close-race-cli";
+    const char endpoint[] = "inproc://zmp-router-completion-close-race";
+    set_routing_id_text (server_router, server_rid);
+    set_routing_id_text (client_router, client_rid);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
+      client_router, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
+      server_rid, strlen (server_rid)));
+
+    blocking_completion_control_probe_t probe;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_HANDLER_OK,
+      zlink_router_completion_control_handler (
+        server_router, &block_completion_control_until_released, &probe));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK, zlink_bind (server_router, endpoint));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK, zlink_connect (client_router, endpoint));
+    msleep (SETTLE_TIME);
+
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_poller_add (poller, server_router, NULL, ZLINK_POLLCOMPLETION));
+
+    std::atomic<int> poll_result (-1);
+    std::thread poll_thread ([&] {
+        zlink_poller_event_t event;
+        poll_result.store (
+          zlink_poller_wait (poller, &event, 1, 3000, NULL),
+          std::memory_order_release);
+    });
+
+    zlink_routing_id_t server_routing_id = get_routing_id_value (server_router);
+    zlink_msg_t control;
+    init_string_part (&control, "close-race");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_router_completion_control_part (
+        client_router, &server_routing_id, &control, ZLINK_PART_FINAL));
+
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (
+          lock, std::chrono::milliseconds (3000),
+          [&probe] { return probe.entered; }));
+    }
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_BUSY, zlink_close (server_router));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+
+    {
+        std::lock_guard<std::mutex> lock (probe.mutex);
+        probe.release = true;
+    }
+    probe.cv.notify_all ();
+    poll_thread.join ();
+    TEST_ASSERT_EQUAL_INT (1, poll_result.load (std::memory_order_acquire));
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_poller_remove (poller, server_router));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_poller_destroy (&poller));
+    test_context_socket_close_zero_linger (client_router);
+    test_context_socket_close_zero_linger (server_router);
+}
+
 void test_connect_only_router_requester_receives_reply ()
 {
     void *server_router = test_context_socket (ZLINK_SOCKET_ROUTER);
@@ -2164,6 +2392,8 @@ int main ()
     RUN_SELECTED (test_dealer_disconnect_fails_only_requests_on_that_pipe);
     RUN_SELECTED (test_router_completion_correlation_requires_peer_and_pair_identity);
     RUN_SELECTED (test_router_to_router_request_reply_basic);
+    RUN_SELECTED (test_router_completion_control_bypasses_application_receive);
+    RUN_SELECTED (test_router_completion_control_close_waits_for_callback_return);
     RUN_SELECTED (test_connect_only_router_requester_receives_reply);
     RUN_SELECTED (test_multiple_in_flight_requests_complete_independently);
     RUN_SELECTED (test_out_of_order_replies_match_original_request);

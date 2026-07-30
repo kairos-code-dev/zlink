@@ -75,6 +75,8 @@ struct socket_request_reply_state_t : public zlink::request_reply_runtime::seque
     size_t reply_target_slots;
     uint64_t dealer_next_reply_token;
     bool closing;
+    zlink_completion_control_handler_fn completion_control_handler;
+    void *completion_control_userdata;
     zlink::request_completion::queue_state_t completion;
 };
 

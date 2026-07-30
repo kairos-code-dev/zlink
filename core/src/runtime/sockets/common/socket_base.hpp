@@ -176,6 +176,7 @@ class socket_base_t : public own_t,
                             uint64_t expected_connection_id_ = 0,
                             zlink::pipe_t **pipe_out_ = NULL);
     std::unique_ptr<socket_public_send_scope_t> begin_public_send_scope (bool force_sync_);
+    std::unique_ptr<socket_public_api_scope_t> begin_public_api_scope ();
     int rollback ();
     int rollback_scoped (socket_public_send_scope_t &scope_);
     int recv (zlink::msg_t *msg_, int flags_);

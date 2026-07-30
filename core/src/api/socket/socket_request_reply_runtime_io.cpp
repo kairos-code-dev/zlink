@@ -454,7 +454,11 @@ int send_request_reply_message (void *socket_handle_,
                                 uint8_t message_type_,
                                 uint64_t request_seq_)
 {
-    if (!socket_handle_ || !parts_ || part_count_ == 0 || request_seq_ == 0) {
+    const bool valid_sequence =
+      message_type_ == zlink::request_reply::completion_control_type
+        ? request_seq_ == 0
+        : request_seq_ != 0;
+    if (!socket_handle_ || !parts_ || part_count_ == 0 || !valid_sequence) {
         errno = EINVAL;
         return -1;
     }
@@ -513,7 +517,8 @@ int send_request_reply_message (void *socket_handle_,
         pending_key_t reply_key;
         zlink::pipe_t *application_pipe = NULL;
         bool target_taken = false;
-        if (handle.socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER
+        if (message_type_ != zlink::request_reply::completion_control_type
+            && handle.socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER
             && zlink::valid_routing_id (peer_rid_)) {
             state = find_request_reply_state (handle);
             if (state) {

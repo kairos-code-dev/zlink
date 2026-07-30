@@ -290,7 +290,7 @@ void zlink::socket_base_t::invoke_send_ready_handler ()
     if (!dispatch_runtime ().load_send_ready_handler (&handler, &subject, &userdata))
         return;
 
-    socket_callback_scope_t callback_scope (this, lifecycle_coordinator ());
+    socket_callback_scope_t callback_scope (this);
     if (!callback_scope.acquired ())
         return;
 
@@ -348,7 +348,7 @@ void zlink::socket_base_t::invoke_socket_msg_handler (zlink_socket_msg_handler_f
                                                       zlink_msg_t *parts_,
                                                       size_t part_count_)
 {
-    socket_callback_scope_t callback_scope (this, lifecycle_coordinator ());
+    socket_callback_scope_t callback_scope (this);
     if (!callback_scope.acquired ()) {
         for (size_t i = 0; i < part_count_; ++i) {
             const int rc = reinterpret_cast<msg_t *> (&parts_[i])->close ();

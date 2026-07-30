@@ -13,10 +13,12 @@ Runtime queue option이 기존 pipe에 미치는 영향은 public contract에 �
 
 ## Queue와 timeout option
 
-- `ZLINK_OPT_SNDHWM`과 `ZLINK_OPT_RCVHWM`은 queued message slot을 제한한다.
+- `ZLINK_OPT_SNDHWM`과 `ZLINK_OPT_RCVHWM`은 queue에 쌓인 byte를 제한한다. 값은 `uint64_t`
+  byte이고 `0`은 무제한이다. 정확한 계산 방법과 오류는
+  [socket spec](../spec/core/socket/README.ko.md)을 본다.
 - `ZLINK_OPT_SNDTIMEO`와 `ZLINK_OPT_RCVTIMEO`는 blocking call 시간을 제한한다.
 - `ZLINK_OPT_LINGER`는 close가 pending outbound data를 처리하는 방식을 정한다.
-- Automatic-HWM option은 profile과 effective message-size 입력을 설정한다.
+- Automatic-HWM option은 profile과 message 단위 byte 입력을 설정한다.
 
 ## Transport option
 

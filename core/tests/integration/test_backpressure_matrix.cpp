@@ -925,6 +925,59 @@ void test_multi_pubsub_backpressure_matrix ()
 }
 
 
+//  A message larger than the HWM is admitted once into an empty pipe so that a
+//  small HWM alone does not reject valid traffic. The exception stops at the
+//  reader's ZLINK_OPT_MAXMSGSIZE. inproc has no decoder that would reject the
+//  message later, so the pipe is the only place that can hold that bound.
+void run_empty_pipe_oversize_bound (int64_t receiver_maxmsgsize_, bool expect_admitted_)
+{
+    const char *endpoint = "inproc://hwm_empty_pipe_oversize";
+    const size_t oversize_bytes = 64u * 1024u;
+    const uint64_t hwm_bytes = 4096;
+
+    void *receiver = test_context_socket (ZLINK_SOCKET_PAIR);
+    void *sender = test_context_socket (ZLINK_SOCKET_PAIR);
+    TEST_ASSERT_NOT_NULL (receiver);
+    TEST_ASSERT_NOT_NULL (sender);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (receiver, ZLINK_OPT_MAXMSGSIZE,
+                                                 &receiver_maxmsgsize_,
+                                                 sizeof (receiver_maxmsgsize_)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (receiver, ZLINK_OPT_RCVHWM, &hwm_bytes, sizeof (hwm_bytes)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (sender, ZLINK_OPT_SNDHWM, &hwm_bytes, sizeof (hwm_bytes)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sender, endpoint));
+
+    zlink_msg_t msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&msg, oversize_bytes));
+    memset (zlink_msg_data (&msg), 'o', oversize_bytes);
+    const zlink_submit_result_t rc =
+      zlink_send_part (sender, &msg, ZLINK_SEND_FLAGS_DONTWAIT, ZLINK_PART_FINAL);
+    if (expect_admitted_) {
+        TEST_ASSERT_EQUAL_INT (static_cast<int> (ZLINK_SUBMIT_OK), static_cast<int> (rc));
+    } else {
+        TEST_ASSERT_EQUAL_INT (static_cast<int> (ZLINK_SUBMIT_BACKPRESSURED),
+                               static_cast<int> (rc));
+        zlink_msg_close (&msg);
+    }
+
+    test_context_socket_close_zero_linger (sender);
+    test_context_socket_close_zero_linger (receiver);
+}
+
+void test_empty_pipe_oversize_admits_without_max_message_size ()
+{
+    const int64_t unlimited = -1;
+    run_empty_pipe_oversize_bound (unlimited, true);
+}
+
+void test_empty_pipe_oversize_stops_at_max_message_size ()
+{
+    const int64_t smaller_than_message = 8192;
+    run_empty_pipe_oversize_bound (smaller_than_message, false);
+}
+
 static bool should_run_case (const char *name_)
 {
     const char *selected = getenv ("ZLINK_TEST_CASE");
@@ -940,6 +993,10 @@ int main (int, char **)
         RUN_TEST (test_single_socket_backpressure_matrix);
     if (should_run_case ("test_multi_pubsub_backpressure_matrix"))
         RUN_TEST (test_multi_pubsub_backpressure_matrix);
+    if (should_run_case ("test_empty_pipe_oversize_admits_without_max_message_size"))
+        RUN_TEST (test_empty_pipe_oversize_admits_without_max_message_size);
+    if (should_run_case ("test_empty_pipe_oversize_stops_at_max_message_size"))
+        RUN_TEST (test_empty_pipe_oversize_stops_at_max_message_size);
     const int status = UNITY_END ();
     fflush (NULL);
     return status;

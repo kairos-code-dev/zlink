@@ -213,6 +213,16 @@ void zlink::ctx_inproc_registry_t::connect_inproc_sockets (
         pending_connection_.connect_pipe->set_hwms (pending_connection_.endpoint.options.rcvhwm,
                                                     pending_connection_.endpoint.options.sndhwm);
         pending_connection_.bind_pipe->set_hwms (bind_options_.rcvhwm, bind_options_.sndhwm);
+
+        //  Each direction is bounded by the reader's inbound maximum message
+        //  size. inproc has no decoder that would reject an oversize message,
+        //  so the pipe carries the bound for its empty-pipe exception.
+        pending_connection_.connect_pipe->set_max_message_bytes (
+          bind_options_.maxmsgsize > 0 ? static_cast<uint64_t> (bind_options_.maxmsgsize) : 0);
+        pending_connection_.bind_pipe->set_max_message_bytes (
+          pending_connection_.endpoint.options.maxmsgsize > 0
+            ? static_cast<uint64_t> (pending_connection_.endpoint.options.maxmsgsize)
+            : 0);
     } else {
         pending_connection_.connect_pipe->set_hwms (0, 0);
         pending_connection_.bind_pipe->set_hwms (0, 0);

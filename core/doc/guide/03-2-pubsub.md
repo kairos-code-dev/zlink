@@ -224,8 +224,8 @@ assemble topic frames manually.
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_OPT_SNDHWM` | int | automatic (fanout floor 16 by default) | Default for PUB-family sockets. Recomputed within the same role budget as connections grow |
-| `ZLINK_OPT_RCVHWM` | int | automatic (recv_ingress floor 8 by default) | Default for SUB-family sockets. Recomputed within the same role budget as connections grow |
+| `ZLINK_OPT_SNDHWM` | `uint64_t` bytes | automatic (fanout floor by default) | Default for PUB-family sockets. Recomputed within the same role budget as connections grow; `0` is unlimited |
+| `ZLINK_OPT_RCVHWM` | `uint64_t` bytes | automatic (recv_ingress floor by default) | Default for SUB-family sockets. Recomputed within the same role budget as connections grow; `0` is unlimited |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
 
 ## 6. PUB/SUB Usage Patterns
@@ -306,8 +306,8 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 }
 
 /* Or raise the HWM to absorb bursts */
-int hwm = 100000;
-zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
+uint64_t hwm_bytes = 64 * 1024 * 1024;  /* HWM is bytes */
+zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm_bytes, sizeof(hwm_bytes));
 ```
 
 #### Lossy Mode — Drop Instead of Backpressure

@@ -249,9 +249,11 @@ ZLINK_EXPORT zlink_config_result_t zlink_ctx_get_data(void *context_,
                                          size_t *optvallen_);
 ```
 
-`ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` requires a `uint64_t` output buffer.
-On input, `*optvallen_` is the available capacity. On success, it is
-`sizeof(uint64_t)`. A smaller buffer fails instead of truncating the value.
+`ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` requires a `uint64_t` output buffer and
+an exact `*optvallen_` of `sizeof(uint64_t)` on input. Any other size, including
+a larger scratch buffer or a legacy 4-byte one, fails with
+`ZLINK_CONFIG_INVALID_ARGUMENT` and `errno == EINVAL` instead of truncating or
+partially filling the value. On success `*optvallen_` stays `sizeof(uint64_t)`.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a
 `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal

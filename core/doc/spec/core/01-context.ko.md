@@ -249,8 +249,10 @@ ZLINK_EXPORT zlink_config_result_t zlink_ctx_get_data(void *context_,
 ```
 
 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`에는 `uint64_t` output buffer가
-필요합니다. 호출할 때 `*optvallen_`에 buffer 용량을 넣습니다. 성공하면 이 값은
-`sizeof(uint64_t)`가 됩니다. Buffer가 작으면 값을 잘라 쓰지 않고 실패합니다.
+필요하고, 호출할 때 `*optvallen_`이 정확히 `sizeof(uint64_t)`여야 합니다. 더 큰
+임시 buffer나 이전 4-byte 크기를 포함해 그 밖의 크기는 값을 잘라 쓰거나 일부만
+채우지 않고 `ZLINK_CONFIG_INVALID_ARGUMENT`와 `errno == EINVAL`로 실패합니다.
+성공하면 `*optvallen_`은 `sizeof(uint64_t)`를 유지합니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값.
 `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.

@@ -8,8 +8,8 @@ affect throughput and latency.
 
 ## Backpressure and HWM
 
-Send and receive HWM values limit queued message slots. Automatic HWM uses the
-socket pattern, configured profile, effective message size, and connection
+Send and receive HWM values limit the queued bytes. Automatic HWM uses the
+socket pattern, configured profile, per-message byte input, and connection
 count to select bounded queue values. Inspect the applied plan through
 `zlink_monitor_status()`.
 

@@ -226,7 +226,7 @@ STREAM listener는 raw TCP 피어가 보낸 바이트를 직접 받을 수 있�
 
 현재 STREAM 내부 기본값:
 - `ZLINK_OPT_BACKLOG`: `65536`
-- `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM`: 기본 balanced auto-HWM 정책의 STREAM profile 값. context auto-HWM을 끄면 `1000` 사용
+- `ZLINK_OPT_SNDHWM` / `ZLINK_OPT_RCVHWM`: 기본 balanced auto-HWM 정책의 STREAM profile byte 값. context auto-HWM을 끄면 수동 byte 기본값 사용
 - `ZLINK_OPT_SNDBUF` / `ZLINK_OPT_RCVBUF`: 기본값 `-1`. OS 기본 버퍼와 TCP 자동 조정에 맡김
 - STREAM 배치 크기 기본값: `4096`
 - STREAM 읽기 여유 공간 기본값: `64`

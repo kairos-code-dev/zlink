@@ -145,8 +145,8 @@ zlink_send(server, parts, 2, 0);
 | `ZLINK_OPT_RCVTIMEO` | int | 1000 | Receive timeout (ms); set `-1` explicitly for infinite wait |
 
 ```c
-int hwm = 5000;
-zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
+uint64_t hwm_bytes = 5 * 1024 * 1024;  /* HWM is bytes, passed as exactly 8 bytes */
+zlink_set_option(socket, ZLINK_OPT_SNDHWM, &hwm_bytes, sizeof(hwm_bytes));
 
 int linger = 0;  /* return immediately on close */
 zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));

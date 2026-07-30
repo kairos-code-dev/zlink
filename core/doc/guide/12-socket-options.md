@@ -14,10 +14,13 @@ only as documented by the public contract.
 
 ## Queue and timeout options
 
-- `ZLINK_OPT_SNDHWM` and `ZLINK_OPT_RCVHWM` bound queued message slots.
+- `ZLINK_OPT_SNDHWM` and `ZLINK_OPT_RCVHWM` bound the queued bytes. Values are
+  `uint64_t` byte counts and `0` means unlimited. See the
+  [socket spec](../spec/core/socket/README.md) for the exact accounting and
+  errors.
 - `ZLINK_OPT_SNDTIMEO` and `ZLINK_OPT_RCVTIMEO` bound blocking calls.
 - `ZLINK_OPT_LINGER` controls how close treats pending outbound data.
-- Automatic-HWM options select a profile and effective message-size input.
+- Automatic-HWM options select a profile and a per-message byte input.
 
 ## Transport options
 

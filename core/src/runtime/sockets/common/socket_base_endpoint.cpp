@@ -50,6 +50,13 @@ bool combined_hwm_bytes (uint64_t first_, uint64_t second_, uint64_t *out_)
     return true;
 }
 
+//  ZLINK_OPT_MAXMSGSIZE is an inbound limit where -1 means unlimited. pipe_t
+//  expresses "no bound" as 0, so only a positive value becomes a bound.
+uint64_t finite_max_message_bytes (int64_t maxmsgsize_)
+{
+    return maxmsgsize_ > 0 ? static_cast<uint64_t> (maxmsgsize_) : 0;
+}
+
 uint64_t allocate_transport_pair_id ()
 {
     uint64_t pair_id = 0;
@@ -204,6 +211,15 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
                 new_pipes[0]->set_hwms_boost (peer.options.sndhwm, peer.options.rcvhwm);
                 new_pipes[1]->set_hwms_boost (options.sndhwm, options.rcvhwm);
             }
+            //  inproc has no decoder to reject an oversize message, so each
+            //  direction carries the reader's inbound maximum. It bounds the
+            //  empty-pipe oversize exception; network directions get the same
+            //  bound from the receiving decoder.
+            new_pipes[0]->set_max_message_bytes (
+              finite_max_message_bytes (peer.socket ? peer.options.maxmsgsize
+                                                    : options.maxmsgsize));
+            new_pipes[1]->set_max_message_bytes (
+              finite_max_message_bytes (options.maxmsgsize));
 
             bool connected_inproc_now = false;
             if (!peer.socket) {

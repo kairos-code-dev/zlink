@@ -220,8 +220,8 @@ zlink_publish(pub, "sensor:cpu", parts, 2, 0);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_OPT_SNDHWM` | int | 1000 (auto-HWM 활성 시 profile/role 예산으로 계산) | PUB 계열. 연결 수가 늘면 같은 role budget 안에서 자동 조정 |
-| `ZLINK_OPT_RCVHWM` | int | 1000 (auto-HWM 활성 시 profile/role 예산으로 계산) | SUB 계열. 연결 수가 늘면 같은 role budget 안에서 자동 조정 |
+| `ZLINK_OPT_SNDHWM` | `uint64_t` bytes | 자동 (auto-HWM이 profile/role 예산으로 계산) | PUB 계열. 연결 수가 늘면 같은 role budget 안에서 자동 조정되며 `0`은 무제한 |
+| `ZLINK_OPT_RCVHWM` | `uint64_t` bytes | 자동 (auto-HWM이 profile/role 예산으로 계산) | SUB 계열. 연결 수가 늘면 같은 role budget 안에서 자동 조정되며 `0`은 무제한 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 
 ## 6. PUB/SUB 사용 패턴
@@ -302,8 +302,8 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 }
 
 /* 또는 HWM을 올려 버스트를 흡수 */
-int hwm = 100000;
-zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
+uint64_t hwm_bytes = 64 * 1024 * 1024;  /* HWM은 byte다 */
+zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm_bytes, sizeof(hwm_bytes));
 ```
 
 #### 손실 허용 모드 — 배압 대신 버리기

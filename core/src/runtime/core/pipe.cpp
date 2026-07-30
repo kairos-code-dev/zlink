@@ -186,6 +186,7 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _last_credit_bytes_read (0),
     _in_incomplete_bytes (0),
     _out_incomplete_bytes (0),
+    _max_message_bytes (0),
     _oversize_message_admission_count (0),
     _oversize_message_admission_max_bytes (0),
     _connected_time (0),
@@ -1275,11 +1276,22 @@ bool zlink::pipe_t::can_commit_bytes_unlocked (uint64_t message_bytes_) const
 
     const uint64_t in_flight =
       _bytes_written > _peers_bytes_read ? _bytes_written - _peers_bytes_read : 0;
-    if (_msgs_written <= _peers_msgs_read)
+    if (_msgs_written <= _peers_msgs_read
+        && (_max_message_bytes == 0 || message_bytes_ <= _max_message_bytes)) {
+        //  An empty pipe admits one message larger than the HWM so that a
+        //  valid large message is not rejected for a small HWM alone. The
+        //  exception stops at the reader's maximum message size, which is what
+        //  keeps the retained bytes of this direction finite.
         return true;
+    }
     if (UINT64_MAX - in_flight < message_bytes_)
         return false;
     return in_flight + message_bytes_ <= _hwm;
+}
+
+void zlink::pipe_t::set_max_message_bytes (uint64_t max_message_bytes_)
+{
+    _max_message_bytes = max_message_bytes_;
 }
 
 bool zlink::pipe_t::write_message_unlocked (const msg_t *msg_,

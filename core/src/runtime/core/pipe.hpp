@@ -201,6 +201,12 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  Set the boost to high water marks, used by inproc sockets so total hwm are sum of connect and bind sockets watermarks
     void set_hwms_boost (uint64_t inhwmboost_, uint64_t outhwmboost_);
 
+    //  Bound for the empty-pipe oversize exception, in accounted bytes, or 0
+    //  for no bound. Callers pass the reader's inbound maximum message size,
+    //  which only inproc can supply: a network reader rejects an oversize
+    //  message in its decoder before the message reaches a pipe.
+    void set_max_message_bytes (uint64_t max_message_bytes_);
+
     // send command to peer for notify the change of hwm
     void send_hwms_to_peer (uint64_t inhwm_, uint64_t outhwm_);
 
@@ -318,6 +324,9 @@ class pipe_t ZLINK_FINAL : public object_t,
     uint64_t _last_credit_bytes_read;
     uint64_t _in_incomplete_bytes;
     uint64_t _out_incomplete_bytes;
+    //  Bound for the empty-pipe oversize exception in accounted bytes, or 0
+    //  when the reader has no maximum message size.
+    uint64_t _max_message_bytes;
     uint64_t _oversize_message_admission_count;
     uint64_t _oversize_message_admission_max_bytes;
     uint64_t _connected_time;

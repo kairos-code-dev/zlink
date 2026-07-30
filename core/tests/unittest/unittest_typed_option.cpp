@@ -109,6 +109,23 @@ void test_typed_raw_socket_options ()
       ZLINK_CONFIG_INVALID_ARGUMENT,
       zlink_set_option (router, ZLINK_OPT_SNDHWM, &legacy_hwm, sizeof (legacy_hwm)));
 
+    //  The byte options take an exact uint64_t on both set and get. A larger
+    //  scratch buffer is rejected as well, so a caller can never read a
+    //  partially filled value or a value at the wrong width.
+    unsigned char oversized_buffer[16] = {0};
+    size_t oversized_size = sizeof (oversized_buffer);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_get_option (router, ZLINK_OPT_SNDHWM, oversized_buffer, &oversized_size));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+
+    size_t legacy_size = sizeof (legacy_hwm);
+    int legacy_out = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_get_option (router, ZLINK_OPT_SNDHWM, &legacy_out, &legacy_size));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+
     int value = 1;
     size_t size = sizeof (value);
 

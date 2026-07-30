@@ -255,8 +255,11 @@ zlink_config_result_t zlink_poller_modify (void *poller_, void *socket_, short e
     poller_handle_t *poller = as_poller_handle (poller_);
     if (!poller)
         return ZLINK_CONFIG_INVALID_HANDLE;
-    if ((events_ & ZLINK_POLLCOMPLETION) != 0
-        && events_ != ZLINK_POLLCOMPLETION) {
+    //  Completion registrations own the socket's completion processing, which
+    //  is acquired when the registration is added. Modify has no matching
+    //  ownership transfer, so the flag is rejected here and a caller changes
+    //  completion mode by removing and adding the registration.
+    if ((events_ & ZLINK_POLLCOMPLETION) != 0) {
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
@@ -266,8 +269,7 @@ zlink_config_result_t zlink_poller_modify (void *poller_, void *socket_, short e
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     socket_handle_t handle = make_socket_handle (target.socket);
-    if (events_ != ZLINK_POLLCOMPLETION
-        && validate_socket_callback_poller_events (handle, events_) != 0)
+    if (validate_socket_callback_poller_events (handle, events_) != 0)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     const int index =
       poller_find_registration_index (poller, socket_, poller_subject_none);

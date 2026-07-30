@@ -83,7 +83,14 @@ void *open_socket_monitor_with_handler_internal (void *s_,
         return NULL;
     }
     monitor_socket_base->set_auto_hwm_policy_enabled (false);
-    const uint64_t monitor_hwm = 4096;
+    //  The monitor pipe used to hold 4,096 event messages. HWM is now byte
+    //  based, so the same depth is expressed as the accounted charge of that
+    //  many event frames: the wire event plus the per-frame minimum charge.
+    //  Auto HWM is disabled for this socket, so nothing else would size it.
+    const uint64_t monitor_event_depth = 4096;
+    const uint64_t monitor_hwm =
+      monitor_event_depth
+      * (sizeof (socket_monitor_internal_event_t) + sizeof (zlink_msg_t));
     (void) monitor_socket_base->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &monitor_hwm,
                                             sizeof (monitor_hwm));
     (void) monitor_socket_base->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &monitor_hwm,

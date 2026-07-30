@@ -7,9 +7,9 @@ queue depth, transport, TLS와 callback 작업이 throughput과 latency에 영�
 
 ## Backpressure와 HWM
 
-Send와 receive HWM은 queue에 유지할 message slot을 제한한다. Automatic HWM은 socket pattern,
-설정한 profile, effective message size와 connection 수를 사용해 제한된 queue 값을 선택한다.
-적용된 계획은 `zlink_monitor_status()`로 확인한다.
+Send와 receive HWM은 queue에 유지할 byte를 제한한다. Automatic HWM은 socket pattern, 설정한
+profile, message 단위 byte와 connection 수를 사용해 제한된 queue 값을 선택한다. 적용된 계획은
+`zlink_monitor_status()`로 확인한다.
 
 Memory가 제한되면 COMPACT, 일반 workload에는 BALANCED를 사용한다. 추가 queue memory를
 허용할 수 있을 때만 THROUGHPUT을 사용한다. Send-ready 알림은 재시도할 가치가 있다는 뜻이며 다음

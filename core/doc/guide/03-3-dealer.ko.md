@@ -132,8 +132,8 @@ if (rc == ZLINK_SUBMIT_NOT_ADMITTED) {
 | `ZLINK_DEALER_OPT_PROBE` | int | 0 | 연결 시 빈 메시지 전송 (연결 알림) |
 | `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_dealer_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
 | `ZLINK_DEALER_OPT_WEIGHT` | int | 100 | 송신 round-robin의 peer별 load balancing 가중치 |
-| `ZLINK_OPT_SNDHWM` | int | 자동 | DEALER의 peer-queue 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
-| `ZLINK_OPT_RCVHWM` | int | 자동 | DEALER의 peer-queue 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
+| `ZLINK_OPT_SNDHWM` | `uint64_t` bytes | 자동 | DEALER의 peer-queue 역할에 맞춰 산정된 자동 HWM. 수동 설정이 우선하며 `0`은 무제한 |
+| `ZLINK_OPT_RCVHWM` | `uint64_t` bytes | 자동 | DEALER의 peer-queue 역할에 맞춰 산정된 자동 HWM. 수동 설정이 우선하며 `0`은 무제한 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 | `ZLINK_OPT_SNDTIMEO` | int | 1000 | 송신 타임아웃(ms). 무한 대기는 `-1`을 명시적으로 설정 |
 | `ZLINK_OPT_RCVTIMEO` | int | 1000 | 수신 타임아웃(ms). 무한 대기는 `-1`을 명시적으로 설정 |

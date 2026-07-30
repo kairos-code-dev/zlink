@@ -117,8 +117,8 @@ zlink_send(dealer, parts, 2, 0);
 | `ZLINK_DEALER_OPT_PROBE` | int | 0 | Send empty message on connect (connection notification) |
 | `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | Default timeout for `zlink_dealer_request()`. `0` uses the implementation default of `5000ms` |
 | `ZLINK_DEALER_OPT_WEIGHT` | int | 100 | Per-peer load-balancing weight for outgoing round-robin |
-| `ZLINK_OPT_SNDHWM` | int | automatic | Auto-HWM sized for DEALER's peer-queue role. Manual settings take precedence |
-| `ZLINK_OPT_RCVHWM` | int | automatic | Auto-HWM sized for DEALER's peer-queue role. Manual settings take precedence |
+| `ZLINK_OPT_SNDHWM` | `uint64_t` bytes | automatic | Auto-HWM sized for DEALER's peer-queue role. Manual settings take precedence; `0` is unlimited |
+| `ZLINK_OPT_RCVHWM` | `uint64_t` bytes | automatic | Auto-HWM sized for DEALER's peer-queue role. Manual settings take precedence; `0` is unlimited |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
 | `ZLINK_OPT_SNDTIMEO` | int | 1000 | Send timeout (ms); set `-1` explicitly for infinite wait |
 | `ZLINK_OPT_RCVTIMEO` | int | 1000 | Receive timeout (ms); set `-1` explicitly for infinite wait |

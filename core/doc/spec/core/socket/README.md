@@ -690,8 +690,10 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_option (void *handle_,
 
 Retrieves the current value of a common option. `handle_` may be a raw socket or
 discovery. The three HWM byte-count options require a `uint64_t` output buffer
-and set `*optvallen_` to `sizeof(uint64_t)`. A smaller or legacy-sized buffer
-fails instead of truncating the value.
+and an exact `*optvallen_` of `sizeof(uint64_t)` on input. Any other size,
+including a larger scratch buffer or a legacy 4-byte one, fails with
+`ZLINK_CONFIG_INVALID_ARGUMENT` and `errno == EINVAL` instead of truncating or
+partially filling the value. On success `*optvallen_` stays `sizeof(uint64_t)`.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 

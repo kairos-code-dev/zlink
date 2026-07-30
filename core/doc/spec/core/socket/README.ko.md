@@ -675,9 +675,11 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_option (void *handle_,
 ```
 
 공통 옵션의 현재 값을 가져온다. `handle_`은 raw socket 또는 discovery다. 세 HWM
-byte-count option에는 `uint64_t` output buffer가 필요하며, 성공하면
-`*optvallen_`을 `sizeof(uint64_t)`로 설정합니다. Buffer가 작거나 이전 크기이면 값을
-잘라 쓰지 않고 실패합니다.
+byte-count option에는 `uint64_t` output buffer가 필요하고, 호출할 때
+`*optvallen_`이 정확히 `sizeof(uint64_t)`여야 합니다. 더 큰 임시 buffer나 이전
+4-byte 크기를 포함해 그 밖의 크기는 값을 잘라 쓰거나 일부만 채우지 않고
+`ZLINK_CONFIG_INVALID_ARGUMENT`와 `errno == EINVAL`로 실패합니다. 성공하면
+`*optvallen_`은 `sizeof(uint64_t)`를 유지합니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 

@@ -75,7 +75,9 @@ public sealed partial class Received : IDisposable
         ResetForReuse();
         _singlePart = singlePart;
         _routingIdSnapshot = routingId;
-        MessageType = ReceivedMessageType.Raw;
+        MessageType = requestSeq.HasValue || replyHandler is not null
+            ? ReceivedMessageType.Request
+            : ReceivedMessageType.Raw;
         _metadata = ReceivedMetadata.Create(requestSeq, replyHandler);
         _sendSingleHandler = sendSingleHandler;
         _sendHandler = sendHandler;
@@ -92,7 +94,9 @@ public sealed partial class Received : IDisposable
         ResetForReuse();
         _parts = parts;
         _routingIdSnapshot = routingId;
-        MessageType = ReceivedMessageType.Raw;
+        MessageType = requestSeq.HasValue || replyHandler is not null
+            ? ReceivedMessageType.Request
+            : ReceivedMessageType.Raw;
         _metadata = ReceivedMetadata.Create(requestSeq, replyHandler);
         _sendSingleHandler = sendSingleHandler;
         _sendHandler = sendHandler;

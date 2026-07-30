@@ -164,12 +164,15 @@ tasks.register('buildZlinkJavaBridge', Exec) {
 processResources {
     dependsOn tasks.named('buildZlinkJavaBridge')
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    // Bundle only a native runtime that was built and verified with this
-    // package. Other platform runtimes must not silently retain an older ABI.
+    // A published package must use only the runtime materialized from the
+    // approved Core package. The source resource tree contains development
+    // copies and symlinks which may represent an older candidate.
     exclude { details ->
-        !details.file.isDirectory()
-            && details.path.startsWith('native/')
-            && !details.path.startsWith('native/linux-x86_64/')
+        if (details.file.isDirectory() || !details.path.startsWith('native/')) {
+            return false
+        }
+        def generatedRoot = generatedNativeResourcesDir.get().asFile.canonicalPath
+        return !details.file.canonicalPath.startsWith(generatedRoot + File.separator)
     }
 }
 

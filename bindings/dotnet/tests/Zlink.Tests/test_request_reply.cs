@@ -66,6 +66,55 @@ namespace Systems.Zlink.Tests;
     }
 
     [Fact]
+    public async Task routed_router_request_preserves_request_envelope_kind()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreateRouterSocket();
+        using var client = ctx.CreateRouterSocket();
+        string endpoint = CoreTestSupport.NewEndpoint(
+            "inproc",
+            "router-request-envelope");
+        RoutingId serverRid = CoreTestSupport.RoutingIdUtf8("router-server");
+        server.SetRoutingId(serverRid);
+        client.SetRoutingId(CoreTestSupport.RoutingIdUtf8("router-client"));
+        client.Options.SetConnectRoutingId(serverRid);
+        server.Bind(endpoint);
+        client.Connect(endpoint);
+        Thread.Sleep(50);
+
+        var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using Message request = Message.From("ping");
+        Assert.True(client.Request(serverRid)
+            .Message(request)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Submit((result, parts) =>
+            {
+                if (result == RequestResult.Ok)
+                    completion.TrySetResult(parts);
+                else
+                    completion.TrySetException(
+                        new InvalidOperationException($"request failed: {result}"));
+            }));
+
+        using Received received = RecvWithRetry(server);
+        Assert.Equal(ReceivedMessageType.Request, received.MessageType);
+        Assert.True(received.RequestSeq.HasValue);
+        Assert.Equal("ping", received.Parts[0].GetString());
+
+        using Message reply = Message.From("pong");
+        received.Reply().Message(reply).Submit();
+
+        IReadOnlyList<Message> replyParts =
+            await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("pong", replyParts[0].GetString());
+        Zlink.MultipartClose(replyParts);
+    }
+
+    [Fact]
     public async Task dealer_receives_unsolicited_message_after_request_reply()
     {
         if (!CoreTestSupport.IsNativeAvailable())

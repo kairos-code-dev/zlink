@@ -12109,3 +12109,63 @@ kind로 올리지 않는다고 명시하며, 대체된 incarnation은 재시도�
 관측 지점을 바꿔야 하는 것(ST-D2, ST-F3), 그리고 이 머신에서 inotify가 동작하지 않아
 실행 자체가 불가능한 것(ST-B5)이다. ST-E2와 ST-F2는 각각 mesh transport와 marker 의미
 확인이 남았다.
+
+### 2026-08-01 dotnet e2e 13개 스위트 전수 규명과 런타임 결함 아홉 건 수정
+
+SpotActorTransfer 밖의 스위트를 처음으로 전부 돌려 각각의 첫 실패를 확보했다. 시작
+지점에서 확인된 사실 하나가 이후 판단의 기준이 됐다. "12개 스위트가 하나의 공통 원인으로
+막혀 있다"는 추정에는 근거가 없었다. 실제로는 네 스위트가 v11 대상으로 **컴파일되지
+않았고**(runner가 빌드 출력을 버려 아무 메시지 없이 실패했다), 나머지는 서로 다른 이유로
+멈춰 있었다.
+
+런타임 결함은 아홉 건을 고쳤다. 각각 스펙 조항이 판정 근거였다.
+
+Classic fanout의 manual subscriber가 liveness beacon을 application dispatch로 넘겨
+`InvalidFrame`으로 떨어뜨리고 있었다. `29-transport-liveness.ko.md` §4는 beacon을 queue와
+handler와 trace 어디에도 넣지 말라고 정하며 automatic loop는 이미 그렇게 하고 있었다.
+
+Owner lease가 만료되면 모든 inbound request가 거부됐다. `21-location-runtime.ko.md` §4가
+막는 것은 descriptor 게시, Actor·Spot·Instance message와 timer 시작, factory 확정,
+relocation이며 그 근거는 "만료된 owner 자격으로 새 Store 변경을 만들지 않는다"이다.
+Handler 호출은 Store를 바꾸지 않으므로 gate가 계약보다 넓었다.
+
+등록되지 않은 ChannelName 호출이 configuration exception으로 500이 됐다.
+`08-channel-messaging.ko.md` §7이 이 경우를 `NotFound`로 끝내라고 정한다. 호출 시점에 없는
+channel을 지목한 것은 startup 결함이 아니라 caller가 대응할 수 있는 routing 결과다.
+
+한 번 떠난 node로 actor가 돌아오는 handoff가 거부됐다. Migration이 끝나면 그 node의
+dispatch mailbox는 닫힌 채 남는데, 되돌아오는 handoff는 그것을 다시 열기 전에 먼저
+들어가려 한다. 다섯 번의 실행에서 `entry == target`일 때만 실패한다는 상관을 확인한 뒤,
+mailbox가 idle할 때만 다시 열도록 고쳤다. 진입 직후의 `EnsureReusable`이 teardown 중인
+state를 계속 거부하므로 destroy 경로의 보호는 그대로다.
+
+Actor relocation이 `zlink.relocation.interruption`을 전혀 내지 않았다.
+`25-runtime-metrics.ko.md` §5는 이 histogram이 Actor unit도 다루고 창을 "admission seal부터
+target admission-open ACK까지"로 정한다. `ZLinkRelocationUnitKind.Actor`는 정의만 되어 있고
+쓰이지 않던 값이었다. Remote joiner의 transaction이 그 두 시점을 이미 callback으로 알리고
+있어 거기에 연결했다.
+
+Relocating 중인 host의 진단 위치 조회가 500으로 끝났다. `28-graceful-drain-handoff.ko.md`
+§13은 "개별 blocker와 relocation 상태는 개수를 제한한 진단 조회와 trace에서 확인한다"고
+정한다. 운영용 읽기 표면인 `IZLinkLocationRuntimeQuery`는 이미 operation gate를 타지 않고,
+by-id 조회만 object manager를 거치고 있었다. 공개 표면을 늘리지 않고 진입점만 맞췄다.
+
+나머지 셋은 앞선 세션에서 이어진 것으로 placement weight의 명시적 relocation 적용,
+infrastructure reply의 null permit, stale binding 무응답이다.
+
+e2e 쪽 결함도 계열이 뚜렷했다. `spec 13 §3.3`을 어기고 Location Store와 함께 fixed RID를
+고정한 host가 세 스위트, placement가 두 node 중 하나를 고르는데 시나리오가 한쪽을 고정
+가정한 곳이 다섯, metric을 읽으면서 metrics가 꺼진 node를 물은 곳이 셋이었다. barrier가
+관측 대상보다 짧아 구조적으로 통과할 수 없던 것도 둘이다(classic fanout readiness와
+automatic fanout beacon 주기).
+
+Core lane으로 넘길 사안 셋은 근거와 함께 `blocked-issue-log.md`에 남겼다. lossy가
+`hwm_full`만 용서해서 죽은 pipe 하나가 fanout 전체를 막는 것, 후보가 0개인 select-one이
+`NotFound` 대신 timeout까지 기다리는 것, manual host 쌍에서 reply가 submit되고 도달하지
+않는 것이다. 스펙 정합성 문제 둘도 함께 남겼다. `07-channel-topology.ko.md` §7과
+`08-channel-messaging.ko.md` §3.2 각주가 select-one 후보 조건을 다르게 읽히게 하며,
+`ListTopologyAsync`의 열거 범위를 정하는 조항이 없다.
+
+마지막으로 이 스위트들에서 회귀를 판정하는 방법을 규칙으로 남겼다. ST-E1, ST-C2, OBS-B4는
+기존부터 flaky이며 세 번 모두 단발 실행이면 맞는 수정을 회귀로 오판했을 상황이었다. 변경
+전후를 같은 횟수로 돌려 비율을 비교해야 하고, aggregate 통과 개수 하나로는 판정할 수 없다.

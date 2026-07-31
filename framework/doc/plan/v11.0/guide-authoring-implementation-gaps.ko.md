@@ -65,6 +65,27 @@ host 전체 Application HWM을 설정하는 자리다. C++ · Node에는
 > 밝힌 "계약만 확정되고 runtime이 아직 쓰지 않는" 범위와 겹친다. 다만 **표면 자체가
 > 없다**는 점은 다른 언어와 갈린다.
 
+### G4 · 같은 개념에 언어별로 다른 public 타입 이름
+
+가이드를 네 언어로 쓰면서 **같은 개념의 public 타입 이름이 갈리는 자리** 넷을 만났다.
+fanout subscriber endpoint 호출(`connect`로 통일함)과 같은 부류다. 이번에는 임의로
+통일하지 않고 각 언어의 실제 이름을 그대로 문서에 썼다 — 어느 쪽으로 맞출지는 계약
+판단이 필요하다.
+
+| 뜻 | .NET | Java · Kotlin | Node | C++ |
+| --- | --- | --- | --- | --- |
+| fanout 수신 handler | `IZLinkFanoutHandler` | `ZLinkPublishHandler` | `ZLinkPublishHandler` | handler class 규약(계약 타입 없음) |
+| Spot join admission 결과 | `ZLinkSpotActorJoinResult` | `ZLinkSpotActorJoinResponse` | `ZLinkSpotActorJoinResponse` | `spot_actor_join_response_t` |
+| session dispatch context | `ZLinkSessionDispatchContext` | `ZLinkSessionMessageContext` | `ZLinkSessionMessageContext` | `session_message_context_t` |
+| filter 다음 단계 | `ZLinkHandlerFilterNext` | `ZLinkHandlerFilterNext` | `ZLinkHandlerDelegate` | `handler_filter_next_t` |
+
+앞의 셋은 **.NET만 다르고** 나머지 셋이 같다. 마지막 하나는 Node만 다르다. `Result` ↔
+`Response`, `Dispatch` ↔ `Message`처럼 뜻이 겹치는 단어라 읽는 쪽에서 같은 개념인지
+바로 알기 어렵다.
+
+확인 방법은 `doc/site/scripts/check_guide_identifiers.py`다. 탭 코드의 타입 이름을 그
+언어의 실제 표면과 대조하므로, 한 언어 이름을 다른 언어 탭에 잘못 쓰면 걸린다.
+
 ## 2. 문서가 가리키는데 없는 샘플
 
 ### S1 · ZoneWorld — C++ · Java · Kotlin

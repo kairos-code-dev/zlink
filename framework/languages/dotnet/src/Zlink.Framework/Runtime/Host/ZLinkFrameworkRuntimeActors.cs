@@ -1355,15 +1355,29 @@ internal sealed partial class ZLinkFrameworkRuntime
         var wire = recovery.Request;
         var actorKey =
             ZLinkActorAuthorityPayloadCodec.AuthorityKey(wire.ActorId);
-        ValidateCanonicalRemoteJoinRecoveryIdentity(
-            candidate,
-            participant,
-            canonical,
-            sourceFence,
-            recovery);
+        //  This validation throws into a detached recovery task, where the
+        //  exception reaches no caller. Name it before letting it propagate.
+        try
+        {
+            ValidateCanonicalRemoteJoinRecoveryIdentity(
+                candidate,
+                participant,
+                canonical,
+                sourceFence,
+                recovery);
+        }
+        catch (Exception identityFailure)
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"recovery_identity_failed {identityFailure}");
+            throw;
+        }
         var matchingAuthorities = candidate.Authorities
             .Where(entry => entry.Key == actorKey)
             .ToArray();
+        //  Printed before the guard with the value it tests.
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"recovery_authorities count={matchingAuthorities.Length}");
         if (matchingAuthorities.Length != 1)
             throw RemoteJoinRecoveryMismatch(
                 wire.ActorId,

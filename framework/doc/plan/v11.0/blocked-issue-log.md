@@ -2778,3 +2778,39 @@ await CompleteRoutedActorHandoffAsync(...);
 
 이로써 ST-B2의 결함 위치가 함수 하나로 확정됐다. 다음은 그 함수 안에서 어느 검증이
 걸리는지 보는 것이다.
+
+## 2026-07-31 ST-B2 근본원인 확정 — recovery가 identity 검증에서 거부되고 그 실패가 사라진다
+
+삼켜지던 예외를 포착했다.
+
+```
+ZLinkFrameworkException: Actor 'actor-cleanup-after-success-...' canonical Join
+recovery mismatches its participant or aggregate identity.
+  at ValidateCanonicalRemoteJoinRecoveryIdentity
+  at ValidateCanonicalRemoteJoinRecoveryAsync
+```
+
+전체 사슬은 이렇다.
+
+```
+commit 성공 → recovery 스케줄(정상, already_watched=False)
+  → recovery metadata 존재(operation_empty=False)
+  → identity 검증에서 mismatch → 예외가 detached task에서 소실
+  → Accepted completion 미전달 → ST-B2가 20초 대기 후 실패
+```
+
+스펙 §276이 "commit 뒤 recovery는 target을 복구한 뒤 같은 `OperationId`의 `Accepted`를
+전달한다"고 요구하므로 이는 스펙 위반이다.
+
+### 두 갈래로 나뉜다
+
+하나는 왜 identity가 어긋나느냐다. recovery record가 participant 또는 aggregate identity와
+맞지 않는다. 어느 축이 어긋나는지는 아직 모른다.
+
+다른 하나는 왜 그 실패가 조용하냐다. detached recovery task 안에서 던져진 예외가 어디에도
+보고되지 않는다. 이 세션에서 같은 패턴을 다섯 번 만났다. ST-E1A의 frame relay, seal의 조기
+return, seal의 정상 경로, deferred join, 그리고 이번 recovery다. **recovery가 실패하면
+최소한 로그에는 남아야 한다.** 이번에 넣은 진단이 그 역할을 하지만 임시 진단이 아니라
+정식 오류 보고가 필요하다.
+
+두 번째는 첫 번째와 무관하게 그 자체로 고칠 값어치가 있다.

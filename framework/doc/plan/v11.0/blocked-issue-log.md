@@ -3816,3 +3816,34 @@ S1·S2를 식별할 수 없다.
 이 세션에서 확인한 사실만 정리하면 이렇다. one-way send는 handoff capture 경로에
 도달하지 않는다. 그리고 그 send가 session에서 나갔는지, actor node에 도착했는지는 아직
 모른다. 계수는 프레임 하나(Request)로 설명되므로 send가 relay된 흔적은 관측되지 않았다.
+
+## 2026-08-01 ST-F3 원인 — 게이트웨이가 HandoffPacket send를 relay하지 않는다
+
+send가 어디서 멈추는지 찾았다. 이미 심어 둔 `session_relay_entry` 진단이 답을 준다.
+
+```
+session_relay_entry : 0건
+session-a 로그      : 26줄, 오류 없음
+```
+
+one-way send가 `RelayToActorAsync`에 **진입조차 하지 않는다.** 그리고 게이트웨이는 오류도
+남기지 않는다.
+
+이유는 게이트웨이의 세션 dispatch에 있다.
+
+```csharp
+if (await Context.Handlers.TryHandleAsync(dispatch, payload, cancellationToken)) return;
+var targetActorId = payload.Decode<BoundPushReq>().ActorId;
+```
+
+등록된 handler는 `BindActorSessionHandler`와 `SessionBindingsHandler` 둘뿐인데 ST-F3가
+보내는 것은 `HandoffPacket`이다. 어느 handler도 처리하지 않으므로 `BoundPushReq`로
+디코드하는 fall-through로 가고 거기서 조용히 끝난다.
+
+즉 **e2e 게이트웨이가 `HandoffPacket` send를 relay할 준비가 되어 있지 않다.** ST-F3는 그
+packet이 backlog에 담기기를 기대하지만 애초에 actor node로 보내지지 않는다. 런타임 결함이
+아니라 e2e 하네스의 갭이다.
+
+다만 고칠 방향은 확인이 더 필요하다. 게이트웨이가 `HandoffPacket`도 relay하도록 하는 것이
+맞는지, 아니면 시나리오가 다른 방식으로 보내야 하는지다. `HandoffPacket`을 쓰는 다른
+시나리오(ST-I4 등)가 어떻게 동작하는지 보면 갈린다.

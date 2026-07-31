@@ -4893,3 +4893,40 @@ OBS-A1과 OBS-A2가 통과하고 OBS-A3에서 멈춘다.
 ```
 InvalidOperationException: OBS-A3 downstream Play flow was not preserved.
 ```
+
+### 같은 host 가정 결함이 OBS 시나리오 네 곳에 있었다
+
+OBS-A1에서 찾은 "placement가 고른 node가 아니라 play-a에 묻는다"는 결함이 이 스위트에
+반복된다. 전수로 찾아 같은 helper로 고쳤다.
+
+| 시나리오 | 잘못된 호출 |
+|---|---|
+| OBS-A1 | `WaitPlayAEvidenceAsync(...)`, `RequireSharedFlow(..., room.NodeRid)` |
+| OBS-A3 | `ReadFlowLines(room.NodeRid)` |
+| OBS-A5 | `ReadFlowLines(created.NodeRid)` |
+| OBS-A4 | `PlayA.Post("/rooms")` 응답을 버리고 `WaitPlayAEvidenceAsync(...)` |
+
+`ReadFlowLines`와 `RequireSharedFlow`는 label을 flow 파일 이름과 대조하므로
+(`flow-play-a.log`) routing ID를 넘기면 어떤 placement에서도 성립하지 않는다.
+
+OBS-A1·A2·A3이 통과한다.
+
+### OBS-A4: join 없이 만든 room에서 spot timer가 돌지 않는다
+
+OBS-A4는 이 수정 뒤에도 같은 지점에서 멈춘다. 원인은 host 선택이 아니다.
+
+```
+timer-tick 증거: play-a 0건, play-b 0건
+Spot timer handler failed 로그: 없음
+```
+
+`RoomTimerHandler`는 `[ZLinkSpotTimerHandler("observability-tick", 200)]`로 선언된 200ms
+spot timer다. 실패 로그도 없이 한 번도 tick하지 않는다.
+
+OBS-A1·A3은 room을 만든 뒤 actor가 **join**하고, 그 room의 handler 증거는 정상이다.
+OBS-A4의 timer room만 join 없이 만들어진다. 따라서 "join으로 활성화되기 전에는 spot
+timer가 시작하지 않는다"가 가장 그럴듯한 설명이다. 이것이 의도된 activation 계약인지
+결함인지는 확인하지 않았다.
+
+RuntimeMonitoring MON-A4 로그에도 `Spot timer handler failed. source=monitor.spot`이 함께
+찍히므로 두 스위트를 같이 볼 여지가 있다.

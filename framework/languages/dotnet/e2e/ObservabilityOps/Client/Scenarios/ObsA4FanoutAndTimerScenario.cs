@@ -32,8 +32,11 @@ internal static class ObsA4FanoutAndTimerScenario
             "OBS-A4 workflow-b subscriber did not receive the fanout.");
 
         var roomRid = $"timer-room-{suffix}";
-        await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).AsyncRaw();
-        var timer = await context.WaitPlayAEvidenceAsync($"timer-tick|room={roomRid}");
+        var timerRoom = (await context.PlayA.Post("/rooms")
+            .Body(new CreateRoomReq(roomRid))
+            .Async<CreateRoomRes>()).Body;
+        var timer = await context.WaitPlayEvidenceForNodeAsync(
+            timerRoom.NodeRid, $"timer-tick|room={roomRid}");
         ZlinkStreamAssert.Ensure(timer.Any(line => line.Contains($"timer-tick|room={roomRid}", StringComparison.Ordinal)),
             "OBS-A4 timer origin evidence missing.");
         Console.WriteLine("scenario OBS-A4 passed");

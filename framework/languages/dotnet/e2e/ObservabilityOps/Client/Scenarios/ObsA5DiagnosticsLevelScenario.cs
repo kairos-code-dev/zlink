@@ -26,7 +26,7 @@ internal static class ObsA5DiagnosticsLevelScenario
         await SetLevelAsync(owner, "key_transitions");
         await AssertProbeAsync(owner, workflowId, "after");
 
-        var lines = context.ReadFlowLines(created.NodeRid);
+        var lines = context.ReadFlowLines(await context.PlayRoleForNodeAsync(created.NodeRid));
         ZlinkStreamAssert.Ensure(
             HasPacket(lines, nameof(DiagnosticsBeforeReq))
             && HasPacket(lines, nameof(DiagnosticsAfterReq)),

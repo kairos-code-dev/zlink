@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](17-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 16. Options — 설정 목록과 기본값
@@ -89,7 +89,7 @@ return app.run (argc, argv);
 | `receive_timeout` · `send_timeout` | 지정하면 그 방향의 대기 상한 | 없음 |
 
 두 high-water mark의 동작 원리와 값을 고르는 기준은
-[4. Backpressure](../../../common/guide/server/04-backpressure.ko.md)가 다룬다.
+[4. Backpressure](04-backpressure.ko.md)가 다룬다.
 `0`은 기본값이 아니라 **무제한**이다. 자동 계산에 맡기려면 값을 지정하지 않는다.
 
 `mailbox_*` 두 값은 **시작 전에만** 설정한다. `0`은 무제한이 아니라 Framework profile이
@@ -110,7 +110,7 @@ return app.run (argc, argv);
 뜻하려면 값을 지정하지 않는다.
 
 > 이 단위와 상한은 계약으로 확정되었을 뿐 **아직 runtime이 사용하지 않는다.**
-> [4. Backpressure §6](../../../common/guide/server/04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)을 본다.
+> [4. Backpressure §6](04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)을 본다.
 
 ## 4. 진단
 
@@ -166,7 +166,7 @@ return app.run (argc, argv);
 > 부르면 `request_protocol_error`로 던진다.
 
 STREAM socket은 같은 profile에서도 MeshNode보다 작은 상한을 쓴다.
-[9. STREAM](../../../common/guide/server/09-stream.ko.md)을 본다.
+[9. STREAM](09-stream.ko.md)을 본다.
 
 ## 7. 실행 중 바꿀 수 있는 것
 
@@ -179,7 +179,7 @@ STREAM socket은 같은 profile에서도 MeshNode보다 작은 상한을 쓴다.
 
 둘 다 `0`으로 두면 **새 배정만 멈춘다.** 이미 있는 object와 연결은 그대로 살아 있다.
 무중단 배포에서 이 node로 새 트래픽이 가지 않게 한 뒤 relocation을 시작하는 순서로
-쓴다([12. 운영](../../../common/guide/server/12-operations.ko.md) §4).
+쓴다([12. 운영](12-operations.ko.md) §4).
 
 ## 8. 반드시 정해야 하는 것
 
@@ -212,5 +212,5 @@ STREAM socket은 같은 profile에서도 MeshNode보다 작은 상한을 쓴다.
 
 - 정식 계약: [C++ configuration과 host 공개 계약](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
 - 설정 파일에서 값 읽기: [19. Configuration](19-configuration.ko.md)
-- 상한이 무엇을 바꾸는지: [4. Backpressure](../../../common/guide/server/04-backpressure.ko.md)
-- 가중치로 트래픽을 빼는 절차: [12. 운영](../../../common/guide/server/12-operations.ko.md)
+- 상한이 무엇을 바꾸는지: [4. Backpressure](04-backpressure.ko.md)
+- 가중치로 트래픽을 빼는 절차: [12. 운영](12-operations.ko.md)

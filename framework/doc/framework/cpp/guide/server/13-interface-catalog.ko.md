@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md) | [다음: 샘플 고르기](../../../common/guide/server/14-samples.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: 샘플 고르기](14-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 13. 주요 타입 사용 색인
@@ -93,7 +93,7 @@ application이 상속해 만드는 타입과 framework가 주는 context가 나�
 **Spot handler는 Spot의 member 함수다.** `configure ()`에서
 `add_handler<&TSpot::method> ()` 형태로 등록한다. 예외가 하나 있다 — **timer만 별도
 handler 타입**을 `add_timer<THandler> ()`로 등록하고, 그 타입의 `handle`이 대상 Spot과
-tick 둘을 받는다([6. Spot](../../../common/guide/server/06-spot.ko.md) §6.1).
+tick 둘을 받는다([6. Spot](06-spot.ko.md) §6.1).
 
 | timer 관련 타입 | 하는 일 |
 | --- | --- |
@@ -138,7 +138,7 @@ tick 둘을 받는다([6. Spot](../../../common/guide/server/06-spot.ko.md) §6.
 | `stream_snapshot_t` | 상태 조회 |
 
 **C++ session은 handler registry가 아니라 `on_packet` 하나에서 분기한다.** 다른 네
-언어와 모양이 다른 자리다([9. STREAM](../../../common/guide/server/09-stream.ko.md)).
+언어와 모양이 다른 자리다([9. STREAM](09-stream.ko.md)).
 
 ## 6. Location과 relocation
 

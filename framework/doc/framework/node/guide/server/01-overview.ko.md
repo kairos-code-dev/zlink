@@ -104,18 +104,18 @@ export class GetProfileHandler
 03~17장은 다섯 언어가 같은 정본을 공유한다. 예제는 `Node/TypeScript` 탭을 고른다.
 순서는 [Node.js 가이드 진입점](README.ko.md)이 제시한다.
 
-먼저 [3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md)에서 channel · Spot ·
+먼저 [3. 핵심 개념](03-concepts.ko.md)에서 channel · Spot ·
 Actor · stream · relocation 다섯 개념을 잡는다.
 
 ## 7. 도입 순서 고르기
 
 | 지금 겪는 문제 | 먼저 볼 장 |
 | --- | --- |
-| 서비스가 어디 있는지 관리하기 번거롭다 | [5. Channel Messaging](../../../common/guide/server/05-channel-messaging.ko.md) |
-| 방·세션 상태에 락이 얽힌다 | [6. Spot](../../../common/guide/server/06-spot.ko.md) |
-| client 실시간 연결을 직접 관리한다 | [9. STREAM](../../../common/guide/server/09-stream.ko.md) |
-| 배포할 때 세션이 끊긴다 | [10. Location](../../../common/guide/server/10-location.ko.md) |
-| 부하가 몰릴 때 동작을 모르겠다 | [4. Backpressure](../../../common/guide/server/04-backpressure.ko.md) |
+| 서비스가 어디 있는지 관리하기 번거롭다 | [5. Channel Messaging](05-channel-messaging.ko.md) |
+| 방·세션 상태에 락이 얽힌다 | [6. Spot](06-spot.ko.md) |
+| client 실시간 연결을 직접 관리한다 | [9. STREAM](09-stream.ko.md) |
+| 배포할 때 세션이 끊긴다 | [10. Location](10-location.ko.md) |
+| 부하가 몰릴 때 동작을 모르겠다 | [4. Backpressure](04-backpressure.ko.md) |
 
 ## 8. 관련 문서
 

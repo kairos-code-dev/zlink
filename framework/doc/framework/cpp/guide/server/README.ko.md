@@ -99,7 +99,7 @@ class open_conversation_handler_t {
 ```
 
 request-reply 외에 fanout(pub/sub)과 route mesh(주소 라우팅) 패턴도 제공한다.
-[7장 →](../../../common/guide/server/05-channel-messaging.ko.md)
+[7장 →](05-channel-messaging.ko.md)
 
 ---
 
@@ -130,7 +130,7 @@ class conversation_spot_t : public zlink::framework::spot_t,
 ```
 
 배정·할당을 담당하는 entry spot(노드당 1개)과 상태 본체인 room spot(단위마다 1개)으로
-나뉜다. 주기 작업은 timer로 등록한다. [8장 →](../../../common/guide/server/06-spot.ko.md)
+나뉜다. 주기 작업은 timer로 등록한다. [8장 →](06-spot.ko.md)
 
 ---
 
@@ -154,7 +154,7 @@ class support_session_t : public zlink::framework::packet_stream_session_t {
 ```
 
 클라이언트 쪽 접속은 별도 산출물인 stream connector가 담당한다.
-[9장 →](../../../common/guide/server/08-actor-session.ko.md) · [10장 →](../../../common/guide/server/09-stream.ko.md)
+[9장 →](08-actor-session.ko.md) · [10장 →](09-stream.ko.md)
 
 ---
 
@@ -213,7 +213,7 @@ options.add_spot_mesh ("bingo.room.discovery")
   .add_spot<bingo_room_spot_t> ("bingo.room");
 ```
 
-[11장 →](../../../common/guide/server/10-location.ko.md)
+[11장 →](10-location.ko.md)
 
 ---
 
@@ -223,25 +223,25 @@ options.add_spot_mesh ("bingo.room.discovery")
 |----|------|------|
 | 1 | [1. 개요](01-overview.ko.md) | 전체 기능 지도, 산출물 정보 |
 | 2 | [2. 시작하기](02-getting-started.ko.md) | CMake 연동, 첫 앱, 핸들러 작성, 실행과 확인 |
-| 3 | [3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md) | channel · Spot · Actor · stream · relocation |
+| 3 | [3. 핵심 개념](03-concepts.ko.md) | channel · Spot · Actor · stream · relocation |
 | 4 | [21. 실행·구성 모델](21-execution-model.ko.md) | 핸들러 모델, `task_t`/`co_await`, app 수명주기, module |
 | 5 | [18. DI 컨테이너](18-di-container.ko.md) | 수명 3종, 등록 방법, 핸들러 자동 주입, captive dependency |
 | 6 | [19. Configuration](19-configuration.ko.md) | 설정 소스(cli/env/json), 우선순위, section/bind |
 | 7 | [20. HTTP Hosting](20-http-hosting.ko.md) | embedded HTTP server, route handler |
-| 8 | [4. Backpressure](../../../common/guide/server/04-backpressure.ko.md) | 처리보다 도착이 빠를 때의 동작과 영향을 주는 옵션 |
-| 9 | [5. 채널 메시징](../../../common/guide/server/05-channel-messaging.ko.md) | request-reply, fanout, route mesh, channel client |
-| 10 | [6. SPOT](../../../common/guide/server/06-spot.ko.md) | room/stage/zone, 직렬 실행, timer |
-| 11 | [7. Actor와 Spot](../../../common/guide/server/07-actor-spot.ko.md) | actor 호스팅, membership, relocation |
-| 12 | [8. Actor · Session](../../../common/guide/server/08-actor-session.ko.md) | actor manager, session actor, gateway relay |
-| 13 | [9. Stream](../../../common/guide/server/09-stream.ko.md) | stream session, stream connector |
-| 14 | [10. Location](../../../common/guide/server/10-location.ko.md) | location store, 자동 연결, 운영 조회 |
+| 8 | [4. Backpressure](04-backpressure.ko.md) | 처리보다 도착이 빠를 때의 동작과 영향을 주는 옵션 |
+| 9 | [5. 채널 메시징](05-channel-messaging.ko.md) | request-reply, fanout, route mesh, channel client |
+| 10 | [6. SPOT](06-spot.ko.md) | room/stage/zone, 직렬 실행, timer |
+| 11 | [7. Actor와 Spot](07-actor-spot.ko.md) | actor 호스팅, membership, relocation |
+| 12 | [8. Actor · Session](08-actor-session.ko.md) | actor manager, session actor, gateway relay |
+| 13 | [9. Stream](09-stream.ko.md) | stream session, stream connector |
+| 14 | [10. Location](10-location.ko.md) | location store, 자동 연결, 운영 조회 |
 | 15 | [11. Monitoring](11-monitoring.ko.md) | 상태 관측, 메시지 흐름, health |
-| 16 | [12. 운영](../../../common/guide/server/12-operations.ko.md) | 런타임 메트릭, graceful drain, readiness |
+| 16 | [12. 운영](12-operations.ko.md) | 런타임 메트릭, graceful drain, readiness |
 | 17 | [13. 주요 타입 사용 색인](13-interface-catalog.ko.md) | 기능별 public 타입 색인과 얻는 방법 |
-| 18 | [14. 샘플 고르기](../../../common/guide/server/14-samples.ko.md) | TicTacToe · Bingo 샘플과 기능 매핑 |
-| 19 | [15. E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | client로 시스템 전체를 검증하는 방법 |
+| 18 | [14. 샘플 고르기](14-samples.ko.md) | TicTacToe · Bingo 샘플과 기능 매핑 |
+| 19 | [15. E2E 테스트](15-e2e-testing.ko.md) | client로 시스템 전체를 검증하는 방법 |
 | 20 | [16. Options](16-options.ko.md) | 옵션 목록, 기본값과 변경 시점 |
-| 21 | [17. ZLink를 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md) | 내부 서비스 통신·실시간 상태 패턴, gRPC/mesh 비교 |
+| 21 | [17. ZLink를 어디에 쓰나](17-alternative.ko.md) | 내부 서비스 통신·실시간 상태 패턴, gRPC/mesh 비교 |
 
 파일 번호는 언어에 상관없이 같은 장을 가리키는 식별자다. 읽는 순서는 이 표가 정한다 —
 C++은 DI·configuration·HTTP hosting이 기초에 해당하므로 앞으로 당긴다.

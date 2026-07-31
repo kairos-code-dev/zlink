@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](17-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 16. Options — 설정 목록과 기본값
@@ -99,7 +99,7 @@ ZLinkModule.forRootFactory({
 > `framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md` G9가 기록한다.
 
 동작 원리와 값을 고르는 기준은
-[4. Backpressure](../../../common/guide/server/04-backpressure.ko.md)가 다룬다.
+[4. Backpressure](04-backpressure.ko.md)가 다룬다.
 `0`은 기본값이 아니라 **무제한**이다.
 
 ### 3.2 CPU worker 풀
@@ -121,7 +121,7 @@ ZLinkModule.forRootFactory({
 아직 handler 실행을 시작하지 못한 message의 **payload 합계**에 적용한다.
 
 > 이 단위와 상한은 계약으로 확정되었을 뿐 **아직 runtime이 사용하지 않는다.**
-> [4. Backpressure §6](../../../common/guide/server/04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)을 본다.
+> [4. Backpressure §6](04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)을 본다.
 
 ## 4. 진단
 
@@ -216,6 +216,6 @@ ZLinkModule.forRootFactory({
 ## 10. 관련 문서
 
 - 정식 계약: [Node.js foundation과 configuration 공개 계약](../../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md)
-- 상한이 무엇을 바꾸는지: [4. Backpressure](../../../common/guide/server/04-backpressure.ko.md)
-- 가중치로 트래픽을 빼는 절차: [12. 운영](../../../common/guide/server/12-operations.ko.md)
+- 상한이 무엇을 바꾸는지: [4. Backpressure](04-backpressure.ko.md)
+- 가중치로 트래픽을 빼는 절차: [12. 운영](12-operations.ko.md)
 - 주입 토큰 목록: [13. 주요 interface 사용 색인](13-interface-catalog.ko.md) §1

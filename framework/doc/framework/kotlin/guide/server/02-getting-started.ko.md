@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: 1. 개요](01-overview.ko.md) | [다음: 3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: 1. 개요](01-overview.ko.md) | [다음: 3. 핵심 개념](03-concepts.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 2. 시작하기
@@ -125,9 +125,9 @@ java와 kotlin 샘플이 같은 runner를 쓰고 언어만 골라 준다. 확인
 
 | 하려는 것 | 볼 장 |
 | --- | --- |
-| 개념을 먼저 잡기 | [3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md) |
-| 요청 방식 세 가지 | [5. Channel Messaging](../../../common/guide/server/05-channel-messaging.ko.md) |
-| 방·세션 상태를 담기 | [6. Spot](../../../common/guide/server/06-spot.ko.md) |
+| 개념을 먼저 잡기 | [3. 핵심 개념](03-concepts.ko.md) |
+| 요청 방식 세 가지 | [5. Channel Messaging](05-channel-messaging.ko.md) |
+| 방·세션 상태를 담기 | [6. Spot](06-spot.ko.md) |
 | Kotlin 레이어가 얹는 것 전체 | [1. 개요](01-overview.ko.md) §2 |
 | 설정 값 목록 | [Java 16. Options](../../../java/guide/server/16-options.ko.md) |
 
@@ -136,4 +136,4 @@ java와 kotlin 샘플이 같은 runner를 쓰고 언어만 골라 준다. 확인
 - 등록 표면의 정식 계약: [Java configuration과 host 공개 계약](../../../common/spec/server/languages/java/interfaces/configuration-host.ko.md)
 - Kotlin 전용 계약: [Kotlin 공개 계약](../../../common/spec/server/languages/kotlin/README.ko.md)
 - 이전 장: [1. 개요](01-overview.ko.md)
-- 다음 장: [3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md)
+- 다음 장: [3. 핵심 개념](03-concepts.ko.md)

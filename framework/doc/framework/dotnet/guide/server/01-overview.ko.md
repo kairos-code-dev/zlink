@@ -22,7 +22,7 @@ ZLink Framework가 **실시간 메시징 계층**으로 올라간다. 별도 런
 호출과 pub/sub는 별도 **gateway나 전용 로드밸런서 없이** 논리 `channel name`만으로
 대상을 찾는다. 실시간 상태 단위는 `SPOT`(room · stage · zone), actor(연결·사용자
 하나를 대표하는 상태 객체), `STREAM`(외부 client 연결)이다(용어가 낯설면
-[03-concepts](../../../common/guide/server/03-concepts.ko.md)의 개념 설명을 먼저 본다). 개발자는 HTTP/gRPC를
+[03-concepts](03-concepts.ko.md)의 개념 설명을 먼저 본다). 개발자는 HTTP/gRPC를
 쓰던 감각으로 **handler, client, filter**를 작성하고, 연결·위치 조회·라우팅·재연결·
 correlation은 framework가 처리한다.
 
@@ -31,7 +31,7 @@ correlation은 framework가 처리한다.
 > protocol(ZMP) + codec + 논리 channel/packet이라 서로 다른 언어로 구현된 서비스가
 > 같은 channel 위에서 상호 호출한다(예: room 서버 C++, API 서버 .NET·Java). 이
 > 가이드는 `.NET` 기준이며 `.NET` 구현을 reference implementation(기준 구현)으로
-> 삼는다. 자세한 cross-language 모델은 [17-alternative §2.1](../../../common/guide/server/17-alternative.ko.md)이 다룬다.
+> 삼는다. 자세한 cross-language 모델은 [17-alternative §2.1](17-alternative.ko.md)이 다룬다.
 
 ## 2. 사용이 필요한 상황
 
@@ -116,23 +116,23 @@ flowchart TB
   쓰는 범용 동시성 단위이고, ZLink는 이걸 Spot(실행 격리 단위)과 Actor(도메인
   엔티티)로 나눴다. Orleans의 virtual actor·grain에 더 가까운 건 ZLink Actor가
   아니라 이 방식이 쓰는 **Instance Spot**이다. 세부 비교는
-  [17장 §6](../../../common/guide/server/17-alternative.ko.md)에서 다룬다.
+  [17장 §6](17-alternative.ko.md)에서 다룬다.
 
 **ZLink가 제공하는 것.** 어려움 하나하나에 기능이 대응한다.
 
 | 어려움 | ZLink 기능 | 자세히 |
 | --- | --- | --- |
-| 장르별 토폴로지를 소켓부터 직접 만듦 | **channel 조합으로 토폴로지 선언** — 1:N 요청/응답, fan-out, 노드 지목 route mesh, room 단위 spot mesh를 등록 몇 줄로 조합, 연결은 location store가 자동 유지 | [§3 아키텍처](#아키텍처--계층-구조와-등록-지점) · [05](../../../common/guide/server/05-channel-messaging.ko.md)·[06](../../../common/guide/server/06-spot.ko.md)·[10](../../../common/guide/server/10-location.ko.md) |
-| in-memory 상태의 lock·경합 | **SPOT 직렬 실행** — 한 room의 모든 메시지를 하나의 실행 줄로 세워 순서대로 실행. lock이 업무 로직에서 사라진다 | 아래 코드 · [06](../../../common/guide/server/06-spot.ko.md) |
-| 소켓 framing·세션 수명 직접 구현 | **STREAM** — 연결 수명·framing·packet codec을 framework가 소유(TCP/TLS/WS/WSS) | [09](../../../common/guide/server/09-stream.ko.md) |
-| 재접속 유저 위치 추적 | **actor binding** — 재접속한 새 연결이 같은 actor로 이어진다 | [08](../../../common/guide/server/08-actor-session.ko.md) |
-| 배포 때 유저 튕김 | **graceful drain** — 신규 차단, actor handoff, 진행 중 마무리 후 종료. 앱 코드 0줄 | [12](../../../common/guide/server/12-operations.ko.md) |
+| 장르별 토폴로지를 소켓부터 직접 만듦 | **channel 조합으로 토폴로지 선언** — 1:N 요청/응답, fan-out, 노드 지목 route mesh, room 단위 spot mesh를 등록 몇 줄로 조합, 연결은 location store가 자동 유지 | [§3 아키텍처](#아키텍처--계층-구조와-등록-지점) · [05](05-channel-messaging.ko.md)·[06](06-spot.ko.md)·[10](10-location.ko.md) |
+| in-memory 상태의 lock·경합 | **SPOT 직렬 실행** — 한 room의 모든 메시지를 하나의 실행 줄로 세워 순서대로 실행. lock이 업무 로직에서 사라진다 | 아래 코드 · [06](06-spot.ko.md) |
+| 소켓 framing·세션 수명 직접 구현 | **STREAM** — 연결 수명·framing·packet codec을 framework가 소유(TCP/TLS/WS/WSS) | [09](09-stream.ko.md) |
+| 재접속 유저 위치 추적 | **actor binding** — 재접속한 새 연결이 같은 actor로 이어진다 | [08](08-actor-session.ko.md) |
+| 배포 때 유저 튕김 | **graceful drain** — 신규 차단, actor handoff, 진행 중 마무리 후 종료. 앱 코드 0줄 | [12](12-operations.ko.md) |
 
 그리고 위의 **네 방식이 전부 같은 선언 모델 위의 조합**이 된다. 방식마다 소켓부터
 다시 만들 필요가 없다.
 
 - **① zone 분할** — zone을 `AddRouteMesh` + 노드 지목 route mesh로 잡는다. 경계를 넘는
-  플레이어는 **actor 크로스노드 relocation**이 대신 넘겨준다([07](../../../common/guide/server/07-actor-spot.ko.md)).
+  플레이어는 **actor 크로스노드 relocation**이 대신 넘겨준다([07](07-actor-spot.ko.md)).
   [ZoneWorld](../../../common/sample/zoneworld/README.ko.md)가 이 방식 그대로다.
 - **② lobby + room** — 입장·매칭은 Entry Spot, 방은 `GetOrCreate`로 만드는 room spot이다.
   [Bingo](../../../common/sample/bingo/README.ko.md)가 이 방식 그대로다.
@@ -192,7 +192,7 @@ RouteMesh·Spot·Instance Spot 조합으로 구현한다. 방식이 바뀌어도
 > 현재 STREAM이 제공하는 transport는 TCP/TLS/WS/WSS이며, **비신뢰 전송(QUIC
 > datagram·WebTransport)은 지원 예정**이다. 다만 그런 게임에서도 매칭·로비·메타·
 > 소셜은 지금 이 네 방식으로 충분히 처리된다. 어디까지 되고 안 되는지는
-> [17장](../../../common/guide/server/17-alternative.ko.md) §4에서 다룬다.
+> [17장](17-alternative.ko.md) §4에서 다룬다.
 
 **게임 서버 엔진·서비스와는 어떻게 다른가.** 직접 만들지 않는 길로는 엔진과
 관리형 서비스가 있다. 이들이 제공하는 것을 영역별로 놓고 보면 ZLink의 자리가
@@ -277,7 +277,7 @@ public sealed class MarkNumberHandler
 `Interlocked`도, Redis 분산 락도 없다. framework가 한 room의 모든 메시지(요청,
 구독 이벤트, timer tick, actor packet)를 **하나의 실행 줄에 세워 순서대로**
 실행하기 때문이다. 여기서 직렬은 codec 직렬화가 아니라 **실행 순서의
-직렬화**다([06 §3](../../../common/guide/server/06-spot.ko.md)).
+직렬화**다([06 §3](06-spot.ko.md)).
 
 실행되는 근거 샘플: [TicTacToe](../../../common/sample/tictactoe/README.ko.md) ·
 [Bingo](../../../common/sample/bingo/README.ko.md) · [GameQuest](../../../common/sample/event/gamequest.ko.md)
@@ -300,9 +300,9 @@ public sealed class MarkNumberHandler
 
 | 조립하던 것 | ZLink 기능 | 자세히 |
 | --- | --- | --- |
-| 길드 id별 Redis 분산 락 | **Instance Spot** — 길드 id로 cold activation되는 spot 하나가 그 길드의 모든 요청을 직렬 처리 | [06](../../../common/guide/server/06-spot.ko.md) |
-| 락 획득·해제·타임아웃 처리 | **직렬 실행** — 락 개념 자체가 없어지고, 항상 spot 큐 순서대로 처리된다 | [06 §3](../../../common/guide/server/06-spot.ko.md) |
-| 길드 spot을 찾는 서버 간 호출·LB | **channel name + location store** | [05](../../../common/guide/server/05-channel-messaging.ko.md)·[10](../../../common/guide/server/10-location.ko.md) |
+| 길드 id별 Redis 분산 락 | **Instance Spot** — 길드 id로 cold activation되는 spot 하나가 그 길드의 모든 요청을 직렬 처리 | [06](06-spot.ko.md) |
+| 락 획득·해제·타임아웃 처리 | **직렬 실행** — 락 개념 자체가 없어지고, 항상 spot 큐 순서대로 처리된다 | [06 §3](06-spot.ko.md) |
+| 길드 spot을 찾는 서버 간 호출·LB | **channel name + location store** | [05](05-channel-messaging.ko.md)·[10](10-location.ko.md) |
 | 새 길드의 사전 프로비저닝 | 첫 요청이 오면 그 자리에서 cold activation — 별도 준비 불필요 | |
 
 **기존 방식** — 락 획득·해제가 매 요청마다 왕복한다.
@@ -389,10 +389,10 @@ Redis(캐시) + Kafka(이벤트) + LB/K8s — 은 **stateless 요청/응답**에
 
 | 조립하던 것 | ZLink 기능 | 자세히 |
 | --- | --- | --- |
-| WebSocket 서버 + sticky LB | **STREAM** — 앱 서버가 client 연결을 직접 받는다 | [09](../../../common/guide/server/09-stream.ko.md) |
-| 분산 락으로 순서 보장 | **SPOT owner routing** — 같은 주문·대화는 항상 자기 Spot 한 곳에서 직렬 실행 | [06](../../../common/guide/server/06-spot.ko.md) |
-| 브로커 경유 실시간 전달 | **channel·fanout** — 서버 간 전달과 fan-out을 transport가 직접 | [05](../../../common/guide/server/05-channel-messaging.ko.md) |
-| "누가 어디 연결돼 있지" 관리 | **actor binding + location store** — 재접속 이전성과 위치 조회를 framework가 소유 | [08](../../../common/guide/server/08-actor-session.ko.md)·[10](../../../common/guide/server/10-location.ko.md) |
+| WebSocket 서버 + sticky LB | **STREAM** — 앱 서버가 client 연결을 직접 받는다 | [09](09-stream.ko.md) |
+| 분산 락으로 순서 보장 | **SPOT owner routing** — 같은 주문·대화는 항상 자기 Spot 한 곳에서 직렬 실행 | [06](06-spot.ko.md) |
+| 브로커 경유 실시간 전달 | **channel·fanout** — 서버 간 전달과 fan-out을 transport가 직접 | [05](05-channel-messaging.ko.md) |
+| "누가 어디 연결돼 있지" 관리 | **actor binding + location store** — 재접속 이전성과 위치 조회를 framework가 소유 | [08](08-actor-session.ko.md)·[10](10-location.ko.md) |
 
 같은 시스템 — 웹 API + 실시간 기능(채팅·주문 추적) — 을 두 방식으로 그리면 차이가
 그림에서 바로 보인다.
@@ -589,21 +589,21 @@ Kafka(주황)가 처리 경로 **밖으로** 나가 전파·보존만 맡는다(
 **남는 것은 남는다.** 클라이언트 HTTP 진입은 여전히 stateless라 L7 LB/Ingress가 평소처럼
 API 서버에 분배하고(회색), 주문 상태는 여전히 DB에 저장한다. gRPC와 달리 이 HTTP 진입
 경로에 L7 분배 장치를 **추가로** 요구하지도 않는다(그 이유는
-[17장 §5.1](../../../common/guide/server/17-alternative.ko.md)이 다룬다).
+[17장 §5.1](17-alternative.ko.md)이 다룬다).
 
 **ZLink가 제공하는 것.** "같은 key를 한 곳에 모아 순서대로"를 log가 아니라 **owner
 routing**으로 풀면, 위 조각의 대부분은 조립할 필요 자체가 사라진다.
 
 | 조립하던 것 | ZLink 기능 | 자세히 |
 | --- | --- | --- |
-| key partition + consumer group | **SPOT owner routing** — 같은 `OrderId`는 항상 같은 Spot에서 직렬 실행. 어느 API 인스턴스가 받아도 같은 owner로 route된다 | [06](../../../common/guide/server/06-spot.ko.md) |
-| 이벤트마다 DB load-modify-store | **owner spot의 hot state** — 상태가 owner 메모리에 있고, 저장 시점은 업무 규칙에 맞춰 앱이 결정한다 | [06](../../../common/guide/server/06-spot.ko.md) |
-| 재전달 대비 version check·분산 락 | **직렬 실행** — 같은 단위에 동시 writer가 없어 정상 경로에서 락·version 경합이 없다 | [06 §3](../../../common/guide/server/06-spot.ko.md) |
-| 서버 간 호출용 LB·service discovery | **channel name + location store** — `"inventory"` 이름으로 부르면 현재 사용 가능한 peer로 직접 전송한다 | [05](../../../common/guide/server/05-channel-messaging.ko.md)·[10](../../../common/guide/server/10-location.ko.md) |
+| key partition + consumer group | **SPOT owner routing** — 같은 `OrderId`는 항상 같은 Spot에서 직렬 실행. 어느 API 인스턴스가 받아도 같은 owner로 route된다 | [06](06-spot.ko.md) |
+| 이벤트마다 DB load-modify-store | **owner spot의 hot state** — 상태가 owner 메모리에 있고, 저장 시점은 업무 규칙에 맞춰 앱이 결정한다 | [06](06-spot.ko.md) |
+| 재전달 대비 version check·분산 락 | **직렬 실행** — 같은 단위에 동시 writer가 없어 정상 경로에서 락·version 경합이 없다 | [06 §3](06-spot.ko.md) |
+| 서버 간 호출용 LB·service discovery | **channel name + location store** — `"inventory"` 이름으로 부르면 현재 사용 가능한 peer로 직접 전송한다 | [05](05-channel-messaging.ko.md)·[10](10-location.ko.md) |
 | offset·lag·재동기화 잡 운영 | 소비 파이프라인이 없으므로 해당 운영 항목 자체가 없다 | |
 
 **경계는 그대로다.** durable log가 진짜 필요한 요구 — 이벤트 replay, 장기 보존, 독립
-시스템들로의 광범위 fan-out — 는 Kafka가 맞고 그대로 남긴다([17장 §4](../../../common/guide/server/17-alternative.ko.md)).
+시스템들로의 광범위 fan-out — 는 Kafka가 맞고 그대로 남긴다([17장 §4](17-alternative.ko.md)).
 ZLink가 줄이는 것은 "엔티티 단위 순서 처리"만을 위해 log 파이프라인을 조립하던
 경우다. 순서와 정합성이 목적의 전부였다면, owner routing이 그 목적을 파이프라인 없이
 직접 달성한다.
@@ -749,14 +749,14 @@ gRPC+LB, broker, WebSocket 서버로 각각 조립하던 토폴로지들이 **�
 하나**로 내려온다. location store를 등록했으므로 서버가 늘어나거나 줄어들 때
 connection도 자동으로 새로 연결되거나 정리된다 — 설정 파일을 고치거나 LB를
 재구성할 일이 없다.
-([05](../../../common/guide/server/05-channel-messaging.ko.md)·[06](../../../common/guide/server/06-spot.ko.md)·[09](../../../common/guide/server/09-stream.ko.md)·[10](../../../common/guide/server/10-location.ko.md))
+([05](05-channel-messaging.ko.md)·[06](06-spot.ko.md)·[09](09-stream.ko.md)·[10](10-location.ko.md))
 
 무엇을 어디서 선언하는지는 다음 세 자리로 정리된다.
 
 | 표면 | 역할 | 다루는 장 |
 | --- | --- | --- |
-| `builder.Services.AddZLinkFramework(...)` | channel·SPOT·STREAM 선언 | [5장](../../../common/guide/server/05-channel-messaging.ko.md)~[9장](../../../common/guide/server/09-stream.ko.md) |
-| `options.AddRouteMesh(...)` / `AddFanoutChannel(...)` | RouteMesh·fanout 선언 | [5장](../../../common/guide/server/05-channel-messaging.ko.md) |
+| `builder.Services.AddZLinkFramework(...)` | channel·SPOT·STREAM 선언 | [5장](05-channel-messaging.ko.md)~[9장](09-stream.ko.md) |
+| `options.AddRouteMesh(...)` / `AddFanoutChannel(...)` | RouteMesh·fanout 선언 | [5장](05-channel-messaging.ko.md) |
 | `IZLink*Runtime` status | 상태 관측과 진단 | [11장](11-monitoring.ko.md) |
 
 각 표면에서 정할 수 있는 옵션 전체와 기본값은 [16-options](16-options.ko.md)에 모아 두었다.
@@ -789,7 +789,7 @@ flowchart TD
 - **외부 게임·모바일 client** → STREAM(서버) + Stream Connector(client).
 - **연결 서버와 로직 서버 분리(재접속 이전성)** → session actor dispatch.
 
-실행되는 코드로 먼저 보고 싶다면 [14-samples](../../../common/guide/server/14-samples.ko.md)에서 가까운 샘플을 고른다.
+실행되는 코드로 먼저 보고 싶다면 [14-samples](14-samples.ko.md)에서 가까운 샘플을 고른다.
 
 ## 4. 개념 요약
 
@@ -801,7 +801,7 @@ flowchart TD
 같은 컨테이너에서 만들어진다. application 코드는 handler 생성자에 필요한 서비스를 선언하고,
 framework는 dispatch 시점에 필요한 객체를 DI 컨테이너에서 가져온다.
 
-[3장 →](../../../common/guide/server/03-concepts.ko.md)
+[3장 →](03-concepts.ko.md)
 
 ### Configuration — ASP.NET Core 설정과 함께 사용
 
@@ -825,7 +825,7 @@ runtime이 처리한다.
 `ChannelName`을 지정하면 ready positive-weight membership 하나를 선택한다. 여러
 subscriber에게 같은 이벤트를 전달할 때는 독립 fanout channel을 사용한다.
 
-[5장 →](../../../common/guide/server/05-channel-messaging.ko.md)
+[5장 →](05-channel-messaging.ko.md)
 
 ### SPOT — 상태 단위를 lock 없이 관리
 
@@ -833,7 +833,7 @@ SPOT은 game room, stage, zone, 주문 처리 단위처럼 하나의 상태 영�
 실행 단위다. 같은 SPOT에 들어오는 packet, timer, actor callback은 하나의 실행 흐름에서
 처리되므로 SPOT이 소유한 상태에 lock 없이 접근할 수 있다.
 
-[6장 →](../../../common/guide/server/06-spot.ko.md)
+[6장 →](06-spot.ko.md)
 
 ### Actor · Session — 클라이언트 세션
 
@@ -842,7 +842,7 @@ client 연결을 받고, actor는 SPOT에 입장해 상태 처리에 참여한�
 가능하므로 session 서버와 domain 서버를 나눌 수 있다. actor lifecycle·호스팅은 6장이,
 session↔actor binding·dispatch·client push는 7장이 다룬다.
 
-[7장 →](../../../common/guide/server/07-actor-spot.ko.md) · [8장 →](../../../common/guide/server/08-actor-session.ko.md)
+[7장 →](07-actor-spot.ko.md) · [8장 →](08-actor-session.ko.md)
 
 ### Stream — 클라이언트 실시간 연결
 
@@ -850,7 +850,7 @@ session↔actor binding·dispatch·client push는 7장이 다룬다.
 접속을 받고, 연결마다 session 인스턴스를 생성한다. client 측 접속은 별도 산출물인
 Stream Connector가 담당한다.
 
-[9장 →](../../../common/guide/server/09-stream.ko.md)
+[9장 →](09-stream.ko.md)
 
 ### Location store — 주소 자동 연결
 
@@ -858,7 +858,7 @@ Stream Connector가 담당한다.
 location store가 등록된 MeshNode descriptor를 관리하고, peer 노드가 현재 활성
 endpoint와 membership 정보를 읽어 동적으로 연결한다.
 
-[10장 →](../../../common/guide/server/10-location.ko.md)
+[10장 →](10-location.ko.md)
 
 ### 통합 4축 요약
 
@@ -874,13 +874,13 @@ flowchart LR
 
 | 축 | 사용자에게 보이는 것 | 가이드 챕터 |
 | --- | --- | --- |
-| channel messaging | `IZLinkRequestHandler`, `IZLinkSendHandler`, `IZLinkRouteClient`, `IZLinkHandlerFilter` | [05-channel-messaging](../../../common/guide/server/05-channel-messaging.ko.md) |
-| fanout | `AddFanoutChannel`, `IZLinkFanoutHandler` | [05-channel-messaging](../../../common/guide/server/05-channel-messaging.ko.md) |
-| SPOT | typed spot factory, Spot context outbound, timer | [06-spot](../../../common/guide/server/06-spot.ko.md) |
-| actor / session | actor factory, Entry Spot, `IZLinkBoundSession`, session actor dispatch | [07-actor-spot](../../../common/guide/server/07-actor-spot.ko.md) · [08-actor-session](../../../common/guide/server/08-actor-session.ko.md) |
-| STREAM | framework session packet, Stream Connector | [09-stream](../../../common/guide/server/09-stream.ko.md) |
-| 인프라 | Location 기반 자동 연결·운영 조회, runtime monitoring | [10-location](../../../common/guide/server/10-location.ko.md), [11-monitoring](11-monitoring.ko.md) |
-| 운영 | 런타임 메트릭(`AddMeter` 한 줄), graceful drain, readiness probe | [12-operations](../../../common/guide/server/12-operations.ko.md) |
+| channel messaging | `IZLinkRequestHandler`, `IZLinkSendHandler`, `IZLinkRouteClient`, `IZLinkHandlerFilter` | [05-channel-messaging](05-channel-messaging.ko.md) |
+| fanout | `AddFanoutChannel`, `IZLinkFanoutHandler` | [05-channel-messaging](05-channel-messaging.ko.md) |
+| SPOT | typed spot factory, Spot context outbound, timer | [06-spot](06-spot.ko.md) |
+| actor / session | actor factory, Entry Spot, `IZLinkBoundSession`, session actor dispatch | [07-actor-spot](07-actor-spot.ko.md) · [08-actor-session](08-actor-session.ko.md) |
+| STREAM | framework session packet, Stream Connector | [09-stream](09-stream.ko.md) |
+| 인프라 | Location 기반 자동 연결·운영 조회, runtime monitoring | [10-location](10-location.ko.md), [11-monitoring](11-monitoring.ko.md) |
+| 운영 | 런타임 메트릭(`AddMeter` 한 줄), graceful drain, readiness probe | [12-operations](12-operations.ko.md) |
 
 ## 5. 전체 topology
 
@@ -1001,18 +1001,18 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 ## 10. 가이드 읽는 순서
 
 1. [02-getting-started](02-getting-started.ko.md) — 패키지부터 첫 동작 확인까지
-2. [03-concepts](../../../common/guide/server/03-concepts.ko.md) — 핵심 개념 (channel, 역할, DI)
-3. [05-channel-messaging](../../../common/guide/server/05-channel-messaging.ko.md) — request/send/pub-sub 상세
-4. [06-spot](../../../common/guide/server/06-spot.ko.md) — room/stage/zone, timer, routed Spot 호출
-5. [07-actor-spot](../../../common/guide/server/07-actor-spot.ko.md) — actor lifecycle, Spot 호스팅·콜백
-6. [08-actor-session](../../../common/guide/server/08-actor-session.ko.md) — session↔actor binding·dispatch, client push
-7. [09-stream](../../../common/guide/server/09-stream.ko.md) — 외부 client(STREAM) 서버 + Stream Connector
-8. [10-location](../../../common/guide/server/10-location.ko.md) — location store 기반 자동 연결과 운영 조회
+2. [03-concepts](03-concepts.ko.md) — 핵심 개념 (channel, 역할, DI)
+3. [05-channel-messaging](05-channel-messaging.ko.md) — request/send/pub-sub 상세
+4. [06-spot](06-spot.ko.md) — room/stage/zone, timer, routed Spot 호출
+5. [07-actor-spot](07-actor-spot.ko.md) — actor lifecycle, Spot 호스팅·콜백
+6. [08-actor-session](08-actor-session.ko.md) — session↔actor binding·dispatch, client push
+7. [09-stream](09-stream.ko.md) — 외부 client(STREAM) 서버 + Stream Connector
+8. [10-location](10-location.ko.md) — location store 기반 자동 연결과 운영 조회
 9. [11-monitoring](11-monitoring.ko.md) — 상태 관측과 진단
-10. [14-samples](../../../common/guide/server/14-samples.ko.md) — 실행되는 샘플로 확인하기
+10. [14-samples](14-samples.ko.md) — 실행되는 샘플로 확인하기
 11. [16-options](16-options.ko.md) — 옵션 목록과 기본값, 무엇을 언제 바꾸나
 12. [13-interface-catalog](13-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
-13. [17-alternative](../../../common/guide/server/17-alternative.ko.md) — **ZLink를 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
+13. [17-alternative](17-alternative.ko.md) — **ZLink를 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
 14. [공통 샘플](../../../common/sample/README.ko.md) — 대표 업무 시나리오와 검증 기준
 15. [spec/interfaces 목차](../../../common/spec/server/languages/dotnet/interfaces/README.ko.md) — 정식 계약(인터페이스 카탈로그)
 

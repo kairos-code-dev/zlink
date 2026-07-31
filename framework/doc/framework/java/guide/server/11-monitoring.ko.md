@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: Location](../../../common/guide/server/10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: Location](10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](12-operations.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 11. Monitoring — 상태 관측과 진단
@@ -18,11 +18,11 @@ runtime event를 bean handler로 받는 표면은 없다. 관측은 전부 아�
 
 | 무엇을 보나 | 표면 | 어디서 다루나 |
 |---|---|---|
-| Host lifecycle(relocate · drain · readiness) | `ZLinkFrameworkRuntime.status()` · `observe()` | [12. 운영](../../../common/guide/server/12-operations.ko.md) §6.1 |
-| MeshNode의 node · peer · channel 준비 상태 | `ZLinkRouteMeshRuntime.snapshot(...)` · `observe(...)` | [12. 운영](../../../common/guide/server/12-operations.ko.md) §5 |
+| Host lifecycle(relocate · drain · readiness) | `ZLinkFrameworkRuntime.status()` · `observe()` | [12. 운영](12-operations.ko.md) §6.1 |
+| MeshNode의 node · peer · channel 준비 상태 | `ZLinkRouteMeshRuntime.snapshot(...)` · `observe(...)` | [12. 운영](12-operations.ko.md) §5 |
 | ClientServer channel의 target 상태 | `ZLinkClientServerRuntime` | 이 챕터 §2 |
 | pub/sub channel의 publisher 상태 | `ZLinkFanoutRuntime` | 이 챕터 §2 |
-| Location store 상태와 topology | `ZLinkLocationRuntimeQuery` | [10. Location](../../../common/guide/server/10-location.ko.md) §4 |
+| Location store 상태와 topology | `ZLinkLocationRuntimeQuery` | [10. Location](10-location.ko.md) §4 |
 | 메시지 수신 · dispatch · 실패와 흐름 | `configureDispatch()`의 message flow | 이 챕터 §3 |
 | CCU · 큐 깊이 같은 수치 | Micrometer `MeterRegistry` | 이 챕터 §4 |
 
@@ -174,6 +174,6 @@ store가 잠시 끊겼을 때 오케스트레이터가 프로세스를 죽인다
 ## 7. 관련 문서
 
 - 정식 계약: [Java monitoring 공개 인터페이스](../../../common/spec/server/languages/java/interfaces/monitoring.ko.md)
-- 메트릭과 drain · readiness 운영: [12. 운영](../../../common/guide/server/12-operations.ko.md)
+- 메트릭과 drain · readiness 운영: [12. 운영](12-operations.ko.md)
 - 진단 옵션 목록: [16. Options](16-options.ko.md) §4
 - 계기 이름 규약: [Runtime metric과 집계 규칙](../../../common/spec/25-runtime-metrics.ko.md)

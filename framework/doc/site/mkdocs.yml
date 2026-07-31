@@ -53,61 +53,111 @@ exclude_docs: |
   perf/
   */internals/
   common/e2e/
+  # 공통 가이드는 언어 탭을 담은 **소스**다. 읽는 자리는 언어별 생성판이므로
+  # 사이트에 싣지 않는다(doc/site/scripts/generate_language_guides.py).
+  common/guide/
 
 nav:
   - 홈: index.ko.md
   - 가이드:
-      - common/guide/server/03-concepts.ko.md
-      - common/guide/server/04-backpressure.ko.md
-      - common/guide/server/05-channel-messaging.ko.md
-      - common/guide/server/06-spot.ko.md
-      - common/guide/server/07-actor-spot.ko.md
-      - common/guide/server/08-actor-session.ko.md
-      - common/guide/server/09-stream.ko.md
-      - common/guide/server/10-location.ko.md
-      - common/guide/server/12-operations.ko.md
-      - common/guide/server/14-samples.ko.md
-      - common/guide/server/15-e2e-testing.ko.md
-      - common/guide/server/17-alternative.ko.md
-  - 언어별:
       - .NET:
           - dotnet/guide/server/README.ko.md
           - dotnet/guide/server/01-overview.ko.md
           - dotnet/guide/server/02-getting-started.ko.md
+          - dotnet/guide/server/03-concepts.ko.md
+          - dotnet/guide/server/04-backpressure.ko.md
+          - dotnet/guide/server/05-channel-messaging.ko.md
+          - dotnet/guide/server/06-spot.ko.md
+          - dotnet/guide/server/07-actor-spot.ko.md
+          - dotnet/guide/server/08-actor-session.ko.md
+          - dotnet/guide/server/09-stream.ko.md
+          - dotnet/guide/server/10-location.ko.md
           - dotnet/guide/server/11-monitoring.ko.md
+          - dotnet/guide/server/12-operations.ko.md
           - dotnet/guide/server/13-interface-catalog.ko.md
+          - dotnet/guide/server/14-samples.ko.md
+          - dotnet/guide/server/15-e2e-testing.ko.md
           - dotnet/guide/server/16-options.ko.md
+          - dotnet/guide/server/17-alternative.ko.md
       - C++:
           - cpp/guide/server/README.ko.md
           - cpp/guide/server/01-overview.ko.md
           - cpp/guide/server/02-getting-started.ko.md
+          - cpp/guide/server/03-concepts.ko.md
           - cpp/guide/server/21-execution-model.ko.md
-          - cpp/guide/server/11-monitoring.ko.md
-          - cpp/guide/server/13-interface-catalog.ko.md
-          - cpp/guide/server/16-options.ko.md
           - cpp/guide/server/18-di-container.ko.md
           - cpp/guide/server/19-configuration.ko.md
           - cpp/guide/server/20-http-hosting.ko.md
+          - cpp/guide/server/04-backpressure.ko.md
+          - cpp/guide/server/05-channel-messaging.ko.md
+          - cpp/guide/server/06-spot.ko.md
+          - cpp/guide/server/07-actor-spot.ko.md
+          - cpp/guide/server/08-actor-session.ko.md
+          - cpp/guide/server/09-stream.ko.md
+          - cpp/guide/server/10-location.ko.md
+          - cpp/guide/server/11-monitoring.ko.md
+          - cpp/guide/server/12-operations.ko.md
+          - cpp/guide/server/13-interface-catalog.ko.md
+          - cpp/guide/server/14-samples.ko.md
+          - cpp/guide/server/15-e2e-testing.ko.md
+          - cpp/guide/server/16-options.ko.md
+          - cpp/guide/server/17-alternative.ko.md
       - Java:
           - java/guide/server/README.ko.md
           - java/guide/server/01-overview.ko.md
           - java/guide/server/02-getting-started.ko.md
+          - java/guide/server/03-concepts.ko.md
+          - java/guide/server/04-backpressure.ko.md
+          - java/guide/server/05-channel-messaging.ko.md
+          - java/guide/server/06-spot.ko.md
+          - java/guide/server/07-actor-spot.ko.md
+          - java/guide/server/08-actor-session.ko.md
+          - java/guide/server/09-stream.ko.md
+          - java/guide/server/10-location.ko.md
           - java/guide/server/11-monitoring.ko.md
+          - java/guide/server/12-operations.ko.md
           - java/guide/server/13-interface-catalog.ko.md
+          - java/guide/server/14-samples.ko.md
+          - java/guide/server/15-e2e-testing.ko.md
           - java/guide/server/16-options.ko.md
+          - java/guide/server/17-alternative.ko.md
       - Kotlin:
           - kotlin/guide/server/README.ko.md
           - kotlin/guide/server/01-overview.ko.md
           - kotlin/guide/server/02-getting-started.ko.md
+          - kotlin/guide/server/03-concepts.ko.md
+          - kotlin/guide/server/04-backpressure.ko.md
+          - kotlin/guide/server/05-channel-messaging.ko.md
+          - kotlin/guide/server/06-spot.ko.md
+          - kotlin/guide/server/07-actor-spot.ko.md
+          - kotlin/guide/server/08-actor-session.ko.md
+          - kotlin/guide/server/09-stream.ko.md
+          - kotlin/guide/server/10-location.ko.md
           - kotlin/guide/server/11-monitoring.ko.md
+          - kotlin/guide/server/12-operations.ko.md
           - kotlin/guide/server/13-interface-catalog.ko.md
+          - kotlin/guide/server/14-samples.ko.md
+          - kotlin/guide/server/15-e2e-testing.ko.md
+          - kotlin/guide/server/17-alternative.ko.md
       - Node.js:
           - node/guide/server/README.ko.md
           - node/guide/server/01-overview.ko.md
           - node/guide/server/02-getting-started.ko.md
+          - node/guide/server/03-concepts.ko.md
+          - node/guide/server/04-backpressure.ko.md
+          - node/guide/server/05-channel-messaging.ko.md
+          - node/guide/server/06-spot.ko.md
+          - node/guide/server/07-actor-spot.ko.md
+          - node/guide/server/08-actor-session.ko.md
+          - node/guide/server/09-stream.ko.md
+          - node/guide/server/10-location.ko.md
           - node/guide/server/11-monitoring.ko.md
+          - node/guide/server/12-operations.ko.md
           - node/guide/server/13-interface-catalog.ko.md
+          - node/guide/server/14-samples.ko.md
+          - node/guide/server/15-e2e-testing.ko.md
           - node/guide/server/16-options.ko.md
+          - node/guide/server/17-alternative.ko.md
   - 스펙:
       - common/README.ko.md
       - common/spec/server/languages/README.ko.md

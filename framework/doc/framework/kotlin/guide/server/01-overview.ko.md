@@ -135,7 +135,7 @@ class PlayServerApplication {
 03~17장은 다섯 언어가 같은 정본을 공유한다. 예제는 `Kotlin` 탭을 고른다. 순서는
 [Kotlin 가이드 진입점](README.ko.md)이 제시한다.
 
-먼저 [3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md)에서 channel · Spot ·
+먼저 [3. 핵심 개념](03-concepts.ko.md)에서 channel · Spot ·
 Actor · stream · relocation 다섯 개념을 잡는다.
 
 ## 6. 관련 문서

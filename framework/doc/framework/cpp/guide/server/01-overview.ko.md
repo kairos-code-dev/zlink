@@ -209,7 +209,7 @@ mesh.channel_name ("inventory.service").use_handler_group ("inventory");
 채널 핸들러의 공통 처리는 handler filter로 묶는다. HTTP middleware는 HTTP route에만
 적용되므로, ZLink handler 앞뒤의 로깅·검증·권한 확인·메트릭 기록은 filter로 분리한다.
 
-[7장 →](../../../common/guide/server/05-channel-messaging.ko.md)
+[7장 →](05-channel-messaging.ko.md)
 
 ### Runtime 경계
 
@@ -231,12 +231,12 @@ flowchart LR
 
 | 축 | 사용자에게 보이는 것 | 가이드 챕터 |
 |----|----------------------|-------------|
-| channel messaging | handler type, `request_client_t`, handler filter | [7장](../../../common/guide/server/05-channel-messaging.ko.md) |
-| classic fanout | `publisher_t`, fanout channel, topic handler | [7장](../../../common/guide/server/05-channel-messaging.ko.md) |
-| SPOT | `spot_t`, `entry_spot_t`, timer, route context | [8장](../../../common/guide/server/06-spot.ko.md) |
-| actor / session | MeshNode-owned actor factory와 session relay | [9장](../../../common/guide/server/08-actor-session.ko.md) |
-| STREAM | stream node, packet stream session, connector | [10장](../../../common/guide/server/09-stream.ko.md) |
-| 인프라 | location topology, runtime monitoring | [11장](../../../common/guide/server/10-location.ko.md), `11. Monitoring` 장 |
+| channel messaging | handler type, `request_client_t`, handler filter | [7장](05-channel-messaging.ko.md) |
+| classic fanout | `publisher_t`, fanout channel, topic handler | [7장](05-channel-messaging.ko.md) |
+| SPOT | `spot_t`, `entry_spot_t`, timer, route context | [8장](06-spot.ko.md) |
+| actor / session | MeshNode-owned actor factory와 session relay | [9장](08-actor-session.ko.md) |
+| STREAM | stream node, packet stream session, connector | [10장](09-stream.ko.md) |
+| 인프라 | location topology, runtime monitoring | [11장](10-location.ko.md), `11. Monitoring` 장 |
 
 ### SPOT — 상태 단위를 락 없이 관리
 
@@ -270,7 +270,7 @@ SPOT이 소유한 상태에 std::mutex 없이 접근할 수 있다.
 actor·session을 함께 쓰면 클라이언트 실시간 연결을 SPOT에 참여시킬 수 있다 —
 이 경우에도 SPOT 자체는 그대로고, actor가 외부 연결의 대리인 역할을 한다.
 
-[8장 →](../../../common/guide/server/06-spot.ko.md)
+[8장 →](06-spot.ko.md)
 
 ### Actor · Session — 클라이언트 session
 
@@ -284,7 +284,7 @@ actor destroy나 SPOT leave가 아니므로 actor와 membership은 유지된다.
 서버 간에도 actor를 relay할 수 있다 — Session 서버가 인증·연결을 전담하고,
 도메인 서버의 SPOT이 상태를 담당하는 분리 구조에 쓴다.
 
-[9장 →](../../../common/guide/server/08-actor-session.ko.md)
+[9장 →](08-actor-session.ko.md)
 
 ### Stream — 클라이언트 실시간 연결
 
@@ -294,7 +294,7 @@ stream node가 접속을 받고, 연결마다 session 인스턴스를 생성한�
 
 클라이언트 쪽 접속은 별도 산출물인 stream connector가 담당한다.
 
-[10장 →](../../../common/guide/server/09-stream.ko.md)
+[10장 →](09-stream.ko.md)
 
 ### Location store — 주소 자동 연결
 
@@ -303,7 +303,7 @@ stream node가 접속을 받고, 연결마다 session 인스턴스를 생성한�
 node가 revision을 읽어 peer set을 갱신한다. 고정 topology는
 `peer_connections().connect(...)`로 직접 등록할 수 있다.
 
-[11장 →](../../../common/guide/server/10-location.ko.md)
+[11장 →](10-location.ko.md)
 
 ## 3. 전체 topology
 
@@ -385,23 +385,23 @@ HTTP **요청을 보내는** 쪽은 별도 산출물 `zlink::http_client`다 —
 
 Framework는 handler를 자동으로 모든 channel에 열지 않는다. handler 등록은 handler를
 **찾는** 단계이고, 실제 노출은 channel이 어떤 handler group을 쓰는지에 따라 정해진다.
-자세한 규칙은 [7장](../../../common/guide/server/05-channel-messaging.ko.md)에서 다룬다.
+자세한 규칙은 [7장](05-channel-messaging.ko.md)에서 다룬다.
 
 ## 8. 이 가이드 읽는 순서
 
 1. [2장](02-getting-started.ko.md) — 첫 앱 구성과 실행
-2. [3장](../../../common/guide/server/03-concepts.ko.md) — 핵심 개념
+2. [3장](03-concepts.ko.md) — 핵심 개념
 3. [4장](18-di-container.ko.md) — DI 컨테이너
 4. [5장](19-configuration.ko.md) — 설정 바인딩
 5. [6장](20-http-hosting.ko.md) — HTTP hosting
-6. [7장](../../../common/guide/server/05-channel-messaging.ko.md) — request/send/pub-sub와 filter
-7. [8장](../../../common/guide/server/06-spot.ko.md) — SPOT과 timer
-8. [9장](../../../common/guide/server/08-actor-session.ko.md) — actor/session relay
-9. [10장](../../../common/guide/server/09-stream.ko.md) — 외부 client STREAM
-10. [11장](../../../common/guide/server/10-location.ko.md) — location store와 topology 조회
+6. [7장](05-channel-messaging.ko.md) — request/send/pub-sub와 filter
+7. [8장](06-spot.ko.md) — SPOT과 timer
+8. [9장](08-actor-session.ko.md) — actor/session relay
+9. [10장](09-stream.ko.md) — 외부 client STREAM
+10. [11장](10-location.ko.md) — location store와 topology 조회
 11. `11. Monitoring` 장 — runtime 이벤트와 metrics
 12. `13. Interface 카탈로그` 장 — 주요 public 표면
-13. [14장](../../../common/guide/server/14-samples.ko.md) — 샘플별 실행 흐름
+13. [14장](14-samples.ko.md) — 샘플별 실행 흐름
 
 ## 9. 관련 문서
 

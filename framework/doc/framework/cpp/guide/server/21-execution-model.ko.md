@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: 3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md) | [다음: 18. DI 컨테이너](18-di-container.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: 3. 핵심 개념](03-concepts.ko.md) | [다음: 18. DI 컨테이너](18-di-container.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 21. 실행·구성 모델
@@ -8,7 +8,7 @@
 > [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)이 다룬다.
 
 C++ framework가 개념을 실제로 실행하고 구성하는 방식이다. 개념 자체는
-[3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md)이 다루고, 이 장은 그것이
+[3. 핵심 개념](03-concepts.ko.md)이 다루고, 이 장은 그것이
 C++ 코드에서 어떤 실행 모델과 수명주기로 나타나는지 설명한다.
 
 
@@ -62,7 +62,7 @@ graph TB
 
 가변 도메인 상태(게임 룸 등)는 **SPOT**, 불변 구성(topology)은 싱글톤 서비스, 공유
 인프라(캐시·카운터)는 싱글톤 + 자체 동기화에 둔다. SPOT 핸들러 작성과 직렬 실행
-보장은 [8장](../../../common/guide/server/06-spot.ko.md), 채널 핸들러 노출은 [7장](../../../common/guide/server/05-channel-messaging.ko.md).
+보장은 [8장](06-spot.ko.md), 채널 핸들러 노출은 [7장](05-channel-messaging.ko.md).
 
 **handler 노출은 명시적이다** — `options.handlers().group("api").add<T>()` 로 group 에 넣고,
 channel 등록에서 `use_handler_group("api")` 로 붙인다. 시작 단계에서 같은 handler

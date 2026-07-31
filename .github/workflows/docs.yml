@@ -35,6 +35,11 @@ jobs:
         run: pip install -r doc/site/requirements.txt -r framework/doc/site/requirements.txt
 
       # 두 사이트의 게이트를 따로 돌린다. 한쪽 회귀가 다른 쪽 검증을 가리지 않는다.
+      # 언어별 장은 공통 소스에서 생성한다. 소스만 고치고 생성물을 안 올리면
+      # 사이트가 옛 내용을 낸다.
+      - name: Check generated language guides are up to date
+        run: python3 doc/site/scripts/generate_language_guides.py --check
+
       - name: Check framework language tabs and snippets
         run: python3 doc/site/scripts/check_doc_tabs.py framework
 

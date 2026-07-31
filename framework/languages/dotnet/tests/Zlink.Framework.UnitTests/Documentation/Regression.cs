@@ -126,15 +126,25 @@ public sealed class RegressionTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(LanguageGuideDocuments.Order(StringComparer.Ordinal), actual);
+        // 언어별 디렉터리는 직접 쓴 장과 공통 소스에서 생성한 장을 함께 담는다.
+        Assert.Equal(
+            LanguageGuideDocuments.Concat(CommonGuideDocuments).Order(StringComparer.Ordinal),
+            actual);
         Assert.True(File.Exists(Path.Combine(guideRoot, "README.ko.md")),
             "언어별 가이드는 읽는 순서를 제시하는 진입점 README를 가진다.");
 
-        foreach (var document in LanguageGuideDocuments)
+        foreach (var document in LanguageGuideDocuments.Concat(CommonGuideDocuments))
         {
             var text = File.ReadAllText(Path.Combine(guideRoot, document));
             Assert.Contains("<!-- framework-adapter-nav:start -->", text, StringComparison.Ordinal);
             Assert.Matches(@"(?m)^# .+", text);
+        }
+
+        // 생성판은 손으로 고치지 않는다. 표시가 없으면 사람이 직접 쓴 파일이라는 뜻이다.
+        foreach (var document in CommonGuideDocuments)
+        {
+            var text = File.ReadAllText(Path.Combine(guideRoot, document));
+            Assert.Contains("<!-- generated:start -->", text, StringComparison.Ordinal);
         }
     }
 

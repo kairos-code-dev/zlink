@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: 3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md) | [다음: 19. Configuration](19-configuration.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: 3. 핵심 개념](03-concepts.ko.md) | [다음: 19. Configuration](19-configuration.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 18. DI 컨테이너
@@ -178,7 +178,7 @@ class season_scheduler_t : public zlink::framework::hosted_service_t
 | 연결·클라이언트 같이 앱 전체에서 재사용하는 인프라 | **singleton** + 내부 thread-safe 구현 |
 | 요청 단위로 격리해야 하는 상태 (트랜잭션, per-request context) | **scoped** |
 | 채널·HTTP 핸들러 — 요청마다 새 인스턴스 필요 | **transient** (dependency_types로 자동 등록) |
-| 가변 도메인 상태 (게임 룸, 대화 상태) | **DI 아님 — SPOT으로 관리** ([8장](../../../common/guide/server/06-spot.ko.md)) |
+| 가변 도메인 상태 (게임 룸, 대화 상태) | **DI 아님 — SPOT으로 관리** ([8장](06-spot.ko.md)) |
 
 ## 7. 수명 충돌 주의 — captive dependency
 

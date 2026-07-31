@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](17-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 16. 설정 — 옵션 목록 · 기본값 · 변경 시점
@@ -85,15 +85,15 @@ process 전체에 적용되는 값이다.
 | `MaintenanceWave` | 이 process가 속한 점검 그룹 이름 | 없음 | 노드를 묶어 차례로 점검·교체할 때 |
 | `Worker` | 무거운 작업을 넘길 스레드 풀 | 최대 `프로세서 수 × 2`(최소 2) · 유휴 30초 · 대기열 1024 | 오래 걸리는 계산·I/O를 worker로 많이 넘길 때 |
 
-- codec 선택과 자체 serializer 등록: [05-channel-messaging](../../../common/guide/server/05-channel-messaging.ko.md#7-직렬화-codec)
-- handler 발견과 노출의 차이: [05-channel-messaging](../../../common/guide/server/05-channel-messaging.ko.md#3-handler를-channel에-노출하기)
-- filter가 적용되는 범위: [05-channel-messaging](../../../common/guide/server/05-channel-messaging.ko.md#5-filter--공통-처리)
-- worker 호출: [06-spot](../../../common/guide/server/06-spot.ko.md#6-timer와-worker)
-- 버전·점검 그룹을 쓰는 배포 흐름: [12-operations](../../../common/guide/server/12-operations.ko.md)
+- codec 선택과 자체 serializer 등록: [05-channel-messaging](05-channel-messaging.ko.md#7-직렬화-codec)
+- handler 발견과 노출의 차이: [05-channel-messaging](05-channel-messaging.ko.md#3-handler를-channel에-노출하기)
+- filter가 적용되는 범위: [05-channel-messaging](05-channel-messaging.ko.md#5-filter--공통-처리)
+- worker 호출: [06-spot](06-spot.ko.md#6-timer와-worker)
+- 버전·점검 그룹을 쓰는 배포 흐름: [12-operations](12-operations.ko.md)
 
 `AddLocationStore(...)`와 `AddRelocationStore(...)`도 루트에서 등록한다. 논리 이름으로
-상대를 찾는 자동 연결은 [10-location](../../../common/guide/server/10-location.ko.md)이, 상태를 다른 node로 옮길 때
-쓰는 저장소는 [07-actor-spot](../../../common/guide/server/07-actor-spot.ko.md)이 다룬다.
+상대를 찾는 자동 연결은 [10-location](10-location.ko.md)이, 상태를 다른 node로 옮길 때
+쓰는 저장소는 [07-actor-spot](07-actor-spot.ko.md)이 다룬다.
 
 > **metadata는 열어 준 key만 통과한다.** `AllowSessionToActor`와 `AllowActorToSession`으로
 > 방향별 허용 key를 지정하지 않으면 어떤 값도 넘어가지 않는다. 오류가 나지 않고 값만
@@ -101,7 +101,7 @@ process 전체에 적용되는 값이다.
 
 ## 3. MeshNode 옵션
 
-[MeshNode](../../../common/guide/server/03-concepts.ko.md#1-channel--서버-간-연결)는 서버 간 연결의 기초 단위이고
+[MeshNode](03-concepts.ko.md#1-channel--서버-간-연결)는 서버 간 연결의 기초 단위이고
 한 process에 mesh마다 하나씩 만든다. 아래는 `AddRouteMesh(name)`이 반환하는 builder에서
 지정하며, 그 node 하나에만 적용된다.
 
@@ -119,9 +119,9 @@ process 전체에 적용되는 값이다.
 | `PeerConnections.Connect(endpoint)` | 수동으로 연결할 상대 endpoint | 없음 | 자동 연결을 쓰지 않는 구성일 때 |
 
 `Objects().Server()`와 `Channel(name).Server()`에서 하는 등록(stable type, 이전 정책,
-channel weight)은 [06-spot](../../../common/guide/server/06-spot.ko.md)과
-[05-channel-messaging](../../../common/guide/server/05-channel-messaging.ko.md)이 다룬다. 수동 연결은
-[05-channel-messaging](../../../common/guide/server/05-channel-messaging.ko.md#6-연결-제어)이 다룬다.
+channel weight)은 [06-spot](06-spot.ko.md)과
+[05-channel-messaging](05-channel-messaging.ko.md)이 다룬다. 수동 연결은
+[05-channel-messaging](05-channel-messaging.ko.md#6-연결-제어)이 다룬다.
 
 ### 3.1 backpressure — 송신 대기 동작
 
@@ -137,7 +137,7 @@ await client.SendToChannel("profile", command).Async(ct);
 ```
 
 상대의 지연이 왜 이쪽 대기가 되는지, 상한이 언제 걸리고 언제 풀리는지는
-[04-backpressure](../../../common/guide/server/04-backpressure.ko.md)가 다룬다. 이 절과 다음 절은 그 동작에서 값을 정하는
+[04-backpressure](04-backpressure.ko.md)가 다룬다. 이 절과 다음 절은 그 동작에서 값을 정하는
 옵션만 다룬다. 흐름 제어 자체는 Core가 담당하며 정확한 계약은
 [core guide의 socket option](https://core.zlink.systems/guide/12-socket-options/)이 다룬다.
 
@@ -151,10 +151,10 @@ Spot끼리 이벤트를 주고받는 발행 소켓의 한도를 정한다. 지�
 쓴다 — 지정하지 않은 socket에는 runtime이 연결 수에 맞춰 계산한 값이 적용된다. 기본
 profile에서 연결이 64개 이하면 방향마다·상대마다 `1,048,576 bytes`(1 MiB)이고, 연결이
 늘수록 연결당 값은 작아진다
-([04-backpressure §4.1](../../../common/guide/server/04-backpressure.ko.md#41-auto-hwm--미지정-socket의-자동-계산)).
+([04-backpressure §4.1](04-backpressure.ko.md#41-auto-hwm--미지정-socket의-자동-계산)).
 **두 high-water mark는 message 개수가 아니라 그 queue가 보관하는 byte를 제한하며, 연결
 하나에 적용된다** — 목표 peer 수를 곱한 값이 process memory 예산 안에 들어오는지
-확인한다([04-backpressure](../../../common/guide/server/04-backpressure.ko.md#4-영향을-주는-옵션)).
+확인한다([04-backpressure](04-backpressure.ko.md#4-영향을-주는-옵션)).
 
 | 설정 | 정하는 값 | 올릴 때 | 내릴 때 |
 | --- | --- | --- | --- |
@@ -168,7 +168,7 @@ profile에서 연결이 64개 이하면 방향마다·상대마다 `1,048,576 by
 두 한도는 방향만 다를 뿐 성격이 같다. 각각 **자기 node가 들고 있을 byte**를 정하고,
 그 한도가 상대 쪽 흐름으로 이어진다. 실행 단위별 상한을 host 전체 byte 예산 하나로
 대체하는 설계가 확정되어 있으며, 적용 상태는
-[04-backpressure §6](../../../common/guide/server/04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)이 밝힌다.
+[04-backpressure §6](04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)이 밝힌다.
 
 **high-water mark를 올리는 것이 기본 대응은 아니다.** 상한을 키우면 혼잡이 메모리로
 흡수되어 `DeadlineExceeded`가 늦게 나타나고, 그만큼 원인을 늦게 알게 된다. 폭주가
@@ -216,9 +216,9 @@ dispatch.Diagnostics
 ## 5. location 옵션
 
 `ConfigureLocations()`는 위치 정보를 갱신하는 주기와 유효 기간, 그리고
-[relocation](../../../common/guide/server/03-concepts.ko.md#5-relocation--다른-node로-옮겨가기)을 — actor나 Spot이
+[relocation](03-concepts.ko.md#5-relocation--다른-node로-옮겨가기)을 — actor나 Spot이
 다른 node로 옮겨가는 동작을 — 한 번에 진행할 수 있는 수를 정한다. 등록 방법과 동작은
-[10-location](../../../common/guide/server/10-location.ko.md)이 다룬다.
+[10-location](10-location.ko.md)이 다룬다.
 
 | 설정 | 정하는 값 | 기본값 | 변경 시점 |
 | --- | --- | --- | --- |
@@ -236,16 +236,16 @@ dispatch.Diagnostics
 
 ## 6. STREAM 옵션
 
-[STREAM](../../../common/guide/server/03-concepts.ko.md#4-stream--외부-client-연결)은 모바일·게임 같은 외부 client와
+[STREAM](03-concepts.ko.md#4-stream--외부-client-연결)은 모바일·게임 같은 외부 client와
 맺는 연결 지향 채널이다. 그 연결을 받는 node에 아래를 지정한다. 사용법은
-[09-stream](../../../common/guide/server/09-stream.ko.md)이 다룬다.
+[09-stream](09-stream.ko.md)이 다룬다.
 
 | 설정 | 정하는 값 | 기본값 | 변경 시점 |
 | --- | --- | --- | --- |
 | `AddStreamNode(name).Bind(...)` | client가 접속할 endpoint | 없음 | 항상 필요하다 |
 | `SetBindHost` · `SetAdvertiseHost` | bind·광고 주소 | 루트 `ConfigureNetwork()` 값 | 컨테이너 배포 |
 | `SetTlsServer(cert, key, requireClientCertificate)` | 서버 인증서와 client 인증서 요구 여부 | 사용 안 함 | 외부에 직접 노출할 때 |
-| `EnableActorDispatch()` | 들어온 packet을 bind된 actor로 넘긴다 | 꺼져 있음 | 연결을 actor에 묶어 쓰는 구성일 때([08-actor-session](../../../common/guide/server/08-actor-session.ko.md)) |
+| `EnableActorDispatch()` | 들어온 packet을 bind된 actor로 넘긴다 | 꺼져 있음 | 연결을 actor에 묶어 쓰는 구성일 때([08-actor-session](08-actor-session.ko.md)) |
 | `AddSession<T>()` | 연결 수명을 다룰 session 구현 | 없음 | 연결·인증·해제를 직접 다룰 때 |
 | `ConfigureStreamCompression()` | client와 주고받는 payload 압축 | LZ4 | `Disable()`로 끄거나 자체 codec으로 바꿀 때 |
 
@@ -260,8 +260,8 @@ dispatch.Diagnostics
 | 진단 수준 | `IZLinkDiagnosticsRuntime` | `Level` — 원인을 추적하는 동안만 `Detailed`로 높였다가 되돌린다 |
 
 weight 값의 범위는 `0..10000`이고 기본값은 `100`이다. 운영 흐름은
-[05-channel-messaging](../../../common/guide/server/05-channel-messaging.ko.md#운영-drain--restore-런타임)과
-[12-operations](../../../common/guide/server/12-operations.ko.md)가 다룬다.
+[05-channel-messaging](05-channel-messaging.ko.md#운영-drain--restore-런타임)과
+[12-operations](12-operations.ko.md)가 다룬다.
 
 ## 8. 반드시 정해야 하는 것
 
@@ -303,9 +303,9 @@ weight 값의 범위는 `0..10000`이고 기본값은 `100`이다. 운영 흐름
   [Topology 공개 인터페이스](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md) ·
   [Host 구성 인터페이스](../../../common/spec/server/languages/dotnet/interfaces/02-configuration-host.ko.md)
 - 등록 지점과 계층 구조: [01-overview](01-overview.ko.md#아키텍처--계층-구조와-등록-지점)
-- 실행 중 관측과 운영: [11-monitoring](11-monitoring.ko.md) · [12-operations](../../../common/guide/server/12-operations.ko.md)
+- 실행 중 관측과 운영: [11-monitoring](11-monitoring.ko.md) · [12-operations](12-operations.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](17-alternative.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

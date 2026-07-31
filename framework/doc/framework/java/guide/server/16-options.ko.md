@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](17-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 16. Options — 설정 목록과 기본값
@@ -99,7 +99,7 @@ handler 실행기를 정하므로 뒤에 부른 쪽이 앞을 덮는다.
 | `setMailboxByteBudget(long)` | 이 node의 service mailbox가 담을 byte |
 
 두 high-water mark의 동작 원리와 값을 고르는 기준은
-[4. Backpressure](../../../common/guide/server/04-backpressure.ko.md)가 다룬다.
+[4. Backpressure](04-backpressure.ko.md)가 다룬다.
 `0`은 기본값이 아니라 **무제한**이다.
 
 **HWM 넷은 `long`이다.** byte 단위이므로 `int`로는 2 GiB를 넘길 수 없다.
@@ -136,7 +136,7 @@ profile은 `COMPACT` · `LOW_LATENCY` · `BALANCED` · `THROUGHPUT` 넷이다.
 `setProcessMemoryLimitBytes`는 양수만 받는다. 둘 다 `ZLinkConfigurationException`이다.
 
 > 이 단위와 상한은 계약으로 확정되었을 뿐 **아직 runtime이 사용하지 않는다.**
-> [4. Backpressure §6](../../../common/guide/server/04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)을 본다.
+> [4. Backpressure §6](04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)을 본다.
 
 ## 4. 진단
 
@@ -239,6 +239,6 @@ profile은 `COMPACT` · `LOW_LATENCY` · `BALANCED` · `THROUGHPUT` 넷이다.
 ## 10. 관련 문서
 
 - 정식 계약: [Java configuration과 host 공개 계약](../../../common/spec/server/languages/java/interfaces/configuration-host.ko.md)
-- 상한이 무엇을 바꾸는지: [4. Backpressure](../../../common/guide/server/04-backpressure.ko.md)
-- 가중치로 트래픽을 빼는 절차: [12. 운영](../../../common/guide/server/12-operations.ko.md)
+- 상한이 무엇을 바꾸는지: [4. Backpressure](04-backpressure.ko.md)
+- 가중치로 트래픽을 빼는 절차: [12. 운영](12-operations.ko.md)
 - 알려진 갭: 저장소 `framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md`

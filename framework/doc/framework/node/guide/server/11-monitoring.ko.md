@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: Location](../../../common/guide/server/10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: Location](10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](12-operations.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 11. Monitoring — 상태 관측과 진단
@@ -18,11 +18,11 @@ runtime event를 provider handler로 받는 표면은 없다. 관측은 전부 �
 
 | 무엇을 보나 | 주입 토큰 | 어디서 다루나 |
 |---|---|---|
-| Host lifecycle(relocate · drain · readiness) | `ZLINK_FRAMEWORK_RUNTIME` | [12. 운영](../../../common/guide/server/12-operations.ko.md) §6.1 |
-| MeshNode의 node · peer · channel 준비 상태 | `ZLINK_ROUTE_MESH_RUNTIME` | [12. 운영](../../../common/guide/server/12-operations.ko.md) §5 |
+| Host lifecycle(relocate · drain · readiness) | `ZLINK_FRAMEWORK_RUNTIME` | [12. 운영](12-operations.ko.md) §6.1 |
+| MeshNode의 node · peer · channel 준비 상태 | `ZLINK_ROUTE_MESH_RUNTIME` | [12. 운영](12-operations.ko.md) §5 |
 | ClientServer channel의 target 상태 | `ZLINK_CLIENT_SERVER_RUNTIME` | 이 챕터 §2 |
 | pub/sub channel의 publisher 상태 | `ZLINK_FANOUT_RUNTIME` | 이 챕터 §2 |
-| Location store 상태와 topology | `ZLINK_LOCATION_RUNTIME_QUERY` | [10. Location](../../../common/guide/server/10-location.ko.md) §4 |
+| Location store 상태와 topology | `ZLINK_LOCATION_RUNTIME_QUERY` | [10. Location](10-location.ko.md) §4 |
 | 메시지 수신 · dispatch · 실패와 흐름 | `configureDispatch()`의 message flow | 이 챕터 §3 |
 
 **전부 `@Inject(토큰)`으로 받는다.** 타입만 적으면 Nest가 무엇을 넣을지 모른다.
@@ -157,6 +157,6 @@ store가 잠시 끊겼을 때 오케스트레이터가 프로세스를 죽인다
 ## 7. 관련 문서
 
 - 정식 계약: [Node.js location과 observability 공개 계약](../../../common/spec/server/languages/node/interfaces/03-location-observability.ko.md)
-- 메트릭과 drain · readiness 운영: [12. 운영](../../../common/guide/server/12-operations.ko.md)
+- 메트릭과 drain · readiness 운영: [12. 운영](12-operations.ko.md)
 - 진단 옵션 목록: [16. Options](16-options.ko.md) §4
 - 주입 토큰 목록: [13. 주요 interface 사용 색인](13-interface-catalog.ko.md) §1

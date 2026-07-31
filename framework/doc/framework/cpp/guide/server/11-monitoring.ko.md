@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: Location](../../../common/guide/server/10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: Location](10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](12-operations.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 11. Monitoring — 상태 관측과 진단
@@ -18,12 +18,12 @@ runtime event를 DI handler로 받는 표면은 없다. 관측은 전부 아래 
 
 | 무엇을 보나 | 표면 | 어디서 다루나 |
 |---|---|---|
-| Host lifecycle(relocate·drain·readiness) | `framework_runtime_t::status ()` · `observe (...)` | [12. 운영](../../../common/guide/server/12-operations.ko.md) §6.1 |
-| MeshNode의 node·peer·channel 준비 상태 | `route_mesh_runtime_t::snapshot (...)` · `observe (...)` | [12. 운영](../../../common/guide/server/12-operations.ko.md) §5 |
-| Location store 상태와 topology | `location_runtime_query_t` | [10. Location](../../../common/guide/server/10-location.ko.md) §4 |
+| Host lifecycle(relocate·drain·readiness) | `framework_runtime_t::status ()` · `observe (...)` | [12. 운영](12-operations.ko.md) §6.1 |
+| MeshNode의 node·peer·channel 준비 상태 | `route_mesh_runtime_t::snapshot (...)` · `observe (...)` | [12. 운영](12-operations.ko.md) §5 |
+| Location store 상태와 topology | `location_runtime_query_t` | [10. Location](10-location.ko.md) §4 |
 | 메시지 수신·dispatch·실패와 흐름 | `configure_dispatch ()`의 message flow | 이 챕터 §3 |
 | readiness · liveness 판정 | `health_report_t` | 이 챕터 §4 |
-| CCU·큐 깊이 같은 수치 | 표준 logging provider와 metric 규약 | [12. 운영](../../../common/guide/server/12-operations.ko.md) §1 |
+| CCU·큐 깊이 같은 수치 | 표준 logging provider와 metric 규약 | [12. 운영](12-operations.ko.md) §1 |
 
 네 갈래는 소비 방식이 다르다. **상태 표면**은 지금 값을 읽거나 변화를 순서대로 받을 때,
 **메시지 흐름**은 개별 메시지가 어디서 어떻게 끝났는지 추적할 때, **health**는 로드
@@ -166,6 +166,6 @@ metric 이름·종류·단위·label은
 ## 7. 관련 문서
 
 - 정식 계약: [C++ monitoring 공개 계약](../../../common/spec/server/languages/cpp/interfaces/08-monitoring.ko.md)
-- 메트릭과 drain·readiness 운영: [12. 운영](../../../common/guide/server/12-operations.ko.md)
+- 메트릭과 drain·readiness 운영: [12. 운영](12-operations.ko.md)
 - logging provider 구성: [19. Configuration](19-configuration.ko.md)
 - HTTP endpoint 등록: [20. HTTP Hosting](20-http-hosting.ko.md)

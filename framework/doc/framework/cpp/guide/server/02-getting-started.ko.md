@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: 1. 개요](01-overview.ko.md) | [다음: 3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: 1. 개요](01-overview.ko.md) | [다음: 3. 핵심 개념](03-concepts.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 2. 시작하기
@@ -171,7 +171,7 @@ options.handlers ()
 
 `create_game_handler_t`는 `CreateGameReq`를 받아 room id, game name, owner Play stream
 endpoint, 참가 가능한 Play stream endpoint 목록, Play node 목록, 요구 level을 돌려준다.
-실제 구현은 room SPOT을 만들기 때문에 [8장 SPOT](../../../common/guide/server/06-spot.ko.md)에서 다시 이어진다.
+실제 구현은 room SPOT을 만들기 때문에 [8장 SPOT](06-spot.ko.md)에서 다시 이어진다.
 
 ```cpp
 class create_game_handler_t
@@ -220,7 +220,7 @@ options.add_location_store (
 MeshNode는 자기 RID, endpoint와 ChannelName membership을 store에 기록한다. 다른
 MeshNode는 revision이 바뀌면 peer intent를 갱신한다. 실제 request/reply payload는
 location store를 통과하지 않는다. Store 장애와 readiness, descriptor lifecycle은
-[11장 location store](../../../common/guide/server/10-location.ko.md)에서 다룬다.
+[11장 location store](10-location.ko.md)에서 다룬다.
 
 ## 8. 잘 안 될 때
 
@@ -235,16 +235,16 @@ location store를 통과하지 않는다. Store 장애와 readiness, descriptor 
 
 | 하고 싶은 것 | 가는 곳 |
 |--------------|---------|
-| framework의 핵심 개념 정리 | [3장 핵심 개념](../../../common/guide/server/03-concepts.ko.md) |
+| framework의 핵심 개념 정리 | [3장 핵심 개념](03-concepts.ko.md) |
 | 설정 파일과 command line으로 endpoint를 바꾸기 | [5장 Configuration](19-configuration.ko.md) |
-| request/send/pub-sub 전체 사용법 | [7장 채널 메시징](../../../common/guide/server/05-channel-messaging.ko.md) |
-| room/stage 같은 동적 노드 | [8장 SPOT](../../../common/guide/server/06-spot.ko.md) |
-| location store 운영과 topology 조회 | [11장 location store](../../../common/guide/server/10-location.ko.md) |
+| request/send/pub-sub 전체 사용법 | [7장 채널 메시징](05-channel-messaging.ko.md) |
+| room/stage 같은 동적 노드 | [8장 SPOT](06-spot.ko.md) |
+| location store 운영과 topology 조회 | [11장 location store](10-location.ko.md) |
 | 실행 가능한 전체 예제 | `samples/TicTacToe`와 `run_sample.sh` |
 
 ## 10. 관련 문서
 
 - 정식 계약: [C++ configuration과 host 공개 계약](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
-- 다음 장: [3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md)
+- 다음 장: [3. 핵심 개념](03-concepts.ko.md)
 - C++ 실행 모델: [21. 실행·구성 모델](21-execution-model.ko.md)
-- 샘플 전체: [14. 샘플 고르기](../../../common/guide/server/14-samples.ko.md)
+- 샘플 전체: [14. 샘플 고르기](14-samples.ko.md)

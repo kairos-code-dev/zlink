@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md) | [다음: 샘플 고르기](../../../common/guide/server/14-samples.ko.md)
+[가이드 홈](../../../index.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: 샘플 고르기](14-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 13. 주요 interface 사용 색인

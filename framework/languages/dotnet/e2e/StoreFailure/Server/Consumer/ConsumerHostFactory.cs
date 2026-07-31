@@ -72,6 +72,12 @@ internal static class ConsumerHostFactory
             // lease before the failure could become observable.
             locations.OwnerLeaseRenewTimeout = TimeSpan.FromMilliseconds(
                 Math.Max(100, options.LocationHeartbeatMs / 2));
+            // The fencing margin needs the same treatment. Spec 21 section 4
+            // requires renew interval + renew timeout to stay below TTL minus
+            // margin, and the production five-second margin already exceeds
+            // this lease on its own, so startup would fail validation.
+            locations.OwnerLeaseFencingMargin = TimeSpan.FromMilliseconds(
+                Math.Max(100, options.LocationLeaseTtlMs / 3));
             locations.PollingInterval = TimeSpan.FromMilliseconds(options.LocationPollingMs);
             locations.StoreFailureGrace = TimeSpan.FromMilliseconds(options.LocationGraceMs);
             framework.ConfigureDispatch().Diagnostics
@@ -145,10 +151,10 @@ internal static class ConsumerHostFactory
                             peer.Endpoint,
                             peer.Draining))
                         .ToArray();
-                    var reached = request.PresentRids.All(rid => rows.Any(row => row.Rid == rid))
-                                  && request.AbsentRids.All(rid => rows.All(row => row.Rid != rid))
+                    var reached = request.PresentRids.All(rid => rows.Any(row => MatchesRole(row.Rid, rid)))
+                                  && request.AbsentRids.All(rid => rows.All(row => !MatchesRole(row.Rid, rid)))
                                   && request.DrainingRids.All(rid =>
-                                      rows.Any(row => row.Rid == rid && row.Draining));
+                                      rows.Any(row => MatchesRole(row.Rid, rid) && row.Draining));
                     if (reached) return Results.Ok(rows);
                 }
                 catch
@@ -181,9 +187,9 @@ internal static class ConsumerHostFactory
                     .Max();
                 var reached = readyMembers >= request.MinimumReadyMembers
                               && request.ReadyRids.All(rid => current.Peers.Any(peer =>
-                                  peer.NodeRid.ToString() == rid && peer.State == ZLinkPeerState.Ready))
+                                  MatchesRole(peer.NodeRid.ToString(), rid) && peer.State == ZLinkPeerState.Ready))
                               && request.NotReadyRids.All(rid => current.Peers.All(peer =>
-                                  peer.NodeRid.ToString() != rid || peer.State != ZLinkPeerState.Ready));
+                                  !MatchesRole(peer.NodeRid.ToString(), rid) || peer.State != ZLinkPeerState.Ready));
                 if (reached)
                     return Results.Ok(new RouteReadyRes(readyMembers));
 
@@ -330,15 +336,26 @@ internal static class ConsumerHostFactory
 
     // A caller joins the providers' RouteMesh with its own membership and
     // issues ChannelName select-one calls through IZLinkRouteClient (spec 10
-    // §1). The bind uses an ephemeral port; the rid is fixed per harness role
-    // because the store decorators under test do not provide the routing-id
-    // slot-allocation capability.
+    // §1). The bind uses an ephemeral port. Spec 13 §3.3 allows a fixed RID
+    // only in an explicit manual topology, and these hosts discover each other
+    // through the Location Store, so the harness role name is a diagnostic
+    // prefix and the Framework issues the RID itself.
+    // Automatic RIDs are 'prefix-<uuid v4>' (spec 13 §3.1), so the harness
+    // role name a scenario asks about is the prefix, not the whole RID. The
+    // trailing separator keeps 'api-a' from matching an 'api-ab' node.
+    static bool MatchesRole(string nodeRid, string role) =>
+        nodeRid.Equals(role, StringComparison.Ordinal)
+        || nodeRid.StartsWith(role + "-", StringComparison.Ordinal);
+
     static void JoinConsumerMesh(IZLinkFrameworkOptions framework, string rid)
     {
         var mesh = framework.AddRouteMesh(StoreFailureNames.Channel)
             .Listen("tcp://127.0.0.1:0")
-            .SetRoutingId(RoutingId.From(rid));
-        mesh.Channel(StoreFailureNames.ConsumerChannel).Client();
+            .SetRoutingIdPrefix(rid);
+        // The Client membership has to name the channel the providers serve.
+        // A membership on any other name leaves the select-one call with no
+        // process-local client for 'storefailure.profile'.
+        mesh.Channel(StoreFailureNames.Channel).Client();
     }
 
     static async Task StopClientHostAsync(IHost host)

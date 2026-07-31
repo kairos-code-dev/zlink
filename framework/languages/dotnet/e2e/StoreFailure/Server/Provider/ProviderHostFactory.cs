@@ -66,6 +66,12 @@ internal static class ProviderHostFactory
                 locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
                 locations.OwnerLeaseRenewTimeout = TimeSpan.FromMilliseconds(
                     Math.Max(100, options.LocationHeartbeatMs / 2));
+                // The E2E compresses the lease TTL to three seconds, and spec 21
+                // section 4 requires renew interval + renew timeout to stay below
+                // TTL minus fencing margin. The production five-second margin
+                // exceeds this lease on its own, so it has to scale with it.
+                locations.OwnerLeaseFencingMargin = TimeSpan.FromMilliseconds(
+                    Math.Max(100, options.LocationLeaseTtlMs / 3));
                 locations.PollingInterval = TimeSpan.FromMilliseconds(options.LocationPollingMs);
                 locations.StoreFailureGrace = TimeSpan.FromMilliseconds(options.LocationGraceMs);
             }
@@ -73,7 +79,7 @@ internal static class ProviderHostFactory
                 .SetLevel(ZLinkDiagnosticsLevel.Normal);
             var mesh = framework.AddRouteMesh(StoreFailureNames.Channel)
                 .Listen(Require(options.ChannelEndpoint, "ChannelEndpoint"))
-                .SetRoutingId(RoutingId.From(options.Rid));
+                .SetRoutingIdPrefix(options.Rid);
             mesh.Channel(StoreFailureNames.Channel).Server()
                 .SetWeight(options.Weight)
                 .AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq")

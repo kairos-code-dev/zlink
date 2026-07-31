@@ -237,7 +237,7 @@ options.add_spot_mesh ("bingo.room.discovery")
 | 14 | [10. Location](../../../common/guide/server/10-location.ko.md) | location store, 자동 연결, 운영 조회 |
 | 15 | [11. Monitoring](11-monitoring.ko.md) | 상태 관측, 메시지 흐름, health |
 | 16 | [12. 운영](../../../common/guide/server/12-operations.ko.md) | 런타임 메트릭, graceful drain, readiness |
-| 17 | `13. Interface 카탈로그` 장 | 핸들러/옵션 표면 레퍼런스 |
+| 17 | [13. 주요 타입 사용 색인](13-interface-catalog.ko.md) | 기능별 public 타입 색인과 얻는 방법 |
 | 18 | [14. 샘플 고르기](../../../common/guide/server/14-samples.ko.md) | TicTacToe · Bingo 샘플과 기능 매핑 |
 | 19 | [15. E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | client로 시스템 전체를 검증하는 방법 |
 | 20 | [16. Options](16-options.ko.md) | 옵션 목록, 기본값과 변경 시점 |

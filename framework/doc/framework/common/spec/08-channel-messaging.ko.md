@@ -317,6 +317,16 @@ Spot Logical Multicast와 대상 집합을 공유하지 않는다.
 - Message의 durable 저장
 - Subscriber 처리 acknowledgement
 - 나중에 message를 다시 보내는 replay
+- 손실 없는 전달
+
+Classic fanout은 손실을 허용하는 전달이다. Subscriber의 수신이 늦어 publisher의
+송신 queue가 HWM에 도달하면 그 subscriber에게 보내는 message를 버리고 publish는
+성공으로 끝난다. 나머지 subscriber에 대한 전달은 영향을 받지 않는다. Publisher는
+느린 subscriber 하나 때문에 멈추지 않는다.
+
+손실을 허용할 수 없는 전달은 Classic fanout이 아니라 RouteMesh가 담당한다. Spot의
+[Logical Multicast](01-glossary.ko.md#logical-multicast)는 PUB/SUB socket을 쓰지
+않고 MeshNode 연결로 각 참여 node에 전달하므로 이 손실 규칙의 대상이 아니다.
 
 ### 6.1 Framework의 연결 상태 확인용 topic은 사용할 수 없다
 

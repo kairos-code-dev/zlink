@@ -413,7 +413,7 @@ relocation record는 Framework 내부 정보이므로 반환하지 않는다. `N
     auto room = co_await spot_manager.find ("room-42");
 
     if (room) {
-        co_await spot_client.request_to_spot (room.value ().spot_id (), get_room_state_t{})
+        co_await spot_outbound.request_to_spot (room.value ().spot_id (), get_room_state_t{})
           .submit<room_state_t> ();
     }
     ```

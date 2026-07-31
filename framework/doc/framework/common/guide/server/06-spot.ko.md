@@ -1413,7 +1413,7 @@ Spot 수명 동안 유지해도 되는 의존성(설정, 싱글톤 client, 순�
 === "C++"
 
     ```cpp
-    co_await spot_client.send_to_spot ("room-42", chat_t{"hello"}).submit ();
+    co_await spot_outbound.send_to_spot ("room-42", chat_t{"hello"}).submit ();
 
     auto state = co_await spot_client
                    .request_to_spot ("room-42", get_room_state_t{})

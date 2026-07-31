@@ -140,6 +140,13 @@ publisher를 ready로 표시한다.
 받지 못하면 해당 publisher만 not-ready로 바꾸고 전용 socket을 닫는다. 현재 연결
 설정에 따라 새 socket으로 다시 연결한다.
 
+Beacon은 application record와 같은 PUB socket을 사용하므로 Classic fanout의 손실
+규칙을 함께 따른다. Subscriber의 수신 queue가 가득 찬 동안 발행된 beacon은
+버려지고 나중에 다시 도착하지 않는다. 따라서 host가 15초 넘게 포화 상태를
+유지하면서 fanout application traffic이 계속 queue를 채우면 해당 publisher는
+not-ready가 된다. 이 판정은 오탐이 아니다. 그 시간 동안 subscriber는 application
+record를 처리하지 못하는 상태다.
+
 Beacon은 application event가 아니다. Subscriber는 다음 동작을 하지 않는다.
 
 - Publisher에 응답을 보내지 않는다.

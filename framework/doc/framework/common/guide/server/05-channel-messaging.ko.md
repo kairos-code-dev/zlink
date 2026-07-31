@@ -678,7 +678,7 @@ class에 여러 handler 메서드를 둘 때 편하다.
     {
       public:
         using request_type = refresh_user_cache_command_t;
-        using dependency_types = dependency_list_t<fanout_client_t>;
+        using dependency_types = dependency_list_t<publisher_t>;
         static constexpr const char *topic_name = "RefreshCache";
 
         task_t<void> handle (const refresh_user_cache_command_t &command)
@@ -690,7 +690,7 @@ class에 여러 handler 메서드를 둘 때 편하다.
         }
 
       private:
-        fanout_client_t &_publisher;
+        publisher_t &_publisher;
     };
     ```
 
@@ -1297,7 +1297,7 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
     class profile_service_t
     {
       public:
-        using dependency_types = dependency_list_t<fanout_client_t>;
+        using dependency_types = dependency_list_t<publisher_t>;
 
         task_t<void> announce (const std::string &account_id)
         {
@@ -1309,7 +1309,7 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
         }
 
       private:
-        fanout_client_t &_publisher;
+        publisher_t &_publisher;
     };
     ```
 

@@ -6399,3 +6399,41 @@ RID도 요청자의 실제 identity와 일치하고 request sequence도 1·2로 
 
 SM-B6와 SF-B1도 같은 증상이므로 같은 지점일 가능성이 크다. 셋을 한 항목으로 묶는다.
 측정 편집은 되돌렸다.
+
+### RC-B5 해결: 요청은 intent rid로 걸리고 응답은 정착한 rid로 온다
+
+Core에 측정을 넣자 한 번에 드러났다. 응답은 요청 측에 **도착하고 있었다**.
+
+```
+MEASUREMENT reqrep_drop reason=no_pending seq=1 key_rid=[codec-mismatch-json-only]
+MEASUREMENT reqrep_pending seq=1 rid=[zlink-intent-0000000000000001]
+```
+
+Core는 pending 요청을 `(peer rid, sequence)`로 건다. 요청을 보낼 때 framework가 아직
+peer의 rid를 모르면 `zlink-intent-...` 자리표시로 주소를 지정하고, core는 그 rid로 pending을
+등록한다. 응답은 peer가 정착한 실제 rid로 오므로 키가 어긋나고, frame은 아무 진단 없이 닫힌다.
+요청은 parts 0으로 timeout된다.
+
+수정은 `take_pending_reply_from_transport_locked`에 sequence 대체 조회를 넣는 것이다. sequence는
+socket 단위로 발급되어 그 자체로 요청을 식별하고, socket은 이미 `pending_request_keys_by_seq`
+색인을 들고 있다. transport pair 검사는 찾은 항목에 그대로 적용되므로 이전 연결의 응답을 막는
+울타리는 유지된다.
+
+RegistrationCodec가 10 → **11 전량 통과**, core ctest 84/84 그린이다.
+
+배포 함정 하나를 같이 적는다. framework e2e는 `bindings/dotnet/native/`가 아니라
+`~/.nuget/packages/systems.zlink/11.1.0/runtimes/linux-x64/native/`의 native를 쓴다. 여기를
+갱신하지 않으면 core를 아무리 다시 빌드해도 옛 라이브러리가 그대로 로드된다. 처음 두 번의 측정이
+아무 출력도 내지 않은 이유가 이것이었다.
+
+RC-B5 시나리오 자체에도 위장이 하나 있었다. `/codec/protobuf/request` 엔드포인트가 예외를 전부
+`Rejected=true`로 삼켜서, 첫 절반은 응답이 와서가 아니라 timeout이 나서 통과하고 있었다.
+
+### 같은 수정이 SM-B6를 한 단계 밀었고 SF-B1은 밀지 못했다
+
+SM-B6는 명시적 leave 절반을 통과하고 이제 비정상 종료 evidence에서 멈춘다. 남은 것은 전송이
+끊겼을 때 disconnect callback이 실행되지 않는 것이고, 응답 정합과는 별개다.
+
+SF-B1은 그대로다. store를 멈춘 동안의 요청 probe가 408로 끝난다. fail-static은 캐시된 route로
+계속 동작해야 한다는 뜻이므로, 이쪽은 응답 정합이 아니라 store 의존이 요청 경로에 남아 있다는
+쪽을 봐야 한다. 세 항목을 한 원인으로 묶었던 판단은 RC-B5·SM-B6까지만 맞았다.

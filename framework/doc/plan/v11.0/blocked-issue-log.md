@@ -5769,3 +5769,45 @@ spec은 "(b)는 disconnect 시점의 current binding snapshot에 있는 Actor마
 
 Proxy 도입은 유지한다. 문서의 case (b)를 정상 종료로 대신하고 있던 것은 그 자체로 어긋난
 구현이었다.
+
+### SM-B6 근본 원인: disconnect 통지가 Entry Spot에만 간다
+
+앞 절이 남긴 확인점("actor가 binding snapshot에 있었는가")부터 봤다. 있다.
+`UserSpotAuthReq` handler가 `context.Actors.BindAsync(...)`로 명시적으로 bind한다.
+
+통지 경로도 있다.
+
+```
+ZLinkSessionActorBindingRegistry.CleanupAsync   (transport disconnect)
+  -> ZLinkSessionActor.NotifyDisconnectedAsync
+    -> ZLinkFrameworkRuntimeSpots ... EntrySpotActors.TryNotifyDisconnectedAsync
+```
+
+마지막 단계가 문제다.
+
+```csharp
+foreach (var node in state.SpotNodes.Values)
+{
+    var activation = node.EntrySpotActivation;      // <-- Entry Spot만 본다
+    if (activation is null
+        || !activation.TryResolveActorDisconnected(actor.GetType(), out var descriptor)) continue;
+    await activation.InvokeActorDisconnectedAsync(descriptor, actor, cancellationToken);
+}
+```
+
+`node.EntrySpotActivation`만 순회하므로 User Spot에 join한 actor의
+`OnDisconnectActorAsync`는 호출되지 않는다. SM-B6의 actor는 `JoinUserSpotActorReq`로 User
+Spot 멤버가 된 상태다.
+
+spec 11 §3의 callback 표가 이것을 정한다.
+
+| callback | Entry Spot | User Spot | Instance Spot | 의미 |
+|---|:-:|:-:|:-:|---|
+| `OnDisconnectActorAsync` | O¹ | O¹ | X | 해당 Spot에 속한 Actor의 연결 단절을 알린다. |
+
+Entry Spot과 User Spot 양쪽에 있고 "해당 Spot에 속한 Actor"라고 명시한다. 따라서 User
+Spot 멤버의 disconnect 통지가 빠진 것은 런타임 격차다.
+
+수정 방향은 actor가 현재 속한 Spot(User Spot이면 그것, 아니면 Entry Spot)으로 통지를
+보내는 것이다. Actor membership 해석을 건드리므로 SpotActorTransfer까지 함께 회귀
+확인해야 한다.

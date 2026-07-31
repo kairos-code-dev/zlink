@@ -440,6 +440,19 @@ Actor가 함께 변경하는 상태와 Spot-level schedule은 Redis나 database 
 
 Execution mode는 factory 등록에서 고정하며 실행 중에는 변경하지 않는다.
 
+**어느 queue에 무엇이 들어가는지도 정해져 있다.** 특히 **Actor 앞으로 온 업무 message는
+Spot queue를 거치지 않고 Actor queue로 바로 간다.** Spot callback이 그 message를 받아
+넘겨주는 구조가 아니다.
+
+| queue | 들어간다 | 들어가지 않는다 |
+| --- | --- | --- |
+| Spot application queue | Spot 앞 payload, 일치한 Logical Multicast payload, timer callback, Actor join · leave와 lifecycle callback | **Actor 업무 payload** |
+| Instance Spot의 queue | Spot 앞 payload와 timer callback | Actor 관련 전부. **등록 시점에 거부한다** |
+| Actor queue | Actor 업무 payload | — |
+
+Instance Spot에 Actor membership이나 Logical Multicast 구독을 등록하려 하면 실행 중이
+아니라 **등록하거나 Spot을 준비하는 시점에** 거부된다.
+
 ## 3. User Spot 만들기
 
 두 호출은 목적이 다르다. **`Create`는 새 Spot을 만드는 호출**이고, **`GetOrCreate`는 그
@@ -1683,6 +1696,26 @@ factory로 준비할지 고르는 stable type**이다. 그 mesh에 Instance Spot
 
 `SendToSpot`은 source-local admission까지 기다리는 one-way operation이다. Target handler 완료를
 기다리지 않는다. `RequestToSpot`은 reply 또는 typed error까지 기다린다.
+
+**첫 message는 cold activation 중에도 잃지 않는다.** intent를 붙인 호출은 그 message를
+activation과 함께 보내고, target은 handler를 열기 전에 그것을 durable하게 기록한 뒤 큐
+맨 앞으로 복원한다. **생성을 지시하는 별도 request로 바뀌지 않고** 그대로 application
+payload로 처리된다. 보내는 쪽이 같은 message를 두 번 보내지 않는다.
+
+**실패해도 다른 Spot으로 자동 재전송하지 않는다.** 실패 결과를 받은 뒤 같은 ID나 다른
+ID로 다시 보내는 것은 application의 새 operation이다. 이전 target이 이미 실행했을 수
+있으므로 **중복 실행 처리는 보내는 쪽 책임**이다.
+
+### 5.1 Spot handler에서 channel 호출하기
+
+Spot handler와 timer는 channel send · request를 시작할 수 있다. **그 Spot을 소유한
+MeshNode에 해당 ChannelName이 없어도 된다** — 같은 process에 그 이름의 송신 경로가
+하나라도 등록되어 있으면 쓸 수 있다. 다른 RouteMesh의 경로여도, ClientServer client의
+경로여도 된다.
+
+**같은 process에 없으면 거기서 끝난다.** 다른 process나 다른 MeshNode를 중계로 삼아
+찾아 주지 않으며 `NotFound`로 끝난다. 그래서 Spot을 배치할 node를 정할 때 **그 Spot이
+호출할 channel의 송신 경로가 같은 process에 등록되어 있는지**를 함께 본다.
 
 ## 6. Timer와 worker
 

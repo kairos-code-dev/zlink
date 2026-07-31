@@ -597,7 +597,20 @@ Spot factory가 있으면 필수), lease 값 넷을 묶는 부등식과 위반 �
 - **Entry Spot 자체는 옮겨가지 않는다.** 옮겨지는 것은 거기 속한 Actor다. 그래서
   **Entry Spot에 담아 둔 상태는 host를 옮겨도 따라가지 않는다.**
 
-`12-spot-messaging` 쪽 대조는 다음 회차로 남긴다.
+**`12-spot-messaging` 쪽도 마쳤다.** 넷을 더 채웠다.
+
+- **어느 queue에 무엇이 들어가나.** 특히 **Actor 앞 업무 message는 Spot queue를 거치지
+  않고 Actor queue로 바로 간다.** Spot callback이 받아 넘겨주는 구조로 읽으면 설계가
+  어긋난다. Instance Spot에 Actor membership이나 구독을 등록하려 하면 **등록 시점에**
+  거부된다.
+- **Spot handler에서 channel을 호출할 때의 범위.** 그 Spot을 소유한 MeshNode에 해당
+  ChannelName이 없어도 **같은 process에 송신 경로가 있으면** 쓸 수 있고, 없으면
+  `NotFound`다. 다른 process를 중계로 삼지 않는다. Spot 배치를 정할 때 함께 봐야 하는
+  제약인데 문서에 없었다.
+- **cold activation의 첫 message는 잃지 않는다.** durable하게 기록한 뒤 큐 맨 앞으로
+  복원하며 별도 생성 request로 바뀌지 않는다.
+- **실패해도 자동 재전송하지 않는다.** 다시 보내는 것은 새 operation이고 중복 실행
+  처리는 보내는 쪽 책임이다.
 
 이 대조에서 게이트 3의 구멍도 드러났다. 산문이 `BindAsync` · `OnCreateActorAsync` 같은
 **`.NET` terminal이 붙은 operation 이름**을 부르고 있었는데 게이트 3이 타입 이름만 보고
@@ -611,7 +624,7 @@ operation을 `NotifyDisconnected`라 하며 `.NET` exact interface에서는
 | 남은 일 | 규모 |
 | --- | --- |
 | ZoneWorld 샘플 구현 | cpp · java · kotlin. 문서가 아니라 코드 작업이다 |
-| 게이트 4 나머지 | 05 전체와 06의 `12-spot-messaging` 쪽 |
+| 게이트 4 나머지 | 05장 하나. 2,561줄이고 소유 스펙이 둘이다 |
 | 게이트 6 | 호출 형태 대조. 사람이 읽는다 |
 
 **병행 트랙 상태.** 사이트는 정본 트리를 docs root로 쓰도록 구성했고 가이드 장의 빌드

@@ -5177,3 +5177,32 @@ admission-closed로 남아 있어 handoff commit이 거부된다.** 새 incarnat
 
 확인 방법: 첫 join의 source node를 기록해 두 번째 join의 target과 같은지 보면 된다. 같을
 때만 모드 A가 나야 한다. 아직 하지 않았다. 측정 trace는 되돌렸다.
+
+### OBS-B2 모드 A 확정: actor가 떠났던 node로 돌아올 때만 실패한다
+
+앞 절이 남긴 확인 실험을 했다. Actor의 entry node와 두 room의 owner node를 찍고 실행마다
+모드와 대조했다.
+
+```
+run1 mode=B  entry==source (이동 1회)
+run2 mode=A  entry!=source, entry==target
+run3 mode=B  entry==source
+run4 mode=B  entry==source
+run5 mode=A  entry!=source, entry==target
+```
+
+가설이 그대로 맞는다. 모드 A는 `entry == target`인 실행에서만, 즉 actor가 **떠났던 node로
+돌아오는** 경우에만 나온다. 그때는 이동이 두 번이다. entry node에서 source room의 node로
+갔다가 다시 entry node로 돌아온다. 첫 이동에서 entry node가 source였으므로 그 node의 actor
+state는 `FinalizeMigratedSourceAsync`가 admission을 닫아 둔 상태이고, 두 번째 이동의 handoff
+commit이 그 닫힌 state를 만난다.
+
+`entry == source`인 실행에서는 첫 join이 같은 node 안에서 끝나 이동이 한 번뿐이고 돌아옴이
+없으므로 통과한다(그 다음 metric 배치 문제로 모드 B가 된다).
+
+결함 정리: **한 번 떠난 node로 actor가 되돌아오는 handoff는 그 node에 남아 있는 종료된
+dispatch state를 만나 거부된다.** 새 incarnation을 위한 state를 쓰지 않고 admission이 닫힌
+예전 state를 재사용하는 것이 원인이다. 위치는
+`ZLinkActorRuntimeState` / `ZLinkActorDispatchMailbox`의 재입장 처리이며 e2e 구성과 무관하다.
+
+측정 편집은 되돌렸다.

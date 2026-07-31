@@ -3307,3 +3307,40 @@ null일 수 있다.
 없는 명백한 결함이므로, 판단 대기 없이 고칠 수 있는 항목이다.
 
 다음은 `SubmitAsync` 안에서 어느 참조가 null인지 특정하는 것이다.
+
+### null 참조의 정체 — nullable permit을 검사 없이 역참조한다
+
+`ResponderLease`는 struct가 아니라 **sealed class**다(앞선 커밋 메시지에서 struct로
+추정했던 것을 정정한다).
+
+```csharp
+internal sealed class ResponderLease : IDisposable
+{
+    private readonly ZLinkCompletionAdmissionOwner _owner;
+    internal ValueTask ReserveReplyAsync(...) => _owner.ReserveReplyAsync(this, ...);
+}
+```
+
+그리고 dispatcher의 파라미터는 **nullable**이다.
+
+```csharp
+private async ValueTask DispatchNodeRouteAsync(
+    ZLinkBackendRouteReceived received,
+    ZLinkEnvelopeHeader header,
+    ZLinkCompletionAdmissionOwner.ResponderLease? completionPermit,   // ← nullable
+    CancellationToken cancellationToken)
+```
+
+그런데 그 값이 흘러가는 `ReplyResponseAsync`와 `ZLinkSpotReplySubmitter.SubmitAsync`의
+파라미터는 non-nullable이고, `SubmitAsync`는 첫 줄에서 바로 역참조한다.
+
+```csharp
+await completionLease.ReserveReplyAsync(Measure(replyParts), cancellationToken);
+```
+
+즉 **completion permit이 null인 경로에서 응답을 보내려 하면 NullReferenceException이
+난다.** 타입이 null을 허용한다고 선언해 놓고 사용처가 그 가능성을 다루지 않는다.
+
+이것이 ST-C2·ST-E1·ST-E2·ST-F3 네 시나리오를 잡고 있는 결함이다. 수정은 permit이 null일
+때의 동작을 정하는 것이다. 예약을 건너뛰고 그대로 제출할 것인지, 아니면 애초에 null이
+오지 않아야 하는데 오는 것인지 확인해야 한다. 후자라면 permit을 만드는 쪽이 결함이다.

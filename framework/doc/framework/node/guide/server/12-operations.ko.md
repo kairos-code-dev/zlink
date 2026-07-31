@@ -7,6 +7,10 @@
 [가이드 홈](README.ko.md) | [이전: 11. Monitoring — 상태 관측과 진단](11-monitoring.ko.md) | [다음: 13. 주요 interface 사용 색인](13-interface-catalog.ko.md)
 <!-- framework-adapter-nav:end -->
 
+<!-- language-switch:start -->
+다른 언어로 보기 — [C#/.NET](../../../dotnet/guide/server/12-operations.ko.md) · [C++](../../../cpp/guide/server/12-operations.ko.md) · [Java](../../../java/guide/server/12-operations.ko.md) · [Kotlin](../../../kotlin/guide/server/12-operations.ko.md) · **Node/TypeScript**
+<!-- language-switch:end -->
+
 # 12. 운영 — 런타임 메트릭 · graceful drain · readiness
 
 > **이 장의 계약 소유 문서** — 공통 스펙

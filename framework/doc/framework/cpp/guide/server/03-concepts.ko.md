@@ -7,6 +7,10 @@
 [가이드 홈](README.ko.md) | [이전: 2. 시작하기](02-getting-started.ko.md) | [다음: 21. 실행·구성 모델](21-execution-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
+<!-- language-switch:start -->
+다른 언어로 보기 — [C#/.NET](../../../dotnet/guide/server/03-concepts.ko.md) · **C++** · [Java](../../../java/guide/server/03-concepts.ko.md) · [Kotlin](../../../kotlin/guide/server/03-concepts.ko.md) · [Node/TypeScript](../../../node/guide/server/03-concepts.ko.md)
+<!-- language-switch:end -->
+
 # 3. 핵심 개념
 
 > **이 장의 계약 소유 문서** — [Framework 개요](../../../common/spec/02-overview.ko.md)와

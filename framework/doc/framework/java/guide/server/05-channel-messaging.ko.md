@@ -7,6 +7,10 @@
 [가이드 홈](README.ko.md) | [이전: 4. Backpressure — 처리보다 도착이 빠를 때](04-backpressure.ko.md) | [다음: 6. Spot](06-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
+<!-- language-switch:start -->
+다른 언어로 보기 — [C#/.NET](../../../dotnet/guide/server/05-channel-messaging.ko.md) · [C++](../../../cpp/guide/server/05-channel-messaging.ko.md) · **Java** · [Kotlin](../../../kotlin/guide/server/05-channel-messaging.ko.md) · [Node/TypeScript](../../../node/guide/server/05-channel-messaging.ko.md)
+<!-- language-switch:end -->
+
 # 5. Channel Messaging — request · send · pub/sub
 
 > **이 장의 계약 소유 문서** — [Channel 메시징](../../../common/spec/08-channel-messaging.ko.md)과

@@ -7,6 +7,10 @@
 [가이드 홈](README.ko.md) | [이전: 16. 설정 — 옵션 목록 · 기본값 · 변경 시점](16-options.ko.md)
 <!-- framework-adapter-nav:end -->
 
+<!-- language-switch:start -->
+다른 언어로 보기 — **C#/.NET** · [C++](../../../cpp/guide/server/17-alternative.ko.md) · [Java](../../../java/guide/server/17-alternative.ko.md) · [Kotlin](../../../kotlin/guide/server/17-alternative.ko.md) · [Node/TypeScript](../../../node/guide/server/17-alternative.ko.md)
+<!-- language-switch:end -->
+
 # 17. ZLink를 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
 
 > **이 장에는 계약을 소유하는 스펙 문서가 없다.** 무엇을 고를지 판단하는 도입 서술이기

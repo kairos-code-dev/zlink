@@ -7,6 +7,10 @@
 [가이드 홈](README.ko.md) | [이전: 9. STREAM](09-stream.ko.md) | [다음: 11. Monitoring — 상태 관측과 진단](11-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
+<!-- language-switch:start -->
+다른 언어로 보기 — **C#/.NET** · [C++](../../../cpp/guide/server/10-location.ko.md) · [Java](../../../java/guide/server/10-location.ko.md) · [Kotlin](../../../kotlin/guide/server/10-location.ko.md) · [Node/TypeScript](../../../node/guide/server/10-location.ko.md)
+<!-- language-switch:end -->
+
 # 10. Location — 자동 연결과 Object 위치
 
 > **이 장의 계약 소유 문서** — [Location runtime](../../../common/spec/21-location-runtime.ko.md),

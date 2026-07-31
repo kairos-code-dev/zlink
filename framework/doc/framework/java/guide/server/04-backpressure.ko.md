@@ -7,6 +7,10 @@
 [가이드 홈](README.ko.md) | [이전: 3. 핵심 개념](03-concepts.ko.md) | [다음: 5. Channel Messaging — request · send · pub/sub](05-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
+<!-- language-switch:start -->
+다른 언어로 보기 — [C#/.NET](../../../dotnet/guide/server/04-backpressure.ko.md) · [C++](../../../cpp/guide/server/04-backpressure.ko.md) · **Java** · [Kotlin](../../../kotlin/guide/server/04-backpressure.ko.md) · [Node/TypeScript](../../../node/guide/server/04-backpressure.ko.md)
+<!-- language-switch:end -->
+
 # 4. Backpressure — 처리보다 도착이 빠를 때
 
 > **이 장의 계약 소유 문서** — [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)과

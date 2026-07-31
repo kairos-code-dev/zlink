@@ -7,6 +7,10 @@
 [가이드 홈](README.ko.md) | [이전: 13. 주요 타입 사용 색인](13-interface-catalog.ko.md) | [다음: 15. E2E 테스트 — client로 시스템 전체를 검증하기](15-e2e-testing.ko.md)
 <!-- framework-adapter-nav:end -->
 
+<!-- language-switch:start -->
+다른 언어로 보기 — [C#/.NET](../../../dotnet/guide/server/14-samples.ko.md) · **C++** · [Java](../../../java/guide/server/14-samples.ko.md) · [Kotlin](../../../kotlin/guide/server/14-samples.ko.md) · [Node/TypeScript](../../../node/guide/server/14-samples.ko.md)
+<!-- language-switch:end -->
+
 # 14. 샘플 고르기 — 내 문제에 가까운 예제부터
 
 > **이 장에는 계약을 소유하는 스펙 문서가 없다.** 어떤 샘플부터 보면 좋은지 고르는

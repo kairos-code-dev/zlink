@@ -7,6 +7,10 @@
 [가이드 홈](README.ko.md) | [이전: 7. Actor와 Spot](07-actor-spot.ko.md) | [다음: 9. STREAM](09-stream.ko.md)
 <!-- framework-adapter-nav:end -->
 
+<!-- language-switch:start -->
+다른 언어로 보기 — **C#/.NET** · [C++](../../../cpp/guide/server/08-actor-session.ko.md) · [Java](../../../java/guide/server/08-actor-session.ko.md) · [Kotlin](../../../kotlin/guide/server/08-actor-session.ko.md) · [Node/TypeScript](../../../node/guide/server/08-actor-session.ko.md)
+<!-- language-switch:end -->
+
 # 8. Session과 Actor binding
 
 > **이 장의 계약 소유 문서** — [Session Actor dispatch](../../../common/spec/20-session-actor-dispatch.ko.md)가

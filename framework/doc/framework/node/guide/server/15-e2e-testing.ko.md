@@ -7,6 +7,10 @@
 [가이드 홈](README.ko.md) | [이전: 14. 샘플 고르기 — 내 문제에 가까운 예제부터](14-samples.ko.md) | [다음: 16. Options — 설정 목록과 기본값](16-options.ko.md)
 <!-- framework-adapter-nav:end -->
 
+<!-- language-switch:start -->
+다른 언어로 보기 — [C#/.NET](../../../dotnet/guide/server/15-e2e-testing.ko.md) · [C++](../../../cpp/guide/server/15-e2e-testing.ko.md) · [Java](../../../java/guide/server/15-e2e-testing.ko.md) · [Kotlin](../../../kotlin/guide/server/15-e2e-testing.ko.md) · **Node/TypeScript**
+<!-- language-switch:end -->
+
 # 15. E2E 테스트 — client로 시스템 전체를 검증하기
 
 > **이 장에는 계약을 소유하는 스펙 문서가 없다.** 자기 시스템에 테스트를 만드는 방법을

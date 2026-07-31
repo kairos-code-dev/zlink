@@ -7,6 +7,10 @@
 [가이드 홈](README.ko.md) | [이전: 6. Spot](06-spot.ko.md) | [다음: 8. Session과 Actor binding](08-actor-session.ko.md)
 <!-- framework-adapter-nav:end -->
 
+<!-- language-switch:start -->
+다른 언어로 보기 — [C#/.NET](../../../dotnet/guide/server/07-actor-spot.ko.md) · [C++](../../../cpp/guide/server/07-actor-spot.ko.md) · **Java** · [Kotlin](../../../kotlin/guide/server/07-actor-spot.ko.md) · [Node/TypeScript](../../../node/guide/server/07-actor-spot.ko.md)
+<!-- language-switch:end -->
+
 # 7. Actor와 Spot
 
 > **이 장의 계약 소유 문서** — [Actor 모델](../../../common/spec/14-actor-model.ko.md)과

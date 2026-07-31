@@ -61,6 +61,23 @@ NAV_RE = re.compile(
     re.S)
 
 
+def language_switch(current: str, name: str) -> str:
+    """같은 장의 다른 언어로 가는 줄.
+
+    탭에서는 한 번 눌러 언어를 바꿀 수 있었다. 생성판은 언어별 파일이라 그 경로가
+    사라진다. 장마다 이 줄을 붙여 되살린다. 저장소에서 읽을 때도 그대로 동작한다.
+    """
+    parts = []
+    for label, lang in LANGUAGES.items():
+        if lang == current:
+            parts.append(f"**{label}**")
+        else:
+            parts.append(f"[{label}](../../../{lang}/guide/server/{name})")
+    return ("<!-- language-switch:start -->\n"
+            "다른 언어로 보기 — " + " · ".join(parts)
+            + "\n<!-- language-switch:end -->\n\n")
+
+
 def reading_order(lang_dir: str) -> list[str]:
     """그 언어 README의 읽는 순서 표에서 장 파일 목록을 읽는다."""
     readme = FRAMEWORK / lang_dir / "guide" / "server" / "README.ko.md"
@@ -191,7 +208,8 @@ def generate(check_only: bool) -> int:
             body = NAV_RE.sub("", body)
             body = link_chapter_refs(body, available)
             content = (BANNER.format(source=src.name) + "\n"
-                       + nav_block(order, src.name, titles) + body)
+                       + nav_block(order, src.name, titles)
+                       + language_switch(lang_dir, src.name) + body)
             content = re.sub(r"\n{3,}", "\n\n", content).rstrip() + "\n"
 
             out = target_dir / src.name

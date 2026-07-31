@@ -4816,3 +4816,47 @@ play-a: System.TimeoutException: Timed out waiting for spot service evidence.
 ```
 
 아직 조사하지 않았다.
+
+### MON-A4: planned source가 `Blocked/TargetUnavailable`을 돌려준다
+
+RuntimeMonitoring은 MON-A4에서 멈춘다.
+
+```
+InvalidOperationException: MON-A4 planned source returned Blocked/TargetUnavailable.
+play 로그: Spot timer handler failed. source=monitor.spot spot=svc-a4-normal-entry-...
+```
+
+아직 조사하지 않았다.
+
+### OBS-A1: handler는 실행되는데 두 play host 어디에도 evidence가 없다
+
+시나리오는 room 생성·connect·authenticate·join·game action까지 모두 성공한 뒤 evidence
+대기에서 timeout한다. Action 응답 자체는 정상이다.
+
+```csharp
+ZlinkStreamAssert.Ensure(action.ActorId == actorId && action.RoomRid == roomRid, ...);  // 통과
+var evidence = await context.WaitPlayAEvidenceAsync($"game-action|actor={actorId}", "marker=obs-a1-action");  // timeout
+```
+
+`GameActionHandler`는 `evidence.Add(...)` 바로 다음 두 줄에서 응답을 만든다. 응답이
+정상이므로 `Add`는 실행됐다. 그런데 marker 조각을 하나씩 나눠 물어도 play-a·play-b
+어느 쪽에도 없다.
+
+```
+play-a lacks 'game-action|'                     play-b lacks 'game-action|'
+play-a lacks 'actor=obs-a1-...'                 play-b lacks 'join'
+play-a lacks 'marker=obs-a1-action'
+```
+
+`EvidenceStore`는 `AddSingleton<EvidenceStore>()` 하나뿐이다. 따라서 handler가 쓴
+instance와 endpoint가 읽는 instance가 다르다는 것이 가장 단순한 설명이다.
+
+가설: spot·actor handler가 host의 root provider가 아닌 별도 provider에서 해석되어
+singleton이 중복 생성된다. PubSub의 fanout handler는 같은 방식으로 evidence를 쓰고 대기가
+성공하므로, 차이는 spot-actor handler 해석 경로에 있을 수 있다.
+
+검증 방법: handler와 endpoint 양쪽에서 `EvidenceStore` instance의 hash를 찍어 비교한다.
+같으면 가설이 틀렸고 `Add` 시점이나 저장 자체를 다시 봐야 한다. 아직 하지 않았다.
+
+측정 편집은 되돌렸다. 참고로 `GET /evidence`는 진단용 `CreateEvidenceAsync`에 묶여 있어
+query 인자 없이 부르면 실패한다. Evidence 조회는 `/evidence/wait`을 써야 한다.

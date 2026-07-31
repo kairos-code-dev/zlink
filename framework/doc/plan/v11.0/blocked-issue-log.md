@@ -4067,3 +4067,36 @@ membership 확정에서도 나올 수 있다. 러너의 `require_marker_order`�
 
 이 세션에서 같은 실수를 반복하고 있다. 그럴듯한 설명을 세우고 그에 맞춰 고친 뒤 실패로
 확인하는 순서다. 고치기 전에 그 설명이 예측하는 바를 먼저 측정했다면 한 회차를 아꼈다.
+
+### (측정) setup commit 설명도 틀렸다 — commit은 한 번뿐이고 capture보다 먼저다
+
+앞 절의 "첫 `location_committed`가 setup 단계의 것일 수 있다"는 설명을 고치기 전에
+측정했다. **틀렸다.**
+
+```
+location_committed  01:23:18.995   (전체 실행에서 단 1건)
+handoff_backlog     01:23:19.084   (첫 건, 89ms 뒤)
+```
+
+`location_committed`는 그 실행에서 한 번만 나오고, capture marker보다 89ms 먼저다.
+따라서 setup 단계의 commit이 섞인 것이 아니라 **transfer의 commit이 실제로 capture보다
+먼저 일어난다.**
+
+이는 ST-F2("DirectOvertakePrevention")가 잡으려는 바로 그 상황이고, 러너의 검사가 옳다.
+앞서 "러너가 marker를 잘못 지목했다"고 적은 것도 함께 정정한다. 지목은 옳았고 순서 위반이
+실재한다.
+
+다만 한 가지가 남는다. 시나리오의 단언은 모두 통과하며, 그중에는 관측 가능한 순서 검증도
+있다.
+
+```csharp
+await context.AssertEvidenceOrderAsync(context.NodeB, actorId, "handoff_packet", ["B1", "B2", "D1"]);
+```
+
+즉 **내부 marker 순서는 어긋나는데 외부로 관측되는 순서는 맞다.** 이 실행에서는 추월이
+실제로 일어나지 않았다는 뜻이다. 러너의 검사는 외부 결과가 우연히 맞는 경우까지 걸러내는
+더 엄격한 내부 불변식이고, 그 불변식이 깨져 있다.
+
+정리하면 ST-F2는 런타임의 순서 문제이며 검사가 그것을 정확히 잡아낸다. 이번 세션에서
+이 항목에 대해 두 번 잘못된 설명을 세웠고 두 번 다 측정이 뒤집었다. 세 번째 설명도
+세우기 전에 측정한 것이 이번의 유일한 개선이다.

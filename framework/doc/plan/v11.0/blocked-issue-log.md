@@ -3344,3 +3344,57 @@ await completionLease.ReserveReplyAsync(Measure(replyParts), cancellationToken);
 이것이 ST-C2·ST-E1·ST-E2·ST-F3 네 시나리오를 잡고 있는 결함이다. 수정은 permit이 null일
 때의 동작을 정하는 것이다. 예약을 건너뛰고 그대로 제출할 것인지, 아니면 애초에 null이
 오지 않아야 하는데 오는 것인지 확인해야 한다. 후자라면 permit을 만드는 쪽이 결함이다.
+
+## 2026-07-31 bound session 군집 근본원인 완결 — infrastructure request는 permit 없이 응답할 수 없다
+
+permit이 null인 이유를 찾았다. **의도적으로 null이다.**
+
+```csharp
+using (var completionPermit = received.CanReply
+           && !IsInfrastructureRelay(received)
+           ? await _completionAdmission.AcquireResponderAsync(cancellationToken)
+           : null)
+```
+
+infrastructure relay는 completion admission을 잡지 않는다. 그리고 무엇이
+infrastructure인지 보면 seal이 명시되어 있다.
+
+```csharp
+private static bool IsInfrastructureRelay(...) =>
+    received.ChannelName is null
+    && ((header.Kind == Command && header.MessageName is
+            RemoteSessionPushProtocol.PacketName
+            or RemoteActorFrameProtocol.PacketName
+            or RemoteActorReplyProtocol.PacketName)
+        || (header.Kind == Request && header.MessageName is
+            SessionRouteCommitProtocol.PacketName
+            or SessionRouteCommitProtocol.SealPacketName        // ← seal
+            or SessionRouteCommitProtocol.AbortPacketName
+            or SessionRouteCommitProtocol.UnsealPacketName));
+```
+
+Command 세 개는 one-way라 응답이 없으니 permit이 없어도 된다. 그런데 **Request 네 개는
+응답이 필요한데도 같은 분류에 들어가 permit이 null이 된다.** 그리고 응답 경로는 그 null을
+검사 없이 역참조한다.
+
+```csharp
+await completionLease.ReserveReplyAsync(Measure(replyParts), cancellationToken);
+```
+
+따라서 seal·abort·unseal·commit 네 종류의 infrastructure **request**는 **응답을 보내려는
+순간 반드시 NullReferenceException이 난다.** 이 경로는 구조적으로 성공할 수 없다.
+
+같은 파일의 오류 응답 두 곳은 `completionPermit!`로 null 허용을 억제해 두었는데, 그 역시
+infrastructure request에서 실행되면 같은 NRE가 난다.
+
+### 수정 방향
+
+infrastructure request도 응답이 필요하므로 다음 중 하나다. 응답 경로가 permit이 null일 때
+예약을 건너뛰도록 하거나, infrastructure 분류를 one-way command에만 적용하고 request 네
+개는 permit을 잡도록 하거나.
+
+전자가 최소 변경이고 후자가 의미상 정확하다. completion admission이 응답 바이트를
+회계하는 장치라면, 응답을 실제로 보내는 request는 회계 대상이어야 자연스럽다. 다만
+infrastructure를 회계에서 빼려는 원래 의도가 있었다면 전자가 맞다.
+
+이 결함 하나가 ST-C2, ST-E1, ST-E2, ST-F3 네 시나리오를 잡고 있다.

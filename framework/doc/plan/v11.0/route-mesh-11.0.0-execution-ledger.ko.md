@@ -12169,3 +12169,48 @@ Core lane으로 넘길 사안 셋은 근거와 함께 `blocked-issue-log.md`에 
 마지막으로 이 스위트들에서 회귀를 판정하는 방법을 규칙으로 남겼다. ST-E1, ST-C2, OBS-B4는
 기존부터 flaky이며 세 번 모두 단발 실행이면 맞는 수정을 회귀로 오판했을 상황이었다. 변경
 전후를 같은 횟수로 돌려 비율을 비교해야 하고, aggregate 통과 개수 하나로는 판정할 수 없다.
+
+### 2026-08-01 스위트별 현황과 방법론 정리
+
+앞 항목 이후 스위트를 하나씩 끝까지 밀었다. 현재 상태는 다음과 같다.
+
+| 스위트 | 상태 | 남은 것 |
+|---|---|---|
+| ChannelEgressRouting | 구현된 18개 중 16개 통과 | `/locations` 열거 범위(스펙 소유자) |
+| ObservabilityOps | 10개 통과(A1~A5, B1~B4, C12) | C 시리즈 관측 방식 재설계 |
+| RegistrationCodec | 10개 통과 | RC-B5 reply 유실(core lane) |
+| SpotService | 7개 통과 | SM-B6 disconnect frame 유실(core lane) |
+| RuntimeMonitoring | 6개 통과 | MON-A4 relocation target 조건(스펙 소유자) |
+| PubSub | PS-A1~A3 통과 | PS-A4 lossy admission(core lane) |
+| StoreFailure | SF-A1·A2 통과 | SF-B1 후보 0개 대기(core lane) |
+| ResilienceLifecycle | host 기동 | RL-A1 후보 0개 대기(core lane) |
+| ToActorMessaging | 전 host 기동 | TA-A2 error kind(스펙 소유자) |
+| AutomaticTurnDispatch | 미해결 | select-one 후보 조건 스펙 충돌 |
+| LocationMessaging | 미해결 | send HWM와 handshake 관계 |
+| SubmitAdmission | 미해결 | manual peer가 `Connecting`에서 멈춤 |
+| SpotActorTransfer | 15/29 | 이전 항목 참조 |
+
+추가로 고친 런타임 결함이 셋이다. 떠났던 node로 돌아오는 handoff가 닫힌 admission을 만나
+거부되던 것, actor relocation이 `zlink.relocation.interruption`을 내지 않던 것, relocating
+중 진단 위치 조회가 operation gate에 막히던 것이다. 앞의 것은 다섯 번의 실행에서
+`entry == target`일 때만 실패한다는 상관을 확인한 뒤 고쳤고, 뒤의 둘은 각각
+`25-runtime-metrics.ko.md` §5와 `28-graceful-drain-handoff.ko.md` §13이 근거다.
+
+Core lane으로 넘긴 항목이 넷으로 늘었다. lossy가 `hwm_full`만 용서하는 것, 후보 0개
+select-one이 기다리는 것, manual host 쌍에서 reply가 도달하지 않는 것, 그리고 disconnect
+frame이 송신 성공 보고 뒤 도착하지 않는 것이다.
+
+이번 작업에서 확인한 e2e 결함의 최대 계열은 **placement 가정**이다. 여섯 스위트에서 같은
+형태가 나왔다. Placement가 여러 node 중 하나를 고르는데 시나리오가 특정 node를 이름으로
+가정한다. 통과하던 시점에도 운에 의존했을 가능성이 높다. 대부분은 공통 e2e 문서가 "어느
+node여야 하는지"를 이미 문장으로 적어 두고 있었고, harness가 그 절차를 따르지 않은
+쪽이었다. 그래서 시나리오 의도가 모호하면 코드가 아니라
+`framework/doc/framework/common/e2e/`를 먼저 읽는다.
+
+방법론에서 반복된 실패도 남긴다. 관측 하나로 인과를 확정한 판단이 여러 번 틀렸다. 증상
+문자열이 같다고 원인을 같다고 본 것, 증거가 없다고 기능이 죽었다고 본 것, 함수 하나를 읽고
+호출부를 보지 않은 것이 그 예다. 반면 측정으로 간 경우는 매번 한 번에 갈렸다. 특히
+framework에 미리 심어 둔 진단(`deferred_join_failed`, `handoff_commit_failed`)이 있는 곳은
+바로 답을 줬다. 회귀 판정도 마찬가지다. ST-E1, ST-C2, OBS-B4는 기존부터 flaky이며 세 번
+모두 단발 실행이면 맞는 수정을 되돌렸을 상황이었다. 변경 전후를 같은 횟수로 돌려 비율을
+비교해야 한다.

@@ -5661,3 +5661,33 @@ SM-B1은 `LocalActorJoin`이라는 이름이 무엇을 "local"이라고 부르�
 놓이는 것이 시나리오의 전제라면 placement를 고정해야 한다. ObservabilityOps의
 `CreateRoomOnObservedNodeAsync`에 해당하는 helper가 이 스위트에는 없다. 의도를 확인해야
 어느 쪽인지 정할 수 있다.
+
+### SM-B1 진전: placement 대기를 넣자 node가 맞고, evidence 기대가 낡은 것이 드러난다
+
+앞 절에서 "의도를 확인해야 한다"고 남겼는데 공통 e2e 문서가 절차를 명시하고 있었다.
+`config-2-spot-service.ko.md`의 SM-B1 절차다.
+
+> `play-a`만 해당 stable Actor type의 eligible capacity를 갖게 한 뒤 … create한다.
+
+Harness는 이미 그렇게 하려 한다. Aggregate 경로가 SM-B1 직전에
+`SetPlacementWeightsAsync(playA, playB, 100, 0)`을 부른다. 그런데 그 helper는 두 host에
+weight를 설정하고 곧바로 반환한다. Weight 0은 spec 24 §2.2대로 그 node를 새 placement에서
+제외하지만, 설정이 반영되기 전에 배치가 결정되면 소용이 없다. 실제로 actor가 play-b에
+놓였다.
+
+각 node가 weight에 맞는 `Placement.IsAvailable`을 보고할 때까지 기다리도록 고쳤다. 그러자
+node assertion이 통과한다. 다음 지점은 evidence 기대다.
+
+```
+play-a.evidence.log : entry-created|rid=play-a|actor=actor-sm-b1-local-29d8...
+                      entry-joined 없음
+```
+
+`entry-created`는 play host가 `evidence.Rid`(harness role 이름)로 남기고,
+`entry-joined`는 **session host**가 `actor.NodeRid`로 남긴다. 즉 두 marker는 기록하는
+host도 다르고 rid의 의미도 다르다. 시나리오는 둘 다 play-a에서 `rid=play-a`로 찾는다.
+Automatic RID로 바뀐 뒤 `rid=play-a|`는 `rid=play-a-<uuid>|`와 일치하지 않는다.
+
+따라서 SM-B1의 evidence 검사는 두 곳을 고쳐야 한다. `entry-joined`는 session host에서
+찾아야 하고, rid 비교는 prefix를 허용해야 한다. 시나리오 signature에 session client가
+없으므로 호출부까지 바뀐다. 여기서는 placement 대기까지만 반영했다.

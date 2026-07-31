@@ -1,3 +1,4 @@
+using System.Text.Json;
 using SpotService.Client.Scenarios;
 using SpotService.Client.Support;
 using SpotService.Shared;
@@ -201,6 +202,32 @@ static async Task SetPlacementWeightsAsync(
     await playB.Post("/placement-weight")
         .Body(new PlacementWeightReq(playBWeight))
         .Async<PlacementWeightRes>();
+
+    // A weight of zero takes a node out of new placement (spec 24 §2.2), but
+    // the call only sets it locally. Wait until each node reports the
+    // availability that weight implies before placing anything, otherwise the
+    // deciding node can still pick a node the scenario meant to exclude.
+    await WaitPlacementAvailabilityAsync(playA, playAWeight > 0);
+    await WaitPlacementAvailabilityAsync(playB, playBWeight > 0);
+}
+
+static async Task WaitPlacementAvailabilityAsync(
+    ZLinkHttpClient play,
+    bool expected)
+{
+    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+    while (true)
+    {
+        var snapshot = (await play.Get("/mesh-snapshot").Async<JsonElement>()).Body;
+        if (snapshot.TryGetProperty("placement", out var placement)
+            && placement.TryGetProperty("isAvailable", out var available)
+            && available.GetBoolean() == expected)
+            return;
+        if (DateTimeOffset.UtcNow >= deadline)
+            throw new InvalidOperationException(
+                $"Placement availability did not reach {expected} within the setup window.");
+        await Task.Delay(100);
+    }
 }
 
 static async Task RunD1D2D6Async(

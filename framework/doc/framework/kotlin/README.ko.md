@@ -27,7 +27,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 `@ConfigurationPropertie
 | Java 표면 | Kotlin 표면 |
 |-----------|-------------|
 | `ZLinkRequestHandler<T, R>` (plain `TReply` 반환) | `ZLinkSuspendingRequestHandler<T, R>` (`suspend fun handle`) |
-| `ZLinkSendHandler` / `ZLinkPublishHandler` | `ZLinkSuspendingSendHandler` / `ZLinkSuspendingPublishHandler` |
+| `ZLinkSendHandler` / `ZLinkFanoutHandler` | `ZLinkSuspendingSendHandler` / `ZLinkSuspendingPublishHandler` |
 | `ZLinkSpot<TActor>` / `ZLinkEntrySpot<TActor>` | `ZLinkSuspendingSpot<TActor>` / `ZLinkSuspendingEntrySpot<TActor>` (actor admission, joined, leave를 `suspend`로 처리) |
 | Java relocation policy와 opaque byte adapter | `ZLinkRelocationPolicy.snapshot(Adapter::class.java)` |
 | `ZLinkSession` | `ZLinkSuspendingSession` (`onConnectedSuspending` 등) |

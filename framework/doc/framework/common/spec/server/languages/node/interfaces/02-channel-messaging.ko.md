@@ -201,7 +201,7 @@ export interface ZLinkPublishMessageContext extends ZLinkMessageContext {
     readonly source?: string;
 }
 
-export interface ZLinkPublishHandler<TMessage> {
+export interface ZLinkFanoutHandler<TMessage> {
     handle(message: TMessage, context: ZLinkPublishMessageContext): Promise<void>;
 }
 ```

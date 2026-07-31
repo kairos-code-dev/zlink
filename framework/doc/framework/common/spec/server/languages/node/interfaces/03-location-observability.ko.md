@@ -29,12 +29,12 @@ export interface ZLinkHandlerFilterContext extends ZLinkMessageContext {
   readonly dispatchKind: ZLinkHandlerDispatchKind;
 }
 
-export type ZLinkHandlerDelegate = () => Promise<void>;
+export type ZLinkHandlerFilterNext = () => Promise<void>;
 
 export interface ZLinkHandlerFilter {
   invoke(
     context: ZLinkHandlerFilterContext,
-    next: ZLinkHandlerDelegate,
+    next: ZLinkHandlerFilterNext,
     signal?: AbortSignal
   ): Promise<void>;
 }

@@ -48,7 +48,7 @@ public class OrderService {
 | --- | --- |
 | `ZLinkRequestHandler<TReq, TRes>` | channel request |
 | `ZLinkSendHandler<TMsg>` | channel one-way send |
-| `ZLinkPublishHandler<TEvent>` | classic fanout event |
+| `ZLinkFanoutHandler<TEvent>` | classic fanout event |
 | `ZLinkRouteRequestHandler` · `ZLinkRouteSendHandler` | Node direct |
 
 **attribute로 묶는 방법도 있다.** `@ZLinkHandlerGroup`으로 class를 묶고 메서드에
@@ -87,7 +87,7 @@ public class OrderService {
 | `ZLinkSpotCreateCall` · `ZLinkSpotGetOrCreateCall` | 생성 호출 |
 | `ZLinkSpotCreateResult` · `ZLinkSpotCreateState` | 생성 결과와 세 상태 |
 | `ZLinkSpotCreateResponse` | 생성 callback의 accept · reject |
-| `ZLinkSpotActorJoinResponse` | join admission의 accept · reject |
+| `ZLinkSpotActorJoinResult` | join admission의 accept · reject |
 | `ZLinkSpotClosingContext` · `ZLinkSpotCloseReason` | 닫히는 중의 deadline과 사유 |
 | `ZLinkSpotHandlerRegistry` · `ZLinkInstanceSpotHandlerRegistry` | `configure()`에서 handler 등록 |
 | `ZLinkSpotOutbound` | Spot에서 나가는 호출 |

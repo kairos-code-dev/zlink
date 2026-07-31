@@ -53,7 +53,7 @@ topic이다.
 | --- | --- |
 | `zlinkRequestHandler(group, packet)` | `ZLinkRequestHandler<TReq, TRes>` |
 | `zlinkSendHandler(group, packet)` | `ZLinkSendHandler<TMsg>` |
-| `zlinkPublishHandler(group, packet)` | `ZLinkPublishHandler<TEvent>` |
+| `zlinkPublishHandler(group, packet)` | `ZLinkFanoutHandler<TEvent>` |
 | `zlinkSpotPacketHandler(...)` | `ZLinkSpotPacketHandler<TSpot, TMsg>` |
 | `zlinkSpotSubscriptionHandler(...)` | `ZLinkSpotSubscriptionHandler<TSpot, TEvent>` |
 | `zlinkSpotTimerHandler(...)` | `ZLinkSpotTimerHandler<TSpot>` |
@@ -86,7 +86,7 @@ topic이다.
 | `ZLinkSpotContext` · `ZLinkEntrySpotContext` · `ZLinkInstanceSpotContext` | `readonly context`로 받는다 |
 | `ZLinkSpotCommonContext` | 위 셋의 공통 부분 |
 | `ZLinkSpotManager` · `ZLinkSpotCreateResult` · `ZLinkSpotCreateState` | 생성과 결과 |
-| `ZLinkSpotCreateResponse` · `ZLinkSpotActorJoinResponse` | admission 응답 |
+| `ZLinkSpotCreateResponse` · `ZLinkSpotActorJoinResult` | admission 응답 |
 | `ZLinkSpotRelocationAdapter` · `ZLinkSpotRelocationReadyCall` | 상태 이전 |
 | `ZLinkTimer` · `ZLinkTimerOptions` · `ZLinkTimerTick` | timer |
 | `ZLinkWorkerCall<T>` | `runCpuWorker` · `runIoWorker`의 반환 |

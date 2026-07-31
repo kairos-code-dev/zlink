@@ -111,7 +111,7 @@ class entry_spot_context_t;
 class instance_spot_context_t;
 class spot_handler_registry_t;
 class instance_spot_handler_registry_t;
-struct spot_actor_join_response_t;
+struct spot_actor_join_result_t;
 struct actor_create_response_t;
 struct spot_create_response_t;
 
@@ -148,7 +148,7 @@ public:
       std::stop_token cleanup_cancellation);
     virtual task_t<void> on_relocation_ready_completed(
       const spot_relocation_ready_completion_t &completion);
-    virtual task_t<spot_actor_join_response_t> on_actor_join(
+    virtual task_t<spot_actor_join_result_t> on_actor_join(
       std::string_view actor_id,
       const message_t &request) = 0;
     virtual task_t<void> on_actor_joined(TActor &actor) = 0;
@@ -172,7 +172,7 @@ public:
     virtual task_t<actor_create_response_t> on_create_actor(
       TActor &actor,
       const message_t &create_request);
-    virtual task_t<spot_actor_join_response_t> on_actor_join(
+    virtual task_t<spot_actor_join_result_t> on_actor_join(
       std::string_view actor_id,
       const message_t &request) = 0;
     virtual task_t<void> on_actor_joined(TActor &actor) = 0;
@@ -271,21 +271,21 @@ public:
     task_t<bool> close();
 };
 
-struct spot_actor_join_response_t {
+struct spot_actor_join_result_t {
     bool accepted = false;
     std::optional<zlink::framework::message_t> reply;
 
-    static spot_actor_join_response_t accept(
+    static spot_actor_join_result_t accept(
       std::optional<message_t> reply = std::nullopt);
 
     template <typename TReply>
-    static spot_actor_join_response_t accept(TReply reply);
+    static spot_actor_join_result_t accept(TReply reply);
 
-    static spot_actor_join_response_t reject(
+    static spot_actor_join_result_t reject(
       std::optional<message_t> reply = std::nullopt);
 
     template <typename TReply>
-    static spot_actor_join_response_t reject(TReply reply);
+    static spot_actor_join_result_t reject(TReply reply);
 };
 
 struct actor_create_response_t {
@@ -611,7 +611,7 @@ public:
 
     void configure() override;
 
-    zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
+    zlink::framework::task_t<zlink::framework::spot_actor_join_result_t>
     on_actor_join(
       std::string_view actor_id,
       const zlink::framework::message_t &request) override;
@@ -679,7 +679,7 @@ overload로 등록한다. factory는 Spot을 활성화할 때 framework가 호�
 `publish_message_context_t`를 받는다.
 actor join admission을 처리하는 member는 `std::string_view actor_id`와
 `zlink::framework::message_t` request를 받으며,
-`spot_actor_join_response_t`로 accepted 여부와 optional reply `zlink::framework::message_t`를 반환한다.
+`spot_actor_join_result_t`로 accepted 여부와 optional reply `zlink::framework::message_t`를 반환한다.
 actor type과 source/target Spot 및 node 정보는 framework 내부 routing과 검증에만 사용한다.
 accepted가 `true`일 때만 actor 위치를 user Spot으로 commit하고
 `on_actor_joined(TActor&)`를 호출한다. accepted가 `false`이면 actor 위치를 바꾸지 않고

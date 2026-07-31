@@ -180,7 +180,7 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
     protected abstract suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse
+    ): ZLinkSpotActorJoinResult
     protected abstract suspend fun onJoinedActorSuspending(actor: TActor)
     protected abstract suspend fun onLeaveActorSuspending(actor: TActor)
     protected open suspend fun onDisconnectActorSuspending(actor: TActor)
@@ -305,7 +305,7 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingSpot<TActor 
   public final java.util.concurrent.CompletionStage<java.lang.Void> onInitialize();
   public final java.util.concurrent.CompletionStage<java.lang.Void> onClosing(systems.zlink.framework.spots.ZLinkSpotClosingContext);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onRelocationReadyCompleted(systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion);
-  public final java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResponse> onActorJoin(java.lang.String, systems.zlink.framework.messaging.ZLinkMessage);
+  public final java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResult> onActorJoin(java.lang.String, systems.zlink.framework.messaging.ZLinkMessage);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onJoinedActor(TActor);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onLeaveActor(TActor);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onDisconnectActor(TActor);

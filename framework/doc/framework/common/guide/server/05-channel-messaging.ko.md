@@ -406,7 +406,7 @@ Spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된
     | --- | --- | --- |
     | request | `requestToChannel(name, req).submit(TReply.class)` | `ZLinkRequestHandler<TRequest, TReply>` |
     | send | `sendToChannel(name, msg).submit()` | `ZLinkSendHandler<TMessage>` |
-    | publish (fanout) | `publish(name, topic, evt).submit()` | `ZLinkPublishHandler<TEvent>` |
+    | publish (fanout) | `publish(name, topic, evt).submit()` | `ZLinkFanoutHandler<TEvent>` |
 
 === "Kotlin"
 
@@ -414,7 +414,7 @@ Spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된
     | --- | --- | --- |
     | request | `requestToChannel(name, req).submit(TReply::class.java).await()` | `ZLinkRequestHandler<TRequest, TReply>` |
     | send | `sendToChannel(name, msg).submit().await()` | `ZLinkSendHandler<TMessage>` |
-    | publish (fanout) | `publish(name, topic, evt).submit().await()` | `ZLinkPublishHandler<TEvent>` |
+    | publish (fanout) | `publish(name, topic, evt).submit().await()` | `ZLinkFanoutHandler<TEvent>` |
 
 === "Node/TypeScript"
 
@@ -422,7 +422,7 @@ Spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된
     | --- | --- | --- |
     | request | `requestToChannel(name, req).submit<TReply>()` | `ZLinkRequestHandler<TRequest, TReply>` |
     | send | `sendToChannel(name, msg).submit()` | `ZLinkSendHandler<TMessage>` |
-    | publish (fanout) | `publish(name, topic, evt).submit()` | `ZLinkPublishHandler<TEvent>` |
+    | publish (fanout) | `publish(name, topic, evt).submit()` | `ZLinkFanoutHandler<TEvent>` |
 
 channel handler는 독립 class다. 서로 다른 요청이 동시에 실행될 수 있으므로 가변 도메인
 상태를 handler 멤버에 두지 않는다. Handler instance와 scoped dependency는 그 dispatch가
@@ -551,7 +551,7 @@ handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준�
     }
 
     // publish 수신 (구독자 측)
-    public final class CacheRefreshedEventHandler implements ZLinkPublishHandler<CacheRefreshedEvent> {
+    public final class CacheRefreshedEventHandler implements ZLinkFanoutHandler<CacheRefreshedEvent> {
         @Override
         public CompletionStage<Void> handle(CacheRefreshedEvent message) {
             // Classic fanout handler는 등록한 event type의 payload만 받는다.
@@ -581,7 +581,7 @@ handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준�
     }
 
     // publish 수신 (구독자 측)
-    class CacheRefreshedEventHandler : ZLinkPublishHandler<CacheRefreshedEvent> {
+    class CacheRefreshedEventHandler : ZLinkFanoutHandler<CacheRefreshedEvent> {
         override suspend fun handle(message: CacheRefreshedEvent) {
             // Classic fanout handler는 등록한 event type의 payload만 받는다.
         }
@@ -611,7 +611,7 @@ handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준�
     }
 
     // publish 수신 (구독자 측)
-    export class CacheRefreshedEventHandler implements ZLinkPublishHandler<CacheRefreshedEvent> {
+    export class CacheRefreshedEventHandler implements ZLinkFanoutHandler<CacheRefreshedEvent> {
       async handle(message: CacheRefreshedEvent): Promise<void> {
         // Classic fanout handler는 등록한 event type의 payload만 받는다.
       }
@@ -1489,7 +1489,7 @@ filter로 한곳에 모은다.
 
       async invoke(
         context: ZLinkHandlerFilterContext, // 이 dispatch의 message 정보 + 어느 경로로 왔는지.
-        next: ZLinkHandlerDelegate        // 인자 없는 delegate — 다음 filter 또는 handler를 실행한다.
+        next: ZLinkHandlerFilterNext        // 인자 없는 delegate — 다음 filter 또는 handler를 실행한다.
       ): Promise<void> {
         // 운영 명령만 감사 로그로 남기고 일반 업무 요청은 그냥 통과시킨다.
         if (context.dispatchKind === ZLinkHandlerDispatchKind.NodeDirectRequest) {

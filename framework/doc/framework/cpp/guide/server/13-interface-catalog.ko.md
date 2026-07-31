@@ -83,7 +83,7 @@ application이 상속해 만드는 타입과 framework가 주는 context가 나�
 | `spot_ref_t` | SpotId와 generation을 담은 참조 |
 | `spot_create_call_t` · `spot_create_result_t` | 생성 호출과 결과 |
 | `spot_create_response_t` | 생성 callback의 accept · reject |
-| `spot_actor_join_response_t` | join admission의 accept · reject |
+| `spot_actor_join_result_t` | join admission의 accept · reject |
 | `spot_closing_context_t` | 닫히는 중에 주어지는 deadline 정보 |
 | `spot_handler_registry_t` · `instance_spot_handler_registry_t` | `configure ()`에서 handler를 등록 |
 | `spot_relocation_adapter_t<TSpot>` | 상태를 담고 푸는 adapter |

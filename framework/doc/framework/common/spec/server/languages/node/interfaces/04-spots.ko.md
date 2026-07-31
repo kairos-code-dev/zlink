@@ -61,7 +61,7 @@ export interface ZLinkSpotAcceptRejectResponse {
     readonly reply?: unknown;
 }
 
-export interface ZLinkSpotActorJoinResponse extends ZLinkSpotAcceptRejectResponse {}
+export interface ZLinkSpotActorJoinResult extends ZLinkSpotAcceptRejectResponse {}
 
 export interface ZLinkSpotCreateResponse extends ZLinkSpotAcceptRejectResponse {}
 
@@ -75,7 +75,7 @@ export interface ZLinkSpotActorMembershipLifecycle<TActor extends ZLinkActor = Z
 
 export interface ZLinkUserSpotActorLifecycle<TActor extends ZLinkActor = ZLinkActor>
     extends ZLinkSpotActorMembershipLifecycle<TActor> {
-    onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+    onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult>;
 }
 
 export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor>

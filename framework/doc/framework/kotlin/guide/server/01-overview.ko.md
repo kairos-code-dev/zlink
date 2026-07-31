@@ -37,7 +37,7 @@ Java handler는 `CompletionStage`를 돌려주고, Kotlin은 `suspend`로 쓴다
 | --- | --- |
 | `ZLinkRequestHandler` | `ZLinkSuspendingRequestHandler` |
 | `ZLinkSendHandler` | `ZLinkSuspendingSendHandler` |
-| `ZLinkPublishHandler` | `ZLinkSuspendingPublishHandler` |
+| `ZLinkFanoutHandler` | `ZLinkSuspendingPublishHandler` |
 | `ZLinkSpotPacketHandler` · `ZLinkSpotRequestHandler` | `ZLinkSuspendingSpot*Handler` |
 | `ZLinkSpotSubscriptionHandler` · `ZLinkSpotTimerHandler` | `ZLinkSuspendingSpot*Handler` |
 | `ZLinkSpotActorSendHandler` · `...RequestHandler` | `ZLinkSuspendingSpotActor*Handler` |

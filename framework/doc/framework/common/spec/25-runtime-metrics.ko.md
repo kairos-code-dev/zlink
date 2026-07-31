@@ -124,6 +124,9 @@ Actor나 Spot을 다른 node에서 계속 실행할 때 application state를 다
 Actor·Spot을 실제로 실행하고 application queue를 관리하는 MeshNode를
 [owner](01-glossary.ko.md#owner)라고 한다. 현재 owner와 위치를 판단하는 기준 record를 보관하는
 [Location Store](01-glossary.ko.md#location-store)의 확정값을 capacity 집계에 사용한다.
+`zlink.spot.count`와 `zlink.actor.count`는 이 MeshNode가 지금 실행하고 있는 수를 세고,
+`zlink.object.capacity.*`와 `zlink.spot.type.capacity.*`는 Location Store가 확정한
+population을 읽는다. 두 계기는 집계 경계가 달라 서로를 대체하지 않으며 값이 다를 수 있다.
 Spot 종류를 나타내는 [Spot kind](01-glossary.ko.md#spot-kind)와 startup 등록 뒤 바뀌지
 않는 type identity인 [stable type](01-glossary.ko.md#stable-type)은 등록값으로만
 label에 사용한다.
@@ -145,8 +148,6 @@ ID로 처음 호출할 때 Framework가 만들 수 있는 Spot을
 | `zlink.relocation.started` | counter | `{relocation}` | `mesh_name`, `object_kind`, `policy` | Actor·Instance Spot relocation을 시작한 횟수를 누적한다. |
 | `zlink.relocation.completed` | counter | `{relocation}` | `mesh_name`, `object_kind`, `policy`, `outcome` | Relocation terminal 결과를 누적한다. |
 | `zlink.relocation.duration` | histogram | `s` | `mesh_name`, `object_kind`, `policy`, `outcome` | Prepare부터 terminal phase까지 걸린 시간을 기록한다. |
-| `zlink.relocation.recovered` | counter | `{relocation}` | `mesh_name`, `object_kind` | Recovery coordinator가 이어서 처리한 relocation 수를 누적한다. |
-| `zlink.relocation.journal.messages` | histogram | `{message}` | `mesh_name`, `object_kind` | Relocation envelope에 포함한 accepted message 수를 기록한다. |
 | `zlink.relocation.bytes` | histogram | `By` | `mesh_name`, `object_kind`, `policy` | 변경할 수 없는 relocation envelope의 크기를 기록한다. |
 | `zlink.stream.connections.active` | updown | `{connection}` | `transport` | 현재 STREAM session 수를 제공한다. |
 | `zlink.stream.connections.opened` | counter | `{connection}` | `transport` | STREAM session을 연 횟수를 누적한다. |
@@ -203,7 +204,6 @@ Host가 새 작업 수락을 중단하고 이미 받은 작업과 resource를 �
 `state`는 `preparing|serving|relocating|relocated|draining|stopped|error`다. Relocation
 `outcome`은 `relocated|blocked`다. Shutdown `outcome`은 `stopped|force_stopped`다. Reason은
 [Host relocation와 shutdown](28-graceful-drain-handoff.ko.md)의 식별자를 사용한다.
-Actor relocation `membership_kind`는 `entry|per_actor_user_spot`만 허용한다.
 
 ## 6. Location과 telemetry
 
@@ -232,7 +232,7 @@ label에 사용하지 않는다.
 
 | 허용 | 금지 |
 |---|---|
-| `mesh_name`, `channel_name`, `scope_kind`, `scope_name`, 정적 `source`, `surface`, `message_kind`, `outcome`, `reason`, `object_kind`, `policy`, `spot_kind`, 등록된 `instance_spot_type`, `transport`, `close_reason`, `intent`, `state` | topic, Actor ID, Spot ID, RID, endpoint, session ID, relocation ID, user ID, correlation ID, flow ID, application metadata value, application state format·version |
+| `mesh_name`, `channel_name`, `scope_kind`, `scope_name`, 정적 `source`, `surface`, `message_kind`, `operation`, `outcome`, `reason`, `mode`, `object_kind`, `unit_kind`, `execution_mode`, `policy`, `spot_kind`, `capacity_scope`, 등록된 `stable_type`, 등록된 `instance_spot_type`, `transport`, `close_reason`, `state` | topic, Actor ID, Spot ID, RID, endpoint, session ID, relocation ID, user ID, correlation ID, flow ID, application metadata value, application state format·version |
 
 `MeshName`, `ChannelName`과 `scope_name`은 host 등록값으로 닫혀 있을 때만 사용한다.
 Payload에서 label을 만들지 않는다.

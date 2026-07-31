@@ -19,7 +19,7 @@ Java handler는 `CompletionStage`를 돌려주고, Kotlin 짝은 `suspend`다. *
 | --- | --- | --- |
 | channel request | `ZLinkRequestHandler` | `ZLinkSuspendingRequestHandler` |
 | channel one-way send | `ZLinkSendHandler` | `ZLinkSuspendingSendHandler` |
-| classic fanout event | `ZLinkPublishHandler` | `ZLinkSuspendingPublishHandler` |
+| classic fanout event | `ZLinkFanoutHandler` | `ZLinkSuspendingPublishHandler` |
 | Node direct request · send | `ZLinkRouteRequestHandler` · `ZLinkRouteSendHandler` | `ZLinkSuspendingRouteRequestHandler` · `ZLinkSuspendingRouteSendHandler` |
 | Spot 앞 packet | `ZLinkSpotPacketHandler` | `ZLinkSuspendingSpotPacketHandler` |
 | Spot 앞 request | `ZLinkSpotRequestHandler` | `ZLinkSuspendingSpotRequestHandler` |

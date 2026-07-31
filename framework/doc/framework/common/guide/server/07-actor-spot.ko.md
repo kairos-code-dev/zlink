@@ -548,13 +548,13 @@ User Spot은 join 요청을 먼저 승인하거나 거절한다. 승인 뒤 memb
       public:
         spot_context_t &context () noexcept override { return _context; }
 
-        task_t<spot_actor_join_response_t>
+        task_t<spot_actor_join_result_t>
         on_actor_join (std::string_view actor_id, const message_t &request) override
         {
             const auto join = request.decode<join_game_t> ();
             co_return has_seat (join.seat)
-                     ? spot_actor_join_response_t::accept (joined_t{join.seat})
-                     : spot_actor_join_response_t::reject (room_full_t{});
+                     ? spot_actor_join_result_t::accept (joined_t{join.seat})
+                     : spot_actor_join_result_t::reject (room_full_t{});
         }
 
         task_t<void> on_actor_joined (player_actor_t &) override { co_return; }
@@ -577,12 +577,12 @@ User Spot은 join 요청을 먼저 승인하거나 거절한다. 승인 뒤 memb
         }
 
         @Override
-        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+        public CompletionStage<ZLinkSpotActorJoinResult> onActorJoin(
             String actorId, ZLinkMessage request) {
             JoinGame join = request.decode(JoinGame.class);
             return CompletableFuture.completedFuture(hasSeat(join.seat())
-                ? ZLinkSpotActorJoinResponse.accept(new Joined(join.seat()))
-                : ZLinkSpotActorJoinResponse.reject(new RoomFull()));
+                ? ZLinkSpotActorJoinResult.accept(new Joined(join.seat()))
+                : ZLinkSpotActorJoinResult.reject(new RoomFull()));
         }
 
         @Override
@@ -605,10 +605,10 @@ User Spot은 join 요청을 먼저 승인하거나 거절한다. 승인 뒤 memb
         override fun context(): ZLinkSpotContext = spotContext
 
         override suspend fun onActorJoin(
-            actorId: String, request: ZLinkMessage): ZLinkSpotActorJoinResponse {
+            actorId: String, request: ZLinkMessage): ZLinkSpotActorJoinResult {
             val join = request.decode(JoinGame::class.java)
-            return if (hasSeat(join.seat)) ZLinkSpotActorJoinResponse.accept(Joined(join.seat))
-                   else ZLinkSpotActorJoinResponse.reject(RoomFull())
+            return if (hasSeat(join.seat)) ZLinkSpotActorJoinResult.accept(Joined(join.seat))
+                   else ZLinkSpotActorJoinResult.reject(RoomFull())
         }
 
         override suspend fun onJoinedActor(actor: PlayerActor) {}
@@ -622,11 +622,11 @@ User Spot은 join 요청을 먼저 승인하거나 거절한다. 승인 뒤 memb
     export class GameRoom implements ZLinkSpot<PlayerActor> {
       readonly context!: ZLinkSpotContext<PlayerActor>;
 
-      async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+      async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
         const join = request.decode<JoinGame>(Object as never);
         return this.hasSeat(join.seat)
-          ? ZLinkSpotActorJoinResponse.accept(joined(join.seat))
-          : ZLinkSpotActorJoinResponse.reject(roomFull());
+          ? ZLinkSpotActorJoinResult.accept(joined(join.seat))
+          : ZLinkSpotActorJoinResult.reject(roomFull());
       }
 
       async onJoinedActor(actor: PlayerActor): Promise<void> {}

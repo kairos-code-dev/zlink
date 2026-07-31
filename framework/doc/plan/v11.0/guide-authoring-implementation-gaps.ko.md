@@ -74,14 +74,16 @@ fanout subscriber endpoint 호출(`connect`로 통일함)과 같은 부류다. �
 
 | 뜻 | .NET | Java · Kotlin | Node | C++ |
 | --- | --- | --- | --- | --- |
-| fanout 수신 handler | `IZLinkFanoutHandler` | `ZLinkPublishHandler` | `ZLinkPublishHandler` | handler class 규약(계약 타입 없음) |
 | Spot join admission 결과 | `ZLinkSpotActorJoinResult` | `ZLinkSpotActorJoinResponse` | `ZLinkSpotActorJoinResponse` | `spot_actor_join_response_t` |
 | session dispatch context | `ZLinkSessionDispatchContext` | `ZLinkSessionMessageContext` | `ZLinkSessionMessageContext` | `session_message_context_t` |
 | filter 다음 단계 | `ZLinkHandlerFilterNext` | `ZLinkHandlerFilterNext` | `ZLinkHandlerDelegate` | `handler_filter_next_t` |
 
-앞의 셋은 **.NET만 다르고** 나머지 셋이 같다. 마지막 하나는 Node만 다르다. `Result` ↔
-`Response`, `Dispatch` ↔ `Message`처럼 뜻이 겹치는 단어라 읽는 쪽에서 같은 개념인지
-바로 알기 어렵다.
+세 자리 모두 **.NET만 다르고** 나머지가 같다. `Result` ↔ `Response`, `Dispatch` ↔
+`Message`처럼 뜻이 겹치는 단어라 읽는 쪽에서 같은 개념인지 바로 알기 어렵다.
+
+> 처음에 fanout 수신 handler도 갈리는 줄 알고 넣었다가 뺐다. 세 언어 모두
+> `ZLinkFanoutHandler`가 맞고, Node의 `zlinkPublishHandler`는 그 계약을 등록하는
+> **데코레이터 이름**이라 층이 다르다.
 
 확인 방법은 `doc/site/scripts/check_guide_identifiers.py`다. 탭 코드의 타입 이름을 그
 언어의 실제 표면과 대조하므로, 한 언어 이름을 다른 언어 탭에 잘못 쓰면 걸린다.
@@ -119,7 +121,7 @@ Java는 6배로 갈린다. 같은 mesh에 두 언어 node가 섞이면 owner 판
 ### G7 · runtime metric 구현이 언어마다 크게 갈린다
 
 [Runtime metric과 집계 규칙](../../framework/common/spec/25-runtime-metrics.ko.md)이 계기
-49개를 정의한다. **spec에 있는데 어느 구현에도 없는 이름은 없다** — 문제는 반대다.
+47개를 정의한다(계기 둘을 뺀 경위는 G8이다). **spec에 있는데 어느 구현에도 없는 이름은 없다** — 문제는 반대다.
 구현 쪽이 언어마다 크게 다르고, 일부는 spec에 없는 이름으로 방출한다.
 
 | 언어 | spec 계기 중 방출하는 수 |
@@ -145,6 +147,37 @@ Java 구현 트리에서 `zlink.mesh_node`로 시작하는 계기는 **하나도
 
 확인 방법은 각 언어의 계기 등록 호출을 grep하는 것이다 — `.NET`은
 `CreateCounter`·`CreateHistogram` 계열, Java는 `ZLinkRuntimeMetrics.add`·`record`다.
+
+### G8 · spec에서 뺀 계기 둘을 구현이 아직 방출한다
+
+§1의 다른 항목과 방향이 반대다. **구현이 먼저 있고 spec이 나중에 지운 자리**이므로
+"별도 판단이 필요한 구현 전용 표면"이 아니라 이미 판단이 끝난 정리 대상이다.
+
+| | |
+| --- | --- |
+| 대상 | `zlink.relocation.recovered` · `zlink.relocation.journal.messages` |
+| 판단 | [Runtime metric과 집계 규칙](../../framework/common/spec/25-runtime-metrics.ko.md)에서 삭제했다 |
+| 근거 | 전자는 `zlink.relocation.completed{outcome=recovered}`의 부분집합이다(`ZLinkRuntimeMetrics.cs:869-870`이 `outcome == Recovered`일 때만 더한다). 후자는 envelope 크기를 `zlink.relocation.bytes`가 이미 담당하고, message 한 건 단위 기록은 spec §1이 [26-message-flow-tracing](../../framework/common/spec/26-message-flow-tracing.ko.md)에 넘긴 범위다 |
+
+`outcome` 허용값의 `recovered`는 남겼다. 삭제한 counter가 파생되던 원본이라 이것까지
+빼면 정보가 사라진다.
+
+두 이름이 남아 있는 자리는 다음과 같다. **양쪽 contract test가 계기 이름 전체 목록을
+하드코딩해서 단언하므로 구현만 고치고 테스트를 두면 바로 깨진다.**
+
+| 대상 | 위치 |
+| --- | --- |
+| 공통 가이드 표 | `framework/doc/framework/common/guide/server/12-operations.ko.md:101-102` |
+| .NET 구현 | `ZLinkRuntimeMetrics.cs:107,109`(등록) · `:869-870`(recovered 기록) · journal 기록 지점 |
+| .NET contract test | `RuntimeMetricsTests.cs:52,53,379,444,457` |
+| Node 구현 | `runtime-metrics.ts:77,98`(등록) · `:357,374`(기록) |
+| Node contract test | `runtime-metrics.test.js:80-81` |
+
+ObservabilityOps E2E에는 두 이름이 없다. C++ · Java는 애초에 방출하지 않아 손댈 곳이 없다.
+
+> G7의 "Node 0개"는 다시 세야 한다. 이번에 확인한 `runtime-metrics.ts`는 계기 이름
+> 44개를 선언하고 그중 최소 12개를 실제로 기록한다(`this.count(...)` · `this.histogram(...)`
+> 호출 기준). G7 표는 다른 스캔 결과이므로 여기서 고치지 않고 재확인 대상으로만 남긴다.
 
 ## 2. 문서가 가리키는데 없는 샘플
 
@@ -202,3 +235,55 @@ grep으로 선언이 실재하는지 본다. 확인되면 §1로 올리고 근�
 | fanout subscriber endpoint 호출 이름이 네 언어에서 갈림 | `connect(endpoint)`로 통일. 선언·구현·호출부·spec·가이드·API 스냅샷을 함께 고쳤다(커밋 `3c6530c5ff`) |
 | core 가이드 `03-3-dealer`가 없는 샘플 넷을 인용 | python·node·rust는 실제 파일 이름으로 정정, C++ 샘플은 신규 작성(커밋 `4a1bf6dbf0`) |
 | C++ timer handler 예제가 등록 규약과 어긋남 | 별도 handler 타입 형태로 정정(커밋 `1e58c9…` 계열) |
+
+## 6. 2026-07-31 처리 기록
+
+기준은 spec이고, 이름과 기본값이 갈리는 자리는 `.NET` 구현을 정본으로 맞춘다.
+
+### G6 · owner lease TTL 기본값 — 처리 완료
+
+`ZLinkLocationOptions`의 기본값을 네 언어에서 전수 대조했다. `.NET`과 C++은 13개 값이
+모두 같았고 Java와 Node.js만 `ownerLeaseTtl`이 달랐다.
+
+| 값 | .NET | C++ | Java(변경 전 → 후) | Node(변경 전 → 후) |
+| --- | --- | --- | --- | --- |
+| `ownerLeaseRenewInterval` | 5s | 5s | 5s | 5s |
+| `ownerLeaseTtl` | **15s** | 15s | **30s → 15s** | **30s → 15s** |
+| `pollingInterval` | 1s | 1s | 1s | 1s |
+| `storeFailureGrace` | 30s | 30s | 30s | 30s |
+| `ownerLeaseFencingMargin` | 5s | 5s | 5s | 5s |
+| `ownerLeaseRenewTimeout` | 3s | 3s | 3s | 3s |
+| `routeCacheMaxAge` | 15s | 15s | 15s | 15s |
+| `messageFollowDuration` | 30s | 30s | 30s | 30s |
+| `maxActiveOutboundRelocations` | 64 | 64 | 64 | 64 |
+| `maxActiveInboundRelocations` | 64 | 64 | 64 | 64 |
+| `maxConcurrentRelocationCaptures` | 8 | 8 | 8 | 8 |
+| `maxConcurrentRelocationRestores` | 8 | 8 | 8 | 8 |
+| `maxRelocationPayloadInFlightBytes` | 256 MiB | 256 MiB | 256 MiB | 256 MiB |
+
+갱신 주기 대비 TTL 배수가 `.NET`·C++은 3배인데 Java·Node는 6배였다. 같은 mesh에 여러
+언어 node가 섞이면 owner 판정 시점이 갈리므로 정합성 문제다. 두 언어를 15초로 맞췄다.
+나머지 12개 값은 이미 네 언어가 모두 같다.
+
+### G4 · 언어별로 다른 public 타입 이름 — 진행 중
+
+`.NET` 이름을 정본으로 맞춘다. `.NET`의 `I` 접두사는 그 언어의 관용이므로 다른 언어로
+옮길 때 떼어낸다.
+
+| 뜻 | 정본(.NET) | 상태 |
+| --- | --- | --- |
+| filter 다음 단계 | `ZLinkHandlerFilterNext` | **완료.** Node의 `ZLinkHandlerDelegate`를 바꿨다. 파일명, 구현, e2e 호출부, Node 공개 계약 spec과 공통 가이드를 함께 고쳤다. build와 typecheck 통과 |
+| Spot join admission 결과 | `ZLinkSpotActorJoinResult` | 대기. Java·Kotlin·Node·C++이 `...Response`를 쓴다. 66개 파일 |
+| session dispatch context | `ZLinkSessionDispatchContext` | 대기. Java·Kotlin·Node·C++이 `...MessageContext`를 쓴다. 84개 파일 |
+| fanout 수신 handler | `ZLinkFanoutHandler` | 대기. Java·Node가 `ZLinkPublishHandler`를 쓴다. 15개 파일 |
+
+각 이름은 구현뿐 아니라 언어별 공개 계약 spec에도 선언되어 있으므로 spec·가이드·공개
+계약 trace를 함께 갱신해야 한다.
+
+### Node.js location option 이름이 spec과 달랐다 — 처리 완료
+
+G4를 조사하다 별도로 발견했다. Node 공개 계약
+[`01-foundation-configuration`](../../framework/common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md)은
+`ownerLeaseRenewIntervalMs`와 `ownerLeaseFencingMarginMs`를 선언하는데 구현은
+`heartbeatIntervalMs`와 `routingIdFencingMarginMs`를 쓰고 있었다. spec 이름으로 맞췄다.
+샘플·e2e를 포함해 24개 파일이며 build와 typecheck가 통과한다.

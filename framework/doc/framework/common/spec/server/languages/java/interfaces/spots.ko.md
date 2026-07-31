@@ -472,14 +472,14 @@ public interface systems.zlink.framework.spots.ZLinkSpot<TActor extends systems.
   public default java.util.concurrent.CompletionStage<java.lang.Void> onClosing(systems.zlink.framework.spots.ZLinkSpotClosingContext);
   public default java.util.concurrent.CompletionStage<java.lang.Void> onRelocationReadyCompleted(systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion);
 }
-public final class systems.zlink.framework.spots.ZLinkSpotActorJoinResponse extends java.lang.Record {
-  public systems.zlink.framework.spots.ZLinkSpotActorJoinResponse(boolean, systems.zlink.framework.messaging.ZLinkMessage);
-  public static systems.zlink.framework.spots.ZLinkSpotActorJoinResponse accept();
-  public static systems.zlink.framework.spots.ZLinkSpotActorJoinResponse accept(systems.zlink.framework.messaging.ZLinkMessage);
-  public static systems.zlink.framework.spots.ZLinkSpotActorJoinResponse accept(java.lang.Object);
-  public static systems.zlink.framework.spots.ZLinkSpotActorJoinResponse reject();
-  public static systems.zlink.framework.spots.ZLinkSpotActorJoinResponse reject(systems.zlink.framework.messaging.ZLinkMessage);
-  public static systems.zlink.framework.spots.ZLinkSpotActorJoinResponse reject(java.lang.Object);
+public final class systems.zlink.framework.spots.ZLinkSpotActorJoinResult extends java.lang.Record {
+  public systems.zlink.framework.spots.ZLinkSpotActorJoinResult(boolean, systems.zlink.framework.messaging.ZLinkMessage);
+  public static systems.zlink.framework.spots.ZLinkSpotActorJoinResult accept();
+  public static systems.zlink.framework.spots.ZLinkSpotActorJoinResult accept(systems.zlink.framework.messaging.ZLinkMessage);
+  public static systems.zlink.framework.spots.ZLinkSpotActorJoinResult accept(java.lang.Object);
+  public static systems.zlink.framework.spots.ZLinkSpotActorJoinResult reject();
+  public static systems.zlink.framework.spots.ZLinkSpotActorJoinResult reject(systems.zlink.framework.messaging.ZLinkMessage);
+  public static systems.zlink.framework.spots.ZLinkSpotActorJoinResult reject(java.lang.Object);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -492,7 +492,7 @@ public interface systems.zlink.framework.spots.ZLinkSpotActorMembershipLifecycle
   public default java.util.concurrent.CompletionStage<java.lang.Void> onDisconnectActor(TActor);
 }
 public interface systems.zlink.framework.spots.ZLinkUserSpotActorLifecycle<TActor extends systems.zlink.framework.actors.ZLinkActor> extends systems.zlink.framework.spots.ZLinkSpotActorMembershipLifecycle<TActor> {
-  public default java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResponse> onActorJoin(java.lang.String, systems.zlink.framework.messaging.ZLinkMessage);
+  public default java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResult> onActorJoin(java.lang.String, systems.zlink.framework.messaging.ZLinkMessage);
 }
 public final class systems.zlink.framework.spots.ZLinkActorCreateResponse extends java.lang.Record {
   public systems.zlink.framework.spots.ZLinkActorCreateResponse(boolean, systems.zlink.framework.messaging.ZLinkMessage);

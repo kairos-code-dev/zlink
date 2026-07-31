@@ -224,7 +224,7 @@ public interface systems.zlink.framework.channels.ZLinkPublishMessageContext ext
   public abstract java.lang.String topic();
   public abstract java.util.Optional<java.lang.String> source();
 }
-public interface systems.zlink.framework.channels.ZLinkPublishHandler<TMessage> {
+public interface systems.zlink.framework.channels.ZLinkFanoutHandler<TMessage> {
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TMessage, systems.zlink.framework.channels.ZLinkPublishMessageContext);
 }
 public interface systems.zlink.framework.channels.ZLinkRequestCall {

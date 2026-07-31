@@ -3674,3 +3674,28 @@ diagnostic?.Invoke(
 
 구분 방법은 간단하다. 진단 수준을 올려 마커가 나오는지 보면 된다. 나오면 설정 문제이고,
 안 나오면 backlog가 실제로 일어나지 않는 것이다.
+
+### handoff_backlog는 debug 플래그 뒤가 아니다 — backlog 자체가 없다
+
+진단 callback의 출처를 따라갔다.
+
+```csharp
+private readonly ZLinkActorSessionRegistry _actorSessions = new(
+    services,
+    runtime.LogActorHandoff,      // ← handoff 진단
+    ...);
+```
+
+`LogActorHandoff`는 `ILogger` 기반이고 category는 `Zlink.Framework.ActorHandoff`다. 이
+category의 Information 로그는 이 세션의 다른 실행에서 실제로 관측됐다
+(`message_follow_registered ... entries=1`). 즉 **debug 환경변수 뒤에 숨은 것이 아니라
+평범한 Information 로그**이며, 러너는 그 로그를 grep한다.
+
+따라서 앞 절의 두 가능성 중 첫째("진단이 연결되지 않았다")는 배제된다. 남는 것은
+**backlog 자체가 일어나지 않는다**는 것이다.
+
+ST-F3는 bound session actor가 이동하는 동안 in-flight frame이 backlog에 담기는지를
+검증한다. 그 frame이 담기지 않는다는 뜻이므로, 이동 중 도착한 message가 어떻게 처리되는지
+확인해야 한다. 참고로 ST-F2도 backlog 관련이며 `backlog_enqueued`와
+`location_committed`의 순서가 뒤집혀 실패한다. 두 시나리오가 같은 영역을 다루므로 함께
+볼 만하다.

@@ -945,6 +945,27 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
       << "Bingo runner must execute the public client binary";
     EXPECT_NE (bingo_runner.find ("BINGO_REDIS_ENDPOINT"), std::string::npos)
       << "Bingo runner must support externally supplied Redis";
+    for (const auto *endpoint : {"API_A_PLAY_ROUTE_ENDPOINT",
+                                 "API_B_PLAY_ROUTE_ENDPOINT",
+                                 "SESSION_A_PLAY_ROUTE_ENDPOINT",
+                                 "SESSION_B_PLAY_ROUTE_ENDPOINT"}) {
+        EXPECT_NE (bingo_runner.find (endpoint), std::string::npos)
+          << "Bingo shell runner must pass the same play-route endpoints as the PowerShell runner";
+    }
+
+    const auto tictactoe_client =
+      read_file (cpp_root / "samples/TicTacToe/Client/tictactoe_client_scenario.hpp");
+    EXPECT_NE (tictactoe_client.find ("use_default_codec (zlink::stream_connector::codec_t::json)"),
+               std::string::npos)
+      << "TicTacToe typed stream requests must use the framework JSON connector path";
+
+    const auto deliverydispatch_client =
+      read_file (cpp_root
+                 / "samples/DeliveryDispatch/Client/delivery_dispatch_client_scenario.hpp");
+    EXPECT_NE (deliverydispatch_client.find (
+                 "use_default_codec (zlink::stream_connector::codec_t::json)"),
+               std::string::npos)
+      << "DeliveryDispatch typed stream requests must use the framework JSON connector path";
 
     const auto deliverydispatch_runner =
       read_file (cpp_root / "samples/DeliveryDispatch/run_sample.sh");

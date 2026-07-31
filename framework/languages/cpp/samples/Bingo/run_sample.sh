@@ -83,6 +83,7 @@ if [[ ${#PORTS[@]} -lt 22 ]]; then
   exit 1
 fi
 
+<<<<<<< Updated upstream
 API_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
 PLAY_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
 SESSION_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
@@ -104,6 +105,29 @@ API_B_PLAY_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[17]}"
 API_A_MATCHMAKING_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[18]}"
 API_B_MATCHMAKING_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[19]}"
 MATCHMAKING_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[20]}"
+=======
+API_A_CHANNEL_ENDPOINT="${BINGO_API_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
+PLAY_A_CHANNEL_ENDPOINT="${BINGO_PLAY_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
+SESSION_A_SPOT_ENDPOINT="${BINGO_SESSION_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
+SESSION_A_ROUTER_ENDPOINT="${BINGO_SESSION_A_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
+SESSION_B_SPOT_ENDPOINT="${BINGO_SESSION_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
+SESSION_B_ROUTER_ENDPOINT="${BINGO_SESSION_B_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[7]}}"
+PLAY_B_CHANNEL_ENDPOINT="${BINGO_PLAY_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
+PLAY_A_SPOT_ENDPOINT="${BINGO_PLAY_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
+PLAY_A_SPOT_ROUTER_ENDPOINT="${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
+SESSION_A_STREAM_ENDPOINT="${BINGO_SESSION_A_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
+SESSION_B_STREAM_ENDPOINT="${BINGO_SESSION_B_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[12]}}"
+PLAY_B_SPOT_ENDPOINT="${BINGO_PLAY_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
+PLAY_B_SPOT_ROUTER_ENDPOINT="${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[14]}}"
+API_B_CHANNEL_ENDPOINT="${BINGO_API_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[15]}}"
+REDIS_PORT="${PORTS[16]}"
+PLAY_A_ROUTE_ENDPOINT="${BINGO_PLAY_A_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
+PLAY_B_ROUTE_ENDPOINT="${BINGO_PLAY_B_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
+API_A_PLAY_ROUTE_ENDPOINT="${BINGO_API_A_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[17]}}"
+API_B_PLAY_ROUTE_ENDPOINT="${BINGO_API_B_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[18]}}"
+SESSION_A_PLAY_ROUTE_ENDPOINT="${BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[19]}}"
+SESSION_B_PLAY_ROUTE_ENDPOINT="${BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[20]}}"
+>>>>>>> Stashed changes
 
 endpoint_host() {
   local endpoint="$1"
@@ -222,6 +246,7 @@ zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
 BINGO_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 
+<<<<<<< Updated upstream
 CONFIG_DIR="$LOG_DIR/config"
 mkdir -p "$CONFIG_DIR"
 
@@ -298,6 +323,32 @@ write_role_config api-b b a a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDP
 write_role_config matchmaking a a a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDPOINT" "$SESSION_A_ROUTER_ENDPOINT"
 write_role_config session-a a a a "$SESSION_A_STREAM_ENDPOINT" "$SESSION_A_SPOT_ENDPOINT" "$SESSION_A_ROUTER_ENDPOINT"
 write_role_config session-b a a b "$SESSION_B_STREAM_ENDPOINT" "$SESSION_B_SPOT_ENDPOINT" "$SESSION_B_ROUTER_ENDPOINT"
+=======
+topology_args=(
+  "--sample.topology.apiChannelEndpoint=$API_A_CHANNEL_ENDPOINT"
+  "--sample.topology.apiAChannelEndpoint=$API_A_CHANNEL_ENDPOINT"
+  "--sample.topology.apiBChannelEndpoint=$API_B_CHANNEL_ENDPOINT"
+  "--sample.topology.playChannelEndpoint=$PLAY_A_CHANNEL_ENDPOINT"
+  "--sample.topology.playAChannelEndpoint=$PLAY_A_CHANNEL_ENDPOINT"
+  "--sample.topology.playBChannelEndpoint=$PLAY_B_CHANNEL_ENDPOINT"
+  "--sample.topology.playARouteEndpoint=$PLAY_A_ROUTE_ENDPOINT"
+  "--sample.topology.playBRouteEndpoint=$PLAY_B_ROUTE_ENDPOINT"
+  "--sample.topology.apiAPlayRouteEndpoint=$API_A_PLAY_ROUTE_ENDPOINT"
+  "--sample.topology.apiBPlayRouteEndpoint=$API_B_PLAY_ROUTE_ENDPOINT"
+  "--sample.topology.sessionAPlayRouteEndpoint=$SESSION_A_PLAY_ROUTE_ENDPOINT"
+  "--sample.topology.sessionBPlayRouteEndpoint=$SESSION_B_PLAY_ROUTE_ENDPOINT"
+  "--sample.topology.playASpotEndpoint=$PLAY_A_SPOT_ENDPOINT"
+  "--sample.topology.playBSpotEndpoint=$PLAY_B_SPOT_ENDPOINT"
+  "--sample.topology.playASpotRouterEndpoint=$PLAY_A_SPOT_ROUTER_ENDPOINT"
+  "--sample.topology.playBSpotRouterEndpoint=$PLAY_B_SPOT_ROUTER_ENDPOINT"
+  "--sample.topology.sessionSpotEndpoint=$SESSION_A_SPOT_ENDPOINT"
+  "--sample.topology.sessionRouterEndpoint=$SESSION_A_ROUTER_ENDPOINT"
+  "--sample.topology.sessionAStreamEndpoint=$SESSION_A_STREAM_ENDPOINT"
+  "--sample.topology.sessionBStreamEndpoint=$SESSION_B_STREAM_ENDPOINT"
+  "--sample.topology.redisEndpoint=$BINGO_REDIS_ENDPOINT"
+  "--sample.topology.redisKeyPrefix=$BINGO_REDIS_KEY_PREFIX"
+)
+>>>>>>> Stashed changes
 
 start_server() {
   local name="$1"
@@ -319,6 +370,7 @@ wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_ENDPOINT"
 wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_ENDPOINT"
 wait_port matchmaking "$MATCHMAKING_ROUTE_ENDPOINT"
 wait_port api-a "$API_A_CHANNEL_ENDPOINT"
+<<<<<<< Updated upstream
 wait_port api-b "$API_B_CHANNEL_ENDPOINT"
 wait_port api-a-play-route "$API_A_PLAY_ROUTE_ENDPOINT"
 wait_port api-b-play-route "$API_B_PLAY_ROUTE_ENDPOINT"
@@ -326,8 +378,30 @@ wait_port api-a-matchmaking-route "$API_A_MATCHMAKING_ROUTE_ENDPOINT"
 wait_port api-b-matchmaking-route "$API_B_MATCHMAKING_ROUTE_ENDPOINT"
 wait_port session-a-router "$SESSION_A_ROUTER_ENDPOINT"
 wait_port session-a-stream "$SESSION_A_STREAM_ENDPOINT"
+=======
+wait_port api-a-play-route "$API_A_PLAY_ROUTE_ENDPOINT"
+start_server api-b "$API_BIN" --sample.topology.apiNode=b
+wait_port api-b "$API_B_CHANNEL_ENDPOINT"
+wait_port api-b-play-route "$API_B_PLAY_ROUTE_ENDPOINT"
+
+start_server session-a "$SESSION_BIN" \
+  --sample.topology.sessionNode=a \
+  "--sample.topology.sessionSpotEndpoint=$SESSION_A_SPOT_ENDPOINT" \
+  "--sample.topology.sessionRouterEndpoint=$SESSION_A_ROUTER_ENDPOINT" \
+  "--sample.topology.streamEndpoint=$SESSION_A_STREAM_ENDPOINT"
+wait_port session-a-router "$SESSION_A_ROUTER_ENDPOINT"
+wait_port session-a-stream "$SESSION_A_STREAM_ENDPOINT"
+wait_port session-a-play-route "$SESSION_A_PLAY_ROUTE_ENDPOINT"
+
+start_server session-b "$SESSION_BIN" \
+  --sample.topology.sessionNode=b \
+  "--sample.topology.sessionSpotEndpoint=$SESSION_B_SPOT_ENDPOINT" \
+  "--sample.topology.sessionRouterEndpoint=$SESSION_B_ROUTER_ENDPOINT" \
+  "--sample.topology.streamEndpoint=$SESSION_B_STREAM_ENDPOINT"
+>>>>>>> Stashed changes
 wait_port session-b-router "$SESSION_B_ROUTER_ENDPOINT"
 wait_port session-b-stream "$SESSION_B_STREAM_ENDPOINT"
+wait_port session-b-play-route "$SESSION_B_PLAY_ROUTE_ENDPOINT"
 
 "$CLIENT_BIN" \
   --session-a-stream-endpoint "$SESSION_A_STREAM_ENDPOINT" \

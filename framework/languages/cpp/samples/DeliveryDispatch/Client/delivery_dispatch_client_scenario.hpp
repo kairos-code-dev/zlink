@@ -33,6 +33,7 @@ class delivery_dispatch_client_scenario_t
             connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
             auto core_customer =
               zlink::stream_connector::connector_factory_t::create (connector_options);
+            use_json_codec (core_customer);
             auto customer = zlink::stream_e2e_client::use (core_customer);
             auto customer_connected = customer.connect ().submit ();
             ensure (static_cast<bool> (customer_connected), "customer stream connect failed");
@@ -40,12 +41,14 @@ class delivery_dispatch_client_scenario_t
             connector_options.endpoint = courier_stream_endpoint;
             auto core_courier_a =
               zlink::stream_connector::connector_factory_t::create (connector_options);
+            use_json_codec (core_courier_a);
             auto courier_a = zlink::stream_e2e_client::use (core_courier_a);
             auto courier_a_connected = courier_a.connect ().submit ();
             ensure (static_cast<bool> (courier_a_connected), "courier-a stream connect failed");
 
             auto core_courier_b =
               zlink::stream_connector::connector_factory_t::create (connector_options);
+            use_json_codec (core_courier_b);
             auto courier_b = zlink::stream_e2e_client::use (core_courier_b);
             auto courier_b_connected = courier_b.connect ().submit ();
             ensure (static_cast<bool> (courier_b_connected), "courier-b stream connect failed");
@@ -70,8 +73,18 @@ class delivery_dispatch_client_scenario_t
   private:
     using connector_t = zlink::stream_e2e_client::coroutine_connector_t;
 
+<<<<<<< Updated upstream
     /* Actor placement는 Location Store가 결정한다. Scenario는 global CourierId와 bind 성공만
      * 검증하며 current owner NodeRid를 성공 조건으로 사용하지 않는다. */
+=======
+    static void use_json_codec (zlink::stream_connector::connector_t &connector)
+    {
+        connector.codecs ()
+          .enable_codec (zlink::stream_connector::codec_t::json)
+          .use_default_codec (zlink::stream_connector::codec_t::json);
+    }
+
+>>>>>>> Stashed changes
     static void bind_courier (connector_t &courier, const std::string &courier_id)
     {
         const auto bound = courier.request (bind_courier_session_req_t{courier_id})

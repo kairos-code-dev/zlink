@@ -140,9 +140,12 @@ class stream_write_call_state_t
         }
         const auto packet_name =
           _packet_name.empty () ? std::string (_header->packet_name ()) : _packet_name;
-        const auto header =
+        auto header =
           stream_header_t (_header->kind (), _header->codec (), flags, _header->request_seq (),
                            packet_name, stream_metadata_t (std::move (metadata)));
+        if (auto correlation = _header->correlation_id ()) {
+            header.with_correlation_id (std::string (*correlation));
+        }
         return _submit (header, payload);
     }
 

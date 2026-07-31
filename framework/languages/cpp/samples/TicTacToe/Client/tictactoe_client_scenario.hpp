@@ -83,10 +83,13 @@ class tictactoe_client_scenario_t
 
             auto core_client1 =
               zlink::stream_connector::connector_factory_t::create (connector_options);
+            use_json_codec (core_client1);
             auto core_client2 =
               zlink::stream_connector::connector_factory_t::create (guest_connector_options);
+            use_json_codec (core_client2);
             auto core_observer =
               zlink::stream_connector::connector_factory_t::create (guest_connector_options);
+            use_json_codec (core_observer);
             [[maybe_unused]] auto inbound_log1 = core_client1.observe_inbound (
               [] (const zlink::stream_connector::inbound_observation_t &observation) {
                   std::cout << "stream-inbound sample=TicTacToe client=player kind="
@@ -125,6 +128,7 @@ class tictactoe_client_scenario_t
 
             auto recreate_client =
               zlink::stream_connector::connector_factory_t::create (connector_options);
+            use_json_codec (recreate_client);
             [[maybe_unused]] auto recreate_inbound_log = recreate_client.observe_inbound (
               [] (const zlink::stream_connector::inbound_observation_t &observation) {
                   std::cout << "stream-inbound sample=TicTacToe client=player kind="
@@ -472,6 +476,13 @@ class tictactoe_client_scenario_t
     }
 
     static void trace (const char *step) { std::cerr << "tictactoe step: " << step << '\n'; }
+
+    static void use_json_codec (zlink::stream_connector::connector_t &connector)
+    {
+        connector.codecs ()
+          .enable_codec (zlink::stream_connector::codec_t::json)
+          .use_default_codec (zlink::stream_connector::codec_t::json);
+    }
 
     static std::string non_owner_endpoint (const create_game_http_res_t &room)
     {

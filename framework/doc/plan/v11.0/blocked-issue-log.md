@@ -3441,3 +3441,30 @@ stack이 `SubmitAsync`를 가리키는데 `SubmitDirectAsync`를 고쳐 놓고 "
 
 교훈은 앞선 것들과 같다. 비슷한 코드가 여럿일 때 텍스트 앵커는 위험하다. 수정 뒤에는
 그 수정이 실제로 실행되는 경로에 있는지 확인해야 한다.
+
+### ST-E2 다음 층 — relocation은 끝나고 새 session bind가 반복 실패한다
+
+수정 후 ST-E2의 실패 지점이 line 29에서 line 37로 이동했다. 사이에 있는
+`success_reply` 대기(line 33-35)를 통과하므로 **relocation 자체는 완료된다.**
+
+```csharp
+await context.WaitEvidenceAsync(context.NodeB, [
+    $"ST-E2|{actorId}|success_reply|{spotId}"]);          // ← 통과
+var targetRef = await context.GetActorRefAsync(context.NodeB, actorId);
+await using var newSession = await context.ConnectAndBindAsync(
+    context.Options.NodeBStreamEndpoint, "ST-E2", targetRef);   // ← line 37, timeout
+```
+
+진단을 보면 이 단계의 성격이 드러난다.
+
+```
+bind_session session_node=session-a-...      1건   (최초 bind, 정상)
+bind_session session_node=session-b-...    211건   (재시도)
+```
+
+`route_reply_failed`는 한 건도 없다. 즉 앞서 고친 NRE는 이 경로에 없다. 대신 bind 요청이
+actor node에 **211번 도달하는데** 클라이언트는 끝내 성공을 받지 못한다. 매번 처리되지만
+결과가 돌아오지 않거나 거절되어 재시도가 반복된다.
+
+다음은 bind 응답이 어떻게 되는지다. `ZLinkRemoteSessionBindingHandler`가
+`ZLinkActorBoundSessionRelay.SendReplyAsync`로 응답하므로 그 경로를 본다.

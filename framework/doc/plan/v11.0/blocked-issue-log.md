@@ -4954,3 +4954,33 @@ RuntimeMonitoring MON-A4 로그에도 `Spot timer handler failed. source=monitor
 도달하지 않는 것이며, 이번에는 host 가정 문제가 아니다.
 
 OBS-A1·A2·A3은 통과 상태를 유지한다.
+
+### OBS-A4: spot pub/sub fanout이 같은 node의 subscriber에만 도달한다
+
+Host 가정을 고친 뒤에도 남은 실패의 원인이다.
+
+먼저 slow-joiner 가능성을 배제했다. Publish를 200ms 간격으로 20회 반복해도 결과가 같다.
+구독 등록이 늦어서 첫 발행을 놓치는 문제가 아니다.
+
+Evidence를 host별로 나눠 물으니 분포가 한쪽으로 몰려 있다.
+
+```
+wf-a : projection-published| 없음,  projection-received| 없음
+wf-b : projection-published| 43건,  projection-received| 43건
+```
+
+`projection-published`는 owner WorkflowSpot이 남기고 `projection-received`는 subscriber
+ProjectionSpot이 남긴다. 즉 owner가 배치된 node에 있는 subscriber만 받고 다른 node의
+subscriber는 받지 못한다. 기대 문자열 전체
+(`rid=<owner>|version=1|marker=obs-a4-fanout`)도 owner node 쪽에는 그대로 있다.
+
+Placement는 실행마다 달라진다. 어떤 실행에서는 owner와 subscriberA가 같은 node에,
+다른 실행에서는 subscriberB가 같은 node에 놓인다. 그래서 실패하는 wait이 실행마다
+바뀌지만 규칙은 하나다. **Owner와 다른 node의 subscriber는 fanout을 받지 못한다.**
+
+`WorkflowSpot.PublishAsync`는
+`Context.Outbound.Publish(WorkflowMesh, "observability.projection", ...)`를 쓰고
+`ProjectionSpot.Configure`는 같은 mesh·topic으로 `AddSubscribe`한다. 구성은 대칭이다.
+
+이것은 host 가정이나 harness 문제가 아니라 cross-node spot pub/sub 전달의 문제다.
+측정 편집은 되돌렸다.

@@ -1,3 +1,7 @@
+---
+title: "10. Location — 자동 연결과 Object 위치 · Java"
+---
+
 <!-- generated:start -->
 <!-- 이 파일은 `common/guide/server/10-location.ko.md`에서 생성한다. 직접 고치지 않는다.
      고칠 곳은 공통 소스이고, `python3 doc/site/scripts/generate_language_guides.py`로 다시 만든다. -->

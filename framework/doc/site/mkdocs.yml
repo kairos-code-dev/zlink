@@ -61,103 +61,103 @@ nav:
   - 홈: index.ko.md
   - 가이드:
       - .NET:
-          - dotnet/guide/server/README.ko.md
-          - dotnet/guide/server/01-overview.ko.md
-          - dotnet/guide/server/02-getting-started.ko.md
-          - dotnet/guide/server/03-concepts.ko.md
-          - dotnet/guide/server/04-backpressure.ko.md
-          - dotnet/guide/server/05-channel-messaging.ko.md
-          - dotnet/guide/server/06-spot.ko.md
-          - dotnet/guide/server/07-actor-spot.ko.md
-          - dotnet/guide/server/08-actor-session.ko.md
-          - dotnet/guide/server/09-stream.ko.md
-          - dotnet/guide/server/10-location.ko.md
-          - dotnet/guide/server/11-monitoring.ko.md
-          - dotnet/guide/server/12-operations.ko.md
-          - dotnet/guide/server/13-interface-catalog.ko.md
-          - dotnet/guide/server/14-samples.ko.md
-          - dotnet/guide/server/15-e2e-testing.ko.md
-          - dotnet/guide/server/16-options.ko.md
-          - dotnet/guide/server/17-alternative.ko.md
+          - "가이드 홈": dotnet/guide/server/README.ko.md
+          - "1. ZLink Framework for .NET": dotnet/guide/server/01-overview.ko.md
+          - "2. Getting Started": dotnet/guide/server/02-getting-started.ko.md
+          - "3. 핵심 개념": dotnet/guide/server/03-concepts.ko.md
+          - "4. Backpressure": dotnet/guide/server/04-backpressure.ko.md
+          - "5. Channel Messaging": dotnet/guide/server/05-channel-messaging.ko.md
+          - "6. Spot": dotnet/guide/server/06-spot.ko.md
+          - "7. Actor와 Spot": dotnet/guide/server/07-actor-spot.ko.md
+          - "8. Session과 Actor binding": dotnet/guide/server/08-actor-session.ko.md
+          - "9. STREAM": dotnet/guide/server/09-stream.ko.md
+          - "10. Location": dotnet/guide/server/10-location.ko.md
+          - "11. Monitoring": dotnet/guide/server/11-monitoring.ko.md
+          - "12. 운영": dotnet/guide/server/12-operations.ko.md
+          - "13. 주요 interface 사용 색인": dotnet/guide/server/13-interface-catalog.ko.md
+          - "14. 샘플 고르기": dotnet/guide/server/14-samples.ko.md
+          - "15. E2E 테스트": dotnet/guide/server/15-e2e-testing.ko.md
+          - "16. 설정": dotnet/guide/server/16-options.ko.md
+          - "17. ZLink를 어디에 쓰나": dotnet/guide/server/17-alternative.ko.md
       - C++:
-          - cpp/guide/server/README.ko.md
-          - cpp/guide/server/01-overview.ko.md
-          - cpp/guide/server/02-getting-started.ko.md
-          - cpp/guide/server/03-concepts.ko.md
-          - cpp/guide/server/21-execution-model.ko.md
-          - cpp/guide/server/18-di-container.ko.md
-          - cpp/guide/server/19-configuration.ko.md
-          - cpp/guide/server/20-http-hosting.ko.md
-          - cpp/guide/server/04-backpressure.ko.md
-          - cpp/guide/server/05-channel-messaging.ko.md
-          - cpp/guide/server/06-spot.ko.md
-          - cpp/guide/server/07-actor-spot.ko.md
-          - cpp/guide/server/08-actor-session.ko.md
-          - cpp/guide/server/09-stream.ko.md
-          - cpp/guide/server/10-location.ko.md
-          - cpp/guide/server/11-monitoring.ko.md
-          - cpp/guide/server/12-operations.ko.md
-          - cpp/guide/server/13-interface-catalog.ko.md
-          - cpp/guide/server/14-samples.ko.md
-          - cpp/guide/server/15-e2e-testing.ko.md
-          - cpp/guide/server/16-options.ko.md
-          - cpp/guide/server/17-alternative.ko.md
+          - "가이드 홈": cpp/guide/server/README.ko.md
+          - "1. 개요": cpp/guide/server/01-overview.ko.md
+          - "2. 시작하기": cpp/guide/server/02-getting-started.ko.md
+          - "3. 핵심 개념": cpp/guide/server/03-concepts.ko.md
+          - "21. 실행·구성 모델": cpp/guide/server/21-execution-model.ko.md
+          - "18. DI 컨테이너": cpp/guide/server/18-di-container.ko.md
+          - "19. Configuration": cpp/guide/server/19-configuration.ko.md
+          - "20. HTTP Hosting": cpp/guide/server/20-http-hosting.ko.md
+          - "4. Backpressure": cpp/guide/server/04-backpressure.ko.md
+          - "5. Channel Messaging": cpp/guide/server/05-channel-messaging.ko.md
+          - "6. Spot": cpp/guide/server/06-spot.ko.md
+          - "7. Actor와 Spot": cpp/guide/server/07-actor-spot.ko.md
+          - "8. Session과 Actor binding": cpp/guide/server/08-actor-session.ko.md
+          - "9. STREAM": cpp/guide/server/09-stream.ko.md
+          - "10. Location": cpp/guide/server/10-location.ko.md
+          - "11. Monitoring": cpp/guide/server/11-monitoring.ko.md
+          - "12. 운영": cpp/guide/server/12-operations.ko.md
+          - "13. 주요 타입 사용 색인": cpp/guide/server/13-interface-catalog.ko.md
+          - "14. 샘플 고르기": cpp/guide/server/14-samples.ko.md
+          - "15. E2E 테스트": cpp/guide/server/15-e2e-testing.ko.md
+          - "16. Options": cpp/guide/server/16-options.ko.md
+          - "17. ZLink를 어디에 쓰나": cpp/guide/server/17-alternative.ko.md
       - Java:
-          - java/guide/server/README.ko.md
-          - java/guide/server/01-overview.ko.md
-          - java/guide/server/02-getting-started.ko.md
-          - java/guide/server/03-concepts.ko.md
-          - java/guide/server/04-backpressure.ko.md
-          - java/guide/server/05-channel-messaging.ko.md
-          - java/guide/server/06-spot.ko.md
-          - java/guide/server/07-actor-spot.ko.md
-          - java/guide/server/08-actor-session.ko.md
-          - java/guide/server/09-stream.ko.md
-          - java/guide/server/10-location.ko.md
-          - java/guide/server/11-monitoring.ko.md
-          - java/guide/server/12-operations.ko.md
-          - java/guide/server/13-interface-catalog.ko.md
-          - java/guide/server/14-samples.ko.md
-          - java/guide/server/15-e2e-testing.ko.md
-          - java/guide/server/16-options.ko.md
-          - java/guide/server/17-alternative.ko.md
+          - "가이드 홈": java/guide/server/README.ko.md
+          - "1. 개요": java/guide/server/01-overview.ko.md
+          - "2. 시작하기": java/guide/server/02-getting-started.ko.md
+          - "3. 핵심 개념": java/guide/server/03-concepts.ko.md
+          - "4. Backpressure": java/guide/server/04-backpressure.ko.md
+          - "5. Channel Messaging": java/guide/server/05-channel-messaging.ko.md
+          - "6. Spot": java/guide/server/06-spot.ko.md
+          - "7. Actor와 Spot": java/guide/server/07-actor-spot.ko.md
+          - "8. Session과 Actor binding": java/guide/server/08-actor-session.ko.md
+          - "9. STREAM": java/guide/server/09-stream.ko.md
+          - "10. Location": java/guide/server/10-location.ko.md
+          - "11. Monitoring": java/guide/server/11-monitoring.ko.md
+          - "12. 운영": java/guide/server/12-operations.ko.md
+          - "13. 주요 interface 사용 색인": java/guide/server/13-interface-catalog.ko.md
+          - "14. 샘플 고르기": java/guide/server/14-samples.ko.md
+          - "15. E2E 테스트": java/guide/server/15-e2e-testing.ko.md
+          - "16. Options": java/guide/server/16-options.ko.md
+          - "17. ZLink를 어디에 쓰나": java/guide/server/17-alternative.ko.md
       - Kotlin:
-          - kotlin/guide/server/README.ko.md
-          - kotlin/guide/server/01-overview.ko.md
-          - kotlin/guide/server/02-getting-started.ko.md
-          - kotlin/guide/server/03-concepts.ko.md
-          - kotlin/guide/server/04-backpressure.ko.md
-          - kotlin/guide/server/05-channel-messaging.ko.md
-          - kotlin/guide/server/06-spot.ko.md
-          - kotlin/guide/server/07-actor-spot.ko.md
-          - kotlin/guide/server/08-actor-session.ko.md
-          - kotlin/guide/server/09-stream.ko.md
-          - kotlin/guide/server/10-location.ko.md
-          - kotlin/guide/server/11-monitoring.ko.md
-          - kotlin/guide/server/12-operations.ko.md
-          - kotlin/guide/server/13-interface-catalog.ko.md
-          - kotlin/guide/server/14-samples.ko.md
-          - kotlin/guide/server/15-e2e-testing.ko.md
-          - kotlin/guide/server/17-alternative.ko.md
+          - "가이드 홈": kotlin/guide/server/README.ko.md
+          - "1. 개요": kotlin/guide/server/01-overview.ko.md
+          - "2. 시작하기": kotlin/guide/server/02-getting-started.ko.md
+          - "3. 핵심 개념": kotlin/guide/server/03-concepts.ko.md
+          - "4. Backpressure": kotlin/guide/server/04-backpressure.ko.md
+          - "5. Channel Messaging": kotlin/guide/server/05-channel-messaging.ko.md
+          - "6. Spot": kotlin/guide/server/06-spot.ko.md
+          - "7. Actor와 Spot": kotlin/guide/server/07-actor-spot.ko.md
+          - "8. Session과 Actor binding": kotlin/guide/server/08-actor-session.ko.md
+          - "9. STREAM": kotlin/guide/server/09-stream.ko.md
+          - "10. Location": kotlin/guide/server/10-location.ko.md
+          - "11. Monitoring": kotlin/guide/server/11-monitoring.ko.md
+          - "12. 운영": kotlin/guide/server/12-operations.ko.md
+          - "13. 주요 interface 사용 색인": kotlin/guide/server/13-interface-catalog.ko.md
+          - "14. 샘플 고르기": kotlin/guide/server/14-samples.ko.md
+          - "15. E2E 테스트": kotlin/guide/server/15-e2e-testing.ko.md
+          - "17. ZLink를 어디에 쓰나": kotlin/guide/server/17-alternative.ko.md
       - Node.js:
-          - node/guide/server/README.ko.md
-          - node/guide/server/01-overview.ko.md
-          - node/guide/server/02-getting-started.ko.md
-          - node/guide/server/03-concepts.ko.md
-          - node/guide/server/04-backpressure.ko.md
-          - node/guide/server/05-channel-messaging.ko.md
-          - node/guide/server/06-spot.ko.md
-          - node/guide/server/07-actor-spot.ko.md
-          - node/guide/server/08-actor-session.ko.md
-          - node/guide/server/09-stream.ko.md
-          - node/guide/server/10-location.ko.md
-          - node/guide/server/11-monitoring.ko.md
-          - node/guide/server/12-operations.ko.md
-          - node/guide/server/13-interface-catalog.ko.md
-          - node/guide/server/14-samples.ko.md
-          - node/guide/server/15-e2e-testing.ko.md
-          - node/guide/server/16-options.ko.md
-          - node/guide/server/17-alternative.ko.md
+          - "가이드 홈": node/guide/server/README.ko.md
+          - "1. 개요": node/guide/server/01-overview.ko.md
+          - "2. 시작하기": node/guide/server/02-getting-started.ko.md
+          - "3. 핵심 개념": node/guide/server/03-concepts.ko.md
+          - "4. Backpressure": node/guide/server/04-backpressure.ko.md
+          - "5. Channel Messaging": node/guide/server/05-channel-messaging.ko.md
+          - "6. Spot": node/guide/server/06-spot.ko.md
+          - "7. Actor와 Spot": node/guide/server/07-actor-spot.ko.md
+          - "8. Session과 Actor binding": node/guide/server/08-actor-session.ko.md
+          - "9. STREAM": node/guide/server/09-stream.ko.md
+          - "10. Location": node/guide/server/10-location.ko.md
+          - "11. Monitoring": node/guide/server/11-monitoring.ko.md
+          - "12. 운영": node/guide/server/12-operations.ko.md
+          - "13. 주요 interface 사용 색인": node/guide/server/13-interface-catalog.ko.md
+          - "14. 샘플 고르기": node/guide/server/14-samples.ko.md
+          - "15. E2E 테스트": node/guide/server/15-e2e-testing.ko.md
+          - "16. Options": node/guide/server/16-options.ko.md
+          - "17. ZLink를 어디에 쓰나": node/guide/server/17-alternative.ko.md
   - 스펙:
       - common/README.ko.md
       - common/spec/server/languages/README.ko.md

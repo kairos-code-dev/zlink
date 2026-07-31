@@ -43,6 +43,11 @@ LANGUAGES = {
     "Node/TypeScript": "node",
 }
 
+#  front matter의 title은 검색 결과에 쓰인다. 같은 장이 다섯 언어로 있으므로
+#  언어를 붙이지 않으면 검색 결과에 같은 제목이 다섯 번 나온다. 사이드바 라벨은
+#  mkdocs nav가 따로 정하므로 여기 언어를 붙여도 사이드바는 깔끔하게 남는다.
+FRONT_MATTER = "---\ntitle: \"{title} · {label}\"\n---\n\n"
+
 BANNER = (
     "<!-- generated:start -->\n"
     "<!-- 이 파일은 `common/guide/server/{source}`에서 생성한다."
@@ -207,7 +212,9 @@ def generate(check_only: bool) -> int:
             body = strip_tabs(src.read_text(encoding="utf-8"), label)
             body = NAV_RE.sub("", body)
             body = link_chapter_refs(body, available)
-            content = (BANNER.format(source=src.name) + "\n"
+            content = (FRONT_MATTER.format(
+                           title=chapter_title(src), label=label)
+                       + BANNER.format(source=src.name) + "\n"
                        + nav_block(order, src.name, titles)
                        + language_switch(lang_dir, src.name) + body)
             content = re.sub(r"\n{3,}", "\n\n", content).rstrip() + "\n"

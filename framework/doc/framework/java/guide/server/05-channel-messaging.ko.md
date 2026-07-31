@@ -1,3 +1,7 @@
+---
+title: "5. Channel Messaging — request · send · pub/sub · Java"
+---
+
 <!-- generated:start -->
 <!-- 이 파일은 `common/guide/server/05-channel-messaging.ko.md`에서 생성한다. 직접 고치지 않는다.
      고칠 곳은 공통 소스이고, `python3 doc/site/scripts/generate_language_guides.py`로 다시 만든다. -->

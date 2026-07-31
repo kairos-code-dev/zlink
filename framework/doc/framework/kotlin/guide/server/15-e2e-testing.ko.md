@@ -1,3 +1,7 @@
+---
+title: "15. E2E 테스트 — client로 시스템 전체를 검증하기 · Kotlin"
+---
+
 <!-- generated:start -->
 <!-- 이 파일은 `common/guide/server/15-e2e-testing.ko.md`에서 생성한다. 직접 고치지 않는다.
      고칠 곳은 공통 소스이고, `python3 doc/site/scripts/generate_language_guides.py`로 다시 만든다. -->

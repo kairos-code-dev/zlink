@@ -16,25 +16,31 @@
 | 주문 워크플로 | 주문 접수 → 단계별 처리 → 상태 변경 → 알림 |
 | 배송·배차 | 배차 요청 → 배정·수락 → 상태 추적 → 실시간 push |
 
-## 문서 읽는 법
+## 언어를 먼저 고른다
 
-가이드 본문은 **모든 언어가 같은 정본을 공유한다.** 예제 코드는 언어 탭으로 나뉘며,
-탭을 고르면 그 언어의 코드로 바뀐다. 산문은 역할 이름으로 설명하고, 정확한 타입
-이름과 언어별 관례는 탭 안의 코드와 주석이 담는다.
+가이드는 **언어마다 한 벌씩 완결되어 있다.** 고른 언어의 가이드 안에는 그 언어의 코드만
+있고, 처음부터 끝까지 그 안에서 읽힌다. 장 머리의 전환 줄로 같은 장을 다른 언어에서 볼
+수 있다.
 
-설치 방법, 옵션 목록, 인터페이스 카탈로그처럼 언어마다 달라지는 장은 언어별 문서로
-따로 둔다. 어느 순서로 읽을지는 각 언어의 진입점이 제시한다.
+| 언어 | 가이드 | 바로 시작하기 |
+| --- | --- | --- |
+| `.NET` | [.NET 가이드](dotnet/guide/server/README.ko.md) | [설치와 첫 동작](dotnet/guide/server/02-getting-started.ko.md) |
+| C++ | [C++ 가이드](cpp/guide/server/README.ko.md) | [설치와 첫 동작](cpp/guide/server/02-getting-started.ko.md) |
+| Java | [Java 가이드](java/guide/server/README.ko.md) | [설치와 첫 동작](java/guide/server/02-getting-started.ko.md) |
+| Kotlin | [Kotlin 가이드](kotlin/guide/server/README.ko.md) | [설치와 첫 동작](kotlin/guide/server/02-getting-started.ko.md) |
+| Node.js | [Node.js 가이드](node/guide/server/README.ko.md) | [설치와 첫 동작](node/guide/server/02-getting-started.ko.md) |
 
-| 언어 | 진입점 |
-| --- | --- |
-| `.NET` | [.NET 가이드](dotnet/guide/server/README.ko.md) |
-| C++ | [C++ 가이드](cpp/guide/server/README.ko.md) |
-| Java | [Java 가이드](java/guide/server/README.ko.md) |
-| Kotlin | [Kotlin 가이드](kotlin/guide/server/README.ko.md) |
-| Node.js | [Node.js 가이드](node/guide/server/README.ko.md) |
+**개념부터 잡고 싶다면** 각 언어의 `3. 핵심 개념`부터 본다 — channel · Spot · Actor ·
+stream · relocation 다섯이고, 나머지 장은 그 조합이다.
 
-처음이라면 [3. 핵심 개념](common/guide/server/03-concepts.ko.md)부터 본다. channel ·
-Spot · Actor · stream · relocation 다섯 개념을 잡으면 나머지 장은 그 조합이다.
+어느 순서로 읽을지는 각 언어의 가이드 홈이 제시한다. 언어마다 순서가 조금 다르다 —
+C++은 DI · configuration · HTTP hosting을 앞으로 당긴다.
+
+### 문서가 만들어지는 방식
+
+개념과 동작 설명은 언어가 달라도 같으므로 **한 벌만 쓰고 언어별 가이드로 생성한다**
+(`common/guide/server/`가 소스다). 설치·옵션·인터페이스 색인처럼 내용 자체가 갈리는
+장만 언어별로 직접 쓴다. 그래서 어느 언어를 보든 설명이 어긋나지 않는다.
 
 ## 관련 문서
 

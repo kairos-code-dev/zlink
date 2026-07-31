@@ -5301,3 +5301,38 @@ label은 붙이지 않는다. `ZLinkRelocationUnitKind.Actor`는 이미 정의�
 - SpotActorTransfer handoff 시나리오 6종(ST-A1·B1·C2·D1·E1A·F1) 전부 통과
 
 ObservabilityOps는 OBS-A1~A5, OBS-B1, OBS-B2가 통과한다.
+
+### OBS-C1: relocating 중인 node의 진단 조회가 500으로 끝난다
+
+OBS-A1~A5와 OBS-B1~B4가 통과하고 OBS-C1에서 멈춘다.
+
+시나리오는 room을 소유한 node에 `/relocate`를 건 뒤 그 node의 `/evidence`를 polling해
+draining marker를 확인한다. 확인 대상에 `zlink.host.state`가 `relocating`인 sample이
+포함되므로 **relocating 중인 node에 묻는 것이 의도**다.
+
+그런데 그 조회가 500으로 끝난다.
+
+```
+InvalidOperationException: ZLink framework runtime is not accepting operations.
+  at ZLinkFrameworkRuntime.EnterOperationUnderLock
+  at ZLinkFrameworkRuntime.EnterOperation
+  at ZLinkFrameworkRuntime.FindAsync
+```
+
+Play host의 진단 endpoint가 `IZLinkSpotManager.FindAsync`로 spot row를 채우는데, 이것이
+일반 operation gate를 통과해야 하고 그 gate는 relocation 중 봉인된다.
+
+spec 24 §2.1은 host state 값에 `relocating`을 두고 §2.2는 "Host가 `relocating`,
+`relocated` 또는 `draining`이면 … 이때 연결된 peer·target 수는 현재 연결 상태를 그대로
+제공한다"고 정한다. 즉 relocating 중에도 상태 조회는 답해야 한다. 그렇지 않으면
+`relocating` 상태 자체를 관측할 수 없다.
+
+다만 `FindAsync`는 status 조회가 아니라 object 위치 조회다(spec 24 §4, spec 21 §6.4).
+위치 조회가 relocation 중에도 가능해야 한다는 조항은 아직 찾지 못했다. 따라서 둘 중
+어느 쪽인지 확정하지 않는다.
+
+- Object 위치 조회가 operation gate를 거치지 않아야 한다(런타임).
+- 진단 endpoint가 relocating 중에는 `FindAsync`를 부르지 않아야 한다(host 구성).
+
+Status와 metric 부분만으로 판정할 수 있는지, 즉 시나리오의 `SpotRows` 조건이 꼭 필요한지도
+함께 봐야 한다.

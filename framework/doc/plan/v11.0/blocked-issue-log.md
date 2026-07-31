@@ -6140,3 +6140,31 @@ core ctest : 84/84
 
 Classic fanout의 손실 허용 계약(spec 29 §4)이 "포화된 subscriber는 record를 잃는다"는
 것이므로, 받을 수 없는 subscriber 하나가 channel 전체를 막지 않는 것이 계약에 맞다.
+
+### 후보 0개 select-one이 `NotFound`로 끝난다
+
+Core lane 두 번째 항목이다. 조사 결과 이 경로는 native core가 아니라 관리형
+`ZLinkManagedMeshNode`에 있었다. 후보를 찾지 못하면 이유와 무관하게
+`SubmitResult.NotConnected`를 돌려주고, 그것이 `Unavailable`로 매핑되며 submitter가
+재시도 대상으로 보고 timeout까지 기다렸다.
+
+두 가지를 고쳤다.
+
+첫째, 실패 사유에 따라 결과를 나눈다. `ChannelSelectionFailureReason`이 이미
+`no_member`·`not_ready`·`draining`을 구분하고 있었으므로, `no_member`는
+`SubmitResult.NotFound`로, 나머지는 기존대로 `NotConnected`로 돌려준다. spec 08 §7의 두
+행("선택 가능한 target이 없다" → `NotFound`, "알려진 target이 ready가 되지 않는다" →
+연결 오류·timeout)에 그대로 대응한다.
+
+둘째, `declared` 판정을 고쳤다. 기존에는 weight가 0인 member도 "선언됨"으로 세어
+`not_ready`가 됐다. spec 08 §3.2 step 4는 weight 0을 선택에서 **제외**하므로 그것은 ready를
+기다리는 target이 아니라 의도적으로 배제된 member다. 이제 weight가 양수인 member만
+`declared`로 센다.
+
+결과:
+
+```
+RL-A1  : NotFound assertion 통과 (이후 다른 assertion에서 멈춤)
+StoreFailure : 2개 -> 4개
+contract 72/72, unit 1376/1376
+```

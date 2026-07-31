@@ -1728,11 +1728,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     {
         if (!TrySelectChannelTarget(channelName, out var targetRid))
         {
-            ZLinkRuntimeMetrics.RecordChannelSelectionFailure(
-                _meshName,
-                channelName,
-                ChannelSelectionFailureReason(channelName));
-            return SubmitResult.NotConnected;
+            return ChannelSelectionFailureResult(channelName);
         }
         return SubmitApplication(
             targetRid,
@@ -1754,12 +1750,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     {
         if (!TrySelectChannelTarget(channelName, out var targetRid))
         {
-            ZLinkRuntimeMetrics.RecordChannelSelectionFailure(
-                _meshName,
-                channelName,
-                ChannelSelectionFailureReason(channelName));
             operationId = default;
-            return SubmitResult.NotConnected;
+            return ChannelSelectionFailureResult(channelName);
         }
         return SubmitRequest(
             targetRid,
@@ -1783,11 +1775,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ArgumentNullException.ThrowIfNull(callback);
         if (!TrySelectChannelTarget(channelName, out var targetRid))
         {
-            ZLinkRuntimeMetrics.RecordChannelSelectionFailure(
-                _meshName,
-                channelName,
-                ChannelSelectionFailureReason(channelName));
-            return SubmitResult.NotConnected;
+            return ChannelSelectionFailureResult(channelName);
         }
         return SubmitRequest(
             targetRid,
@@ -6511,15 +6499,38 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         return true;
     }
 
+    //  Spec 08 §7 separates two outcomes. A ChannelName with no selectable
+    //  target ends as NotFound, while a known target that is not ready yet is a
+    //  connection error the caller may wait on. ChannelSelectionFailureReason
+    //  already tells the two apart, so the submit result follows it.
+    private SubmitResult ChannelSelectionFailureResult(string channelName)
+    {
+        var reason = ChannelSelectionFailureReason(channelName);
+        ZLinkRuntimeMetrics.RecordChannelSelectionFailure(
+            _meshName,
+            channelName,
+            reason);
+        return reason == "no_member"
+            ? SubmitResult.NotFound
+            : SubmitResult.NotConnected;
+    }
+
     private string ChannelSelectionFailureReason(string channelName)
     {
         lock (_gate)
         {
             if (_state == MeshNodeState.Draining)
                 return "draining";
-            var declared = _channels.ContainsKey(channelName)
-                           || _peersByRid.Values.Any(peer =>
-                               peer.Channels.ContainsKey(channelName));
+            //  Spec 08 §3.2 step 4 removes a weight-zero target from selection,
+            //  so such a member is not a target waiting to become ready - it is
+            //  deliberately excluded. Only a member that could be selected once
+            //  ready counts as declared here.
+            var declared =
+                (_channels.TryGetValue(channelName, out var localWeight)
+                 && localWeight > 0)
+                || _peersByRid.Values.Any(peer =>
+                    peer.Channels.TryGetValue(channelName, out var peerWeight)
+                    && peerWeight > 0);
             return declared ? "not_ready" : "no_member";
         }
     }

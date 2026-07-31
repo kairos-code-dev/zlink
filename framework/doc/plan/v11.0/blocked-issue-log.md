@@ -6083,3 +6083,25 @@ listener 사이에 있다.
 
 이 항목도 core lane으로 넘긴다. Core에서 볼 것은 두 실행의 connect 대상 endpoint와 그
 시점의 listener 상태다. 이로써 core lane 목록은 다섯이 된다.
+
+### 커밋 상태 검증과 계수 주의
+
+지금까지의 변경을 커밋 상태 그대로 검증했다.
+
+```
+작업 트리          : framework/ 변경 없음
+contract tests     : 72/72
+unit tests         : 1376/1376 (연속 2회)
+ObservabilityOps   : 8개 통과
+SpotService        : 7개 통과
+```
+
+Unit test 계수에 주의가 필요하다. 이번에 한 번은 `Total: 1264`, 이전에 한 번은
+`Total: 892`로 나왔다. 두 경우 모두 contract test와 unit test를 한 loop에서 연달아 돌린
+실행이었고, 단독으로 다시 돌리면 매번 1376이다. 즉 계수 자체가 흔들리는 것이 아니라
+연속 실행에서 요약 줄을 잘못 집는 것이다. **테스트 결과를 판정할 때는 단독 실행으로 다시
+확인한다.**
+
+ObservabilityOps가 8개인 것은 OBS-B4의 기존 flakiness다. 같은 커밋에서 8·9·10이 모두
+관측됐고 원인은 앞에 기록했다. Aggregate 통과 개수를 판정 근거로 쓰지 않는다는 규칙이 여기에
+그대로 적용된다.

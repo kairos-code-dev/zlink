@@ -4155,3 +4155,35 @@ capture가 일어난다. 따라서 commit(setup) → capture(transfer) 순서가
 나오므로, 첫 출현을 비교하는 방식으로는 transfer 순서를 검증할 수 없다. ST-F2의 실패는
 런타임의 순서 위반이 아니라 **marker가 두 단계를 구분하지 못하는 것**이다. 시나리오
 단언이 모두 통과하는 것도 이와 맞는다.
+
+### (재정정) same-node join 설명도 확실하지 않다
+
+앞 절에서 "그 `location_committed`는 setup의 same-node join 것"이라고 적었다. 확인해 보니
+그렇게 단정할 수 없다.
+
+```
+로그의 값 : spot=spot-inflight-overtake-8b4beebdc01348c788d8eac934c0a144
+시나리오  : CreateSpotAsync(NodeB, spotId, "delay-joined")   ← transfer 대상 user spot
+            CreateActorAsync(NodeA, actorId, ...)            ← actor 는 NodeA
+```
+
+logged spot id는 setup에서 만든 entry spot이 아니라 **transfer의 target user spot**이다.
+따라서 이 marker는 setup이 아니라 **transfer 과정에서 target이 그 user spot에 대해 남긴
+commit**일 가능성이 크다. 방출 지점의 주석("Same-node join commits ... just as a
+cross-node handoff does")은 코드 경로가 공유된다는 뜻이지 이 실행이 same-node라는 뜻이
+아니다.
+
+이 항목에 대해 지금까지 네 번 설명을 세웠고 네 번 다 뒤집혔다. 러너가 marker를 오지목했다,
+setup commit이 섞였다, 런타임 순서 위반이다, same-node join의 것이다. 매번 다음 측정이
+반증했다.
+
+따라서 여기서 설명을 더 만들지 않는다. 확실한 것만 남긴다.
+
+- `location_committed`는 그 실행에서 한 번 나오고 값은 transfer의 target user spot이다.
+- 그것이 첫 `handoff_backlog`보다 89ms 먼저다.
+- 시나리오의 단언은 전부 통과하며 관측 가능한 packet 순서도 맞다.
+- 러너의 사후 검사만 실패한다.
+
+`location_committed`가 transfer 수명주기의 정확히 어느 시점을 표시하는지, 그리고 러너가
+그 marker로 무엇을 보장하려 했는지는 이 marker와 검사를 설계한 쪽이 답해야 한다.
+로그만으로 추론하는 것은 이 항목에서 네 번 실패했다.

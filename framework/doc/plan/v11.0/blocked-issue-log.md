@@ -4736,3 +4736,41 @@ object 위치 조회를 정할 뿐 MeshNode topology 열거를 다루지 않는�
 - 시나리오가 MeshNode descriptor만 기대해야 한다(시나리오 낡음).
 
 코드 주석은 후자를 시사하지만 근거가 주석 하나뿐이라 assertion을 임의로 낮추지 않는다.
+
+### 컴파일 실패 스위트는 넷이었고 지금은 전량 빌드된다
+
+전 스위트 빌드 sweep을 돌려 확인했다. 컴파일이 막고 있던 것은
+ResilienceLifecycle·SpotService·ToActorMessaging·ChannelEgressRouting 넷이며 지금은
+`e2e/` 전체가 오류 없이 빌드된다.
+
+### RegistrationCodec: 10개 통과 후 RC-B5에서 reply가 caller에 도달하지 않는다
+
+RC-A1부터 RC-B4까지 10개가 통과하고 RC-B5에서 멈춘다. 처음에는 codec mismatch가 channel을
+망가뜨린 것처럼 보였으나 아니다. 시나리오 순서를 바꿔 JSON 호출을 먼저 하도록 측정하니
+mismatch를 거치지 않고도 첫 JSON 호출이 그대로 timeout한다.
+
+Server 쪽 flow log는 요청을 받고 **응답까지 보낸다**.
+
+```
+phase=received surface=Channel kind=Request packet=EchoJson channel=reg-codec
+phase=replied  surface=Channel kind=Request packet=EchoJson channel=reg-codec
+```
+
+그런데 `codec-mismatch-requester`의 호출은 5초 timeout으로 끝난다. 즉 **server가 응답을
+보냈는데 caller가 받지 못한다.** 같은 스위트의 다른 10개 시나리오는 request·reply가
+정상이므로 reply 경로 전반의 문제는 아니고 이 host 쌍에 한정된다.
+
+두 host의 차이는 codec 등록이다.
+
+```
+codec-mismatch-requester  : Codecs.Use(Protobuf), Codecs.Use(MessagePack)
+codec-mismatch-json-only  : CodecMode == "json-only" 이므로 둘 다 등록하지 않음
+```
+
+Reply `EchoRes`는 json-only peer가 기본 JSON codec으로 encode한다. Requester가 이것을
+decode하지 못할 이유는 보이지 않으므로 codec 비대칭이 원인이라고 단정할 수 없다.
+Requester의 flow log가 0줄이라 inbound를 관측하지 못했는데, 이 host에 flow listener가
+등록되지 않은 것인지 실제로 아무것도 도착하지 않은 것인지 아직 구분하지 않았다.
+다음 단계는 그 구분이다.
+
+Protobuf mismatch 자체는 정상 동작한다. Server가 `PayloadDecode`로 거부한다.

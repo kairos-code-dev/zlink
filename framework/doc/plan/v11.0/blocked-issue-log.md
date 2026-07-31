@@ -4860,3 +4860,36 @@ singleton이 중복 생성된다. PubSub의 fanout handler는 같은 방식으�
 
 측정 편집은 되돌렸다. 참고로 `GET /evidence`는 진단용 `CreateEvidenceAsync`에 묶여 있어
 query 인자 없이 부르면 실패한다. Evidence 조회는 `/evidence/wait`을 써야 한다.
+
+### OBS-A1 판정: singleton 가설은 틀렸고 시나리오가 host를 잘못 물었다
+
+앞 절의 가설("spot·actor handler가 별도 provider에서 해석되어 singleton이 중복된다")을
+`EvidenceStore` instance hash 비교로 검증했다. 결과는 가설을 기각한다.
+
+```
+phase1-play-a: MEASUREMENT endpoint store=00198e2b
+phase1-play-b: MEASUREMENT handler  store=005e86a5
+```
+
+두 hash가 다른 이유는 provider가 아니라 **host가 다르기 때문**이다. Handler는 play-b에서
+실행됐고 시나리오는 play-a에 물었다. Placement가 room을 어느 play node에 둘지 정하는데
+시나리오가 `PlayA`를 고정으로 가정했다.
+
+수정은 소유 node에 묻는 것이다. `ScenarioContext`에 node RID를 harness role label로 바꾸는
+`PlayRoleForNodeAsync`와 그것을 쓰는 `WaitPlayEvidenceForNodeAsync`를 추가했다.
+
+두 번째 결함도 같은 뿌리에서 나왔다. `RequireSharedFlow`는 role label을 **flow 파일
+이름**과 대조하는데(`flow-play-a.log`) OBS-A1은 `room.NodeRid`를 넘겼다. Routing ID는 파일
+이름에 나타나지 않으므로 이 호출은 어떤 placement 결과에서도 성립할 수 없었다. 같은 변환
+helper로 role label을 넘기도록 고쳤다.
+
+placement를 play-a로 고정하는 방법(`CreateRoomOnObservedNodeAsync`)도 시도했으나 room
+생성·폐기를 반복하는 동안 actor session binding이 바뀌어
+`session binding changed before frame admission`으로 실패했다. Placement를 바꾸지 않고
+관측만 맞추는 쪽이 옳다.
+
+OBS-A1과 OBS-A2가 통과하고 OBS-A3에서 멈춘다.
+
+```
+InvalidOperationException: OBS-A3 downstream Play flow was not preserved.
+```

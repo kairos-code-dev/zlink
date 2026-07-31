@@ -52,6 +52,22 @@ internal sealed class ScenarioContext(ClientOptions options) : IDisposable
         return connector;
     }
 
+    // Placement decides which play node owns a room. Scenarios need that
+    // node's harness role label, both to ask the right host for evidence and
+    // because RequireSharedFlow matches labels against flow file names, where
+    // a routing id never appears.
+    public async Task<string> PlayRoleForNodeAsync(string nodeRid) =>
+        string.Equals(nodeRid, await PlayNodeIdAsync("play-a"), StringComparison.Ordinal)
+            ? "play-a"
+            : "play-b";
+
+    public async Task<string[]> WaitPlayEvidenceForNodeAsync(
+        string nodeRid,
+        params string[] markers) =>
+        await PlayRoleForNodeAsync(nodeRid) == "play-a"
+            ? await WaitPlayAEvidenceAsync(markers)
+            : await WaitPlayBEvidenceAsync(markers);
+
     public async Task<string[]> WaitPlayAEvidenceAsync(params string[] markers)
     {
         return (await PlayA.Post("/evidence/wait")

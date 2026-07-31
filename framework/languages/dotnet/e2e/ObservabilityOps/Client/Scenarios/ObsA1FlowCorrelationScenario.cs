@@ -23,11 +23,12 @@ internal static class ObsA1FlowCorrelationScenario
         var action = await connector.Request(new GameActionReq("obs-a1-action")).Async<GameActionRes>();
         ZlinkStreamAssert.Ensure(action.ActorId == actorId && action.RoomRid == roomRid,
             "OBS-A1 action did not traverse the bound actor and room Spot.");
-        var evidence = await context.WaitPlayAEvidenceAsync($"game-action|actor={actorId}", "marker=obs-a1-action");
+        var evidence = await context.WaitPlayEvidenceForNodeAsync(
+            room.NodeRid, $"game-action|actor={actorId}", "marker=obs-a1-action");
         ZlinkStreamAssert.Ensure(evidence.Any(line => line.Contains("game-action|", StringComparison.Ordinal)),
             "OBS-A1 room action evidence missing.");
         _ = context.RequireSharedFlow(
-            nameof(GameActionReq), "session-a", room.NodeRid);
+            nameof(GameActionReq), "session-a", await context.PlayRoleForNodeAsync(room.NodeRid));
         await connector.Close.Async();
         Console.WriteLine("scenario OBS-A1 passed");
     }

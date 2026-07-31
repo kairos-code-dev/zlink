@@ -5,8 +5,8 @@ Node.js/NestJS 환경에서 ZLink Framework를 쓰는 순서다. 03~17장은 모
 
 | 순서 | 문서 | 내용 |
 |----|------|------|
-| 1 | `01. Overview` 장 — 준비 중 | 무엇을·왜 쓰는지, 기존 방식 대비 체감 난이도 |
-| 2 | `02. Getting Started` 장 — 준비 중 | 설치, 최소 예제, 첫 요청 흐름 |
+| 1 | [1. 개요](01-overview.ko.md) | 무엇을 만드나, 산출물, 등록 진입점과 데코레이터 |
+| 2 | [2. 시작하기](02-getting-started.ko.md) | 패키지, NestJS 모듈, handler, 토큰 주입 |
 | 3 | [3. 핵심 개념](../../../common/guide/server/03-concepts.ko.md) | channel · Spot · Actor · session · relocation |
 | 4 | [4. Backpressure](../../../common/guide/server/04-backpressure.ko.md) | 처리보다 도착이 빠를 때의 동작과 영향을 주는 옵션 |
 | 5 | [5. Channel Messaging](../../../common/guide/server/05-channel-messaging.ko.md) | request / send / pub-sub 등록과 호출 |
@@ -17,7 +17,7 @@ Node.js/NestJS 환경에서 ZLink Framework를 쓰는 순서다. 03~17장은 모
 | 10 | [10. Location](../../../common/guide/server/10-location.ko.md) | location store 등록, 자동 연결, 운영 조회 |
 | 11 | `11. Monitoring` 장 — 준비 중 | 상태 snapshot · status stream · 진단 |
 | 12 | [12. 운영](../../../common/guide/server/12-operations.ko.md) | 런타임 메트릭, graceful drain, readiness |
-| 13 | `13. Interface 카탈로그` 장 — 준비 중 | 계약 인터페이스 색인 |
+| 13 | [13. 주요 interface 사용 색인](13-interface-catalog.ko.md) | 주입 토큰, 데코레이터, 계약 타입 |
 | 14 | [14. 샘플 고르기](../../../common/guide/server/14-samples.ko.md) | 어떤 샘플을 먼저 볼지 고르고 실행하는 방법 |
 | 15 | [15. E2E 테스트](../../../common/guide/server/15-e2e-testing.ko.md) | client로 시스템 전체를 검증하는 방법 |
 | 16 | `16. Options` 장 — 준비 중 | 옵션 목록, 기본값과 변경 시점 |

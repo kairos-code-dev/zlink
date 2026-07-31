@@ -94,7 +94,11 @@ nav:
           - kotlin/guide/server/02-getting-started.ko.md
           - kotlin/guide/server/11-monitoring.ko.md
           - kotlin/guide/server/13-interface-catalog.ko.md
-      - Node.js: node/guide/server/README.ko.md
+      - Node.js:
+          - node/guide/server/README.ko.md
+          - node/guide/server/01-overview.ko.md
+          - node/guide/server/02-getting-started.ko.md
+          - node/guide/server/13-interface-catalog.ko.md
   - 스펙:
       - common/README.ko.md
       - common/spec/server/languages/README.ko.md

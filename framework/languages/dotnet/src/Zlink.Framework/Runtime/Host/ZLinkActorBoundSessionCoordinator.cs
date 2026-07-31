@@ -456,6 +456,10 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         ulong sessionOwnerNodeGeneration = 1,
         ulong acceptedHighWater = 0)
     {
+        //  Recorded at bind time and read again when a relocation seals the
+        //  route; printing both ends shows if they disagree.
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"bind_session actor={actorId} session_node={sessionNodeRid} session_rid={sessionRid}");
         var previous = _getState(actorId).BindSession(
             sessionNodeRid,
             sessionRid,

@@ -25,6 +25,14 @@ internal static class StE2BoundSessionRebindIsolationScenario
 
         var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-E2", spotId));
         ZlinkStreamAssert.Ensure(join.Accepted, "ST-E2 join was rejected.");
+        //  Spec 15: `.Defer()` returns before the Join runs and the Accepted
+        //  completion is delivered to the target Actor, so the reply above does
+        //  not mean the relocation finished. Rebinding while it is still in
+        //  flight moves the bound session under the route seal, which then
+        //  seals the wrong node. Wait for the target's completion first.
+        await context.WaitEvidenceAsync(context.NodeB, [
+            $"ST-E2|{actorId}|success_reply|{spotId}"
+        ]);
         var targetRef = await context.GetActorRefAsync(context.NodeB, actorId);
         await using var newSession = await context.ConnectAndBindAsync(context.Options.NodeBStreamEndpoint, "ST-E2", targetRef);
 

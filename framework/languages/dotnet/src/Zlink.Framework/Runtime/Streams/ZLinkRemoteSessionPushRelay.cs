@@ -137,6 +137,10 @@ internal sealed class ZLinkSessionRouteSealHandler(ZLinkFrameworkRuntime runtime
                 message.SessionOwnerNodeGeneration,
                 message.HandoffId),
             cancellationToken).ConfigureAwait(false);
+        //  Paired with route_control_sent on the requester: if this fires and
+        //  the requester still times out, the loss is in the reply transport.
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"route_seal_replying actor={message.ActorId} ack={result.Acknowledged}");
         return new ZLinkSessionRouteSealReply(
             result.Acknowledged,
             result.AcceptedHighWater);

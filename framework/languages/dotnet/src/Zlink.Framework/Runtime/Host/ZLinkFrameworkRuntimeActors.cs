@@ -2558,6 +2558,10 @@ internal sealed partial class ZLinkFrameworkRuntime
                 ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{request.ActorId}' remote session binding target lifecycle is stale.");
 
+        //  Recorded at bind time; the relocation seal reads it back later, so
+        //  printing both ends shows whether they name the same node.
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"bind_session actor={request.ActorId} session_node={sessionNodeRid}");
         var replacement = _actorBoundSessionCoordinator.BeginActorSessionReplacement(
             request.ActorId,
             sessionNodeRid,

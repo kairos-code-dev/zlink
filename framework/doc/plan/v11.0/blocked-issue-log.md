@@ -2265,3 +2265,219 @@ SESSION_A_STREAM="tcp://127.0.0.1:$SESSION_A_STREAM_PORT"
 `ZLinkActorBoundSession`은 `sessionNodeRid`를 생성 인자로 받으므로, 그 값을 넘기는
 호출부가 다음 확인 지점이다. bind 시점에 session owner node를 기록하는 경로와,
 relocation preflight에서 그 값을 다시 계산하는 경로 중 어디가 session-b를 넣는지 본다.
+
+### bind 시점과 seal 시점의 session owner가 다르다 (측정 확인)
+
+`BindRemoteBoundSessionRouteAsync`에 진단을 넣어 bind 시점 값을 찍었다. 최초 bind는
+올바른 노드를 기록한다.
+
+```
+bind_session      actor=... session_node=session-a-761c3c42-...   ← oldSession, 정상
+bound_seal_begin  actor=... session_node=session-b-692cfee1-...   ← seal은 다른 노드로
+```
+
+즉 binding은 session-a에 만들어지는데 relocation의 route seal은 session-b로 나간다.
+session-b에는 그 binding entry가 없으므로 `SealRouteAsync`의 첫 guard에서 조기
+return하고, 그 응답이 요청자에게 돌아가지 않아 join이 `DeadlineExceeded`로 끝난다.
+
+같은 실행에서 `bind_session`이 수백 번 반복되는데, 이는 join 실패 뒤 시나리오 line 29의
+`ConnectAndBindAsync(NodeBStreamEndpoint)`가 timeout까지 재시도하는 것이다. 결함의
+증상이지 원인이 아니다.
+
+다음은 relocation preflight가 `boundSession.SessionNodeRid`를 어떻게 얻는지다. bind가
+기록한 session-a가 어디서 session-b로 바뀌는지 그 사이 경로를 본다.
+
+## 2026-07-31 ST-E2 근본원인 — 조기 Accepted가 relocation 중에 재bind를 허용한다
+
+actor-a 로그를 줄 번호 순으로 읽어 사건 순서를 확정했다.
+
+```
+20  bind_session      session_node=session-a-...      ← oldSession bind (정상)
+    BoundPushReq  received/replied                    ← before-rebind push
+    JoinTargetReq received/replied                    ← join 요청 처리, 핸들러가 즉시 반환
+    resolve_spot_row / project_user_spot
+    admit_request_sent                                ← relocation admission 송신
+32  bind_session      session_node=session-b-...      ← relocation 진행 중에 재bind
+36  bound_seal_begin  session_node=session-b-...      ← seal이 새 binding을 따라감
+```
+
+즉 **relocation이 아직 진행 중인데 actor의 bound session이 session-b로 다시 묶인다.**
+그 결과 뒤이은 route seal이 session-a가 아니라 session-b를 향하고, session-b에는 그
+fence에 맞는 entry가 없어 조기 return하며, 그 응답이 돌아가지 않아 join이
+`DeadlineExceeded`로 끝난다.
+
+왜 relocation 도중에 재bind가 일어나는가. 시나리오는 join을 await한 뒤에야 새 session에
+bind한다.
+
+```csharp
+var join = await context.JoinAsync(context.NodeA, actorId, ...);   // line 26
+ZlinkStreamAssert.Ensure(join.Accepted, ...);
+var targetRef = await context.GetActorRefAsync(context.NodeB, actorId);
+await using var newSession = await context.ConnectAndBindAsync(NodeBStreamEndpoint, ...); // line 29
+```
+
+문제는 line 26이 **relocation이 끝나기 전에 반환된다**는 것이다. `.Defer()` 뒤 handler가
+`Accepted=true`를 먼저 돌려주므로 `join.Accepted` 단언이 통과하고, 시나리오는 아직
+이동 중인 actor에 대해 line 29의 재bind를 실행한다.
+
+### 세 시나리오가 한 원인으로 모인다
+
+ST-C1, ST-C3, ST-E2가 모두 이 조기 `Accepted`에 걸려 있다. ST-C1은 source가 죽었는데
+accepted를 받고, ST-C3은 transfer-out이 실패했는데 accepted를 받으며, ST-E2는 relocation이
+끝나기 전에 다음 단계로 진행해 스스로를 깨뜨린다.
+
+`SampleRegressionTests`가 ST-C1의 `!response.Accepted` 단언을 소스 텍스트로 동결해 둔
+이유도 이것이다. 이 단언은 조기 accepted를 **회귀로 잡기 위한 장치**였고, 이 세션 초반에
+그것을 "시나리오의 혼동"으로 보고 제거했던 판단은 틀렸다(이미 원복).
+
+### 다음
+
+`.Defer()`를 쓴 join에서 handler 반환값이 join 결과보다 먼저 나가는 것이 계약상 맞는지
+정해야 한다. 스펙 15는 "Join 결과는 completion callback으로 전달한다"고 하므로, handler의
+동기 반환값이 `Accepted=true`를 주장하는 것은 e2e server의 `ActorJoinTargetUseCase`
+설계 문제일 가능성이 크다. 런타임이 아니라 e2e server 쪽 수정으로 세 시나리오가 함께
+움직일 수 있다.
+
+## 2026-07-31 조기 Accepted의 정체와 통합 수정안
+
+스펙이 이 문제를 직접 규정한다. `15-spot-actor.ko.md` §183:
+
+> "Actor Join call은 execution mode와 관계없이 동기 `Defer()`만 제공한다. 현재
+> handler에서는 **intent와 barrier registration만 완료하고 handler의 마지막
+> continuation이 정상적으로 끝난 뒤 Join을 실행한다.**"
+
+즉 handler는 join이 **실행되기도 전에** 반환된다. 설계상 결과를 알 수 없다. 결과는
+같은 문서 §275대로 completion callback으로 온다.
+
+그런데 e2e server의 `ActorJoinTargetUseCase`는 `.Defer()` 직후
+`new JoinTargetRes(..., true, ...)`를 반환하고, 하네스의 `JoinAsync`는
+`JoinRawAsync`의 얇은 래퍼여서 그 값을 그대로 시나리오에 준다.
+
+```csharp
+public async Task<JoinTargetRes> JoinAsync(...)
+    => (await JoinRawAsync(client, actorId, request)).ToJoinTargetRes();
+```
+
+**completion을 기다리는 곳이 아무 데도 없다.** 그래서 시나리오가 "join이 끝났다"고
+믿는 시점이 실제 완료보다 훨씬 이르다.
+
+### 통합 수정안
+
+`/actors/{actorId}/join` 엔드포인트가 handler의 즉시 응답이 아니라 **join completion을
+기다려 그 결과를 반환**하게 한다. e2e server에는 이미 `OnJoinCompletedAsync`와
+`_pendingJoins`가 있으므로, actor별 `TaskCompletionSource`로 HTTP 요청과 completion을
+연결하면 된다. 런타임 변경이 아니라 e2e server 변경이다.
+
+이 수정이 닿는 범위는 다음과 같다.
+
+| 시나리오 | 현재 | 수정 후 기대 |
+|---|---|---|
+| ST-D1 | `join.Accepted`가 무조건 true여서 단언이 무의미 | 실제 성공을 검증 |
+| ST-C1 | source가 죽었는데 accepted → 가드 테스트가 잡는 실패 | completion이 Failed이므로 `!Accepted` 성립 |
+| ST-C3 | transfer-out 실패인데 accepted | completion 기준으로 정확해짐 |
+| ST-E2 | relocation 중에 재bind해 자멸 | 완료 후 재bind하므로 seal이 올바른 노드로 |
+
+`SampleRegressionTests`가 ST-C1의 `!response.Accepted`를 동결한 것은 이 조기 accepted를
+회귀로 잡기 위한 장치였다. 수정 후에는 그 단언이 자연스럽게 성립한다.
+
+주의할 점은 completion 대기에 timeout이 필요하다는 것이다. ST-C1처럼 source가 죽어
+completion이 영원히 오지 않는 경우가 있으므로, 엔드포인트는 유한한 deadline을 두고
+그때는 현재처럼 예외 경로로 떨어져야 한다.
+
+### (정정) 통합 수정안은 그대로는 성립하지 않는다
+
+"엔드포인트가 join completion을 기다리게 한다"는 앞 절의 안은 cross-node join에서
+동작하지 않는다. 스펙 §275가 `Accepted`는 **target Actor**가 받는다고 규정하고, 실측도
+같다. ST-D1의 remote 절반에서 `success_reply`는 actor-b에만 남고 actor-a에는 없다.
+
+```
+actor-a: 0   actor-b: 1     (remote actor 의 success_reply)
+```
+
+HTTP 요청은 source(actor-a)로 들어가는데 성공 completion은 target(actor-b)에 도착하므로,
+source의 엔드포인트가 그것을 기다릴 방법이 없다. source가 로컬에서 볼 수 있는 것은
+`Rejected`와 commit 전 `Failed`뿐이다.
+
+### 수정 방향을 바꾼다
+
+시나리오가 `join.Accepted`를 "relocation이 끝났다"는 신호로 쓰는 것을 그만두고,
+**target 쪽 completion evidence를 기다린 뒤** 다음 단계로 넘어가게 한다. ST-D1은 이미
+그렇게 되어 있다(이 세션에서 `success_reply` 대기를 NodeB로 옮겼다).
+
+ST-E2에 적용하면 line 26의 join 뒤에 NodeB의 `success_reply` evidence를 기다린 다음
+line 29의 재bind를 하게 된다. 그러면 relocation이 끝난 뒤 재bind하므로 seal이 올바른
+노드(session-a)를 향하고, 자멸 구조가 사라진다.
+
+ST-C1과 ST-C3은 성격이 다르다. 둘은 실패를 검증하는 시나리오이고 실패 completion은
+source에 도착하므로, 그쪽은 엔드포인트가 로컬 completion을 기다리는 방식이 유효할 수
+있다. 다만 ST-C1의 가드가 `!response.Accepted`를 동결하고 있으므로 handler가
+`Accepted=true`를 반환하는 것 자체를 고치는 편이 정합적이다.
+
+즉 하나의 통합 수정이 아니라 두 갈래다. cross-node 성공 검증은 target evidence 대기로,
+실패 검증은 handler 반환값 교정으로 간다.
+
+## 2026-07-31 ST-E2 1차 수정 적용 — seal 대상은 고쳐졌고 응답 유실이 남았다
+
+ST-E2에 target completion 대기를 넣었다. join 뒤 곧바로 재bind하지 않고 NodeB의
+`success_reply` evidence를 먼저 기다리게 했다. 근거는 스펙 §183(`.Defer()`는 Join 실행
+전에 반환)과 §275(`Accepted`는 target Actor가 받는다)이다.
+
+가설이 확인됐다. 수정 전에는 relocation 중에 session-b로 재bind가 일어나 seal이 엉뚱한
+노드를 향했는데, 수정 후에는 그 재bind가 사라지고 seal이 올바른 노드로 간다.
+
+```
+(before) bind_session session-a → bind_session session-b → bound_seal_begin session-b
+(after)  bind_session session-a                          → bound_seal_begin session-a
+```
+
+그런데 join은 여전히 `DeadlineExceeded`다. 다음 층이 드러났다.
+
+```
+session-a: route_seal_received
+           route_seal_drain active_frames=0 waits=False   ← 대기 없이 즉시 처리
+actor-a:   route_control_sent type=ZLinkSessionRouteSealRequest
+           route_control_sent type=ZLinkSessionRouteAbortRequest   ← 응답이 없어 포기
+```
+
+session-a는 seal을 **대기 없이 즉시 처리**하고 결과를 반환한다(`active_frames=0`이므로
+drain도 기다리지 않는다). 그런데 actor-a는 그 응답을 받지 못하고 deadline 뒤 abort를
+보낸다.
+
+### 같은 패턴이 세 번째다
+
+이 세션에서 "수신측은 처리를 끝냈는데 응답이 요청자에게 돌아가지 않는다"를 세 번 만났다.
+ST-E1A의 frame relay(one-way handler에서 예외가 삼켜짐), seal의 조기 return, 그리고 이번
+seal의 정상 처리 경로다. 앞의 둘은 각각 다른 원인이었지만 세 번째는 정상 성공 경로에서
+일어나므로, node 간 route control request/reply 전달 자체에 문제가 있을 가능성이 있다.
+
+특히 대상이 **session gateway node**(session-a)라는 점이 공통이다. actor node 간
+request/reply는 admission 왕복에서 정상 동작하는 것을 이미 확인했다
+(`admit_request_sent` → `admit_reply_received`). 따라서 session gateway를 향한 route
+control의 응답 경로를 먼저 본다.
+
+### 응답 유실 지점 확정 — 핸들러는 ack=True를 반환한다
+
+session gateway 쪽 핸들러의 반환 직전에 진단을 넣었다.
+
+```
+session-a: route_seal_drain     active_frames=0 waits=False
+           route_seal_replying  ack=True          ← 응답을 만들어 반환한다
+actor-a:   route_control_sent   SealRequest
+           route_control_sent   AbortRequest       ← 그 응답을 받지 못한다
+```
+
+`ZLinkSessionRouteSealHandler`는 `IZLinkRouteRequestHandler<Request, Reply>`이고
+`ack=True`인 reply를 정상 반환한다. 그런데 요청자는 deadline까지 아무것도 받지 못한다.
+따라서 결함은 핸들러나 seal 로직이 아니라 **route request의 응답 전송**에 있다.
+
+actor node 사이의 request/reply는 정상이다. admission 왕복이
+`admit_request_sent` → `admit_reply_received`로 완결되는 것을 이미 확인했다. 차이는
+대상이 **session gateway node**라는 점뿐이다.
+
+정리하면 ST-E2의 남은 결함은 "session gateway를 대상으로 한 route request의 응답이
+요청자에게 돌아오지 않는다"이다. 이는 seal에 국한되지 않을 수 있으므로, 같은 경로를
+쓰는 다른 route control(abort, commit)도 함께 확인해야 한다.
+
+참고로 session gateway 프로세스에는 flow 로깅이 켜져 있지 않아(로그 5줄) 기존 추적으로는
+이 구간이 보이지 않았다. 이번 진단이 없었다면 "seal이 처리되지 않는다"로 오판할 수
+있었다.

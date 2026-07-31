@@ -52,8 +52,10 @@ internal static class ObsB1ConnectionMetricsScenario
         {
             InstrumentPublished = (instrument, owner) =>
             {
-                if (instrument.Meter.Name == "zlink.framework"
-                    && instrument.Name == "zlink.stream.reconnects")
+                // The reconnect counter belongs to the client connector, which
+                // publishes it on its own meter; the common connector spec §6.2
+                // pins the instrument name and labels, not the meter name.
+                if (instrument.Name == "zlink.stream.reconnects")
                     owner.EnableMeasurementEvents(instrument);
             }
         };
@@ -77,6 +79,14 @@ internal static class ObsB1ConnectionMetricsScenario
         proxy.DropConnection();
         await proxy.WaitForConnectionAsync();
         await sawReconnect.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        // The connector publishes the Connected state before it records the
+        // reconnect, and it must - a metric listener may never gate connection
+        // state (connector spec §6.2). So seeing Connected does not mean the
+        // counter has been written yet; wait for it instead of racing it.
+        var metricDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        while (Interlocked.Read(ref reconnectAttempts) == 0
+               && DateTimeOffset.UtcNow < metricDeadline)
+            await Task.Delay(50);
         ZlinkStreamAssert.Ensure(Interlocked.Read(ref reconnectAttempts) > 0,
             "OBS-B1 connector reconnect counter did not increase.");
         await reconnecting.Close.Async();

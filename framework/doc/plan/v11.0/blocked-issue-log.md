@@ -5013,3 +5013,34 @@ Client-only node는 remote 전달 후보가 될 수 없으므로 publisher와 �
 ```
 InvalidOperationException: OBS-A5 enabled diagnostics did not emit request flow records.
 ```
+
+### OBS-B1: metric을 상태 전이와 동시에 읽으려 한 경합
+
+`zlink.stream.reconnects` counter가 증가하지 않는다는 실패였다. 두 단계로 갈렸다.
+
+첫째, listener filter가 틀렸다. 시나리오는 `instrument.Meter.Name == "zlink.framework"`로
+걸렀는데 connector는 자기 meter(`zlink.framework.stream_connector`)에 게시한다. 공통
+connector spec §6.2는 instrument 이름과 닫힌 label만 고정하고 meter 이름은 언어별 connector
+소유로 둔다. spec 30도 connector가 emit하는 신호를 서버 metric 문서에서 분리한다. 따라서
+instrument 이름으로 거르는 것이 맞다.
+
+둘째, 그것만으로는 부족했다. 발행된 instrument를 찍어 보니 순서가 드러난다.
+
+```
+MEASUREMENT reconnectAttempts=0
+MEASUREMENT instrument zlink.framework.stream_connector / zlink.stream.reconnects
+```
+
+Counter instrument가 **assertion 이후**에 처음 만들어진다. Connector는
+`AttachConnectionAsync`로 Connected 상태를 알린 뒤 `RecordReconnect`를 호출한다. 시나리오는
+Connected 상태 전이를 보고 곧바로 counter를 읽으므로 기록보다 앞선다.
+
+이 순서는 런타임이 옳다. connector spec §6.2는 "Reader, sink 또는 exporter failure는 send,
+request와 연결 상태를 바꾸지 않는다"고 정하므로 metric이 상태 전이를 막아서는 안 된다.
+고칠 쪽은 시나리오다. Counter가 기록될 때까지 bounded wait하도록 바꿨다.
+
+OBS-A1~A5와 OBS-B1이 통과하고 OBS-B2에서 멈춘다.
+
+```
+ZlinkStreamException: Actor 'obs-b2-...' session binding changed before frame admission.
+```

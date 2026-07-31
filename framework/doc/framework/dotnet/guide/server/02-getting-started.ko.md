@@ -1,8 +1,23 @@
+---
+title: "2. 시작하기 · C#/.NET"
+---
+
+<!-- generated:start -->
+<!-- 이 파일은 `common/guide/server/02-getting-started.ko.md`에서 생성한다. 직접 고치지 않는다.
+     고칠 곳은 공통 소스이고, `python3 doc/site/scripts/generate_language_guides.py`로 다시 만든다. -->
+<!-- generated:end -->
+
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: ZLink Framework for .NET 개요](01-overview.ko.md) | [다음: 핵심 개념](03-concepts.ko.md)
+[가이드 홈](README.ko.md) | [이전: 1. 개요](01-overview.ko.md) | [다음: 3. 핵심 개념](03-concepts.ko.md)
 <!-- framework-adapter-nav:end -->
 
+<!-- language-switch:start -->
+다른 언어로 보기 — **C#/.NET** · [C++](../../../cpp/guide/server/02-getting-started.ko.md) · [Java](../../../java/guide/server/02-getting-started.ko.md) · [Kotlin](../../../kotlin/guide/server/02-getting-started.ko.md) · [Node/TypeScript](../../../node/guide/server/02-getting-started.ko.md)
+<!-- language-switch:end -->
+
 # 2. 시작하기
+
+> **이 장의 계약 소유 문서** — 없다. 설치하고 첫 동작을 확인하는 절차 안내다.
 
 > 패키지를 설치하고 두 process가 서로 호출하는 최소 예제를 먼저 돌린 뒤(§1~§2),
 > 실제 [TicTacToe sample](../../../../../languages/dotnet/samples/TicTacToe)이
@@ -188,7 +203,7 @@ endpoint는 연결을 구성할 뿐, 새 Game Spot을 어느 Play node에 배치
 
 ## 5. HTTP 요청에서 Spot 만들기
 
-HTTP handler는 DI로 받은 `IZLinkSpotManager`를 사용한다.
+HTTP handler는 DI로 받은 spot manager를 사용한다.
 
 ```csharp
 internal static async Task<IResult> HandleAsync(
@@ -318,6 +333,3 @@ endpoint에 연결한 참가자들이 같은 방에 join하고, 게임 메시지
 각각 설명한다.
 
 ---
-<!-- framework-adapter-nav:bottom:start -->
-[가이드 홈](../../../index.ko.md) | [이전: ZLink Framework for .NET 개요](01-overview.ko.md) | [다음: 핵심 개념](03-concepts.ko.md)
-<!-- framework-adapter-nav:bottom:end -->

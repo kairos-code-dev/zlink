@@ -1,158 +1,320 @@
+---
+title: "2. 시작하기 · Node/TypeScript"
+---
+
+<!-- generated:start -->
+<!-- 이 파일은 `common/guide/server/02-getting-started.ko.md`에서 생성한다. 직접 고치지 않는다.
+     고칠 곳은 공통 소스이고, `python3 doc/site/scripts/generate_language_guides.py`로 다시 만든다. -->
+<!-- generated:end -->
+
 <!-- framework-adapter-nav:start -->
-[가이드 홈](../../../index.ko.md) | [이전: 1. 개요](01-overview.ko.md) | [다음: 3. 핵심 개념](03-concepts.ko.md)
+[가이드 홈](README.ko.md) | [이전: 1. 개요](01-overview.ko.md) | [다음: 3. 핵심 개념](03-concepts.ko.md)
 <!-- framework-adapter-nav:end -->
+
+<!-- language-switch:start -->
+다른 언어로 보기 — [C#/.NET](../../../dotnet/guide/server/02-getting-started.ko.md) · [C++](../../../cpp/guide/server/02-getting-started.ko.md) · [Java](../../../java/guide/server/02-getting-started.ko.md) · [Kotlin](../../../kotlin/guide/server/02-getting-started.ko.md) · **Node/TypeScript**
+<!-- language-switch:end -->
 
 # 2. 시작하기
 
-> 이 장이 따라가는 코드는 저장소의 `framework/languages/node/samples/TicTacToe.Ts`다.
-> 등록 표면의 정식 계약은
-> [Node.js foundation과 configuration 공개 계약](../../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md)이
-> 다룬다.
+> **이 장의 계약 소유 문서** — 없다. 설치하고 첫 동작을 확인하는 절차 안내다.
 
-두 프로세스가 서버 간 channel로 대화하는 최소 구성을 만든다. API 서버가 요청을 받아
-Play 서버에 넘기는 흐름 하나만 본다.
+> 패키지를 설치하고 두 process가 서로 호출하는 최소 예제를 먼저 돌린 뒤(§1~§2),
+> 실제 [TicTacToe sample](../../../../../languages/node/samples/TicTacToe.Ts)이
+> 방 하나를 만드는 흐름을 따라간다(§3~§11).
 
-## 1. 패키지 설치
+## 1. 설치
+
+npm에서 받는다. 서버 하나를 만들 때 필요한 최소 조합은 다음 둘이다.
 
 ```bash
-npm install @zlink-systems/framework @zlink-systems/nestjs
-# 여러 node를 쓸 때만.
-npm install @zlink-systems/framework-locations-redis
+npm install @zlink-systems/framework   # 계약과 runtime
+npm install @zlink-systems/nestjs      # DI·모듈 등록
 ```
 
-**import 출처가 둘로 나뉜다.** 계약 타입(`ZLinkRequestHandler` 등)은
-`@zlink-systems/framework`에서, 등록과 데코레이터(`ZLinkModule` · `zlinkRequestHandler`
-등)는 `@zlink-systems/nestjs`에서 온다.
+필요할 때 더하는 패키지는 다음과 같다.
 
-## 2. 모듈에 얹기
+| 패키지 | 언제 더하나 |
+| --- | --- |
+| `@zlink-systems/framework-locations-redis` | Redis location store로 자동 연결을 쓸 때([10-location](10-location.ko.md)) |
+| `@zlink-systems/framework-codec-protobuf` · `-codec-msgpack` | 기본 JSON codec 대신 쓸 때([05-channel-messaging §7](05-channel-messaging.ko.md#7-직렬화-codec)) |
+| `@zlink-systems/stream-connector` | 외부 client(게임 client·모바일)를 만들 때([09-stream](09-stream.ko.md)) |
+| `@zlink-systems/http-client` | 서버에서 HTTP를 호출할 때([HTTP Client 가이드](../http-client/README.ko.md)) |
+
+Node.js 20 이상이 필요하다.
+
+라이선스는 계층마다 다르다 — core·binding은 MPL-2.0, framework는 FSL-1.1-ALv2,
+`@zlink-systems/http-client`는 Apache-2.0이다. 서비스를 만들어 파는 데 드는 비용은 없다
+([17-alternative §7](17-alternative.ko.md#7-라이선스--쓰는-데-드는-비용)).
+
+## 2. 최소 예제 — 두 process가 서로 호출한다
+
+Location store도 Redis도 없이, endpoint를 직접 적는 수동 연결로 request/reply 하나를
+돌려 본다. 여기까지가 "설치가 끝났다"를 확인하는 지점이다.
+
+**공유 계약.** 두 process가 같은 record를 참조한다.
 
 ```typescript
-import { Module } from '@nestjs/common';
-import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
+export interface Hello { readonly name: string; }
+export interface Greeting { readonly text: string; }
+```
 
+**server process.** `greeting` channel을 맡고 handler를 등록한다.
+
+```typescript
 @Module({
   imports: [
     ZLinkModule.forRootFactory({
       useFactory: () => {
         const builder = zlinkFramework();
 
-        // 이 process가 호출하는 쪽이다 — Play 서버에 연결만 한다.
-        const mesh = builder.addRouteMesh('play')
-          .listen(config.routeEndpoint)
-          .setRoutingIdPrefix('tictactoe-api');
-        mesh.channel('play.game').client();
-        mesh.peerConnections().connect(config.playEndpoint);
+        const mesh = builder.addRouteMesh('services')   // mesh 이름을 정한다.
+          .listen('tcp://0.0.0.0:7101');                // 다른 process가 접속할 자기 endpoint.
+        mesh.channel('greeting').server()               // 이 process가 "greeting"을 처리한다.
+          .addRequestHandler(HelloHandler);
 
-        return builder;   // builder를 돌려줘야 한다.
+        return builder;
       }
     }),
-    // 이 디렉터리 아래의 handler·Spot·Actor를 찾아 provider로 등록한다.
-    zlinkModule(__dirname, { })
+    zlinkModule(__dirname, { })                         // handler를 provider로 모은다.
   ]
 })
-export class ApiModule {}
-```
+export class ServerModule {}
 
-**`useFactory`는 builder를 돌려준다.** 등록만 하고 `return`을 빼면 아무것도 켜지지
-않는다. 다른 언어의 "options를 받아 등록하고 끝"과 다른 자리다.
+// 요청 하나를 처리하는 handler.
+@zlinkRequestHandler('greeting', PacketNames.hello)
+export class HelloHandler implements ZLinkRequestHandler<Hello, Greeting> {
 
-`zlinkModule(__dirname, ...)`은 그 디렉터리를 훑어 데코레이터가 붙은 class를 Nest
-provider로 모아 준다. 직접 `providers`에 나열해도 된다.
-
-## 3. 받는 쪽 — handler
-
-handler는 계약 interface를 구현하고 데코레이터로 group과 packet 이름을 밝힌다.
-
-```typescript
-import { zlinkRequestHandler } from '@zlink-systems/nestjs';
-import type { ZLinkRequestHandler } from '@zlink-systems/framework';
-
-@zlinkRequestHandler('play', PacketNames.createGame)
-export class CreateGameHandler
-  implements ZLinkRequestHandler<CreateGameReq, CreateGameRes> {
-
-  constructor(private readonly games: GameStore) {}   // Nest DI로 주입된다.
-
-  async handle(request: CreateGameReq): Promise<CreateGameRes> {
-    const game = await this.games.create(request.gameName);
-    return createGameRes(game.id);
+  async handle(request: Hello): Promise<Greeting> {
+    return { text: `hello, ${request.name}` };
   }
 }
 ```
 
-**첫 인자가 handler group, 둘째가 packet 이름이다.** packet 이름은 보내는 쪽과 정확히
-같아야 한다 — 상수로 묶어 공유한다.
-
-Play 서버는 같은 channel을 **server**로 열고 handler group을 붙인다.
+**client process.** 같은 mesh에 붙어 `greeting`을 호출한다.
 
 ```typescript
-const mesh = builder.addRouteMesh('play')
-  .listen(config.routeEndpoint)
-  .setRoutingIdPrefix('tictactoe-play');
-mesh.channel('play.game').server()
-  .addHandlerGroup('play');
-```
-
-## 4. 보내는 쪽 — 토큰으로 주입
-
-client는 **주입 토큰으로 받는다.** 타입만 적어서는 Nest가 무엇을 넣을지 모른다.
-
-```typescript
-import { Inject } from '@nestjs/common';
-import { ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
-import type { ZLinkRouteClient } from '@zlink-systems/framework';
+ZLinkModule.forRootFactory({
+  useFactory: () => {
+    const builder = zlinkFramework();
+    const mesh = builder.addRouteMesh('services')
+      .listen('tcp://0.0.0.0:7102');                        // 자기 endpoint도 필요하다.
+    mesh.channel('greeting').client();                      // 호출만 하는 쪽은 client.
+    mesh.peerConnections.connect('tcp://127.0.0.1:7101');   // 수동 연결 — server endpoint를 직접 적는다.
+    return builder;
+  }
+})
 
 @Controller()
-export class GameController {
-  constructor(
-    @Inject(ZLINK_ROUTE_CLIENT) private readonly client: ZLinkRouteClient
-  ) {}
+export class HelloController {
+  constructor(@Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient) {}
 
-  @Post('/games')
-  async create(@Body() request: CreateGameReq): Promise<CreateGameRes> {
-    return this.client
-      .requestToChannel('play.game', request)
-      .timeout(3_000)
-      .submit<CreateGameRes>();
+  @Get('/hello/:name')
+  async hello(@Param('name') name: string): Promise<string> {
+    // 대상은 ChannelName 하나다. 어느 node가 처리하는지는 지정하지 않는다.
+    const reply = await this.route
+      .requestToChannel('greeting', { name })
+      .submit<Greeting>();
+    return reply.text;
   }
 }
 ```
 
-주입 토큰은 표면마다 있다 — `ZLINK_ROUTE_CLIENT` · `ZLINK_CHANNEL_CLIENT` ·
-`ZLINK_FANOUT_CLIENT` · `ZLINK_ACTOR_CLIENT` · `ZLINK_ACTOR_MANAGER` ·
-`ZLINK_FRAMEWORK_RUNTIME` 등이다. 목록은
-[13. 주요 interface 사용 색인](13-interface-catalog.ko.md)에 있다.
+server를 먼저 띄우고 client를 띄운 뒤 `curl http://localhost:5000/hello/world`를 호출하면
+`hello, world`가 돌아온다.
 
-`timeout(...)`은 **밀리초 숫자**다. 다른 언어의 `Duration` 타입과 다르다.
+여기서 확인한 것은 셋이다 — 패키지가 붙었고, 두 process가 mesh로 연결됐고, 논리 이름
+(`greeting`)만으로 호출이 라우팅됐다. 이 예제에는 Redis도 location store도 없다. 서버가
+늘고 줄어도 호출 코드가 그대로이려면 자동 연결이 필요하고, 그건
+[10-location](10-location.ko.md)이 다룬다.
 
-## 5. 실행과 확인
+## 3. TicTacToe — 방 하나를 만드는 흐름
+
+아래부터는 실제 sample로 옮겨간다. API 서버는 특정 Play node를 고르지 않고 방의 stable
+type과 최초 설정만 넘긴다. Framework가 해당 type을 등록한 Object Server 중 하나를
+선택하고, 전역에서 유일한 `SpotId`를 발급한다.
+
+### 3.1 실행 흐름
+
+```mermaid
+sequenceDiagram
+    participant Client as HTTP client
+    participant Api as API server
+    participant Store as Location Store
+    participant Play as Selected Play node
+    participant Spot as Game Spot
+
+    Client->>Api: POST /games
+    Api->>Store: Reserve a new Spot
+    Store-->>Api: SpotId and selected owner
+    Api->>Play: Create Spot with initial request
+    Play->>Spot: Construct and initialize
+    Spot-->>Play: Accept
+    Play-->>Api: Spot ready
+    Api-->>Client: RoomId = SpotId
+```
+
+API 코드에는 Play node의 `NodeRid`나 endpoint가 들어가지 않는다. Play node가
+추가되거나 교체되어도 같은 생성 코드를 사용한다.
+
+### 3.2 sample 위치
+
+| 확인할 내용 | 파일 |
+| --- | --- |
+| 전체 실행 | `samples/TicTacToe.Ts/run_sample.sh` |
+| API 실행 진입점 | `samples/TicTacToe.Ts/Server/Api/main.ts` |
+| Play 실행 진입점 | `samples/TicTacToe.Ts/Server/Play/main.ts` |
+| HTTP handler | `samples/TicTacToe.Ts/Server/Api/Handlers/create-game-http-handler.ts` |
+| Game Spot | `samples/TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe-game-spot.ts` |
+| 공용 메시지 | `samples/TicTacToe.Ts/Shared/Contracts/messages.ts` |
+
+표의 상대 경로는 `framework/languages/node`를 기준으로 한다.
+
+## 4. API 서버 설정
+
+API 서버는 Location Store와 Object Client role을 등록한다. Object Client role은
+Actor와 Spot을 다른 Object Server에 생성하거나 호출할 때 사용한다.
+
+```typescript
+useFactory: () => {
+  const builder = zlinkFramework();
+  // 모든 process가 같은 위치 정보를 조회하도록 공용 Store를 등록한다.
+  builder.addLocationStore(new ZLinkRedisLocationStore({
+    url: settings.redisEndpoint,
+    keyPrefix: settings.redisKeyPrefix
+  }));
+
+  const mesh = builder.addRouteMesh(SampleNodes.mesh)
+    .listen(settings.meshEndpoint)
+    .setRoutingIdPrefix('tictactoe-api');
+
+  // API process는 Object를 보관하지 않고 원격 Object 호출만 시작한다.
+  mesh.objects().client();
+  return builder;
+}
+```
+
+sample은 재현 가능한 로컬 실행을 위해 peer endpoint를 설정 파일에서 읽는다. 이
+endpoint는 연결을 구성할 뿐, 새 Game Spot을 어느 Play node에 배치할지는 지정하지
+않는다.
+
+## 5. HTTP 요청에서 Spot 만들기
+
+HTTP handler는 DI로 받은 spot manager를 사용한다.
+
+```typescript
+// HTTP handler는 주입받은 spot manager를 사용한다.
+@Post('/games')
+async create(@Body() request: CreateGameHttpReq): Promise<CreateGameHttpRes> {
+  const gameName = request.gameName?.trim() || SampleDefaults.gameName;
+
+  const created = await this.spots
+    .create(SampleTypes.gameSpot)         // 이 stable type을 제공하는 node가 후보가 된다.
+    .inMesh(SampleNodes.mesh)             // Object를 만들 RouteMesh를 선택한다.
+    .request(tictactoeGameCreateReq(
+      gameName,
+      SampleDefaults.requiredLevel))      // 새 Spot의 onCreate에 전달할 최초 설정이다.
+    .submit();
+
+  return createGameHttpRes(
+    created.spot.spotId,                  // Framework가 발급한 SpotId를 room id로 사용한다.
+    this.settings.playEndpoints,
+    this.settings.playNodes,
+    gameName,
+    SampleDefaults.requiredLevel);
+}
+```
+
+`create`는 호출자가 `SpotId`를 정하지 않는 새 User Spot 생성에 사용한다. 같은
+`SpotId`를 다시 찾거나 만들려면 `GetOrCreate(spotId, spotType)`을 사용한다.
+
+## 6. Play 서버에서 stable type 등록
+
+Framework는 요청한 stable type을 등록한 Serving Object Server만 생성 후보로
+사용한다. Play 서버는 `TicTacToeGame` factory를 다음과 같이 등록한다.
+
+```typescript
+const mesh = builder.addRouteMesh(SampleNodes.mesh)
+  .listen(settings.meshEndpoint)
+  .setRoutingIdPrefix('tictactoe-play');
+
+mesh.objects().server()
+  .addSpotFactory(
+    SampleTypes.gameSpot,               // API가 create에 넘긴 stable type과 같다.
+    TicTacToeGame,
+    factory => factory.disableRelocation());
+```
+
+특정 Play node를 선호하거나 `NodeRid`로 배치하는 sample 계약은 없다. 배치 후보와
+용량은 Framework와 Location Store가 판단한다.
+
+## 7. 최초 설정 검증
+
+선택된 Play node는 Spot을 만든 뒤 최초 요청을 `onCreate`에 전달한다. Spot은
+설정을 검증하고 생성 수락 여부를 반환한다.
+
+```typescript
+async onCreate(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse> {
+  const settings = request.decode<TicTacToeGameCreateReq>(Object as never);
+
+  if (!settings.gameName?.trim())
+    return ZLinkSpotCreateResponse.reject('GameName is required.');
+
+  this.gameName = settings.gameName;
+  this.requiredLevel = settings.requiredLevel;
+
+  // accept 이후에만 Location Store에서 이 Spot이 Ready로 공개된다.
+  return ZLinkSpotCreateResponse.accept();
+}
+```
+
+생성을 거부하면 해당 예약은 Ready Spot으로 공개되지 않는다. 호출자는 typed failure로
+완료 결과를 받는다.
+
+## 8. ClientServer channel의 용도
+
+TicTacToe의 `tictactoe.api` ClientServer channel은 Play session이 사용자 인증을
+API 서버에 요청할 때 사용한다. Game Spot 생성에는 사용하지 않는다.
+
+```typescript
+// API process: 인증 요청을 처리한다.
+builder.addClientServerChannel(SampleChannels.api)
+  .server()
+  .listen()
+  .addRequestHandler(AuthenticatePlayerHandler);
+
+// Play process: 인증 요청을 보낸다.
+builder.addClientServerChannel(SampleChannels.api)
+  .client();
+```
+
+Object 생성과 ClientServer 호출은 서로 다른 기능이다. 방 생성 전용 channel이나
+`CreateGameHandler`를 추가하지 않는다.
+
+## 9. build와 실행
 
 ```bash
+# sample을 먼저 build한다.
+npm --prefix framework/languages/node run build
+
+# Redis와 네 개 process를 준비하고 전체 scenario를 검증한다.
 framework/languages/node/samples/TicTacToe.Ts/run_sample.sh
 ```
 
-runner가 서버 여러 개와 client 시나리오를 함께 띄우고 검증까지 한다. Redis가 필요한
-샘플은 runner가 컨테이너를 직접 띄우고 끝나면 정리하므로 `docker`만 있으면 된다.
+runner는 API 두 개와 Play 두 개를 실행한다. Game Spot을 생성한 뒤 서로 다른 Play
+endpoint에 연결한 참가자들이 같은 방에 join하고, 게임 메시지와 종료 정리를
+검증한다.
 
-확인 순서는 셋이다.
+## 10. 실패할 때 확인할 항목
 
-1. **기동 로그** — 등록이 잘못되면 첫 호출까지 미루지 않고 모듈 초기화에서 실패한다.
-2. **client의 exit code** — 시나리오 성공 여부의 판정 기준이다.
-3. **서버 로그의 dispatch 오류** — client가 통과해도 서버가 오류를 기록할 수 있다.
-
-## 6. 다음에 볼 것
-
-| 하려는 것 | 볼 장 |
+| 증상 | 확인할 항목 |
 | --- | --- |
-| 개념을 먼저 잡기 | [3. 핵심 개념](03-concepts.ko.md) |
-| 요청 방식 세 가지 | [5. Channel Messaging](05-channel-messaging.ko.md) |
-| 방·세션 상태를 담기 | [6. Spot](06-spot.ko.md) |
-| client 실시간 연결 | [9. STREAM](09-stream.ko.md) |
-| 설정 값 목록 | `16. Options` 장 |
+| 생성 후보가 없다 | Play process가 같은 `MeshName`에 Object Server와 `GameSpot` stable type을 등록했는지 확인한다. |
+| startup이 실패한다 | Redis 연결, `MeshName`, listen endpoint와 중복 등록 오류를 확인한다. |
+| 생성이 거부된다 | `onCreate`가 받은 최초 설정과 reject 사유를 확인한다. |
+| client가 방에 join하지 못한다 | HTTP 응답의 `RoomId`를 Actor join 요청에 그대로 사용했는지 확인한다. |
 
-## 7. 관련 문서
+다음 장에서는 여기서 사용한 channel, Spot, Actor, Stream과 Location Store의 역할을
+각각 설명한다.
 
-- 정식 계약: [Node.js foundation과 configuration 공개 계약](../../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md)
-- 이전 장: [1. 개요](01-overview.ko.md)
-- 다음 장: [3. 핵심 개념](03-concepts.ko.md)
-- 샘플 전체: [14. 샘플 고르기](14-samples.ko.md)
+---

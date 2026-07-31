@@ -23,10 +23,25 @@ public sealed class RegressionTests
         "backend-dependency-policy.ko.md",
     ];
 
-    private static readonly string[] GuideNarrativeDocuments =
+    /// <summary>
+    /// 언어마다 내용이 달라지는 장이다. `.NET` 디렉터리가 소유하고 앞뒤 장을 잇는
+    /// adapter nav 마커를 가진다.
+    /// </summary>
+    private static readonly string[] LanguageGuideDocuments =
     [
         "01-overview.ko.md",
         "02-getting-started.ko.md",
+        "11-monitoring.ko.md",
+        "13-interface-catalog.ko.md",
+        "16-options.ko.md"
+    ];
+
+    /// <summary>
+    /// 모든 언어가 같은 내용을 공유하는 장이다. 공통 정본이 소유하며 언어별로 앞뒤가
+    /// 달라지므로 adapter nav 마커를 두지 않는다. 장 번호는 언어에 상관없이 같은 식별자다.
+    /// </summary>
+    private static readonly string[] CommonGuideDocuments =
+    [
         "03-concepts.ko.md",
         "04-backpressure.ko.md",
         "05-channel-messaging.ko.md",
@@ -35,12 +50,9 @@ public sealed class RegressionTests
         "08-actor-session.ko.md",
         "09-stream.ko.md",
         "10-location.ko.md",
-        "11-monitoring.ko.md",
         "12-operations.ko.md",
-        "13-interface-catalog.ko.md",
         "14-samples.ko.md",
         "15-e2e-testing.ko.md",
-        "16-options.ko.md",
         "17-alternative.ko.md"
     ];
 
@@ -112,24 +124,83 @@ public sealed class RegressionTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(GuideNarrativeDocuments.Order(StringComparer.Ordinal), actual);
+        Assert.Equal(LanguageGuideDocuments.Order(StringComparer.Ordinal), actual);
 
-        foreach (var document in GuideNarrativeDocuments)
+        foreach (var document in LanguageGuideDocuments)
         {
             var text = File.ReadAllText(Path.Combine(guideRoot, document));
             Assert.Contains("<!-- framework-adapter-nav:start -->", text, StringComparison.Ordinal);
             Assert.Matches(@"(?m)^# .+", text);
         }
+    }
 
+    [Fact]
+    public void CommonGuideNarrative_DocumentsExist_AndCarryNoLanguageNav()
+    {
+        var guideRoot = GetCommonGuideServerRoot();
+
+        var actual = Directory
+            .EnumerateFiles(guideRoot, "*.ko.md", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(CommonGuideDocuments.Order(StringComparer.Ordinal), actual);
+
+        foreach (var document in CommonGuideDocuments)
+        {
+            var text = File.ReadAllText(Path.Combine(guideRoot, document));
+            Assert.Matches(@"(?m)^# .+", text);
+            // 앞뒤 장은 언어별 진입점과 사이트 nav가 정한다.
+            Assert.DoesNotContain("framework-adapter-nav", text, StringComparison.Ordinal);
+            // 링크 대상이 한 언어의 문서를 가리키면 다른 언어의 독자에게 잘못된 계약을
+            // 안내하게 된다. 탭 안 코드가 언어별 경로를 담는 것은 정상이므로 링크만 본다.
+            Assert.DoesNotMatch(@"\]\([^)]*languages/(dotnet|cpp|java|kotlin|node)/", text);
+        }
+    }
+
+    /// <summary>
+    /// 소스 코드 fence는 언어 탭 안에만 둔다. 탭 밖에 남으면 한 언어의 예제가 모든
+    /// 언어의 독자에게 그대로 노출된다. mermaid·text·yaml처럼 언어에 중립인 블록은
+    /// 탭 밖에 두어도 된다.
+    /// </summary>
+    [Fact]
+    public void CommonGuideNarrative_SourceFences_LiveInsideLanguageTabs()
+    {
+        var sourceLanguages = new[]
+        {
+            "csharp", "cs", "cpp", "c++", "java", "kotlin", "typescript", "ts", "javascript", "js"
+        };
+        var offenders = new List<string>();
+
+        foreach (var document in CommonGuideDocuments)
+        {
+            var path = Path.Combine(GetCommonGuideServerRoot(), document);
+            var lines = File.ReadAllLines(path);
+
+            for (var index = 0; index < lines.Length; index++)
+            {
+                // 탭 안의 fence는 4칸 들여쓴다 — 줄 첫 칸에서 시작하면 탭 밖이다.
+                var line = lines[index];
+                if (!line.StartsWith("```", StringComparison.Ordinal)) continue;
+                var language = line[3..].Trim();
+                if (!sourceLanguages.Contains(language, StringComparer.OrdinalIgnoreCase)) continue;
+                offenders.Add($"{document}:{index + 1}: ```{language}");
+            }
+        }
+
+        Assert.Empty(offenders.Order(StringComparer.Ordinal));
     }
 
     [Fact]
     public void DotNetDocs_SpotRouteChannelAcceptance_RulesStayDocumented()
     {
-        var docRoot = GetDotNetDocRoot();
-        var guideRoot = Path.Combine(docRoot, "guide");
         var guideAndSampleDocs = Directory
-            .EnumerateFiles(guideRoot, "*.ko.md", SearchOption.AllDirectories)
+            .EnumerateFiles(
+                Path.Combine(GetDotNetDocRoot(), "guide"), "*.ko.md", SearchOption.AllDirectories)
+            .Concat(Directory.EnumerateFiles(
+                GetCommonGuideServerRoot(), "*.ko.md", SearchOption.AllDirectories))
             .ToArray();
 
         foreach (var path in guideAndSampleDocs)
@@ -161,13 +232,7 @@ public sealed class RegressionTests
     [Fact]
     public void DotNetDocs_BoundSession_Does_Not_Document_Request_Surface()
     {
-        var docRoot = GetDotNetDocRoot();
-        var docs = Directory
-            .EnumerateFiles(docRoot, "*.ko.md", SearchOption.AllDirectories)
-            .Where(static path => !path.Contains(
-                $"{Path.DirectorySeparatorChar}draft{Path.DirectorySeparatorChar}",
-                StringComparison.Ordinal))
-            .ToArray();
+        var docs = GetDotNetAndCommonGuideDocs();
 
         foreach (var path in docs)
         {
@@ -181,7 +246,7 @@ public sealed class RegressionTests
     [Fact]
     public void DotNetDocs_DoNotDocument_Replaced_Spot_Address_Contracts()
     {
-        var roots = new[] { GetDotNetDocRoot(), GetDotNetContractDocRoot() };
+        var roots = new[] { GetDotNetDocRoot(), GetDotNetContractDocRoot(), GetCommonGuideServerRoot() };
         var forbidden = new[]
         {
             "IZLinkSpotRefResolver",
@@ -204,12 +269,7 @@ public sealed class RegressionTests
     public void DotNetDocs_DoNotDocumentNestedFrameworkConfigurationCallbacks()
     {
         var docRoot = GetDotNetDocRoot();
-        var docs = Directory
-            .EnumerateFiles(docRoot, "*.ko.md", SearchOption.AllDirectories)
-            .Where(static path => !path.Contains(
-                $"{Path.DirectorySeparatorChar}draft{Path.DirectorySeparatorChar}",
-                StringComparison.Ordinal))
-            .ToArray();
+        var docs = GetDotNetAndCommonGuideDocs();
         var forbidden = new (Regex Pattern, string Reason)[]
         {
             (new Regex(@"\bEnable(?:Server|Client|Publisher|Subscriber)\s*\([\s\S]{0,160}?Action<", RegexOptions.Compiled),
@@ -576,6 +636,32 @@ public sealed class RegressionTests
     private static string GetCommonSpecRoot()
     {
         return Path.GetFullPath(Path.Combine(GetDotNetDocRoot(), "..", "common", "spec"));
+    }
+
+    /// <summary>
+    /// 모든 언어가 공유하는 가이드 정본이다. `.NET` 문서 트리 밖에 있으므로 금칙 심볼
+    /// 검사가 이 디렉터리를 따로 포함해야 한다.
+    /// </summary>
+    private static string GetCommonGuideServerRoot()
+    {
+        return Path.GetFullPath(Path.Combine(
+            GetDotNetDocRoot(), "..", "common", "guide", "server"));
+    }
+
+    /// <summary>
+    /// 금칙 심볼 검사가 훑는 산문 문서 전체다 — `.NET` 문서 트리와 공통 가이드 정본.
+    /// </summary>
+    private static string[] GetDotNetAndCommonGuideDocs()
+    {
+        return Directory
+            .EnumerateFiles(GetDotNetDocRoot(), "*.ko.md", SearchOption.AllDirectories)
+            .Concat(Directory.EnumerateFiles(
+                GetCommonGuideServerRoot(), "*.ko.md", SearchOption.AllDirectories))
+            .Where(static path => !path.Contains(
+                $"{Path.DirectorySeparatorChar}draft{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
     }
 
     private static string GetDotNetContractDocRoot()

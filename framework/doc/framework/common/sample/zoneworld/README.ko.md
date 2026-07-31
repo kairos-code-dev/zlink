@@ -43,7 +43,7 @@ client는 .NET과 Node.js server가 공유하므로 `shared_sample`에 둔다. �
 ## 1. 목적
 
 ZoneWorld는 **zone 분할 MMORPG**와 그것을 **운영·관제하는 콘솔**을 한 샘플에 담는다.
-[01-overview](../../../dotnet/guide/server/01-overview.ko.md) §2가 게임 서버 4갈래 중 ①로
+[01-overview](../../guide/server/01-overview.ko.md) §2가 게임 서버 4갈래 중 ①로
 소개하는 **zoning**(월드를 지리 구역으로 나누고 각 구역을 전역 `SpotId`로 식별하는 방식)을
 보여 주는 첫 샘플이다. 어느 물리 노드가 구역을 담당하는지는 Location Store와 framework가
 결정하며 application 설정에 고정하지 않는다.
@@ -228,7 +228,7 @@ Application adapter가 target 점검 상태를 별도 relocation protocol로 해
 
 **봇은 사람 플레이어와 같은 `PlayerActor` 타입이다.** 차이는 하나뿐이다 — **bound session이
 없다.** 그래서 `MoveRejectedNotify`·`ZoneStateNotify` 같은 client push 대상이 아니다.
-[07-actor-spot](../../../dotnet/guide/server/07-actor-spot.ko.md)이 설명하는 "client 없이 존재하는
+[07-actor-spot](../../guide/server/07-actor-spot.ko.md)이 설명하는 "client 없이 존재하는
 actor — 서버 로직이 `actorId`로 구동하는 봇/NPC"가 이 모양이다.
 
 | 항목 | 값 |

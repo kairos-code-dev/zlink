@@ -151,21 +151,21 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
 |------|------|
 | [guide/server/01-overview.ko.md](guide/server/01-overview.ko.md) | 무엇/왜/누구를 위한 것, 기존 방식 대비 체감 난이도, 4축 |
 | [guide/server/02-getting-started.ko.md](guide/server/02-getting-started.ko.md) | NuGet 설치, 두 process 최소 예제, TicTacToe 방 생성 흐름 |
-| [guide/server/03-concepts.ko.md](guide/server/03-concepts.ko.md) | 핵심 개념과 공통 스펙 매핑 |
-| [guide/server/04-backpressure.ko.md](guide/server/04-backpressure.ko.md) | 처리보다 도착이 빠를 때의 동작 원리와 영향을 주는 옵션 |
-| [guide/server/05-channel-messaging.ko.md](guide/server/05-channel-messaging.ko.md) | request / send / pub-sub 등록과 호출 사용법 |
-| [guide/server/06-spot.ko.md](guide/server/06-spot.ko.md) | room / stage / zone 같은 동적 SPOT 등록과 호출 사용법 |
-| [guide/server/07-actor-spot.ko.md](guide/server/07-actor-spot.ko.md) | actor 모델과 Spot 의 actor 호스팅(lifecycle 콜백·트리거 함수, location 축) |
-| [guide/server/08-actor-session.ko.md](guide/server/08-actor-session.ko.md) | session ↔ actor relay·binding·bound session push (binding 축) |
-| [guide/server/09-stream.ko.md](guide/server/09-stream.ko.md) | 외부 client STREAM 서버와 Stream Connector 사용법 |
-| [guide/server/10-location.ko.md](guide/server/10-location.ko.md) | location store 등록, 자동 연결, 운영 조회 사용법 |
+| [guide/server/03-concepts.ko.md](../common/guide/server/03-concepts.ko.md) | 핵심 개념과 공통 스펙 매핑 |
+| [guide/server/04-backpressure.ko.md](../common/guide/server/04-backpressure.ko.md) | 처리보다 도착이 빠를 때의 동작 원리와 영향을 주는 옵션 |
+| [guide/server/05-channel-messaging.ko.md](../common/guide/server/05-channel-messaging.ko.md) | request / send / pub-sub 등록과 호출 사용법 |
+| [guide/server/06-spot.ko.md](../common/guide/server/06-spot.ko.md) | room / stage / zone 같은 동적 SPOT 등록과 호출 사용법 |
+| [guide/server/07-actor-spot.ko.md](../common/guide/server/07-actor-spot.ko.md) | actor 모델과 Spot 의 actor 호스팅(lifecycle 콜백·트리거 함수, location 축) |
+| [guide/server/08-actor-session.ko.md](../common/guide/server/08-actor-session.ko.md) | session ↔ actor relay·binding·bound session push (binding 축) |
+| [guide/server/09-stream.ko.md](../common/guide/server/09-stream.ko.md) | 외부 client STREAM 서버와 Stream Connector 사용법 |
+| [guide/server/10-location.ko.md](../common/guide/server/10-location.ko.md) | location store 등록, 자동 연결, 운영 조회 사용법 |
 | [guide/server/11-monitoring.ko.md](guide/server/11-monitoring.ko.md) | 상태 snapshot·status stream과 진단으로 runtime을 관측하는 방법 |
-| [guide/server/12-operations.ko.md](guide/server/12-operations.ko.md) | 운영 — 런타임 메트릭, graceful drain, readiness 통합 |
+| [guide/server/12-operations.ko.md](../common/guide/server/12-operations.ko.md) | 운영 — 런타임 메트릭, graceful drain, readiness 통합 |
 | [guide/server/13-interface-catalog.ko.md](guide/server/13-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
-| [guide/server/14-samples.ko.md](guide/server/14-samples.ko.md) | 어떤 샘플을 먼저 볼지 고르고 실행하는 방법 |
-| [guide/server/15-e2e-testing.ko.md](guide/server/15-e2e-testing.ko.md) | client 라이브러리로 시스템 전체를 검증하는 E2E 테스트 만드는 법 |
+| [guide/server/14-samples.ko.md](../common/guide/server/14-samples.ko.md) | 어떤 샘플을 먼저 볼지 고르고 실행하는 방법 |
+| [guide/server/15-e2e-testing.ko.md](../common/guide/server/15-e2e-testing.ko.md) | client 라이브러리로 시스템 전체를 검증하는 E2E 테스트 만드는 법 |
 | [guide/server/16-options.ko.md](guide/server/16-options.ko.md) | 설정 — 옵션 목록, 기본값과 변경 시점 |
-| [guide/server/17-alternative.ko.md](guide/server/17-alternative.ko.md) | **ZLink를 어디에 쓰나** — 사용처, 문제 신호, 기술 선택 경계 |
+| [guide/server/17-alternative.ko.md](../common/guide/server/17-alternative.ko.md) | **ZLink를 어디에 쓰나** — 사용처, 문제 신호, 기술 선택 경계 |
 
 ### 2.1 기준 문서 (interface catalog)
 

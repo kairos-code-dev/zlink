@@ -1,7 +1,3 @@
-<!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: 설정 — 옵션 목록 · 기본값 · 변경 시점](16-options.ko.md) | [공통 스펙](../../../common/README.ko.md)
-<!-- framework-adapter-nav:end -->
-
 # 17. ZLink를 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
 
 > **내부 서비스 통신이나 실시간 상태 서버를 만들면서 gRPC나 Akka/Orleans를 고민하고
@@ -13,7 +9,7 @@
 > 어디에 연결돼 있는지", "room/zone/symbol 같은 상태 단위를 어떻게 직렬 처리할지" 가
 > **반복 문제로 나올 때** 효과가 크다.
 >
-> [01-overview §2](01-overview.ko.md)의 세 상황(실시간 게임 서버, 웹 서비스에
+> `01. Overview` 장 §2의 세 상황(실시간 게임 서버, 웹 서비스에
 > 실시간 기능 추가, 이벤트 중심 업무 처리 단순화)이 "왜 필요한가"였다면, 이 챕터는
 > 그 판단을 기술 선택 수준까지 내려서 확인하는 도입 판단 문서다. 실행 가능한 업무 흐름은 샘플 챕터가,
 > 기능별 사용법은 05~12 챕터가 다룬다.
@@ -228,7 +224,7 @@ sequenceDiagram
 | L7 로드밸런싱(Envoy/Istio) | channel name + store 자동 연결이 peer 분배 | sidecar 불필요 |
 | interceptor | `IZLinkHandlerFilter` | [5](05-channel-messaging.ko.md) §5 |
 | 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 실시간 fan-out 한정. 영속/replay는 broker 유지 |
-| 통합 관측(mesh telemetry) | 상태 status stream과 표준 진단 | [11-monitoring](11-monitoring.ko.md) |
+| 통합 관측(mesh telemetry) | 상태 status stream과 표준 진단 | `11. Monitoring` 장 |
 | 양방향 streaming | STREAM session | 외부 client 수용. HTTP edge 정책은 별도 |
 
 이 비교는 우열을 일반화하려는 것이 아니다. gRPC는 외부 공개 API, 표준 RPC 계약, 조직
@@ -240,7 +236,7 @@ framework와 location store 한 겹으로 접힌다. 조직 보안 정책이나 
 
 ## 6. 참고 — 분산 actor 프레임워크(Orleans/Akka)와의 비교
 
-[01-overview §2](01-overview.ko.md)의 ④ stateful actor 패턴에 실제로 쓰이는 대표
+`01. Overview` 장 §2의 ④ stateful actor 패턴에 실제로 쓰이는 대표
 프레임워크가 Microsoft Orleans와 Akka다. ZLink의 SPOT/actor는 같은 프리미티브
 (mailbox 직렬화 + 위치 투명)를 제공하므로, 이 워크로드에서 후보가 겹친다.
 
@@ -357,7 +353,7 @@ v4.3.5에서 출발했기 때문이다. `http-client`는 각 플랫폼의 통상
 
 - 공통 업무 시나리오: [Framework Common Sample Scenarios](../../../common/sample/README.ko.md)
 - `.NET` 사용 방법: [Channel Messaging](05-channel-messaging.ko.md)
-- 표면 매핑: [05-channel-messaging](05-channel-messaging.ko.md) §0, [13-interface-catalog](13-interface-catalog.ko.md) §1.6
+- 표면 매핑: [05-channel-messaging](05-channel-messaging.ko.md) §0, `13. Interface 카탈로그` 장 §1.6
 - 실행 코드로 보는 샘플: [14-samples](14-samples.ko.md)
 
 ### 참고 자료
@@ -369,8 +365,3 @@ v4.3.5에서 출발했기 때문이다. `http-client`는 각 플랫폼의 통상
 - [Scaling Microservices: Lessons from Netflix, Uber, Amazon, and Spotify](https://www.netguru.com/blog/scaling-microservices)
 - [Orleans overview (Microsoft Learn)](https://learn.microsoft.com/en-us/dotnet/orleans/overview)
 - [Akka License Change의 영향 (Coralogix)](https://coralogix.com/blog/akka-license-change/)
-
----
-<!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: 설정 — 옵션 목록 · 기본값 · 변경 시점](16-options.ko.md) | [공통 스펙](../../../common/README.ko.md)
-<!-- framework-adapter-nav:bottom:end -->

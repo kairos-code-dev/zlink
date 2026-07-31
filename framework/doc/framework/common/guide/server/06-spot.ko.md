@@ -1,10 +1,6 @@
-<!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Channel Messaging](05-channel-messaging.ko.md) | [다음: Actor & Spot 호스팅](07-actor-spot.ko.md)
-<!-- framework-adapter-nav:end -->
-
 # 6. Spot
 
-> 정확한 .NET 시그니처는 [Spot 공개 인터페이스](../../../common/spec/server/languages/dotnet/interfaces/05-spots.ko.md)가 정의한다.
+> 정확한 시그니처는 [언어별 Spot 공개 계약](../../../common/spec/server/languages/README.ko.md)가 정의한다.
 > Actor와 Spot membership은 [Actor & Spot 호스팅](07-actor-spot.ko.md)에서 설명한다.
 
 Spot은 room, stage, zone처럼 문자열 ID로 찾는 실행 단위다. `SpotId`는 Location Store 전체에서
@@ -35,45 +31,83 @@ Framework가 기존 instance를 선택하거나 필요한 위치에 생성한 �
 서버가 Entry Spot과 방을 담을 User Spot을, Matchmaking 서버가 매칭 대기열을 담을
 Instance Spot을 등록한다.
 
-```csharp
-// Play 서버 — Entry Spot과 방을 담을 User Spot.
-mesh.Objects().Server()
-    .AddEntrySpot<BingoEntrySpot>()                 // Entry Spot은 stable type이 없다.
-    .AddSpotFactory<BingoRoom>(
-        SampleNames.RoomSpotType,                   // stable type — 생성할 때 이 이름으로 선택한다.
-        factory => factory
-            .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
-            .PreserveStateWith<BingoRoomRelocationAdapter>());
+=== "C#/.NET"
 
-// Matchmaking 서버 — 매칭 대기열을 담을 Instance Spot.
-options.AddRouteMesh(SampleNames.MatchmakingMeshName)
-    .SetRoutingIdPrefix("matchmaking")
-    .Listen(configuration.Node.MeshEndpoint)
-    .Objects().Server()
-    .AddInstanceSpotFactory<BingoMatchmaker>(
-        SampleNames.MatchmakerSpotType,
-        factory => factory.RecreateOnRelocation());
-```
+    ```csharp
+    // Play 서버 — Entry Spot과 방을 담을 User Spot.
+    mesh.Objects().Server()
+        .AddEntrySpot<BingoEntrySpot>()                 // Entry Spot은 stable type이 없다.
+        .AddSpotFactory<BingoRoom>(
+            SampleNames.RoomSpotType,                   // stable type — 생성할 때 이 이름으로 선택한다.
+            factory => factory
+                .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+                .PreserveStateWith<BingoRoomRelocationAdapter>());
+
+    // Matchmaking 서버 — 매칭 대기열을 담을 Instance Spot.
+    options.AddRouteMesh(SampleNames.MatchmakingMeshName)
+        .SetRoutingIdPrefix("matchmaking")
+        .Listen(configuration.Node.MeshEndpoint)
+        .Objects().Server()
+        .AddInstanceSpotFactory<BingoMatchmaker>(
+            SampleNames.MatchmakerSpotType,
+            factory => factory.RecreateOnRelocation());
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 차이는 **호출하는 쪽**에서 드러난다. Entry Spot은 호출 대상이 아니고(server가 시작하며
 이미 준비된다), User Spot은 생성 호출이 따로 있으며, Instance Spot은 그 호출이 없다.
 Bingo의 매칭 handler 하나에 뒤의 둘이 함께 나온다.
 
-```csharp
-// Instance Spot — 생성 호출이 없다. 해당 ID로 보내면 없을 때 생성된다.
-var allocated = await spotClient                    // IZLinkSpotClient
-    .RequestToSpot($"match:{levelBucket}", new ReserveBingoRoomReq { ... })
-    .InstanceSpot(SampleNames.MatchmakerSpotType)   // 없으면 생성해도 된다는 intent(cold activation).
-    .InMesh(SampleNames.MatchmakingMeshName)
-    .Async<ReserveBingoRoomRes>(cancellationToken);
+=== "C#/.NET"
 
-// User Spot — 생성 호출이 따로 있다.
-var created = await spots                           // IZLinkSpotManager
-    .GetOrCreate(allocated.RoomId, SampleNames.RoomSpotType)
-    .InMesh(SampleNames.PlayMeshName)
-    .Request(allocated.Settings)                    // 새 Spot의 OnCreateAsync로 전달된다.
-    .Async(cancellationToken);
-```
+    ```csharp
+    // Instance Spot — 생성 호출이 없다. 해당 ID로 보내면 없을 때 생성된다.
+    var allocated = await spotClient                    // IZLinkSpotClient
+        .RequestToSpot($"match:{levelBucket}", new ReserveBingoRoomReq { ... })
+        .InstanceSpot(SampleNames.MatchmakerSpotType)   // 없으면 생성해도 된다는 intent(cold activation).
+        .InMesh(SampleNames.MatchmakingMeshName)
+        .Async<ReserveBingoRoomRes>(cancellationToken);
+
+    // User Spot — 생성 호출이 따로 있다.
+    var created = await spots                           // IZLinkSpotManager
+        .GetOrCreate(allocated.RoomId, SampleNames.RoomSpotType)
+        .InMesh(SampleNames.PlayMeshName)
+        .Request(allocated.Settings)                    // 새 Spot의 OnCreateAsync로 전달된다.
+        .Async(cancellationToken);
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 User·Instance Spot은 factory 등록에서 relocation policy도 함께 지정한다. 생략할 수
 없으며, 무엇을 선택하는지는 [Actor & Spot 호스팅](07-actor-spot.ko.md)이 다룬다.
@@ -83,22 +117,41 @@ User·Instance Spot은 factory 등록에서 relocation policy도 함께 지정�
 Spot을 실행할 MeshNode는 Object Server role과 factory를 등록한다. 고정 `NodeRid`를 사용해 배치 대상을
 선택하지 않는다. 같은 stable type을 등록한 `Serving` node가 배치 후보가 된다.
 
-```csharp
-var mesh = options.AddRouteMesh("play")
-    .Listen("tcp://0.0.0.0:9001")
-    .SetRoutingIdPrefix("play");
+=== "C#/.NET"
 
-mesh.Objects().Server()
-    .AddEntrySpot<PlayEntrySpot>() // Actor가 처음 배치될 Entry Spot을 등록한다.
-    .AddSpotFactory<GameRoom>(
-        "game-room",
-        factory => factory
-            .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
-            .DisableRelocation())
-    .AddInstanceSpotFactory<Matchmaker>(
-        "matchmaker",
-        factory => factory.RecreateOnRelocation());
-```
+    ```csharp
+    var mesh = options.AddRouteMesh("play")
+        .Listen("tcp://0.0.0.0:9001")
+        .SetRoutingIdPrefix("play");
+
+    mesh.Objects().Server()
+        .AddEntrySpot<PlayEntrySpot>() // Actor가 처음 배치될 Entry Spot을 등록한다.
+        .AddSpotFactory<GameRoom>(
+            "game-room",
+            factory => factory
+                .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+                .DisableRelocation())
+        .AddInstanceSpotFactory<Matchmaker>(
+            "matchmaker",
+            factory => factory.RecreateOnRelocation());
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 ### 2.1 실행 모델 — 동시 실행 범위
 
@@ -173,52 +226,109 @@ ID로 쓸 Spot을 확보하는 호출**이다. 어느 쪽을 쓸지는 "이미 �
 자리에 쓴다. 결과는 만들어졌거나(`Created`) 생성 callback이 거절했거나(`Rejected`) 둘 중
 하나다.
 
-```csharp
-ZLinkSpotCreateResult created = await spots
-    .Create("game-room") // stable type으로 factory와 배치 후보를 선택한다.
-    .InMesh("play")
-    .Request(new CreateGame("ranked")) // OnCreateAsync에 전달할 생성 요청이다.
-    .Timeout(TimeSpan.FromSeconds(10))
-    .Async(cancellationToken);
+=== "C#/.NET"
 
-if (created.State == ZLinkSpotCreateState.Rejected)
-    throw new InvalidOperationException("Game creation was rejected.");
+    ```csharp
+    ZLinkSpotCreateResult created = await spots
+        .Create("game-room") // stable type으로 factory와 배치 후보를 선택한다.
+        .InMesh("play")
+        .Request(new CreateGame("ranked")) // OnCreateAsync에 전달할 생성 요청이다.
+        .Timeout(TimeSpan.FromSeconds(10))
+        .Async(cancellationToken);
 
-string spotId = created.Spot.SpotId; // 이후 메시징에는 전역 SpotId만 사용한다.
-```
+    if (created.State == ZLinkSpotCreateState.Rejected)
+        throw new InvalidOperationException("Game creation was rejected.");
+
+    string spotId = created.Spot.SpotId; // 이후 메시징에는 전역 SpotId만 사용한다.
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 **`GetOrCreate` — 그 ID를 쓸 수 있으면 되는 때.** "있으면 그걸 쓰고 없으면 만든다"가 필요한
 자리에 쓴다. 이미 있었는지(`Existing`)와 방금 만들었는지(`Created`)는 결과로 구분할 수 있고,
 둘 다 바로 쓸 수 있는 `SpotRef`를 준다. 여러 caller가 같은 ID를 동시에 요청해도 Framework가
 생성 시도를 한 번만 실행하므로 application이 경쟁을 직접 막지 않는다.
 
-```csharp
-ZLinkSpotCreateResult result = await spots
-    .GetOrCreate("lobby-eu-1", "lobby")
-    .InMesh("play")
-    .Request(new CreateLobby("eu")) // Existing으로 끝나면 이 요청은 전달되지 않는다.
-    .Async(cancellationToken);
+=== "C#/.NET"
 
-switch (result.State)
-{
-    case ZLinkSpotCreateState.Existing: // 이미 있던 lobby를 그대로 쓴다.
-    case ZLinkSpotCreateState.Created:  // 이 호출이 만들었다.
-        break;
-    case ZLinkSpotCreateState.Rejected: // 생성 callback이 거절해 Ready Spot이 없다.
-        throw new InvalidOperationException("Lobby creation was rejected.");
-}
-```
+    ```csharp
+    ZLinkSpotCreateResult result = await spots
+        .GetOrCreate("lobby-eu-1", "lobby")
+        .InMesh("play")
+        .Request(new CreateLobby("eu")) // Existing으로 끝나면 이 요청은 전달되지 않는다.
+        .Async(cancellationToken);
+
+    switch (result.State)
+    {
+        case ZLinkSpotCreateState.Existing: // 이미 있던 lobby를 그대로 쓴다.
+        case ZLinkSpotCreateState.Created:  // 이 호출이 만들었다.
+            break;
+        case ZLinkSpotCreateState.Rejected: // 생성 callback이 거절해 Ready Spot이 없다.
+            throw new InvalidOperationException("Lobby creation was rejected.");
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 `SpotRef`는 조회 시점의 exact incarnation이다. 일반 메시징에는 사용하지 않는다. 같은 incarnation을
 닫을 때만 사용한다.
 
-```csharp
-SpotRef? current = await spots.FindAsync("lobby-eu-1", cancellationToken);
-if (current is { } exact)
-{
-    await spots.CloseAsync(exact, cancellationToken); // 다른 generation을 실수로 닫지 않는다.
-}
-```
+=== "C#/.NET"
+
+    ```csharp
+    SpotRef? current = await spots.FindAsync("lobby-eu-1", cancellationToken);
+    if (current is { } exact)
+    {
+        await spots.CloseAsync(exact, cancellationToken); // 다른 generation을 실수로 닫지 않는다.
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 ## 4. Spot 작성
 
@@ -251,105 +361,143 @@ Framework는 Spot activation에서 handler를 한 번 만들고 Spot이 닫히�
 | member Actor 앞 one-way packet | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | `AddActorPacket<THandler, TActor>()` |
 | member Actor 앞 request | `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | `AddActorPacket<THandler, TActor>()` |
 
-```csharp
-// Spot 앞 packet — 첫 인자가 대상 Spot instance다.
-public sealed class ChatHandler : IZLinkSpotPacketHandler<GameRoom, Chat>
-{
-    public ValueTask HandleAsync(
-        GameRoom spot,
-        Chat message,
-        CancellationToken cancellationToken)
-    {
-        spot.AppendChat(message.Text);  // Spot 상태를 직접 만진다. 락은 필요 없다.
-        return ValueTask.CompletedTask;
-    }
-}
+=== "C#/.NET"
 
-// Spot 앞 request — 반환값이 reply다.
-public sealed class GetRoomStateHandler
-    : IZLinkSpotRequestHandler<GameRoom, GetRoomState, RoomState>
-{
-    public ValueTask<RoomState> HandleAsync(
-        GameRoom spot,
-        GetRoomState request,
-        CancellationToken cancellationToken)
-        => ValueTask.FromResult(spot.Snapshot());
-}
-
-// 구독 이벤트 — AddSubscribe로 등록한 channel·topic으로 들어온다.
-public sealed class ScoreHandler : IZLinkSpotSubscriptionHandler<GameRoom, ScoreChanged>
-{
-    public ValueTask HandleAsync(
-        GameRoom spot,
-        ScoreChanged @event,
-        CancellationToken cancellationToken)
+    ```csharp
+    // Spot 앞 packet — 첫 인자가 대상 Spot instance다.
+    public sealed class ChatHandler : IZLinkSpotPacketHandler<GameRoom, Chat>
     {
-        spot.ApplyScore(@event);
-        return ValueTask.CompletedTask;
+        public ValueTask HandleAsync(
+            GameRoom spot,
+            Chat message,
+            CancellationToken cancellationToken)
+        {
+            spot.AppendChat(message.Text);  // Spot 상태를 직접 만진다. 락은 필요 없다.
+            return ValueTask.CompletedTask;
+        }
     }
-}
 
-// member Actor 앞 packet — Spot과 Actor를 함께 받는다.
-public sealed class PlaceMarkHandler
-    : IZLinkSpotActorSendHandler<GameRoom, PlayerActor, PlaceMark>
-{
-    public ValueTask HandleAsync(
-        GameRoom spot,
-        PlayerActor actor,              // 이 메시지를 받은 Actor다.
-        IZLinkMessageContext messageContext,
-        PlaceMark message,
-        CancellationToken cancellationToken)
+    // Spot 앞 request — 반환값이 reply다.
+    public sealed class GetRoomStateHandler
+        : IZLinkSpotRequestHandler<GameRoom, GetRoomState, RoomState>
     {
-        spot.Place(actor.ActorId, message.Cell);
-        return ValueTask.CompletedTask;
+        public ValueTask<RoomState> HandleAsync(
+            GameRoom spot,
+            GetRoomState request,
+            CancellationToken cancellationToken)
+            => ValueTask.FromResult(spot.Snapshot());
     }
-}
-```
+
+    // 구독 이벤트 — AddSubscribe로 등록한 channel·topic으로 들어온다.
+    public sealed class ScoreHandler : IZLinkSpotSubscriptionHandler<GameRoom, ScoreChanged>
+    {
+        public ValueTask HandleAsync(
+            GameRoom spot,
+            ScoreChanged @event,
+            CancellationToken cancellationToken)
+        {
+            spot.ApplyScore(@event);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    // member Actor 앞 packet — Spot과 Actor를 함께 받는다.
+    public sealed class PlaceMarkHandler
+        : IZLinkSpotActorSendHandler<GameRoom, PlayerActor, PlaceMark>
+    {
+        public ValueTask HandleAsync(
+            GameRoom spot,
+            PlayerActor actor,              // 이 메시지를 받은 Actor다.
+            IZLinkMessageContext messageContext,
+            PlaceMark message,
+            CancellationToken cancellationToken)
+        {
+            spot.Place(actor.ActorId, message.Cell);
+            return ValueTask.CompletedTask;
+        }
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 Actor 앞 request는 `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>`이며
 같은 인자에 반환값이 reply라는 점만 다르다.
 
 `Configure()`에서 handler를 등록하고 lifecycle callback에서 초기화와 정리를 수행한다.
 
-```csharp
-public sealed class GameRoom(IZLinkSpotContext context) : IZLinkSpot
-{
-    public IZLinkSpotContext Context { get; } = context;
+=== "C#/.NET"
 
-    public void Configure()
+    ```csharp
+    public sealed class GameRoom(IZLinkSpotContext context) : IZLinkSpot
     {
-        Context.Handlers.AddPacket<ChatHandler>(); // Spot send handler를 등록한다.
-        Context.Handlers.AddSubscribe<ScoreHandler>(
-            "game-events",
-            "score.changed"); // Logical Multicast 구독을 등록한다.
-    }
+        public IZLinkSpotContext Context { get; } = context;
 
-    public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        ZLinkMessage request,
-        CancellationToken cancellationToken)
-    {
-        var create = request.Decode<CreateGame>();
-        return ValueTask.FromResult(
-            create.Mode is "ranked" or "casual"
-                ? ZLinkSpotCreateResponse.Accept(new GameCreated(create.Mode))
-                : ZLinkSpotCreateResponse.Reject(new InvalidMode(create.Mode)));
-    }
+        public void Configure()
+        {
+            Context.Handlers.AddPacket<ChatHandler>(); // Spot send handler를 등록한다.
+            Context.Handlers.AddSubscribe<ScoreHandler>(
+                "game-events",
+                "score.changed"); // Logical Multicast 구독을 등록한다.
+        }
 
-    public ValueTask OnInitializeAsync(CancellationToken cancellationToken)
-    {
-        // 생성 승인 뒤 메시지를 받기 전에 필요한 준비를 끝낸다.
-        return ValueTask.CompletedTask;
-    }
+        public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+            ZLinkMessage request,
+            CancellationToken cancellationToken)
+        {
+            var create = request.Decode<CreateGame>();
+            return ValueTask.FromResult(
+                create.Mode is "ranked" or "casual"
+                    ? ZLinkSpotCreateResponse.Accept(new GameCreated(create.Mode))
+                    : ZLinkSpotCreateResponse.Reject(new InvalidMode(create.Mode)));
+        }
 
-    public ValueTask OnClosingAsync(
-        ZLinkSpotClosingContext closing,
-        CancellationToken cleanupCancellationToken)
-    {
-        // Deadline까지 application resource를 정리한다.
-        return ValueTask.CompletedTask;
+        public ValueTask OnInitializeAsync(CancellationToken cancellationToken)
+        {
+            // 생성 승인 뒤 메시지를 받기 전에 필요한 준비를 끝낸다.
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnClosingAsync(
+            ZLinkSpotClosingContext closing,
+            CancellationToken cleanupCancellationToken)
+        {
+            // Deadline까지 application resource를 정리한다.
+            return ValueTask.CompletedTask;
+        }
     }
-}
-```
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 `OnClosingAsync`의 reason은 explicit close, host shutdown, relocation out을 구분한다.
 Framework는 `Deadline`이 끝날 때 cleanup token을 취소한다.
@@ -382,44 +530,82 @@ Handler type을 `Transient`나 `Singleton`으로 등록해도 Framework가 정�
 handler가 있는 서비스에 요청하고, Spot은 in-memory 상태와 실행 순서만 소유한다. Channel
 handler는 dispatch마다 scope를 가지므로 ORM을 생성자로 받아도 된다.
 
-```csharp
-public sealed class SaveScoreHandler(IZLinkSpotContext context)
-    : IZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply>
-{
-    public async ValueTask<SaveScoreReply> HandleAsync(
-        GameRoom spot, SaveScore request, CancellationToken cancellationToken)
-    {
-        // 저장은 그 일을 담당하는 channel의 handler에 맡긴다.
-        var saved = await spot.Context.Outbound
-            .RequestToChannel("score", new PersistScore(spot.Context.SpotId, request.Value))
-            .Async<PersistScoreReply>(cancellationToken);
+=== "C#/.NET"
 
-        return new SaveScoreReply(saved.Version);
+    ```csharp
+    public sealed class SaveScoreHandler(IZLinkSpotContext context)
+        : IZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply>
+    {
+        public async ValueTask<SaveScoreReply> HandleAsync(
+            GameRoom spot, SaveScore request, CancellationToken cancellationToken)
+        {
+            // 저장은 그 일을 담당하는 channel의 handler에 맡긴다.
+            var saved = await spot.Context.Outbound
+                .RequestToChannel("score", new PersistScore(spot.Context.SpotId, request.Value))
+                .Async<PersistScoreReply>(cancellationToken);
+
+            return new SaveScoreReply(saved.Version);
+        }
     }
-}
-```
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 **Spot 안에서 직접 써야 한다면 `IServiceScopeFactory`로 그 호출에만 사는 scope를 연다.**
 생성자 주입 대신 factory를 받고, 사용하는 자리에서 scope를 만들고 닫는다.
 
-```csharp
-public sealed class SaveScoreHandler(IServiceScopeFactory scopeFactory)
-    : IZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply>
-{
-    public async ValueTask<SaveScoreReply> HandleAsync(
-        GameRoom spot, SaveScore request, CancellationToken cancellationToken)
+=== "C#/.NET"
+
+    ```csharp
+    public sealed class SaveScoreHandler(IServiceScopeFactory scopeFactory)
+        : IZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply>
     {
-        // 이 호출 동안만 유지되는 scope다. 끝나면 context도 함께 정리된다.
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        public async ValueTask<SaveScoreReply> HandleAsync(
+            GameRoom spot, SaveScore request, CancellationToken cancellationToken)
+        {
+            // 이 호출 동안만 유지되는 scope다. 끝나면 context도 함께 정리된다.
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        db.Scores.Add(new ScoreRow(spot.Context.SpotId, request.Value));
-        await db.SaveChangesAsync(cancellationToken);
+            db.Scores.Add(new ScoreRow(spot.Context.SpotId, request.Value));
+            await db.SaveChangesAsync(cancellationToken);
 
-        return new SaveScoreReply(request.Value);
+            return new SaveScoreReply(request.Value);
+        }
     }
-}
-```
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 Spot 수명 동안 유지해도 되는 의존성(설정, 싱글톤 client, 순수 계산 서비스)은 생성자로
 받아도 된다. 판단 기준은 "이 의존성을 Spot이 닫힐 때까지 붙잡고 있어도 되는가"다.
@@ -433,36 +619,74 @@ Spot 수명 동안 유지해도 되는 의존성(설정, 싱글톤 client, 순�
 
 일반 User Spot 메시징은 SpotId만 필요하다. 위치와 generation은 Framework가 현재 authority에서 찾는다.
 
-```csharp
-await spotClient
-    .SendToSpot("room-42", new Chat("hello"))
-    .Async(cancellationToken);
+=== "C#/.NET"
 
-RoomState state = await spotClient
-    .RequestToSpot("room-42", new GetRoomState())
-    .Timeout(TimeSpan.FromSeconds(3))
-    .Async<RoomState>(cancellationToken);
-```
+    ```csharp
+    await spotClient
+        .SendToSpot("room-42", new Chat("hello"))
+        .Async(cancellationToken);
+
+    RoomState state = await spotClient
+        .RequestToSpot("room-42", new GetRoomState())
+        .Timeout(TimeSpan.FromSeconds(3))
+        .Async<RoomState>(cancellationToken);
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 Instance Spot은 같은 호출 표면에 intent를 추가한다. `InstanceSpot(...)`의 인자는 **어느
 factory로 준비할지 고르는 stable type**이다. 그 mesh에 Instance Spot type이 여럿 등록되어
 있으면 반드시 명시하고, 하나뿐이면 생략할 수 있다.
 
-```csharp
-// type이 여럿 등록된 mesh — 어느 factory로 만들지 stable type으로 지정한다.
-MatchResult match = await spotClient
-    .RequestToSpot("bronze", new FindMatch(playerId))
-    .InstanceSpot("matchmaker")   // 대상이 없으면 이 stable type의 factory로 준비한다.
-    .InMesh("matchmaking")        // 처음 배치할 mesh를 고른다.
-    .Async<MatchResult>(cancellationToken);
+=== "C#/.NET"
 
-// type이 하나만 등록된 mesh — 생략하면 Framework가 그 유일한 type을 고른다.
-MatchResult single = await spotClient
-    .RequestToSpot("bronze", new FindMatch(playerId))
-    .InstanceSpot()               // 대상 node에 등록된 유일한 type으로 준비한다.
-    .InMesh("matchmaking")
-    .Async<MatchResult>(cancellationToken);
-```
+    ```csharp
+    // type이 여럿 등록된 mesh — 어느 factory로 만들지 stable type으로 지정한다.
+    MatchResult match = await spotClient
+        .RequestToSpot("bronze", new FindMatch(playerId))
+        .InstanceSpot("matchmaker")   // 대상이 없으면 이 stable type의 factory로 준비한다.
+        .InMesh("matchmaking")        // 처음 배치할 mesh를 고른다.
+        .Async<MatchResult>(cancellationToken);
+
+    // type이 하나만 등록된 mesh — 생략하면 Framework가 그 유일한 type을 고른다.
+    MatchResult single = await spotClient
+        .RequestToSpot("bronze", new FindMatch(playerId))
+        .InstanceSpot()               // 대상 node에 등록된 유일한 type으로 준비한다.
+        .InMesh("matchmaking")
+        .Async<MatchResult>(cancellationToken);
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 `InstanceSpot(...)`을 붙이지 않은 호출은 이미 실행 중인 Spot만 찾고, 없으면 생성하지
 않고 실패한다. `FindAsync`도 생성을 시작하지 않는다. 즉 cold activation은 호출하는
@@ -482,34 +706,72 @@ Timer는 이름·주기·handler를 Spot context에 등록한다. tick은 그 Sp
 handler 안에서 Spot 상태를 그대로 만질 수 있다. 등록은 `IZLinkTimer`를 돌려주며, 이것으로
 나중에 취소한다.
 
-```csharp
-// Spot 안에서 — 반환된 IZLinkTimer를 필드에 보관해 두었다가 취소에 쓴다.
-_gameTick = await Context.AddTimer<GameTickHandler>(
-    "game-tick",                 // 같은 Spot 안에서 유일한 이름이다.
-    TimeSpan.FromSeconds(1),     // 주기. 0 이하이면 ZLinkConfigurationException이다.
-    new ZLinkTimerOptions
-    {
-        OverrunPolicy = ZLinkTimerOverrunPolicy.SkipLateTicks,
-        MaxCatchUpTicks = 1,
-        StopOnUnhandledException = false
-    },
-    cancellationToken: cancellationToken);
+=== "C#/.NET"
 
-await _gameTick.CancelAsync();   // 더 이상 필요 없을 때. Spot이 닫히면 Framework가 함께 정리한다.
-```
+    ```csharp
+    // Spot 안에서 — 반환된 IZLinkTimer를 필드에 보관해 두었다가 취소에 쓴다.
+    _gameTick = await Context.AddTimer<GameTickHandler>(
+        "game-tick",                 // 같은 Spot 안에서 유일한 이름이다.
+        TimeSpan.FromSeconds(1),     // 주기. 0 이하이면 ZLinkConfigurationException이다.
+        new ZLinkTimerOptions
+        {
+            OverrunPolicy = ZLinkTimerOverrunPolicy.SkipLateTicks,
+            MaxCatchUpTicks = 1,
+            StopOnUnhandledException = false
+        },
+        cancellationToken: cancellationToken);
+
+    await _gameTick.CancelAsync();   // 더 이상 필요 없을 때. Spot이 닫히면 Framework가 함께 정리한다.
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 Handler는 Spot과 tick 정보를 받는 별도 class다.
 
-```csharp
-public sealed class GameTickHandler : IZLinkSpotTimerHandler<GameRoom>
-{
-    public ValueTask HandleAsync(
-        GameRoom spot,
-        ZLinkTimerTick tick,
-        CancellationToken cancellationToken)
-        => spot.TickAsync(cancellationToken);
-}
-```
+=== "C#/.NET"
+
+    ```csharp
+    public sealed class GameTickHandler : IZLinkSpotTimerHandler<GameRoom>
+    {
+        public ValueTask HandleAsync(
+            GameRoom spot,
+            ZLinkTimerTick tick,
+            CancellationToken cancellationToken)
+            => spot.TickAsync(cancellationToken);
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 #### 예정 시각을 지난 tick의 처리 정책
 
@@ -538,21 +800,40 @@ Spot queue에 작업이 쌓이거나 handler 실행이 길어지면 tick이 예�
 | `SkippedTicks` | 이번 tick 직전에 건너뛴 tick 수 |
 | `Period` | 등록한 주기 |
 
-```csharp
-public ValueTask HandleAsync(GameRoom spot, ZLinkTimerTick tick, CancellationToken ct)
-{
-    if (tick.Delay > TimeSpan.FromMilliseconds(500))
-        spot.ReportLag(tick.Delay, tick.SkippedTicks); // 지연이 크면 부하를 보고한다.
+=== "C#/.NET"
 
-    return spot.TickAsync(ct);
-}
-```
+    ```csharp
+    public ValueTask HandleAsync(GameRoom spot, ZLinkTimerTick tick, CancellationToken ct)
+    {
+        if (tick.Delay > TimeSpan.FromMilliseconds(500))
+            spot.ReportLag(tick.Delay, tick.SkippedTicks); // 지연이 크면 부하를 보고한다.
+
+        return spot.TickAsync(ct);
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 #### handler가 예외를 던졌을 때
 
 `StopOnUnhandledException`이 기본값 `false`면 그 tick만 실패로 끝나고 timer는 계속 돈다. `true`로
 두면 그 timer가 멈춘다 — 같은 실패가 매 주기 반복되는 상황을 막아야 할 때 쓴다. 어느 쪽이든
-실패는 진단으로 기록되므로 로그·trace에서 확인한다([11-monitoring](11-monitoring.ko.md) §3).
+실패는 진단으로 기록되므로 로그·trace에서 확인한다(`11. Monitoring` 장 §3).
 
 #### relocation과 timer
 
@@ -573,50 +854,89 @@ Spot의 실행 queue는 한 번에 하나만 실행한다. 무거운 계산이�
 | 넘기는 것 | `Func<CancellationToken, TResult>` — 동기 계산 | `Func<CancellationToken, ValueTask<TResult>>` — 비동기 호출 |
 | 쓰는 자리 | 직렬화·압축·경로 탐색·이미지 처리처럼 CPU를 계속 쓰는 작업 | DB·파일·HTTP처럼 응답을 기다리는 작업 |
 
-```csharp
-// CPU worker — 동기 계산을 worker 스레드에서 실행한다.
-public sealed class BuildSnapshotHandler
-    : IZLinkSpotRequestHandler<GameRoom, BuildSnapshot, SnapshotReply>
-{
-    public async ValueTask<SnapshotReply> HandleAsync(
-        GameRoom spot,
-        BuildSnapshot request,
-        CancellationToken cancellationToken)
+=== "C#/.NET"
+
+    ```csharp
+    // CPU worker — 동기 계산을 worker 스레드에서 실행한다.
+    public sealed class BuildSnapshotHandler
+        : IZLinkSpotRequestHandler<GameRoom, BuildSnapshot, SnapshotReply>
     {
-        var board = spot.CopyBoard();          // Spot 상태는 turn 안에서 먼저 복사해 둔다.
+        public async ValueTask<SnapshotReply> HandleAsync(
+            GameRoom spot,
+            BuildSnapshot request,
+            CancellationToken cancellationToken)
+        {
+            var board = spot.CopyBoard();          // Spot 상태는 turn 안에서 먼저 복사해 둔다.
 
-        var packed = await spot.Context
-            .RunCpuWorker(ct =>
-            {
-                ct.ThrowIfCancellationRequested();
-                return SnapshotCodec.Compress(board); // 무거운 동기 계산.
-            })
-            .Yield(cancellationToken);
+            var packed = await spot.Context
+                .RunCpuWorker(ct =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    return SnapshotCodec.Compress(board); // 무거운 동기 계산.
+                })
+                .Yield(cancellationToken);
 
-        return new SnapshotReply(packed);
+            return new SnapshotReply(packed);
+        }
     }
-}
-```
+    ```
 
-```csharp
-// I/O worker — 외부 저장소 호출을 worker에서 실행한다.
-public sealed class SaveScoreHandler
-    : IZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply>
-{
-    public async ValueTask<SaveScoreReply> HandleAsync(
-        GameRoom spot,
-        SaveScore request,
-        CancellationToken cancellationToken)
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
+I/O를 기다리는 작업은 `RunIoWorker`로 넘긴다.
+
+=== "C#/.NET"
+
+    ```csharp
+    // I/O worker — 외부 저장소 호출을 worker에서 실행한다.
+    public sealed class SaveScoreHandler
+        : IZLinkSpotRequestHandler<GameRoom, SaveScore, SaveScoreReply>
     {
-        var version = await spot.Context
-            .RunIoWorker(async ct => await _store.SaveAsync(request.Value, ct))
-            .Timeout(TimeSpan.FromSeconds(3))  // 이 worker 호출의 상한.
-            .Yield(cancellationToken);
+        public async ValueTask<SaveScoreReply> HandleAsync(
+            GameRoom spot,
+            SaveScore request,
+            CancellationToken cancellationToken)
+        {
+            var version = await spot.Context
+                .RunIoWorker(async ct => await _store.SaveAsync(request.Value, ct))
+                .Timeout(TimeSpan.FromSeconds(3))  // 이 worker 호출의 상한.
+                .Yield(cancellationToken);
 
-        return new SaveScoreReply(version);
+            return new SaveScoreReply(version);
+        }
     }
-}
-```
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 **결과를 받는 세 가지 종결자.**
 
@@ -632,7 +952,7 @@ public sealed class SaveScoreHandler
 공유 Spot turn이 없어 반납할 실행권 자체가 없다.
 
 Worker 스레드 풀 자체(최소·최대 스레드, 유휴 시간, 대기열 길이)는 루트 옵션의 `Worker`에서
-정한다([16-options](16-options.ko.md) §2).
+정한다(`16. Options` 장 §2).
 
 ## 7. Relocation을 시작해도 되는 시점 알리기
 
@@ -658,53 +978,110 @@ Framework는 turn 경계는 알지만 application이 정의한 일관성 단위�
 `ApplicationSignaled`를 등록하면 Framework는 `CaptureAsync`를 스스로 호출하지 않고 application이
 신호한 시점까지 대기한다.
 
-```csharp
-mesh.Objects().Server()
-    .AddSpotFactory<GameRoom>(
-        "game-room",
-        factory => factory
-            .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide) // 이 모드에서만 쓸 수 있다.
-            .RelocationReadiness(
-                ZLinkSpotRelocationReadinessMode.ApplicationSignaled)
-            .PreserveStateWith<GameRoomRelocationAdapter>());
-```
+=== "C#/.NET"
+
+    ```csharp
+    mesh.Objects().Server()
+        .AddSpotFactory<GameRoom>(
+            "game-room",
+            factory => factory
+                .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide) // 이 모드에서만 쓸 수 있다.
+                .RelocationReadiness(
+                    ZLinkSpotRelocationReadinessMode.ApplicationSignaled)
+                .PreserveStateWith<GameRoomRelocationAdapter>());
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 Application은 상태가 일관된 turn에서 `Defer()`를 호출한다. 이 호출은 relocation을 그 자리에서
 수행하지 않는다. 현재 turn이 끝난 뒤 대기 중인 relocation이 있으면 Framework가 그 지점에서
 `CaptureAsync`를 호출한다.
 
-```csharp
-public sealed class RoundTickHandler : IZLinkSpotTimerHandler<GameRoom>
-{
-    public ValueTask HandleAsync(
-        GameRoom spot,
-        ZLinkTimerTick tick,
-        CancellationToken cancellationToken)
-    {
-        if (!spot.TryFinishRound())      // 라운드 진행 중이면 신호하지 않는다.
-            return ValueTask.CompletedTask;
+=== "C#/.NET"
 
-        // 라운드가 끝나 상태가 정산된 지점이다. 이 turn의 마지막 Framework 호출이어야 한다.
-        spot.Context.RelocationReady().Defer();
-        return ValueTask.CompletedTask;
+    ```csharp
+    public sealed class RoundTickHandler : IZLinkSpotTimerHandler<GameRoom>
+    {
+        public ValueTask HandleAsync(
+            GameRoom spot,
+            ZLinkTimerTick tick,
+            CancellationToken cancellationToken)
+        {
+            if (!spot.TryFinishRound())      // 라운드 진행 중이면 신호하지 않는다.
+                return ValueTask.CompletedTask;
+
+            // 라운드가 끝나 상태가 정산된 지점이다. 이 turn의 마지막 Framework 호출이어야 한다.
+            spot.Context.RelocationReady().Defer();
+            return ValueTask.CompletedTask;
+        }
     }
-}
-```
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 신호한 뒤 실제로 어떻게 됐는지는 Spot의 `OnRelocationReadyCompletedAsync`로 돌아온다. 이
 callback은 **두 경우 모두** 호출되므로, 다음 라운드를 여는 코드를 여기 한 곳에 둔다.
 
-```csharp
-public ValueTask OnRelocationReadyCompletedAsync(
-    ZLinkSpotRelocationReadyCompletion completion,
-    CancellationToken cancellationToken)
-{
-    // Continued — 대기 중인 relocation이 없었거나 commit 전에 중단됐다. 이 node에서 계속한다.
-    // Relocated — 이동이 끝났고, 이 callback은 target node의 새 instance에서 실행된다.
-    StartNextRound(completion.Outcome == ZLinkSpotRelocationReadyOutcome.Relocated);
-    return ValueTask.CompletedTask;
-}
-```
+=== "C#/.NET"
+
+    ```csharp
+    public ValueTask OnRelocationReadyCompletedAsync(
+        ZLinkSpotRelocationReadyCompletion completion,
+        CancellationToken cancellationToken)
+    {
+        // Continued — 대기 중인 relocation이 없었거나 commit 전에 중단됐다. 이 node에서 계속한다.
+        // Relocated — 이동이 끝났고, 이 callback은 target node의 새 instance에서 실행된다.
+        StartNextRound(completion.Outcome == ZLinkSpotRelocationReadyOutcome.Relocated);
+        return ValueTask.CompletedTask;
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 다음 규칙을 지킨다.
 
@@ -716,12 +1093,7 @@ public ValueTask OnRelocationReadyCompletedAsync(
 
 ## 8. 관련 문서
 
-- 이 챕터 계약의 실행 검증 예문: [13-interface-catalog](13-interface-catalog.ko.md) §3 — 검증 클래스 `SpotContracts`
+- 이 챕터 계약의 실행 검증 예문: `13. Interface 카탈로그` 장 §3 — 검증 클래스 `SpotContracts`
 - Actor 생성과 Spot 이동: [Actor & Spot 호스팅](07-actor-spot.ko.md)
 - Session binding: [Session Actor Dispatch](08-actor-session.ko.md)
 - Location Store 설정: [Location](10-location.ko.md)
-
----
-<!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Channel Messaging — request · send · pub/sub](05-channel-messaging.ko.md) | [다음: Actor와 Spot](07-actor-spot.ko.md)
-<!-- framework-adapter-nav:bottom:end -->

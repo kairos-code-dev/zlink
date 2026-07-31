@@ -1,11 +1,7 @@
-<!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Backpressure — 처리보다 도착이 빠를 때](04-backpressure.ko.md) | [다음: SPOT — room · stage · zone](06-spot.ko.md)
-<!-- framework-adapter-nav:end -->
-
 # 5. Channel Messaging — request · send · pub/sub
 
-> 정식 계약은 [Channel messaging exact interface](../../../common/spec/server/languages/dotnet/interfaces/04-channel-messaging.ko.md)와
-> [Topology exact interface](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)가 다룬다. 이
+> 정식 계약은 [언어별 channel messaging 공개 계약](../../../common/spec/server/languages/README.ko.md)와
+> [언어별 topology 공개 계약](../../../common/spec/server/languages/README.ko.md)가 다룬다. 이
 > 챕터는 그 표면을 실제로 어떻게 등록하고 호출하는지 사용법 중심으로 다룬다.
 
 channel messaging은 framework의 가장 기본 축이다. 다음 상호작용을 다룬다.
@@ -53,28 +49,47 @@ application 코드에 남는 것은 endpoint나 프록시 설정이 아니라 **
 
 예를 들어 주문 서비스라면, gRPC `rpc PlaceOrder(...)`가 다음과 같이 바뀐다.
 
-```csharp
-// 서버: handler 하나 (gRPC service 구현 대신)
-public sealed class PlaceOrderHandler
-    : IZLinkRequestHandler<PlaceOrder, OrderPlaced>
-{
-    private readonly IOrderStore _orders;
-    public PlaceOrderHandler(IOrderStore orders) => _orders = orders;
+=== "C#/.NET"
 
-    public async ValueTask<OrderPlaced> HandleAsync(
-        PlaceOrder request, IZLinkMessageContext context, CancellationToken ct)
+    ```csharp
+    // 서버: handler 하나 (gRPC service 구현 대신)
+    public sealed class PlaceOrderHandler
+        : IZLinkRequestHandler<PlaceOrder, OrderPlaced>
     {
-        await _orders.SaveAsync(request, ct);
-        return new OrderPlaced(request.OrderId);
-    }
-}
+        private readonly IOrderStore _orders;
+        public PlaceOrderHandler(IOrderStore orders) => _orders = orders;
 
-// 클라이언트: gRPC stub 대신 IZLinkRouteClient 주입
-var placed = await client
-    .RequestToChannel("orders",                 // 대상은 ChannelName 하나. 주소도 MeshName도 넣지 않는다.
-        new PlaceOrder("order-1042", "acct-77", 18742))
-    .Async<OrderPlaced>(ct);
-```
+        public async ValueTask<OrderPlaced> HandleAsync(
+            PlaceOrder request, IZLinkMessageContext context, CancellationToken ct)
+        {
+            await _orders.SaveAsync(request, ct);
+            return new OrderPlaced(request.OrderId);
+        }
+    }
+
+    // 클라이언트: gRPC stub 대신 IZLinkRouteClient 주입
+    var placed = await client
+        .RequestToChannel("orders",                 // 대상은 ChannelName 하나. 주소도 MeshName도 넣지 않는다.
+            new PlaceOrder("order-1042", "acct-77", 18742))
+        .Async<OrderPlaced>(ct);
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 > 배치 구조·호출 경로·인프라 대응을 gRPC 스택과 나란히 놓고 보려면
 > [17-alternative](17-alternative.ko.md)가 그 비교를 다룬다. 이 챕터는 그 판단이 끝난
@@ -162,7 +177,7 @@ channel에 모두 참여해도 각 channel runtime이 Z와의 연결을 따로 �
 방향도 고정이라 Server는 Client가 시작한 요청에만 응답할 수 있다. Server가 먼저 알림을
 보내야 한다면 ClientServer가 아니라 RouteMesh를 사용한다. TicTacToe에서 로그인 인증
 (`tictactoe.api` ClientServer channel)을 Game Spot 생성(MeshNode의 Object role)과
-분리하는 이유다([02-getting-started §7](02-getting-started.ko.md)).
+분리하는 이유다(`02. Getting Started` 장 §7).
 
 ### 1.3 pub/sub의 두 갈래
 
@@ -173,19 +188,38 @@ channel에 모두 참여해도 각 channel runtime이 Z와의 연결을 따로 �
 mesh 소켓을 그대로 사용하므로 별도 소켓이 없고,
 받는 쪽은 그 channel에서 같은 topic을 구독한 Spot으로 한정된다.
 
-```csharp
-// 발행 — TicTacToeGame spot 안에서.
-await Context.Outbound
-    .Publish(SampleTopics.PlayerMilestoneChannel,   // 전달 범위를 정하는 ChannelName.
-             SampleTopics.PlayerMilestone,          // 그 안에서 받을 Spot을 고르는 topic.
-             milestoneEvent)
-    .Async(cancellationToken);
+=== "C#/.NET"
 
-// 구독 — PlayEntrySpot이 시작할 때.
-Context.Handlers.AddSubscribe<PlayerWinMilestoneEventHandler>(
-    SampleTopics.PlayerMilestoneChannel,            // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
-    SampleTopics.PlayerMilestone);
-```
+    ```csharp
+    // 발행 — TicTacToeGame spot 안에서.
+    await Context.Outbound
+        .Publish(SampleTopics.PlayerMilestoneChannel,   // 전달 범위를 정하는 ChannelName.
+                 SampleTopics.PlayerMilestone,          // 그 안에서 받을 Spot을 고르는 topic.
+                 milestoneEvent)
+        .Async(cancellationToken);
+
+    // 구독 — PlayEntrySpot이 시작할 때.
+    Context.Handlers.AddSubscribe<PlayerWinMilestoneEventHandler>(
+        SampleTopics.PlayerMilestoneChannel,            // 발행 쪽과 같은 ChannelName·topic이어야 받는다.
+        SampleTopics.PlayerMilestone);
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 Spot 밖에서 발행해야 하면 `IZLinkSpotPublisherClient`를 주입받아 같은 방식으로 보낸다.
 
@@ -227,58 +261,77 @@ channel handler는 독립 class다. 서로 다른 요청이 동시에 실행될 
 
 handler는 인터페이스를 구현하고, 결과를 반환값으로 돌려준다.
 
-```csharp
-// request-response
-public sealed class GetProfileHandler
-    : IZLinkRequestHandler<GetProfileRequest, GetProfileReply>
-{
-    private readonly IProfileStore _store;
-    public GetProfileHandler(IProfileStore store) => _store = store;
+=== "C#/.NET"
 
-    public async ValueTask<GetProfileReply> HandleAsync(
-        GetProfileRequest request,
-        IZLinkMessageContext context,
-        CancellationToken cancellationToken)
+    ```csharp
+    // request-response
+    public sealed class GetProfileHandler
+        : IZLinkRequestHandler<GetProfileRequest, GetProfileReply>
     {
-        var profile = await _store.LoadAsync(request.AccountId, cancellationToken);
-        return new GetProfileReply(profile.AccountId, profile.Nickname);
-    }
-}
+        private readonly IProfileStore _store;
+        public GetProfileHandler(IProfileStore store) => _store = store;
 
-// one-way send (응답 없음)
-public sealed class RefreshCacheHandler
-    : IZLinkSendHandler<RefreshCacheCommand>
-{
-    public ValueTask HandleAsync(
-        RefreshCacheCommand message,
-        IZLinkMessageContext context,
-        CancellationToken cancellationToken)
-    {
-        // 캐시 무효화 등. 호출자는 결과를 기다리지 않는다.
-        return ValueTask.CompletedTask;
+        public async ValueTask<GetProfileReply> HandleAsync(
+            GetProfileRequest request,
+            IZLinkMessageContext context,
+            CancellationToken cancellationToken)
+        {
+            var profile = await _store.LoadAsync(request.AccountId, cancellationToken);
+            return new GetProfileReply(profile.AccountId, profile.Nickname);
+        }
     }
-}
 
-// publish 수신 (구독자 측)
-public sealed class CacheRefreshedEventHandler
-    : IZLinkFanoutHandler<CacheRefreshedEvent>
-{
-    public ValueTask HandleAsync(
-        CacheRefreshedEvent message,
-        CancellationToken cancellationToken)
+    // one-way send (응답 없음)
+    public sealed class RefreshCacheHandler
+        : IZLinkSendHandler<RefreshCacheCommand>
     {
-        // Classic fanout handler는 등록한 event type의 payload만 받는다.
-        return ValueTask.CompletedTask;
+        public ValueTask HandleAsync(
+            RefreshCacheCommand message,
+            IZLinkMessageContext context,
+            CancellationToken cancellationToken)
+        {
+            // 캐시 무효화 등. 호출자는 결과를 기다리지 않는다.
+            return ValueTask.CompletedTask;
+        }
     }
-}
-```
+
+    // publish 수신 (구독자 측)
+    public sealed class CacheRefreshedEventHandler
+        : IZLinkFanoutHandler<CacheRefreshedEvent>
+    {
+        public ValueTask HandleAsync(
+            CacheRefreshedEvent message,
+            CancellationToken cancellationToken)
+        {
+            // Classic fanout handler는 등록한 event type의 payload만 받는다.
+            return ValueTask.CompletedTask;
+        }
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 - handler 의존성은 **생성자 주입**으로 받는다(`IProfileStore`처럼). context에서
   service를 꺼내는 service locator 패턴은 쓰지 않는다.
 - context는 그 dispatch의 메시지 정보(ChannelName, packet 이름, metadata 등)를 읽는
   자리다. **cancellation은 context가 아니라 별도 `CancellationToken` 인자**가 소유한다.
   경로별 context 타입과 전체 필드는
-  [Channel messaging exact interface](../../../common/spec/server/languages/dotnet/interfaces/04-channel-messaging.ko.md)가
+  [언어별 channel messaging 공개 계약](../../../common/spec/server/languages/README.ko.md)가
   다룬다.
 - handler class는 dispatch 키가 아니라 **코드 조직 단위**다. 메서드를 한 class에
   주제별로 묶어도, packet마다 class를 따로 둬도 동작은 같다.
@@ -290,33 +343,52 @@ public sealed class CacheRefreshedEventHandler
 인터페이스 대신 attribute를 단 메서드로도 같은 handler를 작성할 수 있다. 한
 class에 여러 handler 메서드를 둘 때 편하다.
 
-```csharp
-[ZLinkHandlerGroup("api")]   // 이 class의 메서드들을 "api" group으로 묶는다. 어느 channel에 노출할지는 등록이 정한다.
-public sealed class UserHandlers
-{
-    private readonly IZLinkFanoutClient _publisher;
-    public UserHandlers(IZLinkFanoutClient publisher) => _publisher = publisher;
+=== "C#/.NET"
 
-    [ZLinkRequest]   // 메서드 attribute가 handler 종류를 정한다(channel 이름은 안 받음)
-    public ValueTask<GetUserReply> GetUserAsync(
-        GetUserRequest request,            // 인자 순서 = (payload, context?, ct?) — context·토큰은 생략 가능
-        IZLinkMessageContext context,
-        CancellationToken cancellationToken)
-        => ValueTask.FromResult(new GetUserReply(request.AccountId, "alice"));
-
-    [ZLinkSend]   // send handler — 반환이 ValueTask(응답 없음). request의 ValueTask<TReply> 와 대비.
-    public async ValueTask RefreshCacheAsync(
-        RefreshUserCacheCommand command,
-        IZLinkMessageContext context,
-        CancellationToken cancellationToken)
+    ```csharp
+    [ZLinkHandlerGroup("api")]   // 이 class의 메서드들을 "api" group으로 묶는다. 어느 channel에 노출할지는 등록이 정한다.
+    public sealed class UserHandlers
     {
-        await _publisher
-            .Publish("api.events", "user.cache-refreshed",
-                new UserCacheRefreshedEvent(command.AccountId))
-            .Async(cancellationToken);
+        private readonly IZLinkFanoutClient _publisher;
+        public UserHandlers(IZLinkFanoutClient publisher) => _publisher = publisher;
+
+        [ZLinkRequest]   // 메서드 attribute가 handler 종류를 정한다(channel 이름은 안 받음)
+        public ValueTask<GetUserReply> GetUserAsync(
+            GetUserRequest request,            // 인자 순서 = (payload, context?, ct?) — context·토큰은 생략 가능
+            IZLinkMessageContext context,
+            CancellationToken cancellationToken)
+            => ValueTask.FromResult(new GetUserReply(request.AccountId, "alice"));
+
+        [ZLinkSend]   // send handler — 반환이 ValueTask(응답 없음). request의 ValueTask<TReply> 와 대비.
+        public async ValueTask RefreshCacheAsync(
+            RefreshUserCacheCommand command,
+            IZLinkMessageContext context,
+            CancellationToken cancellationToken)
+        {
+            await _publisher
+                .Publish("api.events", "user.cache-refreshed",
+                    new UserCacheRefreshedEvent(command.AccountId))
+                .Async(cancellationToken);
+        }
     }
-}
-```
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 - 메서드 시그니처는 `(payload, context?, CancellationToken?)` 순서이며 context와
   토큰은 생략할 수 있다.
@@ -335,19 +407,38 @@ Request는 상대 reply가 도착할 때까지 기다린다. 규칙은 하나다
 스레드에서는 `await`, blocking(`.Result`/`.GetAwaiter().GetResult()`)은 테스트·클라이언트
 시나리오에서만.**
 
-```csharp
-public async ValueTask<CreateGameReply> HandleAsync(
-    CreateGameRequest request, IZLinkMessageContext context, CancellationToken ct)
-{
-    // 런타임(핸들러) 스레드 — await로 비운다. blocking(.Result/.GetAwaiter().GetResult())은 금지.
-    var room = await _client
-        .RequestToChannel("tictactoe.play", new CreateRoomRequest(request.GameName))
-        .Timeout(TimeSpan.FromSeconds(5))   // reply를 기다릴 상한.
-        .Async<CreateRoomReply>(ct);        // reply가 도착할 때까지 await로 대기하고 그 reply를 받는다.
+=== "C#/.NET"
 
-    return new CreateGameReply(room.RoomId, room.GameName);
-}
-```
+    ```csharp
+    public async ValueTask<CreateGameReply> HandleAsync(
+        CreateGameRequest request, IZLinkMessageContext context, CancellationToken ct)
+    {
+        // 런타임(핸들러) 스레드 — await로 비운다. blocking(.Result/.GetAwaiter().GetResult())은 금지.
+        var room = await _client
+            .RequestToChannel("tictactoe.play", new CreateRoomRequest(request.GameName))
+            .Timeout(TimeSpan.FromSeconds(5))   // reply를 기다릴 상한.
+            .Async<CreateRoomReply>(ct);        // reply가 도착할 때까지 await로 대기하고 그 reply를 받는다.
+
+        return new CreateGameReply(room.RoomId, room.GameName);
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 Channel handler는 channel별 async 수신 루프에서 실행된다. Handler가 `await`에 도달하면
 async 상태 머신만 멈추고(suspend) 실행 스레드는 풀로 돌아가 다른 일을 처리한다.
@@ -393,32 +484,70 @@ framework는 발견한 handler를 모든 channel에 자동으로 열지 않는�
 
 ### RouteMesh와 handler 등록
 
-```csharp
-builder.Services.AddZLinkFramework(options =>
-{
-    options.AddHandlersFromAssemblyOf<Program>(); // handler type 발견
-    var mesh = options.AddRouteMesh("services")
-        .Listen("tcp://0.0.0.0:7101")
-        .SetRoutingId(RoutingId.From("api-1"));
-    mesh.Channel("api").Server()                 // Server()가 handler를 받는 역할이다.
-        .AddRequestHandler<GetProfileHandler, GetProfileRequest, GetProfileReply>()
-        .AddSendHandler<RefreshCacheHandler, RefreshCacheCommand>();
-});
-```
+=== "C#/.NET"
+
+    ```csharp
+    builder.Services.AddZLinkFramework(options =>
+    {
+        options.AddHandlersFromAssemblyOf<Program>(); // handler type 발견
+        var mesh = options.AddRouteMesh("services")
+            .Listen("tcp://0.0.0.0:7101")
+            .SetRoutingId(RoutingId.From("api-1"));
+        mesh.Channel("api").Server()                 // Server()가 handler를 받는 역할이다.
+            .AddRequestHandler<GetProfileHandler, GetProfileRequest, GetProfileReply>()
+            .AddSendHandler<RefreshCacheHandler, RefreshCacheCommand>();
+    });
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 ### 한 MeshNode에 여러 channel 등록
 
 같은 MeshNode 위에 channel을 여러 개 얹을 수 있고, channel마다 역할이 다를 수 있다.
 
-```csharp
-var mesh = options.AddRouteMesh("services")
-    .Listen("tcp://0.0.0.0:7101")
-    .SetRoutingId(RoutingId.From("api-1"));
+=== "C#/.NET"
 
-mesh.Channel("api").Server()                     // 이 node가 처리하는 channel.
-    .AddRequestHandler<GetProfileHandler>();     // payload·reply 타입은 handler가 이미 고정한다.
-mesh.Channel("billing").Client();                // 호출만 하는 channel은 Client — handler를 등록하지 않는다.
-```
+    ```csharp
+    var mesh = options.AddRouteMesh("services")
+        .Listen("tcp://0.0.0.0:7101")
+        .SetRoutingId(RoutingId.From("api-1"));
+
+    mesh.Channel("api").Server()                     // 이 node가 처리하는 channel.
+        .AddRequestHandler<GetProfileHandler>();     // payload·reply 타입은 handler가 이미 고정한다.
+    mesh.Channel("billing").Client();                // 호출만 하는 channel은 Client — handler를 등록하지 않는다.
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 fanout channel의 구독 handler는 fanout builder의 `AddHandler<...>()`로 등록한다.
 
@@ -458,23 +587,42 @@ Fanout handler는 독립 fanout channel builder에 등록하며 RouteMesh handle
 
 ### request / send — `IZLinkRouteClient`
 
-```csharp
-public sealed class PriceService(IZLinkRouteClient client)
-{
-    public async Task<decimal> GetAsync(string symbol, CancellationToken ct)
-    {
-        var reply = await client
-            .RequestToChannel("price", new PriceRequest(symbol))   // 대상은 ChannelName 하나다.
-            .Async<PriceReply>(ct);    // request: reply 타입은 payload가 아니라 .Async<T> 에서 지정
-        return reply.Price;
-    }
+=== "C#/.NET"
 
-    public async ValueTask RefreshAsync(string accountId, CancellationToken ct)
-        => await client
-            .SendToChannel("profile", new RefreshCacheCommand(accountId))
-            .Async(ct);          // send: 내 runtime이 제출을 받아들일 때까지만 기다린다
-}
-```
+    ```csharp
+    public sealed class PriceService(IZLinkRouteClient client)
+    {
+        public async Task<decimal> GetAsync(string symbol, CancellationToken ct)
+        {
+            var reply = await client
+                .RequestToChannel("price", new PriceRequest(symbol))   // 대상은 ChannelName 하나다.
+                .Async<PriceReply>(ct);    // request: reply 타입은 payload가 아니라 .Async<T> 에서 지정
+            return reply.Price;
+        }
+
+        public async ValueTask RefreshAsync(string accountId, CancellationToken ct)
+            => await client
+                .SendToChannel("profile", new RefreshCacheCommand(accountId))
+                .Async(ct);          // send: 내 runtime이 제출을 받아들일 때까지만 기다린다
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 - reply 타입은 메시지가 아니라 **`.Async<TReply>(...)`** 에서 지정한다.
 - **`Timeout(...)`은 request 전용 선택 종결자다.** reply 대기 시간은 전역 기본
@@ -491,30 +639,68 @@ public sealed class PriceService(IZLinkRouteClient client)
 
 기본과 달라야 할 때만 종결자를 붙인다:
 
-```csharp
-await client
-    .RequestToChannel("price", new PriceRequest(symbol))
-    .Timeout(TimeSpan.FromSeconds(5))  // 이 호출의 reply 대기 상한을 기본(30초)과 다르게 둘 때만 지정
-    .Async<PriceReply>(ct);
-// reply 대기 상한 결정 순서(앞이 우선):
-//   1) 호출별 .Timeout(...)
-//   2) MeshNode builder의 SetDefaultRequestTimeout(...)
-//   3) 전역 options.DefaultRequestTimeout (기본 30초)
-```
+=== "C#/.NET"
+
+    ```csharp
+    await client
+        .RequestToChannel("price", new PriceRequest(symbol))
+        .Timeout(TimeSpan.FromSeconds(5))  // 이 호출의 reply 대기 상한을 기본(30초)과 다르게 둘 때만 지정
+        .Async<PriceReply>(ct);
+    // reply 대기 상한 결정 순서(앞이 우선):
+    //   1) 호출별 .Timeout(...)
+    //   2) MeshNode builder의 SetDefaultRequestTimeout(...)
+    //   3) 전역 options.DefaultRequestTimeout (기본 30초)
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 ### publish — `IZLinkFanoutClient`
 
-```csharp
-public sealed class ProfileService(IZLinkFanoutClient publisher)
-{
-    public async ValueTask AnnounceAsync(string accountId, CancellationToken ct)
-        => await publisher
-            // 인자 = (channel, topic, message). topic("profile.cache-refreshed")이 fan-out 라우팅 키다.
-            .Publish("api.events", "profile.cache-refreshed",
-                new ProfileCacheRefreshedEvent(accountId))
-            .Async(ct);
-}
-```
+=== "C#/.NET"
+
+    ```csharp
+    public sealed class ProfileService(IZLinkFanoutClient publisher)
+    {
+        public async ValueTask AnnounceAsync(string accountId, CancellationToken ct)
+            => await publisher
+                // 인자 = (channel, topic, message). topic("profile.cache-refreshed")이 fan-out 라우팅 키다.
+                .Publish("api.events", "profile.cache-refreshed",
+                    new ProfileCacheRefreshedEvent(accountId))
+                .Async(ct);
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 - topic은 선택이다. `Publish(channelName, message)`로 보내면 그 channel의 구독자 전체가
   받고, `Publish(channelName, topic, message)`는 topic을 분류 라벨로 함께 싣는다.
@@ -540,29 +726,48 @@ ASP.NET Core HTTP middleware(`app.Use(...)`)는 HTTP 파이프라인 전용이�
 handler에는 적용되지 않는다. 로그·검증·권한 확인·측정처럼 여러 handler에 같은 코드가
 반복될 일은 `IZLinkHandlerFilter`로 한곳에 모은다.
 
-```csharp
-public sealed class AuditFilter(ILogger<AuditFilter> logger)
-    : IZLinkHandlerFilter
-{
-    public async ValueTask InvokeAsync(
-        IZLinkHandlerFilterContext context,   // 이 dispatch의 message 정보 + 어느 경로로 왔는지.
-        ZLinkHandlerFilterNext next,          // 인자 없는 delegate — 다음 filter 또는 handler를 실행한다.
-        CancellationToken cancellationToken)
+=== "C#/.NET"
+
+    ```csharp
+    public sealed class AuditFilter(ILogger<AuditFilter> logger)
+        : IZLinkHandlerFilter
     {
-        // 운영 명령만 감사 로그로 남기고 일반 업무 요청은 그냥 통과시킨다.
-        if (context.DispatchKind == ZLinkHandlerDispatchKind.NodeDirectRequest)
-            logger.LogInformation("ops {Packet} on {Mesh}", context.PacketName, context.MeshName);
+        public async ValueTask InvokeAsync(
+            IZLinkHandlerFilterContext context,   // 이 dispatch의 message 정보 + 어느 경로로 왔는지.
+            ZLinkHandlerFilterNext next,          // 인자 없는 delegate — 다음 filter 또는 handler를 실행한다.
+            CancellationToken cancellationToken)
+        {
+            // 운영 명령만 감사 로그로 남기고 일반 업무 요청은 그냥 통과시킨다.
+            if (context.DispatchKind == ZLinkHandlerDispatchKind.NodeDirectRequest)
+                logger.LogInformation("ops {Packet} on {Mesh}", context.PacketName, context.MeshName);
 
-        await next();                         // 호출하지 않으면 handler가 실행되지 않는다.
+            await next();                         // 호출하지 않으면 handler가 실행되지 않는다.
+        }
     }
-}
 
-builder.Services.AddZLinkFramework(options =>
-{
-    options.UseFilter<AuditFilter>();         // 등록한 순서가 곧 실행 순서다.
-    options.UseFilter<ValidationFilter>();
-});
-```
+    builder.Services.AddZLinkFramework(options =>
+    {
+        options.UseFilter<AuditFilter>();         // 등록한 순서가 곧 실행 순서다.
+        options.UseFilter<ValidationFilter>();
+    });
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 ### 적용 범위
 
@@ -624,14 +829,33 @@ filter도 그 수만큼 실행되고, 무거운 filter는 구독자가 늘수록
 
 수동 연결은 MeshNode의 peer 목록에 설정한다.
 
-```csharp
-var mesh = options.AddRouteMesh("services")
-    .Listen("tcp://0.0.0.0:7102")
-    .SetRoutingId(RoutingId.From("profile-client-1"));
-mesh.Channel("profile").Client();
-mesh.PeerConnections.Connect("tcp://10.0.10.15:7101");
-mesh.PeerConnections.Connect("tcp://10.0.10.16:7101");
-```
+=== "C#/.NET"
+
+    ```csharp
+    var mesh = options.AddRouteMesh("services")
+        .Listen("tcp://0.0.0.0:7102")
+        .SetRoutingId(RoutingId.From("profile-client-1"));
+    mesh.Channel("profile").Client();
+    mesh.PeerConnections.Connect("tcp://10.0.10.15:7101");
+    mesh.PeerConnections.Connect("tcp://10.0.10.16:7101");
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 endpoint 인자는 startup 설정이다. host 시작 뒤 실행 중인 socket을 직접 제어하는
 handle이 아니다. **단 하나, 가용성(drain/restore)은 런타임에 바꿀 수 있다 — 아래 참조.**
@@ -678,22 +902,41 @@ flowchart LR
     DR --> DH
 ```
 
-```csharp
-// 운영 admin 엔드포인트. "orders"는 등록한 ChannelName이다.
-app.MapPost("/admin/channels/orders/drain",
-    (IZLinkRouteMeshRuntimeOptions options) =>
-    {
-        options.Channel("orders").Weight = 0;  // 이 ChannelName을 새 select-one 대상에서 제외
-        return Results.Ok();
-    });
+=== "C#/.NET"
 
-app.MapPost("/admin/channels/orders/restore",
-    (IZLinkRouteMeshRuntimeOptions options) =>
-    {
-        options.Channel("orders").Weight = 100; // 정상 복귀
-        return Results.Ok();
-    });
-```
+    ```csharp
+    // 운영 admin 엔드포인트. "orders"는 등록한 ChannelName이다.
+    app.MapPost("/admin/channels/orders/drain",
+        (IZLinkRouteMeshRuntimeOptions options) =>
+        {
+            options.Channel("orders").Weight = 0;  // 이 ChannelName을 새 select-one 대상에서 제외
+            return Results.Ok();
+        });
+
+    app.MapPost("/admin/channels/orders/restore",
+        (IZLinkRouteMeshRuntimeOptions options) =>
+        {
+            options.Channel("orders").Weight = 100; // 정상 복귀
+            return Results.Ok();
+        });
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 - `Weight = 0`(drain)은 serving socket을 **닫지 않는다**. 이미 들어온 in-flight 요청은
   끝까지 처리·reply 하고, peer 들이 그 노드를 새 요청 대상에서만 뺀다. store의
@@ -701,26 +944,64 @@ app.MapPost("/admin/channels/orders/restore",
 - 값의 범위는 `0..10000`, 기본값은 `100`이다. `Weight = 100`이 정상 serving 복귀다.
 - drain 신호 전파는 best-effort eventual 이다 — "drain 신호를 보냈다" 까지 보장하고, peer가
   실제로 후보에서 뺀 시점은 peer 상태(`ZLinkPeerStatus.State`가 `Draining`)로 확인한다
-  ([11-monitoring](11-monitoring.ko.md) §2). `drain`/`restore`라는 운영 어휘는 위처럼 앱 admin 레이어가 `Weight = 0`/`= 100`
+  (`11. Monitoring` 장 §2). `drain`/`restore`라는 운영 어휘는 위처럼 앱 admin 레이어가 `Weight = 0`/`= 100`
   에 이름을 붙여 노출한다.
 
 같은 `Weight`를 등록 시점의 초기값으로도 설정한다.
 
-```csharp
-var mesh = options.AddRouteMesh("services")
-    .Listen("tcp://0.0.0.0:7101")
-    .SetRoutingId(RoutingId.From("orders-1"));
-mesh.Channel("orders").Server().SetWeight(30); // 이 channel 역할의 시작 weight
-```
+=== "C#/.NET"
+
+    ```csharp
+    var mesh = options.AddRouteMesh("services")
+        .Listen("tcp://0.0.0.0:7101")
+        .SetRoutingId(RoutingId.From("orders-1"));
+    mesh.Channel("orders").Server().SetWeight(30); // 이 channel 역할의 시작 weight
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 ## 7. 직렬화 codec
 
 payload 직렬화 codec은 framework 등록에서 활성화한다.
 
-```csharp
-options.Codecs.Use(ZLinkProtobufCodec.Default);
-options.Codecs.Use(ZLinkMessagePackCodec.Default);
-```
+=== "C#/.NET"
+
+    ```csharp
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
+    options.Codecs.Use(ZLinkMessagePackCodec.Default);
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 payload는 codec이 직렬화할 수 있는 DTO 여야 한다. root/요소 타입이
 abstract/interface 면 명시 codec 없이는 설정 오류가 난다.
@@ -736,29 +1017,48 @@ content type으로 등록한다. 한 payload 타입에 **둘 이상이 매칭하
 타입 조건 없이 모든 타입을 받는 fallback serializer는 하나만 두고, 타입 조건을 받는
 serializer는 서로 겹치지 않게 여러 개 둘 수 있다.
 
-```csharp
-public sealed class AvroOrderSerializer : IZLinkMessageSerializer
-{
-    private readonly Avro.Schema _schema = Avro.Schema.Parse(SchemaJson);
+=== "C#/.NET"
 
-    // serializer의 책임은 business 객체 ↔ Message(byte payload) 변환뿐. packet name 결정·codec 선택은 framework.
-    public Message Serialize(object value, Type type)
+    ```csharp
+    public sealed class AvroOrderSerializer : IZLinkMessageSerializer
     {
-        using var buffer = new MemoryStream();
-        var writer = new Avro.Generic.GenericWriter<object>(_schema);
-        writer.Write(value, new Avro.IO.BinaryEncoder(buffer));
-        return Message.From(buffer.ToArray());
+        private readonly Avro.Schema _schema = Avro.Schema.Parse(SchemaJson);
+
+        // serializer의 책임은 business 객체 ↔ Message(byte payload) 변환뿐. packet name 결정·codec 선택은 framework.
+        public Message Serialize(object value, Type type)
+        {
+            using var buffer = new MemoryStream();
+            var writer = new Avro.Generic.GenericWriter<object>(_schema);
+            writer.Write(value, new Avro.IO.BinaryEncoder(buffer));
+            return Message.From(buffer.ToArray());
+        }
+
+        public object? Deserialize(Message message, Type type)
+        {
+            var reader = new Avro.Generic.GenericReader<object>(_schema, _schema);
+            return reader.Read(null!, new Avro.IO.BinaryDecoder(new MemoryStream(message.ToArray())));
+        }
     }
 
-    public object? Deserialize(Message message, Type type)
-    {
-        var reader = new Avro.Generic.GenericReader<object>(_schema, _schema);
-        return reader.Read(null!, new Avro.IO.BinaryDecoder(new MemoryStream(message.ToArray())));
-    }
-}
+    options.Codecs.Use(new AvroCodecExtension()); // extension 내부에서 Avro serializer를 한 번 등록한다.
+    ```
 
-options.Codecs.Use(new AvroCodecExtension()); // extension 내부에서 Avro serializer를 한 번 등록한다.
-```
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro로 처리된다.
 다른 언어의 등록 표면은 [framework-api §9](../../../common/spec/06-framework-api.ko.md#9-codec) 표를 본다.
@@ -774,29 +1074,68 @@ options.Codecs.Use(new AvroCodecExtension()); // extension 내부에서 Avro ser
 > 몇 개인지 모르고 channel 이름으로만 부르며, 어느 instance가 요청을 받아도 같은
 > `OrderId`는 항상 같은 owner spot으로 도착한다.
 
-```csharp
-// 처리 노드 A — 같은 ChannelName을 Server로 등록한 node가 후보가 된다.
-var mesh = options.AddRouteMesh("media")
-    .Listen("tcp://0.0.0.0:5600")
-    .SetRoutingIdPrefix("resize");
-mesh.Channel("image.resize").Server()
-    .AddRequestHandler<ResizeHandler, ResizeRequest, ResizeReply>();
-```
+=== "C#/.NET"
 
-```csharp
-// 호출 노드 — 처리 노드 endpoint를 직접 적는 수동 연결.
-var caller = options.AddRouteMesh("media")
-    .Listen("tcp://0.0.0.0:5590")
-    .SetRoutingIdPrefix("resize-client");
-caller.Channel("image.resize").Client();          // 호출만 하므로 Client.
-caller.PeerConnections.Connect("tcp://10.30.1.10:5600");
-caller.PeerConnections.Connect("tcp://10.30.1.10:5601");
+    ```csharp
+    // 처리 노드 A — 같은 ChannelName을 Server로 등록한 node가 후보가 된다.
+    var mesh = options.AddRouteMesh("media")
+        .Listen("tcp://0.0.0.0:5600")
+        .SetRoutingIdPrefix("resize");
+    mesh.Channel("image.resize").Server()
+        .AddRequestHandler<ResizeHandler, ResizeRequest, ResizeReply>();
+    ```
 
-// 또는 location store로 자동 발견 — 노드를 추가해도 호출자를 다시 시작하지 않는다.
-options.AddRouteMesh("media")
-    .Listen(0)
-    .Channel("image.resize").Client();
-```
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
+호출 노드는 같은 ChannelName을 Client로 등록하고 처리 노드를 연결한다.
+
+=== "C#/.NET"
+
+    ```csharp
+    // 호출 노드 — 처리 노드 endpoint를 직접 적는 수동 연결.
+    var caller = options.AddRouteMesh("media")
+        .Listen("tcp://0.0.0.0:5590")
+        .SetRoutingIdPrefix("resize-client");
+    caller.Channel("image.resize").Client();          // 호출만 하므로 Client.
+    caller.PeerConnections.Connect("tcp://10.30.1.10:5600");
+    caller.PeerConnections.Connect("tcp://10.30.1.10:5601");
+
+    // 또는 location store로 자동 발견 — 노드를 추가해도 호출자를 다시 시작하지 않는다.
+    options.AddRouteMesh("media")
+        .Listen(0)
+        .Channel("image.resize").Client();
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -821,36 +1160,74 @@ Node direct 호출은 `RoutingId`로 특정 MeshNode 하나를 지정한다. 이
 운영 명령처럼 **그 노드 자체**가 대상일 때만 사용한다. Actor·Spot 생성 위치를 고르거나
 업무 메시지를 특정 서버에 고정하는 용도로 사용하지 않는다.
 
-```csharp
-var mesh = options.AddRouteMesh("play")
-    .Listen(playRouterEndpoint)
-    .SetRoutingId(RoutingId.From(playRouterId));
+=== "C#/.NET"
 
-// 노드 자체의 운영 상태를 반환하는 handler다.
-mesh.AddRouteRequestHandler<NodeStatusHandler, GetNodeStatus, NodeStatus>(
-    "ops.node.status");
-```
+    ```csharp
+    var mesh = options.AddRouteMesh("play")
+        .Listen(playRouterEndpoint)
+        .SetRoutingId(RoutingId.From(playRouterId));
+
+    // 노드 자체의 운영 상태를 반환하는 handler다.
+    mesh.AddRouteRequestHandler<NodeStatusHandler, GetNodeStatus, NodeStatus>(
+        "ops.node.status");
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 호출자는 관리 시스템에서 확인한 Node RID와 MeshName을 함께 전달한다.
 
-```csharp
-var target = RoutingId.From("play-node-1");
+=== "C#/.NET"
 
-var status = await routeClient
-    // 특정 노드의 운영 상태를 묻기 때문에 Node direct를 사용한다.
-    .RequestToNode("play", target, new GetNodeStatus())
-    .Async<NodeStatus>(ct);
+    ```csharp
+    var target = RoutingId.From("play-node-1");
 
-public sealed class NodeStatusHandler
-    : IZLinkRouteRequestHandler<GetNodeStatus, NodeStatus>
-{
-    public ValueTask<NodeStatus> HandleAsync(
-        GetNodeStatus request,
-        ZLinkRouteMessageContext context,
-        CancellationToken cancellationToken)
-        => ValueTask.FromResult(NodeStatus.Ready());
-}
-```
+    var status = await routeClient
+        // 특정 노드의 운영 상태를 묻기 때문에 Node direct를 사용한다.
+        .RequestToNode("play", target, new GetNodeStatus())
+        .Async<NodeStatus>(ct);
+
+    public sealed class NodeStatusHandler
+        : IZLinkRouteRequestHandler<GetNodeStatus, NodeStatus>
+    {
+        public ValueTask<NodeStatus> HandleAsync(
+            GetNodeStatus request,
+            ZLinkRouteMessageContext context,
+            CancellationToken cancellationToken)
+            => ValueTask.FromResult(NodeStatus.Ready());
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 업무 메시지는 대상의 논리 주소를 사용한다.
 
@@ -872,66 +1249,85 @@ SPOT과의 결합은 [06-spot](06-spot.ko.md)에서 이어진다.
 
 ## 10. 통합 예제 — 서버 + outbound + pub/sub
 
-```csharp
-var builder = WebApplication.CreateBuilder(args);
+=== "C#/.NET"
 
-builder.Services.AddZLinkFramework(options =>
-{
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
-    options.AddHandlersFromAssemblyOf<Program>();      // 발견: assembly에서 handler type을 찾는다.
+    ```csharp
+    var builder = WebApplication.CreateBuilder(args);
 
-    var mesh = options.AddRouteMesh("services")
-        .Listen("tcp://0.0.0.0:7101")
-        .SetRoutingId(RoutingId.From("api-1"));
-    mesh.Channel("api").Server()
-        .AddHandlerGroup("api");                       // 노출: attribute handler group을 이 channel에 연결한다.
-    mesh.Channel("account").Client();                  // 호출만 하는 channel.
+    builder.Services.AddZLinkFramework(options =>
+    {
+        options.Codecs.Use(ZLinkProtobufCodec.Default);
+        options.AddHandlersFromAssemblyOf<Program>();      // 발견: assembly에서 handler type을 찾는다.
 
-    options.AddFanoutChannel("api.events")
-        .EnablePublisher("tcp://0.0.0.0:7201")         // 이 process가 발행자다.
-        .ConnectSubscriber("tcp://127.0.0.1:7201")     // 자기 발행도 구독해 보여 주는 예다.
-        .AddHandler<UserCacheRefreshedEventHandler, UserCacheRefreshedEvent>();
-});
+        var mesh = options.AddRouteMesh("services")
+            .Listen("tcp://0.0.0.0:7101")
+            .SetRoutingId(RoutingId.From("api-1"));
+        mesh.Channel("api").Server()
+            .AddHandlerGroup("api");                       // 노출: attribute handler group을 이 channel에 연결한다.
+        mesh.Channel("account").Client();                  // 호출만 하는 channel.
 
-var app = builder.Build();
+        options.AddFanoutChannel("api.events")
+            .EnablePublisher("tcp://0.0.0.0:7201")         // 이 process가 발행자다.
+            .ConnectSubscriber("tcp://127.0.0.1:7201")     // 자기 발행도 구독해 보여 주는 예다.
+            .AddHandler<UserCacheRefreshedEventHandler, UserCacheRefreshedEvent>();
+    });
 
-app.MapPost("/users/{id}", async (
-    string id, IZLinkRouteClient client, CancellationToken ct) =>
-{
-    var account = await client
-        .RequestToChannel("account", new GetAccountRequest(id))
-        .Async<GetAccountReply>(ct);
-    return Results.Ok(account);
-});
+    var app = builder.Build();
 
-app.Run();
+    app.MapPost("/users/{id}", async (
+        string id, IZLinkRouteClient client, CancellationToken ct) =>
+    {
+        var account = await client
+            .RequestToChannel("account", new GetAccountRequest(id))
+            .Async<GetAccountReply>(ct);
+        return Results.Ok(account);
+    });
 
-[ZLinkHandlerGroup("api")]
-public sealed class UserHandlers(IZLinkFanoutClient publisher)
-{
-    [ZLinkRequest]
-    public ValueTask<GetUserReply> GetUserAsync(
-        GetUserRequest request, IZLinkMessageContext context, CancellationToken ct)
-        => ValueTask.FromResult(new GetUserReply(request.AccountId, "alice"));
+    app.Run();
 
-    [ZLinkSend]
-    public async ValueTask RefreshAsync(
-        RefreshUserCacheCommand command, IZLinkMessageContext context, CancellationToken ct)
-        => await publisher
-            .Publish("api.events", "user.cache-refreshed",
-                new UserCacheRefreshedEvent(command.AccountId))
-            .Async(ct);
-}
+    [ZLinkHandlerGroup("api")]
+    public sealed class UserHandlers(IZLinkFanoutClient publisher)
+    {
+        [ZLinkRequest]
+        public ValueTask<GetUserReply> GetUserAsync(
+            GetUserRequest request, IZLinkMessageContext context, CancellationToken ct)
+            => ValueTask.FromResult(new GetUserReply(request.AccountId, "alice"));
 
-[ZLinkHandlerGroup("api.events")]
-public sealed class UserCacheRefreshedEventHandler
-    : IZLinkFanoutHandler<UserCacheRefreshedEvent>
-{
-    public ValueTask HandleAsync(
-        UserCacheRefreshedEvent message, CancellationToken ct)
-        => ValueTask.CompletedTask;
-}
-```
+        [ZLinkSend]
+        public async ValueTask RefreshAsync(
+            RefreshUserCacheCommand command, IZLinkMessageContext context, CancellationToken ct)
+            => await publisher
+                .Publish("api.events", "user.cache-refreshed",
+                    new UserCacheRefreshedEvent(command.AccountId))
+                .Async(ct);
+    }
+
+    [ZLinkHandlerGroup("api.events")]
+    public sealed class UserCacheRefreshedEventHandler
+        : IZLinkFanoutHandler<UserCacheRefreshedEvent>
+    {
+        public ValueTask HandleAsync(
+            UserCacheRefreshedEvent message, CancellationToken ct)
+            => ValueTask.CompletedTask;
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 ## 11. 자주 발생하는 문제
 
@@ -946,20 +1342,15 @@ public sealed class UserCacheRefreshedEventHandler
 - **handler 없는 packet으로 보냈을 때(런타임)** → **request는 error reply로 실패**(client는
   예외로 받음), **send는 조용히 drop** 된다. drop 은 호출자에게 reply가 없다는 뜻이고
   관측 흔적이 없다는 뜻은 아니다 — message flow 로그/observer를 켜 두면 dispatch 실패가
-  marker(`no_handler` / `reply_error`·`drop`)로 남는다([11-monitoring](11-monitoring.ko.md)).
+  marker(`no_handler` / `reply_error`·`drop`)로 남는다(`11. Monitoring` 장).
 
 ## 12. 관련 문서
 
 - 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec):
-  [13-interface-catalog](13-interface-catalog.ko.md) §1
+  `13. Interface 카탈로그` 장 §1
 - 전체 interface와 handler context:
-  [Channel messaging exact interface](../../../common/spec/server/languages/dotnet/interfaces/04-channel-messaging.ko.md)
+  [언어별 channel messaging 공개 계약](../../../common/spec/server/languages/README.ko.md)
 - topology와 handler 등록:
-  [Topology exact interface](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)
+  [언어별 topology 공개 계약](../../../common/spec/server/languages/README.ko.md)
 - 전체 시나리오: [공통 샘플](../../../common/sample/README.ko.md)
 - 다음 축: [06-spot](06-spot.ko.md)
-
----
-<!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Backpressure — 처리보다 도착이 빠를 때](04-backpressure.ko.md) | [다음: SPOT — room · stage · zone](06-spot.ko.md)
-<!-- framework-adapter-nav:bottom:end -->

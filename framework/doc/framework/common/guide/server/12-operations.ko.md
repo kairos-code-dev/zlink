@@ -1,19 +1,15 @@
-<!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Monitoring — 상태 관측과 진단](11-monitoring.ko.md) | [다음: 인터페이스 카탈로그](13-interface-catalog.ko.md)
-<!-- framework-adapter-nav:end -->
-
 # 12. 운영 — 런타임 메트릭 · graceful drain · readiness
 
 > 정식 계약은 공통 스펙 [런타임 메트릭](../../../common/spec/25-runtime-metrics.ko.md)과
 > [Graceful Drain & Handoff](../../../common/spec/28-graceful-drain-handoff.ko.md)가 다룬다.
 > `.NET` 표면의 정식 정의는
-> [Topology와 host monitoring exact interface](../../../common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md)가
+> [언어별 topology·monitoring 공개 계약](../../../common/spec/server/languages/README.ko.md)가
 > 소유한다.
 > 이 챕터는 운영 환경에서 실제로 무엇을 붙이고 무엇을 선언하는지 사용법 중심으로 다룬다.
 
 ## 0. 제공하는 기능
 
-서비스를 운영에 올리면 [11-monitoring](11-monitoring.ko.md)의 이벤트 관측 외에 다음 항목이
+서비스를 운영에 올리면 `11. Monitoring` 장의 이벤트 관측 외에 다음 항목이
 더 필요하다.
 
 1. **메트릭** — CCU, 큐 깊이, 요청 지연 같은 수치를 대시보드로 본다.
@@ -38,12 +34,31 @@ framework는 메트릭 계기와 host 종료 시의 drain 절차를 제공한다
 framework는 `"zlink.framework"`라는 이름의 `System.Diagnostics.Metrics.Meter` 하나로
 모든 계기를 방출한다. 앱은 이 정식 meter 이름을 수집 파이프라인에 등록한다.
 
-```csharp
-// 이 한 줄로 zlink 계기 전체가 앱의 OTel 파이프라인에 들어간다.
-builder.Services.AddOpenTelemetry().WithMetrics(m => m
-    .AddMeter("zlink.framework") // Framework가 계기를 방출하는 정식 meter 이름이다.
-    .AddPrometheusExporter());
-```
+=== "C#/.NET"
+
+    ```csharp
+    // 이 한 줄로 zlink 계기 전체가 앱의 OTel 파이프라인에 들어간다.
+    builder.Services.AddOpenTelemetry().WithMetrics(m => m
+        .AddMeter("zlink.framework") // Framework가 계기를 방출하는 정식 meter 이름이다.
+        .AddPrometheusExporter());
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 - zlink 전용 메트릭 API는 없다. `.NET` 표준 `Meter`/`MeterListener`가 그대로 표면이다.
   OTel 없이 수집하려면 `MeterListener`에서 meter 이름 `"zlink.framework"`를 직접 구독한다.
@@ -195,22 +210,41 @@ SpotId direct 호출에 Instance intent를 붙였을 때만 시작한다([06-spo
 
 배포에서 쓰는 순서는 "먼저 옮기고, 성공했으면 종료한다"다.
 
-```csharp
-var runtime = app.Services.GetRequiredService<IZLinkFrameworkRuntime>();
-var result = await runtime.RelocateAsync(
-    new ZLinkFrameworkRelocationOptions
-    {
-        Mode = ZLinkFrameworkRelocationMode.RollingUpdate,
-        TargetApplicationVersion = 12,      // 지정한 새 버전의 eligible node만 사용한다.
-        Deadline = TimeSpan.FromSeconds(25)
-    },
-    cancellationToken: ct);
+=== "C#/.NET"
 
-if (result.Outcome == ZLinkFrameworkRelocationOutcome.Relocated)
-    await runtime.ShutdownAsync(TimeSpan.FromSeconds(10), ct);
-else
-    Console.Error.WriteLine($"host relocation blocked: {result.Reason}");
-```
+    ```csharp
+    var runtime = app.Services.GetRequiredService<IZLinkFrameworkRuntime>();
+    var result = await runtime.RelocateAsync(
+        new ZLinkFrameworkRelocationOptions
+        {
+            Mode = ZLinkFrameworkRelocationMode.RollingUpdate,
+            TargetApplicationVersion = 12,      // 지정한 새 버전의 eligible node만 사용한다.
+            Deadline = TimeSpan.FromSeconds(25)
+        },
+        cancellationToken: ct);
+
+    if (result.Outcome == ZLinkFrameworkRelocationOutcome.Relocated)
+        await runtime.ShutdownAsync(TimeSpan.FromSeconds(10), ct);
+    else
+        Console.Error.WriteLine($"host relocation blocked: {result.Reason}");
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 `PlannedMaintenance`는 source와 같은 application version의 target만 사용한다.
 `RollingUpdate`는 source보다 큰 `TargetApplicationVersion`을 요구하고 그 version과 정확히 같은 target만
@@ -220,12 +254,31 @@ Cancellation은 해당 waiter만 끝내며 이미 시작한 shared lifecycle ope
 Readiness는 host `IZLinkFrameworkRuntime.IsReady`와 업무에 필요한 component runtime의 readiness를 함께
 확인해 기존 HTTP endpoint에 연결한다.
 
-```csharp
-app.MapGet("/healthz/ready", (IZLinkFrameworkRuntime runtime) =>
-    runtime.Status.IsReady
-        ? Results.Ok()
-        : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
-```
+=== "C#/.NET"
+
+    ```csharp
+    app.MapGet("/healthz/ready", (IZLinkFrameworkRuntime runtime) =>
+        runtime.Status.IsReady
+            ? Results.Ok()
+            : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 Kubernetes 배포에 연결하면 다음 개념이 된다.
 
@@ -242,11 +295,30 @@ Kubernetes 배포에 연결하면 다음 개념이 된다.
 다음과 같다. 나머지 소켓 옵션(HWM·timeout)은 시작 전 `ConfigureRouterSocket()`
 전용이다.
 
-```csharp
-var meshOptions = app.Services.GetRequiredService<IZLinkRouteMeshRuntimeOptions>();
-meshOptions.Mesh("game.room").PlacementWeight = 0; // 새 object 배치 대상에서 제외
-meshOptions.Channel("game.room").Weight = 0;       // 새 channel select-one 대상에서 제외
-```
+=== "C#/.NET"
+
+    ```csharp
+    var meshOptions = app.Services.GetRequiredService<IZLinkRouteMeshRuntimeOptions>();
+    meshOptions.Mesh("game.room").PlacementWeight = 0; // 새 object 배치 대상에서 제외
+    meshOptions.Channel("game.room").Weight = 0;       // 새 channel select-one 대상에서 제외
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 두 weight는 독립적이며 실행 중 새 선택에 반영된다. Placement weight는 Actor·Spot create와 relocation
 target 선택에만 사용한다. Channel weight는 해당 server membership의 새 select-one 대상 선택에만
@@ -255,18 +327,37 @@ target 선택에만 사용한다. Channel weight는 해당 server membership의 
 **상태 조회 — `IZLinkRouteMeshRuntime`.** Mesh 하나에 대해 일관된 snapshot 한 장과
 순서 있는 component 이벤트 스트림을 제공한다. Host termination은 `IZLinkFrameworkRuntime`이 소유한다.
 
-```csharp
-var meshRuntime = app.Services.GetRequiredService<IZLinkRouteMeshRuntime>();
+=== "C#/.NET"
 
-var status = meshRuntime.GetStatus("game.room"); // 노드·peer·channel의 immutable 현재 상태
-var ready = status.IsReady;
+    ```csharp
+    var meshRuntime = app.Services.GetRequiredService<IZLinkRouteMeshRuntime>();
 
-await foreach (var meshEvent in meshRuntime.ObserveAsync("game.room", cancellationToken: ct))
-{
-    // state/peer 전이가 Sequence 순서로 온다 — 상태 표면의 공통 규칙은
-    // 11-monitoring §2를 참고한다.
-}
-```
+    var status = meshRuntime.GetStatus("game.room"); // 노드·peer·channel의 immutable 현재 상태
+    var ready = status.IsReady;
+
+    await foreach (var meshEvent in meshRuntime.ObserveAsync("game.room", cancellationToken: ct))
+    {
+        // state/peer 전이가 Sequence 순서로 온다 — 상태 표면의 공통 규칙은
+        // 11-monitoring §2를 참고한다.
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 ## 6. Host lifecycle
 
@@ -301,19 +392,38 @@ stateDiagram-v2
 Host `Relocate`·`Shutdown` 상태 전이는 `IZLinkFrameworkRuntime`의 bounded status stream에서 관측한다. MeshName별
 runtime은 component snapshot을 제공하지만 별도 termination authority나 partial drain operation을 만들지 않는다.
 
-```csharp
-var runtime = app.Services.GetRequiredService<IZLinkFrameworkRuntime>();
+=== "C#/.NET"
 
-await foreach (var hostEvent in runtime.ObserveAsync(cancellationToken: ct))
-{
-    // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
-    logger.LogInformation(
-        "host lifecycle: {State} {Relocation} {Termination}",
-        hostEvent.State,
-        hostEvent.RelocationResult,
-        hostEvent.TerminationResult);
-}
-```
+    ```csharp
+    var runtime = app.Services.GetRequiredService<IZLinkFrameworkRuntime>();
+
+    await foreach (var hostEvent in runtime.ObserveAsync(cancellationToken: ct))
+    {
+        // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
+        logger.LogInformation(
+            "host lifecycle: {State} {Relocation} {Termination}",
+            hostEvent.State,
+            hostEvent.RelocationResult,
+            hostEvent.TerminationResult);
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 `ZLinkFrameworkRuntimeState`의 `Preparing`·`Serving`·`Relocating`·`Relocated`·`Draining`·`Stopped`·`Error`를
 그대로 관측한다. Status의 relocation·termination 결과는 해당 operation의 terminal 결과와 같아야 한다.
@@ -321,12 +431,7 @@ await foreach (var hostEvent in runtime.ObserveAsync(cancellationToken: ct))
 
 ## 7. 관련 문서
 
-- 이 챕터 계약의 실행 검증 예문: [13-interface-catalog](13-interface-catalog.ko.md) §7 — 검증 클래스 `FrameworkRuntimeContracts`
+- 이 챕터 계약의 실행 검증 예문: `13. Interface 카탈로그` 장 §7 — 검증 클래스 `FrameworkRuntimeContracts`
 - 정식 계약: [Host Relocate와 Shutdown](../../../common/spec/28-graceful-drain-handoff.ko.md) · [Runtime Metrics](../../../common/spec/25-runtime-metrics.ko.md)
-- 상태 관측과 진단: [11-monitoring](11-monitoring.ko.md)
+- 상태 관측과 진단: `11. Monitoring` 장
 - relocation 경계를 application이 정하는 Spot: [06-spot §7](06-spot.ko.md#7-relocation을-시작해도-되는-시점-알리기)
-
----
-<!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Monitoring — 상태 관측과 진단](11-monitoring.ko.md) | [다음: 인터페이스 카탈로그](13-interface-catalog.ko.md)
-<!-- framework-adapter-nav:bottom:end -->

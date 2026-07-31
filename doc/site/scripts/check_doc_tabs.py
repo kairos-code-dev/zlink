@@ -2,14 +2,23 @@
 """가이드 문서의 언어 탭/스니펫 회귀 체크.
 
 다음 세 가지 회귀를 검출한다(P6):
-  1. 탭 언어 누락 — 샘플 탭 블록이 9개 표준 언어를 전부 담지 않음(또는 중복/이질 라벨).
+  1. 탭 언어 누락 — 샘플 탭 블록이 그 문서 묶음의 표준 언어를 전부 담지 않음
+     (또는 중복/이질 라벨).
   2. API/샘플 부재 — `--8<--` 스니펫 경로가 실제 파일로 해석되지 않음.
   3. 언어↔확장자 불일치 — 예: "Rust" 탭이 .rs가 아닌 파일을 임베드.
+
+두 문서 묶음을 검사한다.
+  core       — doc/site/docs/guide, 9개 바인딩 언어
+  framework  — framework/doc/site/docs, 5개 framework 언어
+
+구현이 아직 없는 언어의 탭은 스니펫 없이 안내 문구만 둘 수 있다. 라벨이 있으면
+누락으로 보지 않으므로 (1)을 통과한다.
 
 mkdocs 빌드는 (1),(3)을 잡지 못하므로 별도 회귀 테스트로 강제한다.
 
 실행:
-    python3 doc/site/scripts/check_doc_tabs.py
+    python3 doc/site/scripts/check_doc_tabs.py            # 두 묶음 모두
+    python3 doc/site/scripts/check_doc_tabs.py core       # 하나만
 위반이 있으면 비-0으로 종료하고 보고서를 출력한다.
 """
 
@@ -32,14 +41,61 @@ CANONICAL = {
     "Rust": ".rs",
 }
 
+# framework 가이드 탭 라벨. framework가 지원하는 다섯 언어다.
+FRAMEWORK_CANONICAL = {
+    "C#/.NET": ".cs",
+    "C++": [".cpp", ".hpp"],
+    "Java": ".java",
+    "Kotlin": ".kt",
+    "Node/TypeScript": ".ts",
+}
+
 TAB_RE = re.compile(r'^(\s*)=== "(.+?)"\s*$')
 SNIPPET_RE = re.compile(r'--8<--\s*"([^"]+)"')
 
-# pymdownx.snippets base_path: mkdocs cwd(doc/site)와 repo 루트.
 SITE_DIR = Path(__file__).resolve().parents[1]          # doc/site
 REPO_ROOT = SITE_DIR.parents[1]                         # repo root
-BASE_PATHS = [SITE_DIR, REPO_ROOT]
-GUIDE_DIR = SITE_DIR / "docs" / "guide"
+FRAMEWORK_SITE_DIR = REPO_ROOT / "framework" / "doc" / "site"
+
+
+class DocSet:
+    """검사 대상 문서 묶음 하나."""
+
+    def __init__(self, name, docs_dir, canonical, base_paths):
+        self.name = name
+        self.docs_dir = docs_dir
+        self.canonical = canonical
+        self.base_paths = base_paths
+
+    def extensions(self, label):
+        """라벨이 허용하는 확장자 목록. 없으면 None."""
+        ext = self.canonical.get(label)
+        if ext is None:
+            return None
+        return [ext] if isinstance(ext, str) else list(ext)
+
+
+DOC_SETS = {
+    "core": DocSet(
+        "core",
+        SITE_DIR / "docs" / "guide",
+        CANONICAL,
+        [SITE_DIR, REPO_ROOT],
+    ),
+    "framework": DocSet(
+        "framework",
+        FRAMEWORK_SITE_DIR / "docs",
+        FRAMEWORK_CANONICAL,
+        [FRAMEWORK_SITE_DIR, REPO_ROOT],
+    ),
+    # 사이트가 아니라 공통 정본을 직접 본다. 사이트 배치와 무관하게 원본이 규약을 지켜야 한다.
+    "framework-guide": DocSet(
+        "framework-guide",
+        REPO_ROOT / "framework" / "doc" / "framework" / "common" / "guide",
+        FRAMEWORK_CANONICAL,
+        [FRAMEWORK_SITE_DIR, REPO_ROOT],
+    ),
+}
 
 
 def strip_section(rel: str) -> str:
@@ -47,9 +103,9 @@ def strip_section(rel: str) -> str:
     return re.sub(r":[A-Za-z0-9_-]+$", "", rel)
 
 
-def resolve_snippet(rel: str) -> Path | None:
+def resolve_snippet(rel: str, base_paths: list[Path]) -> Path | None:
     rel = strip_section(rel)
-    for base in BASE_PATHS:
+    for base in base_paths:
         p = (base / rel)
         if p.is_file():
             return p
@@ -97,12 +153,12 @@ def parse_tab_groups(lines: list[str]):
     return groups
 
 
-def main() -> int:
-    errors: list[str] = []
-    md_files = sorted(GUIDE_DIR.rglob("*.md"))
+def check_doc_set(ds: "DocSet", errors: list[str]) -> tuple[int, int, int]:
+    """문서 묶음 하나를 검사하고 (문서 수, 스니펫 수, 샘플 탭 그룹 수)를 돌려준다."""
+    md_files = sorted(ds.docs_dir.rglob("*.md"))
     if not md_files:
-        print(f"no guide markdown under {GUIDE_DIR}", file=sys.stderr)
-        return 2
+        errors.append(f"[{ds.name}] 검사할 markdown이 없다: {ds.docs_dir}")
+        return 0, 0, 0
 
     total_snippets = 0
     sample_groups = 0
@@ -114,22 +170,25 @@ def main() -> int:
         for ln, line in enumerate(lines, 1):
             for sm in SNIPPET_RE.finditer(line):
                 total_snippets += 1
-                if resolve_snippet(sm.group(1)) is None:
-                    errors.append(f"{rel_md}:{ln}: 스니펫 경로 미해석: {sm.group(1)}")
+                if resolve_snippet(sm.group(1), ds.base_paths) is None:
+                    errors.append(
+                        f"[{ds.name}] {rel_md}:{ln}: 스니펫 경로 미해석: {sm.group(1)}")
 
-        # (1)(3) 탭 그룹 검사: 스니펫을 담은 그룹은 9개 언어 전부 + 확장자 일치.
+        # (1)(3) 탭 그룹 검사: 스니펫을 담은 그룹은 표준 언어 전부 + 확장자 일치.
         for group in parse_tab_groups(lines):
             has_snippet = any(snips for _, snips in group)
-            if not has_snippet:
-                continue  # 샘플 임베드가 아닌 일반 탭(설명용)은 검사 제외
+            # 언어 탭은 샘플을 임베드하든 예제를 인라인으로 쓰든 언어 전부를 갖춰야 한다.
+            # 라벨이 하나도 표준 언어가 아니면 설명용 탭이므로 검사에서 뺀다.
+            is_language_group = bool({lbl for lbl, _ in group} & set(ds.canonical))
+            if not has_snippet and not is_language_group:
+                continue
             sample_groups += 1
             labels = [lbl for lbl, _ in group]
             label_set = set(labels)
-            first_label = labels[0]
-            loc = f"{rel_md} (탭: '{first_label}'…)"
+            loc = f"[{ds.name}] {rel_md} (탭: '{labels[0]}'…)"
 
-            missing = set(CANONICAL) - label_set
-            extra = label_set - set(CANONICAL)
+            missing = set(ds.canonical) - label_set
+            extra = label_set - set(ds.canonical)
             dupes = [l for l in label_set if labels.count(l) > 1]
             if missing:
                 errors.append(f"{loc}: 탭 언어 누락: {sorted(missing)}")
@@ -139,16 +198,32 @@ def main() -> int:
                 errors.append(f"{loc}: 중복 탭 라벨: {sorted(dupes)}")
 
             for lbl, snips in group:
-                ext = CANONICAL.get(lbl)
-                if ext is None:
+                exts = ds.extensions(lbl)
+                if exts is None:
                     continue
                 for s in snips:
-                    if not strip_section(s).endswith(ext):
+                    if not any(strip_section(s).endswith(e) for e in exts):
                         errors.append(
-                            f"{loc}: '{lbl}' 탭이 {ext} 아닌 파일 임베드: {s}")
+                            f"{loc}: '{lbl}' 탭이 {'/'.join(exts)} 아닌 파일 임베드: {s}")
 
-    print(f"검사: 가이드 {len(md_files)}개, 스니펫 {total_snippets}개, "
-          f"샘플 탭 그룹 {sample_groups}개")
+    return len(md_files), total_snippets, sample_groups
+
+
+def main() -> int:
+    requested = sys.argv[1:] or list(DOC_SETS)
+    unknown = [n for n in requested if n not in DOC_SETS]
+    if unknown:
+        print(f"알 수 없는 문서 묶음: {unknown}. 가능한 값: {list(DOC_SETS)}",
+              file=sys.stderr)
+        return 2
+
+    errors: list[str] = []
+    for name in requested:
+        ds = DOC_SETS[name]
+        docs, snippets, groups = check_doc_set(ds, errors)
+        print(f"검사[{ds.name}]: 문서 {docs}개, 스니펫 {snippets}개, "
+              f"샘플 탭 그룹 {groups}개")
+
     if errors:
         print(f"\n탭/스니펫 회귀 {len(errors)}건:", file=sys.stderr)
         for e in errors:

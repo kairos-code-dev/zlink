@@ -272,6 +272,7 @@ doc/perf/plan/logs/
 # Clangd cache
 core/.cache/
 doc/site/site/
+framework/doc/site/site/
 .omx/
 .codex/*
 !.codex/agents/

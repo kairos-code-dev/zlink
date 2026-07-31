@@ -69,7 +69,7 @@ MeshNode의 수신 endpoint와 RID는 `listen(...)`, `set_routing_id(...)`로 �
 peer는 `peer_connections().connect(...)`, 자동 peer는 location store가 소유한다.
 ChannelName과 handler group은 서로 다르다. Group은 코드의 handler 묶음이고
 ChannelName은 MeshName 안의 배포 membership이다. 사용법은
-[7장 채널 메시징](07-channel-messaging.ko.md)이 다룬다. Transport 배선은 guide의 공개
+[7장 채널 메시징](../../../common/guide/server/05-channel-messaging.ko.md)이 다룬다. Transport 배선은 guide의 공개
 사용법이 아니라 [runtime architecture](../../internals/runtime-architecture.ko.md)가 다룬다.
 
 > **주의:** channel 이름과 handler **group 이름**은 서로 다르다. group 은 코드 안
@@ -94,7 +94,7 @@ graph LR
     Q --> ST["SPOT 상태<br/>(lock 불필요)"]
 ```
 
-직렬 실행이 보장되는 이유와 작성법은 [8장 SPOT](08-spot.ko.md).
+직렬 실행이 보장되는 이유와 작성법은 [8장 SPOT](../../../common/guide/server/06-spot.ko.md).
 
 ## 3. actor — ID 로 식별되는 상태 객체
 
@@ -111,7 +111,7 @@ graph LR
     RT -->|id=7| A7["actor 7"]
 ```
 
-상세는 [9장 Actor · Session](09-actor-session.ko.md).
+상세는 [9장 Actor · Session](../../../common/guide/server/08-actor-session.ko.md).
 
 ## 4. stream — 외부 client 연결
 
@@ -125,7 +125,7 @@ graph LR
     SV --- SE["session<br/>(연결 1개 = 객체 1개)"]
 ```
 
-상세는 [10장 Stream](10-stream.ko.md).
+상세는 [10장 Stream](../../../common/guide/server/09-stream.ko.md).
 
 ## 5. Location store와 manual peer
 
@@ -143,7 +143,7 @@ graph LR
 
 고정된 개발 topology에서는 `mesh.peer_connections().connect(endpoint)`로 manual peer를
 등록할 수 있다. 자동 descriptor와 manual intent는 같은 MeshName·RID·security admission
-검증을 거친다. 자세한 등록과 운영은 [11장 location store](11-registry.ko.md)가 다룬다.
+검증을 거친다. 자세한 등록과 운영은 [11장 location store](../../../common/guide/server/10-location.ko.md)가 다룬다.
 
 ## 6. 보조 — 실행·구성 모델
 
@@ -197,7 +197,7 @@ graph TB
 
 가변 도메인 상태(게임 룸 등)는 **SPOT**, 불변 구성(topology)은 싱글톤 서비스, 공유
 인프라(캐시·카운터)는 싱글톤 + 자체 동기화에 둔다. SPOT 핸들러 작성과 직렬 실행
-보장은 [8장](08-spot.ko.md), 채널 핸들러 노출은 [7장](07-channel-messaging.ko.md).
+보장은 [8장](../../../common/guide/server/06-spot.ko.md), 채널 핸들러 노출은 [7장](../../../common/guide/server/05-channel-messaging.ko.md).
 
 **handler 노출은 명시적이다** — `options.handlers().group("api").add<T>()` 로 group 에 넣고,
 channel 등록에서 `use_handler_group("api")` 로 붙인다. 시작 단계에서 같은 handler
@@ -320,12 +320,12 @@ stateDiagram-v2
 
 - **DI 컨테이너** — `options.services()` 에 `add_singleton/scoped/transient` 로
   등록하고, 소비 측은 `dependency_types` + 생성자 주입(또는 `get_required<T>()`)으로
-  받는다. 전체 API 는 [4장 DI 컨테이너](04-di-container.ko.md).
+  받는다. 전체 API 는 [4장 DI 컨테이너](18-di-container.ko.md).
 - **구성 표면 지도** — `app_t` 진입점이 역할별로 나뉜다:
 
   | 진입점 | 역할 | 다루는 장 |
   |--------|------|-----------|
-  | `app.config()` / `app.logging()` | 설정·로그 | [5장](05-configuration.ko.md) · 12장 |
+  | `app.config()` / `app.logging()` | 설정·로그 | [5장](19-configuration.ko.md) · 12장 |
   | `app.monitoring()` / `app.metrics()` / `app.health()` | 관측·상태 | 12장 |
   | `app.add_zlink_framework(람다)` | **zlink 토폴로지 선언** (채널/SPOT/stream/registry) | 6~11장 |
   | `app.add_module(...)` / `add_zlink_framework<TModule>()` | 구성 패키징 | 아래 |
@@ -335,4 +335,4 @@ stateDiagram-v2
   재사용한다. `configure_services / configure_zlink / configure_handlers /
   configure_monitoring` 을 구현하고 `app.add_zlink_framework<TModule>()` 로 붙인다.
 
-[다음: DI 컨테이너 →](04-di-container.ko.md)
+[다음: DI 컨테이너 →](18-di-container.ko.md)

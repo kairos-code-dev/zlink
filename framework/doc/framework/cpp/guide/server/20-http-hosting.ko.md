@@ -34,7 +34,7 @@ registry에 이미 등록된 타입은 덮어쓰지 않는다.
 - 같은 메서드+경로를 두 번 매핑하면 구성 시점에 거부된다.
 
 동기 핸들러와 코루틴 핸들러 모두 가능하다. HTTP 요청을 받아 채널로 위임하는
-전형적인 패턴은 [7장 §3](07-channel-messaging.ko.md)에 있다.
+전형적인 패턴은 [7장 §3](../../../common/guide/server/05-channel-messaging.ko.md)에 있다.
 
 ## 3. health endpoint
 
@@ -49,7 +49,7 @@ options.http ()
 ```
 
 응답은 `status`, `readiness`, `liveness`, `checks` 필드를 가진 JSON이다. 상태를 구성하는 check는
-[12장 §3](12-monitoring.ko.md)의 `app.health()`로 등록한다.
+`11. Monitoring` 장의 `app.health()`로 등록한다.
 
 ```bash
 $ curl -s http://127.0.0.1:8080/ready
@@ -111,4 +111,4 @@ options.http ().configure_server ([] (zlink::framework::http_server_options_buil
 timeout 안에 끝나지 않은 연결이나 keep-alive로 대기 중인 연결은 정리하므로
 `stop()`이 매달리지 않는다.
 
-[다음: 채널 메시징 →](07-channel-messaging.ko.md)
+[다음: 채널 메시징 →](../../../common/guide/server/05-channel-messaging.ko.md)

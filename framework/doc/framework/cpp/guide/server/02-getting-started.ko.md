@@ -166,7 +166,7 @@ options.handlers ()
 
 `create_game_handler_t`는 `CreateGameReq`를 받아 room id, game name, owner Play stream
 endpoint, 참가 가능한 Play stream endpoint 목록, Play node 목록, 요구 level을 돌려준다.
-실제 구현은 room SPOT을 만들기 때문에 [8장 SPOT](08-spot.ko.md)에서 다시 이어진다.
+실제 구현은 room SPOT을 만들기 때문에 [8장 SPOT](../../../common/guide/server/06-spot.ko.md)에서 다시 이어진다.
 
 ```cpp
 class create_game_handler_t
@@ -215,7 +215,7 @@ options.add_location_store (
 MeshNode는 자기 RID, endpoint와 ChannelName membership을 store에 기록한다. 다른
 MeshNode는 revision이 바뀌면 peer intent를 갱신한다. 실제 request/reply payload는
 location store를 통과하지 않는다. Store 장애와 readiness, descriptor lifecycle은
-[11장 location store](11-registry.ko.md)에서 다룬다.
+[11장 location store](../../../common/guide/server/10-location.ko.md)에서 다룬다.
 
 ## 8. 잘 안 될 때
 
@@ -230,11 +230,11 @@ location store를 통과하지 않는다. Store 장애와 readiness, descriptor 
 
 | 하고 싶은 것 | 가는 곳 |
 |--------------|---------|
-| framework의 핵심 개념 정리 | [3장 핵심 개념](03-concepts.ko.md) |
-| 설정 파일과 command line으로 endpoint를 바꾸기 | [5장 Configuration](05-configuration.ko.md) |
-| request/send/pub-sub 전체 사용법 | [7장 채널 메시징](07-channel-messaging.ko.md) |
-| room/stage 같은 동적 노드 | [8장 SPOT](08-spot.ko.md) |
-| location store 운영과 topology 조회 | [11장 location store](11-registry.ko.md) |
+| framework의 핵심 개념 정리 | [3장 핵심 개념](../../../common/guide/server/03-concepts.ko.md) |
+| 설정 파일과 command line으로 endpoint를 바꾸기 | [5장 Configuration](19-configuration.ko.md) |
+| request/send/pub-sub 전체 사용법 | [7장 채널 메시징](../../../common/guide/server/05-channel-messaging.ko.md) |
+| room/stage 같은 동적 노드 | [8장 SPOT](../../../common/guide/server/06-spot.ko.md) |
+| location store 운영과 topology 조회 | [11장 location store](../../../common/guide/server/10-location.ko.md) |
 | 실행 가능한 전체 예제 | `samples/TicTacToe`와 `run_sample.sh` |
 
-[다음: 핵심 개념 →](03-concepts.ko.md)
+[다음: 핵심 개념 →](../../../common/guide/server/03-concepts.ko.md)

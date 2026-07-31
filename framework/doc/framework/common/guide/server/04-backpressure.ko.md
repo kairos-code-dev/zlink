@@ -1,13 +1,9 @@
-<!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: 핵심 개념](03-concepts.ko.md) | [다음: Channel Messaging — request · send · pub/sub](05-channel-messaging.ko.md)
-<!-- framework-adapter-nav:end -->
-
 # 4. Backpressure — 처리보다 도착이 빠를 때
 
 > 정식 계약은 [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)과
-> [Topology exact interface](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)가
+> [언어별 topology 공개 계약](../../../common/spec/server/languages/README.ko.md)가
 > 다룬다. 이 챕터는 그 동작을 개념과 원리로 설명하고 어떤 옵션이 영향을 주는지 다룬다.
-> 옵션의 기본값과 변경 시점은 [16-options](16-options.ko.md)가 소유한다. 이 챕터가 쓰는
+> 옵션의 기본값과 변경 시점은 `16. Options` 장가 소유한다. 이 챕터가 쓰는
 > 계약 가운데 .NET runtime에 아직 반영되지 않은 부분은
 > [Framework에 아직 적용되지 않은 부분](#6-framework에-아직-적용되지-않은-부분)이 밝힌다.
 
@@ -161,31 +157,69 @@ Application 연결의 message를 앞지를 수 있으므로, handler는 도착 �
 
 send는 응답을 기다리지 않지만, 기다려야 하는 대상이 하나 있다 — **보낼 자리**다.
 
-```csharp
-await client.SendToChannel("orders", new CancelOrder("order-1042")).Async(ct);
-// 이 await가 끝났다는 것은 "내 runtime이 제출을 받아들였다"까지다.
-// 상대가 받았거나 handler가 끝났다는 뜻이 아니다.
-```
+=== "C#/.NET"
+
+    ```csharp
+    await client.SendToChannel("orders", new CancelOrder("order-1042")).Async(ct);
+    // 이 await가 끝났다는 것은 "내 runtime이 제출을 받아들였다"까지다.
+    // 상대가 받았거나 handler가 끝났다는 뜻이 아니다.
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 자리가 없으면 즉시 실패하지 않고 `DefaultSocketSendTimeout`(기본 1초)까지 기다린다. 그
 안에 자리가 생기면 정확히 한 번 제출하고 정상 완료하며, 끝까지 자리가 생기지 않으면
 `DeadlineExceeded` 예외로 끝난다. **자동으로 다시 보내지 않는다** — 재시도할지, 버릴지,
 사용자에게 실패를 알릴지는 application이 정한다.
 
-```csharp
-try
-{
-    await client.SendToChannel("orders", command).Async(ct);
-}
-catch (ZLinkFrameworkException ex)
-    when (ex.Kind == ZLinkFrameworkErrorKind.DeadlineExceeded)
-{
-    // 이 시점에 확실한 것은 "제출되지 않았다" 하나다. 상대 상태는 알 수 없다.
-    // RetryAdvice는 framework가 확인한 조건만 알려 준다 — 실제 재시도 여부는 application이 정한다.
-    if (ex.RetryAdvice == ZLinkRetryAdvice.RetryAfterBackoff)
-        _pending.Enqueue(command);
-}
-```
+=== "C#/.NET"
+
+    ```csharp
+    try
+    {
+        await client.SendToChannel("orders", command).Async(ct);
+    }
+    catch (ZLinkFrameworkException ex)
+        when (ex.Kind == ZLinkFrameworkErrorKind.DeadlineExceeded)
+    {
+        // 이 시점에 확실한 것은 "제출되지 않았다" 하나다. 상대 상태는 알 수 없다.
+        // RetryAdvice는 framework가 확인한 조건만 알려 준다 — 실제 재시도 여부는 application이 정한다.
+        if (ex.RetryAdvice == ZLinkRetryAdvice.RetryAfterBackoff)
+            _pending.Enqueue(command);
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 다시 보내도 되는지는 application이 업무 규칙에 따라 판단한다. **같은 명령이 두 번 도착해도
 결과가 같을 때만** 재시도가 안전하다 — 주문 취소는 두 번 도착해도 취소된 상태 하나로
@@ -203,20 +237,39 @@ request는 보낼 자리와 상대의 reply를 모두 기다리므로, 정체가
 `Timeout(...)`이 실질적인 상한이다. 특히 **handler 안에서 다시 request를 보내는 흐름에는
 유한한 timeout을 반드시 지정한다.**
 
-```csharp
-public async ValueTask<PlaceOrderReply> HandleAsync(
-    PlaceOrder request, IZLinkMessageContext context, CancellationToken ct)
-{
-    // handler가 reply를 기다리는 동안 이 handler의 실행 자리는 계속 점유된다.
-    // 양쪽 node의 처리가 동시에 지연되면 유한한 timeout이 회복을 시작하는 유일한 지점이다.
-    var reserved = await _client
-        .RequestToChannel("inventory", new ReserveStock(request.Sku, request.Quantity))
-        .Timeout(TimeSpan.FromSeconds(3))
-        .Async<StockReserved>(ct);
+=== "C#/.NET"
 
-    return new PlaceOrderReply(request.OrderId, reserved.ReservationId);
-}
-```
+    ```csharp
+    public async ValueTask<PlaceOrderReply> HandleAsync(
+        PlaceOrder request, IZLinkMessageContext context, CancellationToken ct)
+    {
+        // handler가 reply를 기다리는 동안 이 handler의 실행 자리는 계속 점유된다.
+        // 양쪽 node의 처리가 동시에 지연되면 유한한 timeout이 회복을 시작하는 유일한 지점이다.
+        var reserved = await _client
+            .RequestToChannel("inventory", new ReserveStock(request.Sku, request.Quantity))
+            .Timeout(TimeSpan.FromSeconds(3))
+            .Async<StockReserved>(ct);
+
+        return new PlaceOrderReply(request.OrderId, reserved.ReservationId);
+    }
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 timeout은 backpressure를 조절하는 수단이 아니라 **더 기다리지 않는 경계**다. 호출자가
 timeout으로 끝나도 이미 시작된 remote handler의 실행은 취소되거나 되돌려지지 않는다.
@@ -246,7 +299,7 @@ timeout으로 끝나도 이미 시작된 remote handler의 실행은 취소되�
 두 HWM은 지정하지 않아도 된다. 지정하지 않으면 runtime이 계획한 값이,
 지정하면 그 값이 그대로 적용된다 — 두 경우의 차이는 아래 두 절이 다룬다. 옵션별 기본값과
 실행 중 변경 가능 여부는
-[16-options §3.2](16-options.ko.md#32-backpressure-한도를-정하는-옵션)가 다룬다.
+`16. Options` 장 §3.2가 다룬다.
 
 ### 4.1 Auto HWM — 미지정 socket의 자동 계산
 
@@ -393,15 +446,34 @@ Framework는 다음 message의 크기를 미리 알 수 없으므로 **byte를 �
 
 ## 5. 정체 발생 확인 방법
 
-```csharp
-options.ConfigureDispatch().Diagnostics
-    .SetLevel(ZLinkDiagnosticsLevel.Errors); // 기본값 — error와 backpressure를 기록한다.
-```
+=== "C#/.NET"
+
+    ```csharp
+    options.ConfigureDispatch().Diagnostics
+        .SetLevel(ZLinkDiagnosticsLevel.Errors); // 기본값 — error와 backpressure를 기록한다.
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 message flow 기록에 `backpressured`가 남았다면 보낼 자리를 기다리는 일이 실제로 일어났다는
 뜻이다. 함께 확인하는 메트릭은 `zlink.mesh_node.request.timeouts`(request가
 경계에 걸린 횟수)이며, 어느 실행 대상이 지연의 원인인지는 handler 실행 시간과 노드별 처리
-지표로 좁힌다([11-monitoring](11-monitoring.ko.md) ·
+지표로 좁힌다(`11. Monitoring` 장 ·
 [12-operations](12-operations.ko.md)).
 
 `zlink.mesh_node.messages.dropped`는 backpressure 지표가 아니다. 이 값이 오르면 부하가
@@ -461,14 +533,9 @@ message flow 기록에 `backpressured`가 남았다면 보낼 자리를 기다�
 
 ## 8. 관련 문서
 
-- 옵션 기본값과 변경 시점: [16-options §3](16-options.ko.md#3-meshnode-옵션)
+- 옵션 기본값과 변경 시점: `16. Options` 장 §3
 - one-way submit과 완료 경계의 정식 계약:
   [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)
-- 소켓 설정 표면: [Topology exact interface](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)
+- 소켓 설정 표면: [언어별 topology 공개 계약](../../../common/spec/server/languages/README.ko.md)
 - socket option의 byte 단위 계약: [core guide의 socket option](../../../../../../core/doc/guide/12-socket-options.ko.md)
 - 다음 축: [05-channel-messaging](05-channel-messaging.ko.md)
-
----
-<!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: 핵심 개념](03-concepts.ko.md) | [다음: Channel Messaging — request · send · pub/sub](05-channel-messaging.ko.md)
-<!-- framework-adapter-nav:bottom:end -->

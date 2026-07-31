@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Location](10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](12-operations.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: Location](../../../common/guide/server/10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 11. Monitoring — 상태 관측과 진단
@@ -17,13 +17,13 @@ runtime event를 DI handler로 받는 표면은 없다. 관측은 전부 아래 
 
 | 무엇을 보나 | 표면 | 어디서 다루나 |
 |---|---|---|
-| Host lifecycle(relocate·drain·readiness) | `IZLinkFrameworkRuntime.Status` · `ObserveAsync` | [12-operations](12-operations.ko.md) §6.1 |
-| MeshNode의 node·peer·channel 준비 상태 | `IZLinkRouteMeshRuntime.GetStatus` · `ObserveAsync` | [12-operations](12-operations.ko.md) §5 |
+| Host lifecycle(relocate·drain·readiness) | `IZLinkFrameworkRuntime.Status` · `ObserveAsync` | [12-operations](../../../common/guide/server/12-operations.ko.md) §6.1 |
+| MeshNode의 node·peer·channel 준비 상태 | `IZLinkRouteMeshRuntime.GetStatus` · `ObserveAsync` | [12-operations](../../../common/guide/server/12-operations.ko.md) §5 |
 | ClientServer channel의 target 상태 | `IZLinkClientServerRuntime.GetStatus` · `ObserveAsync` | 이 챕터 §2 |
 | pub/sub channel의 publisher 상태 | `IZLinkFanoutRuntime.GetStatus` · `ObserveAsync` | 이 챕터 §2 |
-| Location store 상태와 topology | `IZLinkLocationRuntimeQuery` | [10-location](10-location.ko.md) §4 |
+| Location store 상태와 topology | `IZLinkLocationRuntimeQuery` | [10-location](../../../common/guide/server/10-location.ko.md) §4 |
 | 메시지 수신·dispatch·실패와 흐름 | 진단 level + `ActivitySource`·`ILogger` | 이 챕터 §3 |
-| CCU·큐 깊이 같은 수치 | `Meter` `zlink.framework` | [12-operations](12-operations.ko.md) §1 |
+| CCU·큐 깊이 같은 수치 | `Meter` `zlink.framework` | [12-operations](../../../common/guide/server/12-operations.ko.md) §1 |
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -143,27 +143,27 @@ trace나 count를 만들지 않는다.
   현재 값이 필요하면 `GetStatus`로 snapshot을 먼저 읽고 stream을 이어 받는다.
 - **자동 연결 상태를 보고 싶다** → location store를 등록한 배포에서는
   `IZLinkLocationRuntimeQuery`로 store 상태와 topology를 조회한다
-  ([10-location](10-location.ko.md) §4).
+  ([10-location](../../../common/guide/server/10-location.ko.md) §4).
 - **health/metric endpoint를 기대한다** → framework는 HTTP endpoint를 만들지 않는다.
   readiness는 `IZLinkFrameworkRuntime.IsReady`를 앱의 기존 endpoint에 연결하고
-  ([12-operations](12-operations.ko.md) §4), 수치는 meter `zlink.framework`를 앱의
-  수집 파이프라인에 등록해 노출한다([12-operations](12-operations.ko.md) §1).
+  ([12-operations](../../../common/guide/server/12-operations.ko.md) §4), 수치는 meter `zlink.framework`를 앱의
+  수집 파이프라인에 등록해 노출한다([12-operations](../../../common/guide/server/12-operations.ko.md) §1).
 - **등록되지 않은 메시지를 알고 싶다** → `ConfigureDispatch().Diagnostics`의 level을
   `Errors` 이상으로 설정하고 application의 `ILogger` 또는 `ActivitySource` exporter를
   확인한다. Request 실패는 error reply로 돌아가며, send 실패는 diagnostic record로
   확인할 수 있다. Publish는 subscriber별 결과를 확인하지 않으므로 target별 record를
   만들지 않는다.
 - **Spot timer handler 실패를 보고 싶다** → 진단 level `Errors` 이상에서 dispatch 오류로
-  기록된다. timer 정책은 [06-spot](06-spot.ko.md) §6을 참고한다.
+  기록된다. timer 정책은 [06-spot](../../../common/guide/server/06-spot.ko.md) §6을 참고한다.
 
 ## 5. 관련 문서
 
 - 이 챕터 계약의 실행 검증 예문: [13-interface-catalog](13-interface-catalog.ko.md) §7 — 검증 클래스 `EventingContracts`
 - 정식 계약: [spec/aspnet-core-monitoring](../../../common/spec/server/languages/dotnet/01-system-structure.ko.md)
-- location 운영 조회: [10-location](10-location.ko.md)
-- 런타임 메트릭·mesh 상태·drain 관측: [12-operations](12-operations.ko.md)
+- location 운영 조회: [10-location](../../../common/guide/server/10-location.ko.md)
+- 런타임 메트릭·mesh 상태·drain 관측: [12-operations](../../../common/guide/server/12-operations.ko.md)
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Location](10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](12-operations.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: Location](../../../common/guide/server/10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](../../../common/guide/server/12-operations.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

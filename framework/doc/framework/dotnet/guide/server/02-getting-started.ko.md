@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ZLink Framework for .NET 개요](01-overview.ko.md) | [다음: 핵심 개념](03-concepts.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: ZLink Framework for .NET 개요](01-overview.ko.md) | [다음: 핵심 개념](../../../common/guide/server/03-concepts.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 2. Getting Started — 설치부터 첫 동작 확인까지
@@ -22,9 +22,9 @@ dotnet add package Zlink.Framework.AspNetCore     # DI·hosted service 등록(Ad
 
 | 패키지 | 언제 더하나 |
 | --- | --- |
-| `Zlink.Framework.Locations.Redis` | Redis location store로 자동 연결을 쓸 때([10-location](10-location.ko.md)) |
-| `Zlink.Framework.Codecs.Protobuf` · `.MessagePack` | 기본 JSON codec 대신 쓸 때([05-channel-messaging §7](05-channel-messaging.ko.md#7-직렬화-codec)) |
-| `Systems.Zlink.Stream.Connector` | 외부 client(게임 client·모바일)를 만들 때([09-stream](09-stream.ko.md)) |
+| `Zlink.Framework.Locations.Redis` | Redis location store로 자동 연결을 쓸 때([10-location](../../../common/guide/server/10-location.ko.md)) |
+| `Zlink.Framework.Codecs.Protobuf` · `.MessagePack` | 기본 JSON codec 대신 쓸 때([05-channel-messaging §7](../../../common/guide/server/05-channel-messaging.ko.md#7-직렬화-codec)) |
+| `Systems.Zlink.Stream.Connector` | 외부 client(게임 client·모바일)를 만들 때([09-stream](../../../common/guide/server/09-stream.ko.md)) |
 | `Zlink.HttpClient` | 서버에서 HTTP를 호출할 때([HTTP Client 가이드](../http-client/README.ko.md)) |
 
 Framework 패키지는 **0.9**부터 배포한다. `Systems.Zlink`(core binding)와
@@ -33,7 +33,7 @@ Framework 패키지는 **0.9**부터 배포한다. `Systems.Zlink`(core binding)
 
 라이선스는 계층마다 다르다 — core·binding은 MPL-2.0, framework는 FSL-1.1-ALv2,
 `Zlink.HttpClient`는 Apache-2.0이다. 서비스를 만들어 파는 데 드는 비용은 없다
-([17-alternative §7](17-alternative.ko.md#7-라이선스--쓰는-데-드는-비용)).
+([17-alternative §7](../../../common/guide/server/17-alternative.ko.md#7-라이선스--쓰는-데-드는-비용)).
 
 ## 2. 최소 예제 — 두 process가 서로 호출한다
 
@@ -112,7 +112,7 @@ server를 먼저 띄우고 client를 띄운 뒤 `curl http://localhost:5000/hell
 여기서 확인한 것은 셋이다 — 패키지가 붙었고, 두 process가 mesh로 연결됐고, 논리 이름
 (`greeting`)만으로 호출이 라우팅됐다. 이 예제에는 Redis도 location store도 없다. 서버가
 늘고 줄어도 호출 코드가 그대로이려면 자동 연결이 필요하고, 그건
-[10-location](10-location.ko.md)이 다룬다.
+[10-location](../../../common/guide/server/10-location.ko.md)이 다룬다.
 
 ## 3. TicTacToe — 방 하나를 만드는 흐름
 
@@ -319,5 +319,5 @@ endpoint에 연결한 참가자들이 같은 방에 join하고, 게임 메시지
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: ZLink Framework for .NET 개요](01-overview.ko.md) | [다음: 핵심 개념](03-concepts.ko.md)
+[문서 목록](../../../../README.ko.md) | [이전: ZLink Framework for .NET 개요](01-overview.ko.md) | [다음: 핵심 개념](../../../common/guide/server/03-concepts.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

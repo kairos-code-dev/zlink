@@ -117,7 +117,7 @@ auto topology = app.config ().bind_required<topology_t> ("sample.topology");
 ```
 
 bind한 struct를 DI에 singleton으로 올려 두면 핸들러가 주입받을 수 있다
-([4장](04-di-container.ko.md)).
+([4장](18-di-container.ko.md)).
 
 ```cpp
 options.services ().add_singleton<topology_t> (std::make_unique<topology_t> (topology));
@@ -145,4 +145,4 @@ auto suffix = app.config ().environment ();     // "staging"
 4. 필수 값은 `require`/`bind_required`로 — 빠진 설정은 부팅 시점에 시끄럽게
    실패하는 편이 낫다.
 
-[다음: HTTP Hosting →](06-http-hosting.ko.md)
+[다음: HTTP Hosting →](20-http-hosting.ko.md)

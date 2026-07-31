@@ -99,7 +99,7 @@ class open_conversation_handler_t {
 ```
 
 request-reply 외에 fanout(pub/sub)과 route mesh(주소 라우팅) 패턴도 제공한다.
-[7장 →](07-channel-messaging.ko.md)
+[7장 →](../../../common/guide/server/05-channel-messaging.ko.md)
 
 ---
 
@@ -130,7 +130,7 @@ class conversation_spot_t : public zlink::framework::spot_t,
 ```
 
 배정·할당을 담당하는 entry spot(노드당 1개)과 상태 본체인 room spot(단위마다 1개)으로
-나뉜다. 주기 작업은 timer로 등록한다. [8장 →](08-spot.ko.md)
+나뉜다. 주기 작업은 timer로 등록한다. [8장 →](../../../common/guide/server/06-spot.ko.md)
 
 ---
 
@@ -154,7 +154,7 @@ class support_session_t : public zlink::framework::packet_stream_session_t {
 ```
 
 클라이언트 쪽 접속은 별도 산출물인 stream connector가 담당한다.
-[9장 →](09-actor-session.ko.md) · [10장 →](10-stream.ko.md)
+[9장 →](../../../common/guide/server/08-actor-session.ko.md) · [10장 →](../../../common/guide/server/09-stream.ko.md)
 
 ---
 
@@ -175,7 +175,7 @@ options.http ()
   .map_readiness ("/ready");
 ```
 
-[6장 →](06-http-hosting.ko.md)
+[6장 →](20-http-hosting.ko.md)
 
 ---
 
@@ -192,7 +192,7 @@ options.http ()
 - **Monitoring / Health** — socket·discovery·spot·타이머 이벤트를 typed 구독으로
   받는다. `/ready`, `/healthz` endpoint에 health check를 연결한다.
 
-[4장 →](04-di-container.ko.md) · [5장 →](05-configuration.ko.md) · [12장 →](12-monitoring.ko.md)
+[4장 →](18-di-container.ko.md) · [5장 →](19-configuration.ko.md) · `11. Monitoring` 장
 
 ---
 
@@ -213,7 +213,7 @@ options.add_spot_mesh ("bingo.room.discovery")
   .add_spot<bingo_room_spot_t> ("bingo.room");
 ```
 
-[11장 →](11-registry.ko.md)
+[11장 →](../../../common/guide/server/10-location.ko.md)
 
 ---
 
@@ -223,20 +223,20 @@ options.add_spot_mesh ("bingo.room.discovery")
 |----|------|------|
 | 1 | [개요](01-overview.ko.md) | 전체 기능 지도, 산출물 정보 |
 | 2 | [시작하기](02-getting-started.ko.md) | CMake 연동, 첫 앱, 핸들러 작성, 실행과 확인 |
-| 3 | [핵심 개념](03-concepts.ko.md) | app 수명주기, 핸들러 모델, 실행 모델 |
-| 4 | [DI 컨테이너](04-di-container.ko.md) | 수명 3종, 등록 방법, 핸들러 자동 주입, captive dependency |
-| 5 | [Configuration](05-configuration.ko.md) | 설정 소스(cli/env/json), 우선순위, section/bind |
-| 6 | [HTTP Hosting](06-http-hosting.ko.md) | embedded HTTP server, route handler |
-| 7 | [채널 메시징](07-channel-messaging.ko.md) | request-reply, fanout, route mesh, channel client |
-| 8 | [SPOT](08-spot.ko.md) | room/stage/zone, 직렬 실행, timer |
-| 9 | [Actor · Session](09-actor-session.ko.md) | actor manager, session actor, gateway relay |
-| 10 | [Stream](10-stream.ko.md) | stream session, stream connector |
-| 11 | [Registry](11-registry.ko.md) | registry runtime, discovery |
-| 12 | [Monitoring](12-monitoring.ko.md) | events, metrics, health |
-| 13 | [인터페이스 카탈로그](13-interface-catalog.ko.md) | 핸들러/옵션 표면 레퍼런스 |
-| 14 | [샘플 지도](14-samples-map.ko.md) | TicTacToe · Bingo 샘플과 기능 매핑 |
-| 15 | [기능 맵](15-feature-map.ko.md) | 무엇을·얼마나 쉽게·언제 — 기능 선택 가이드 |
-| 16 | [ZLink을 어디에 쓰나](16-grpc-alternative.ko.md) | 내부 서비스 통신·실시간 상태 패턴, gRPC/mesh 비교 |
+| 3 | [핵심 개념](../../../common/guide/server/03-concepts.ko.md) | app 수명주기, 핸들러 모델, 실행 모델 |
+| 4 | [DI 컨테이너](18-di-container.ko.md) | 수명 3종, 등록 방법, 핸들러 자동 주입, captive dependency |
+| 5 | [Configuration](19-configuration.ko.md) | 설정 소스(cli/env/json), 우선순위, section/bind |
+| 6 | [HTTP Hosting](20-http-hosting.ko.md) | embedded HTTP server, route handler |
+| 7 | [채널 메시징](../../../common/guide/server/05-channel-messaging.ko.md) | request-reply, fanout, route mesh, channel client |
+| 8 | [SPOT](../../../common/guide/server/06-spot.ko.md) | room/stage/zone, 직렬 실행, timer |
+| 9 | [Actor · Session](../../../common/guide/server/08-actor-session.ko.md) | actor manager, session actor, gateway relay |
+| 10 | [Stream](../../../common/guide/server/09-stream.ko.md) | stream session, stream connector |
+| 11 | [Registry](../../../common/guide/server/10-location.ko.md) | registry runtime, discovery |
+| 12 | `11. Monitoring` 장 | events, metrics, health |
+| 13 | `13. Interface 카탈로그` 장 | 핸들러/옵션 표면 레퍼런스 |
+| 14 | [샘플 지도](../../../common/guide/server/14-samples.ko.md) | TicTacToe · Bingo 샘플과 기능 매핑 |
+| 15 | [기능 맵](../../../common/guide/server/14-samples.ko.md) | 무엇을·얼마나 쉽게·언제 — 기능 선택 가이드 |
+| 16 | [ZLink을 어디에 쓰나](../../../common/guide/server/17-alternative.ko.md) | 내부 서비스 통신·실시간 상태 패턴, gRPC/mesh 비교 |
 
 ---
 

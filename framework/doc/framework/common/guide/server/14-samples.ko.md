@@ -1,7 +1,3 @@
-<!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [다음: E2E 테스트 — client로 시스템 전체를 검증하기](15-e2e-testing.ko.md)
-<!-- framework-adapter-nav:end -->
-
 # 14. 샘플 고르기 — 내 문제에 가까운 예제부터
 
 > 각 샘플의 언어 중립 시나리오, 메시지 계약과 검증 기준은
@@ -26,7 +22,7 @@
 | 퀘스트·미션 진행 시스템 | [GameQuest](#7-gamequest--퀘스트-진행-시스템-구축) | 유실을 허용하는 대신 실시간성을 얻는 owner 처리 |
 | zone 분할 MMORPG와 운영 관제 | [ZoneWorld](#8-zoneworld--zone-분할-mmorpg와-운영-관제-구축) | 여러 노드에 무언가를 할 때 어떤 표면을 고르는가 |
 
-기능 쪽에서 거꾸로 고르려면 [01-overview의 선택 갈래](01-overview.ko.md#도입-순서-고르기)를
+기능 쪽에서 거꾸로 고르려면 `01. Overview` 장의 도입 순서를
 먼저 본다.
 
 두 쌍은 서로 대비하도록 만들어져 있어 함께 보면 선택 기준이 분명해진다.
@@ -75,7 +71,7 @@ Entry Spot에 등록된 observer handler가 그것을 받아 관전 client로 pu
 - 짝이 되는 장: [05-channel-messaging](05-channel-messaging.ko.md)(ClientServer channel),
   [06-spot](06-spot.ko.md)(User Spot 생성), [09-stream](09-stream.ko.md)
 - 시나리오: [TicTacToe](../../../common/sample/tictactoe/README.ko.md) · payload JSON
-- [02-getting-started](02-getting-started.ko.md)가 이 샘플을 따라간다. 처음 읽는다면 여기부터.
+- `02. Getting Started` 장가 이 샘플을 따라간다. 처음 읽는다면 여기부터.
 
 ## 3. Bingo — 온라인 게임 서버 구축
 
@@ -352,9 +348,9 @@ flowchart TD
 넣는다. **브라우저 UI가 있는 유일한 샘플**이라 경계 이동과 노드 점검 전환을 눈으로 확인한다.
 
 - 짝이 되는 장: [07-actor-spot](07-actor-spot.ko.md)(relocation),
-  [11-monitoring](11-monitoring.ko.md), [12-operations](12-operations.ko.md)
+  `11. Monitoring` 장, [12-operations](12-operations.ko.md)
 - 시나리오: [ZoneWorld](../../../common/sample/zoneworld/README.ko.md) · payload JSON
-- server는 `.NET`과 Node.js가 제공하고 브라우저 client 하나를 공유한다.
+- server는 여러 언어가 제공하고 브라우저 client 하나를 공유한다.
 
 ## 9. 실행
 
@@ -362,13 +358,31 @@ flowchart TD
 검증까지 수행한다. Location store가 필요한 샘플은 runner가 Redis 컨테이너를 직접
 띄우고 끝나면 정리하므로 `docker`만 있으면 된다.
 
-```bash
-# 샘플 하나 실행
-framework/languages/dotnet/samples/Bingo/run_sample.sh
+=== "C#/.NET"
 
-# 여러 개를 이어서 실행 (인자를 생략하면 전체)
-framework/languages/dotnet/samples/run_samples.sh TicTacToe Bingo
-```
+    ```bash
+    # 샘플 하나 실행
+    framework/languages/dotnet/samples/Bingo/run_sample.sh
+
+    # 여러 개를 이어서 실행 (인자를 생략하면 전체)
+    framework/languages/dotnet/samples/run_samples.sh TicTacToe Bingo
+    ```
+
+=== "C++"
+
+    C++ 실행 방법은 준비 중이다.
+
+=== "Java"
+
+    Java 실행 방법은 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 실행 방법은 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 실행 방법은 준비 중이다.
 
 `run_samples.sh`는 서버 샘플 6개를 다룬다. 브라우저 UI가 필요한 ZoneWorld는
 `ZoneWorld/run_sample.sh`로 따로 실행한다.
@@ -376,11 +390,6 @@ framework/languages/dotnet/samples/run_samples.sh TicTacToe Bingo
 ## 10. 관련 문서
 
 - 샘플의 언어 중립 시나리오와 검증 기준: [공통 sample](../../../common/sample/README.ko.md)
-- `.NET` 샘플 디렉터리 구성: [samples/README](../../../../../languages/dotnet/samples/README.md)
+- 언어별 샘플 디렉터리 구성: 각 언어 샘플 루트의 `README`
 - 기능별 사용법: [05-channel-messaging](05-channel-messaging.ko.md) ~
   [12-operations](12-operations.ko.md)
-
----
-<!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: 인터페이스 카탈로그](13-interface-catalog.ko.md) | [다음: E2E 테스트 — client로 시스템 전체를 검증하기](15-e2e-testing.ko.md)
-<!-- framework-adapter-nav:bottom:end -->

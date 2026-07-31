@@ -1,11 +1,7 @@
-<!-- framework-adapter-nav:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Getting Started](02-getting-started.ko.md) | [다음: Backpressure — 처리보다 도착이 빠를 때](04-backpressure.ko.md)
-<!-- framework-adapter-nav:end -->
-
 # 3. 핵심 개념
 
 > 개념의 정식 의미는 [공통 스펙 목차](../../../common/README.ko.md)가,
-> 인터페이스의 정식 정의는 [spec/handler-interfaces](../../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)가
+> 인터페이스의 정식 정의는 [언어별 handler 인터페이스 계약](../../../common/spec/server/languages/README.ko.md)가
 > 다룬다. 이 문서는 그 의미가 `.NET`에서 어떤 모양으로 보이는지 정리한다.
 
 ZLink framework는 **channel · spot · actor · stream · location**을 핵심 개념으로
@@ -61,14 +57,33 @@ flowchart LR
 
 MeshNode 하나에 두 역할을 함께 얹은 모양은 이렇다.
 
-```csharp
-var mesh = options.AddRouteMesh("services")     // MeshNode 하나가 mesh "services"에 참여한다.
-    .Listen("tcp://0.0.0.0:7101");              // 다른 node가 접속할 자기 endpoint.
+=== "C#/.NET"
 
-mesh.Objects().Server();                        // Object role — 이 node에 spot·actor를 배치한다.
-mesh.Channel("orders").Server();                // Channel role — "orders" 요청을 이 node가 처리한다.
-mesh.Channel("billing").Client();               // 호출만 하는 channel은 Client.
-```
+    ```csharp
+    var mesh = options.AddRouteMesh("services")     // MeshNode 하나가 mesh "services"에 참여한다.
+        .Listen("tcp://0.0.0.0:7101");              // 다른 node가 접속할 자기 endpoint.
+
+    mesh.Objects().Server();                        // Object role — 이 node에 spot·actor를 배치한다.
+    mesh.Channel("orders").Server();                // Channel role — "orders" 요청을 이 node가 처리한다.
+    mesh.Channel("billing").Client();               // 호출만 하는 channel은 Client.
+    ```
+
+=== "C++"
+
+    C++ 예제는 준비 중이다.
+
+=== "Java"
+
+    Java 예제는 준비 중이다.
+
+=== "Kotlin"
+
+    Kotlin 예제는 준비 중이다.
+
+=== "Node/TypeScript"
+
+    Node 예제는 준비 중이다.
+
 
 peer 주소를 코드에 적지 않고 서버 증감을 따라가는 자동 연결은
 [10-location](10-location.ko.md)이 다룬다.
@@ -304,11 +319,6 @@ store 없이 endpoint를 등록에 직접 지정하는 수동 연결도 지원�
   [05-channel-messaging](05-channel-messaging.ko.md)
 - spot 종류·실행 모델·handler 수명과 DI scope: [06-spot](06-spot.ko.md)
 - host 수명주기와 운영: [12-operations](12-operations.ko.md)
-- 등록 지점과 계층 구조: [01-overview](01-overview.ko.md#아키텍처--계층-구조와-등록-지점)
-- 전체 인터페이스/attribute/context: [spec/handler-interfaces](../../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)
+- 등록 지점과 계층 구조: `01. Overview` 장
+- 전체 인터페이스/attribute/context: [언어별 handler 인터페이스 계약](../../../common/spec/server/languages/README.ko.md)
 - 실행 코드로 보고 싶을 때 고를 샘플: [14-samples](14-samples.ko.md)
-
----
-<!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../README.ko.md) | [이전: Getting Started](02-getting-started.ko.md) | [다음: Backpressure — 처리보다 도착이 빠를 때](04-backpressure.ko.md)
-<!-- framework-adapter-nav:bottom:end -->

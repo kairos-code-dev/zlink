@@ -7,7 +7,7 @@
 # SPOT Guide
 
 This guide explains how application developers use SPOT.
-For exact API contracts, see the [SPOT spec](../spec/core/service/spot.md).
+For exact API contracts, see the [SPOT spec](../api/spot.md).
 
 ## 1. What SPOT does
 

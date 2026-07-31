@@ -1,6 +1,6 @@
 [한국어](glossary.ko.md)
 
-[가이드 목록](README.ko.md)
+[가이드 목록](../index.ko.md)
 
 # 용어집
 

@@ -182,7 +182,7 @@ ObservabilityOps E2E에는 두 이름이 없다. C++ · Java는 애초에 방출
 > 44개를 선언하고 그중 최소 12개를 실제로 기록한다(`this.count(...)` · `this.histogram(...)`
 > 호출 기준). G7 표는 다른 스캔 결과이므로 여기서 고치지 않고 재확인 대상으로만 남긴다.
 
-### G8 · Node `ZLinkMeshNodeSocketConfig`에 mailbox 두 값이 없다
+### G9 · Node `ZLinkMeshNodeSocketConfig`에 mailbox 두 값이 없다
 
 | | |
 | --- | --- |
@@ -222,6 +222,22 @@ v11 작업에서 Service contracts가 binding include에서 빠지면서 남은 
 
 이 때문에 core 가이드용으로 새로 추가한 `bindings/cpp/samples/request_reply_async_sample.cpp`도
 함께 막혀 있다. 그 파일 자체는 축소한 헤더로 컴파일·링크·실행을 확인했다.
+
+### B2 · core 문서 사이트가 v11에서 삭제된 서비스 계층 장을 아직 낸다
+
+| | |
+| --- | --- |
+| 대상 | `doc/site/docs/guide/{07-0-services,07-3-spot,07-4-actor}.{ko.,}md` · `doc/site/docs/internals/services-internals.{ko.,}md` |
+| 증상 | 정본(`core/doc/`)에서 지운 문서의 사본이 사이트 미러에 남아 nav에도 걸려 있다 |
+| 확인 | `git show 05a7061bad6 --name-status -- core/doc/guide/07-3-spot.ko.md` → `D`. v11이 raw core와 framework를 가르면서 서비스 계층 장을 core에서 뺐다 |
+
+`doc/README.ko.md`(core 문서 색인)의 네 행이 그 삭제된 경로를 가리켜 링크가 깨져 있다.
+고치려면 **서비스 계층 서술을 v11 이후 어디로 보낼지부터 정해야 한다** — framework 정본으로
+옮길지, core에 축소판으로 되살릴지, 사이트에서 내릴지. 링크만 다른 데로 돌리면 삭제된 층을
+계속 내보내게 된다.
+
+`doc/site/scripts/check_doc_links.py core`가 이 네 행을 계속 보고한다. 나머지 core 링크
+결함은 이번에 정리했다.
 
 ## 4. 조사 단서 (미확인)
 
@@ -281,7 +297,7 @@ grep으로 선언이 실재하는지 본다. 확인되면 §1로 올리고 근�
 언어 node가 섞이면 owner 판정 시점이 갈리므로 정합성 문제다. 두 언어를 15초로 맞췄다.
 나머지 12개 값은 이미 네 언어가 모두 같다.
 
-### G4 · 언어별로 다른 public 타입 이름 — 진행 중
+### G4 · 언어별로 다른 public 타입 이름 — 처리 완료
 
 `.NET` 이름을 정본으로 맞춘다. `.NET`의 `I` 접두사는 그 언어의 관용이므로 다른 언어로
 옮길 때 떼어낸다.
@@ -291,7 +307,7 @@ grep으로 선언이 실재하는지 본다. 확인되면 §1로 올리고 근�
 | filter 다음 단계 | `ZLinkHandlerFilterNext` | **완료.** Node의 `ZLinkHandlerDelegate`를 바꿨다. 파일명, 구현, e2e 호출부, Node 공개 계약 spec과 공통 가이드를 함께 고쳤다. build와 typecheck 통과 |
 | fanout 수신 handler | `ZLinkFanoutHandler` | **완료.** Java의 `ZLinkPublishHandler`와 Node의 같은 이름을 바꿨다. Java 파일명, 두 언어 구현, 샘플·e2e 호출부, 두 언어 공개 계약 spec과 가이드를 함께 고쳤다. Java `compileJava`, Node build·typecheck 통과 |
 | Spot join admission 결과 | `ZLinkSpotActorJoinResult` | **완료.** Java·Kotlin·Node의 `ZLinkSpotActorJoinResponse`와 C++의 `spot_actor_join_response_t`를 바꿨다. 130개 파일이며 Java 파일명도 함께 바꿨다. Java `compileJava`, Node build·typecheck, C++ 전체 빌드가 통과한다 |
-| session dispatch context | `ZLinkSessionDispatchContext` | 대기. Java·Kotlin·Node·C++이 `...MessageContext`를 쓴다. 84개 파일 |
+| session dispatch context | `ZLinkSessionDispatchContext` | **완료.** 조사해 보니 C++은 이미 `stream_dispatch_context_t`였고 Node는 `ZLinkSessionDispatchContext`가 정본이며 `ZLinkSessionMessageContext`는 별칭만 남아 있었다. Node 별칭과 공개 표면 목록에서 제거하고 Java·Kotlin의 이름과 파일명을 바꿨다. 79개 파일이며 Java `check`, Node build·typecheck가 통과한다 |
 
 각 이름은 구현뿐 아니라 언어별 공개 계약 spec에도 선언되어 있으므로 spec·가이드·공개
 계약 trace를 함께 갱신해야 한다.
@@ -303,3 +319,22 @@ G4를 조사하다 별도로 발견했다. Node 공개 계약
 `ownerLeaseRenewIntervalMs`와 `ownerLeaseFencingMarginMs`를 선언하는데 구현은
 `heartbeatIntervalMs`와 `routingIdFencingMarginMs`를 쓰고 있었다. spec 이름으로 맞췄다.
 샘플·e2e를 포함해 24개 파일이며 build와 typecheck가 통과한다.
+
+### G5 · Java `ZLinkMeshNodeSocketConfig`가 spec과 다름 — 처리 완료
+
+spec이 요구한 대로 고쳤다. 차이 두 가지를 모두 닫았다.
+
+- HWM 넷의 타입을 `int`에서 `long`으로 넓혔다. HWM은 accounted byte 수이므로 `int`로는
+  2 GiB를 넘길 수 없었다. bindings 계층은 이미 64-bit였다
+  (`SocketOptionsTypeMapTest.byteHighWaterMarksRoundTrip64BitBoundaries`). 좁힌 것은
+  framework 계층뿐이었으므로 framework 쪽 사슬 전체를 넓혔다. `MeshNode`,
+  `ZLinkInternalMeshNode`, `ZLinkJavaMeshNode`의 `setRouterHighWaterMark`가 함께 바뀐다.
+- `mailboxMessageBudget`과 `mailboxByteBudget`을 public 표면에 추가했다. 기본값은 `.NET`과
+  같이 `0`이며 runtime 기본값을 그대로 둔다는 뜻이다.
+
+넓히면서 드러난 자리 둘은 값의 뜻이 다르다. router pending admission capacity와 mesh
+application dispatcher의 local pending capacity는 byte가 아니라 message 개수다. byte
+HWM이 int 범위를 넘을 때 wrap하지 않도록 두 곳 모두 `Integer.MAX_VALUE`로 saturate하게
+바꿨다. test double의 `setRouterHighWaterMark`도 함께 넓혔다.
+
+JVM `check`가 통과한다.

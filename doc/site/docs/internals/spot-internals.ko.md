@@ -4,7 +4,7 @@
 
 이 문서는 core 유지보수자가 SPOT의 내부 연결 구조와 데이터 흐름을 빠르게 파악하도록
 돕는 내부 문서다. 공개 API 계약은
-[`doc/spec/core/service/spot.ko.md`](../spec/core/service/spot.ko.md)를 기준으로
+[`doc/spec/core/service/spot.ko.md`](../api/spot.ko.md)를 기준으로
 삼는다.
 
 ## 0. SPOT이 무엇이며 왜 이렇게 설계되었는가
@@ -1001,7 +1001,7 @@ reply parts를 request record 안으로 이동한다.
 
 이 절은 Actor join 요청을 SpotNode가 내부에서 어떻게 처리하는지 자세히 설명한다.
 STREAM session 연결 흐름은 §12를, 공개 join 계약은
-[`doc/spec/core/service/spot.ko.md`](../spec/core/service/spot.ko.md)의 Actor 계약 절을 참고한다.
+[`doc/spec/core/service/spot.ko.md`](../api/spot.ko.md)의 Actor 계약 절을 참고한다.
 
 ### 14.1 Local join 내부 순서
 

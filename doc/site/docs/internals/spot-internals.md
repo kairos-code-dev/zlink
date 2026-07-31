@@ -4,7 +4,7 @@
 
 This document helps core maintainers understand SPOT wiring and data flow.
 The public API contract is
-[`doc/spec/core/service/spot.md`](../spec/core/service/spot.md).
+[`doc/spec/core/service/spot.md`](../api/spot.md).
 
 ## 0. What SPOT Is and Why It Is Structured This Way
 
@@ -995,7 +995,7 @@ entire compound operation.
 
 This section describes how Actor join requests are processed inside SpotNode.
 For STREAM session binding flow see section 12. For the public join contract see
-[`doc/spec/core/service/spot.md`](../spec/core/service/spot.md).
+[`doc/spec/core/service/spot.md`](../api/spot.md).
 
 ### 14.1 Local join internal sequence
 

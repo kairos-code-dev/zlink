@@ -8,7 +8,7 @@
 
 This guide covers Actor creation, Spot join/leave, teardown, and session binding.
 For SPOT basic setup and dispatch handler registration see the [SPOT guide](07-3-spot.md).
-For exact API contracts see the [SPOT spec](../spec/core/service/spot.md).
+For exact API contracts see the [SPOT spec](../api/spot.md).
 
 ## 1. Distributing session messages with Actors
 

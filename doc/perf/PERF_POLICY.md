@@ -30,7 +30,6 @@
 | [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) | single suite 전용: recv/request-reply 모델, phase, 패턴/transport, single 전용 환경 변수 |
 | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) | multi suite 전용: 프로세스 모델, backpressure, throughput/latency 측정, 패턴/transport, multi 전용 환경 변수 |
 | [PERF_SPOT_TEST_POLICY.md](PERF_SPOT_TEST_POLICY.md) | Core 10.0.0 Spot 패턴 이름, MeshNode peer 토폴로지, ready/claim 수신과 단계별 실행 |
-| [PERF_WSL_STABILITY.md](PERF_WSL_STABILITY.md) | WSL 비정상 종료 조사 결과와 메모리 안전 점검 절차 |
 
 - 양 suite에 공통으로 적용되는 모든 규칙은 본 문서에서 관리한다.
 - 개별 정책 문서는 해당 suite **전용** 규칙만 기술하며, 공통 규칙은 본 문서를 참조한다.
@@ -1222,9 +1221,7 @@ client는 zlink socket client가 아니라 외부 raw TCP/TLS/WS/WSS peer 역할
 
 ## 7.6 리팩토링 원칙 (공통)
 
-> 참조:
-> [`doc/plan/refactor/00-core-system-posd-refactor-plan.ko.md`](/home/hep7/project/kairos/zlink/doc/plan/refactor/00-core-system-posd-refactor-plan.ko.md),
-> [`AGENTS.md`](/home/hep7/project/kairos/zlink/AGENTS.md)
+> 참조: [`AGENTS.md`](../../AGENTS.md)
 
 perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 원칙을 공통으로
 적용한다. `bindings/c/perf/README.md`는 사용 방법만 설명하며, 설계/리팩토링 기준은

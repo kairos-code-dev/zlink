@@ -7,7 +7,7 @@
 # SPOT 사용 가이드
 
 이 문서는 애플리케이션 개발자가 SPOT을 어떻게 쓰는지 설명한다.
-정확한 함수 계약은 [SPOT spec](../spec/core/service/spot.ko.md)를 본다.
+정확한 함수 계약은 [SPOT spec](../api/spot.ko.md)를 본다.
 
 > SPOT을 **언제·왜** 쓰는지(raw 소켓·Actor와의 관계, 실행 직렬성)는
 > [서비스 개요 §멘탈 모델](07-0-services.ko.md#12-멘탈-모델--어느-층을-언제-쓰나)에서

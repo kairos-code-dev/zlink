@@ -8,7 +8,7 @@
 
 이 문서는 Actor 생성, Spot join/leave, 종료, 세션 바인딩 흐름을 설명한다.
 SPOT 기본 설정과 dispatch 핸들러 등록은 [SPOT 가이드](07-3-spot.ko.md)를 본다.
-정확한 함수 계약은 [SPOT spec](../spec/core/service/spot.ko.md)를 본다.
+정확한 함수 계약은 [SPOT spec](../api/spot.ko.md)를 본다.
 
 > Actor가 **무슨 역할이고 언제** 쓰는지(세션↔처리 단위 binding, 재접속 이전성,
 > plain Spot과의 차이)는

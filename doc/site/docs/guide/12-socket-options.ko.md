@@ -8,7 +8,7 @@
 
 이 문서는 `zlink_set_option()` / `zlink_get_option()`으로 설정하는 소켓 옵션
 각각의 **동작**, **영향 범위**, **기본값**, **소켓 타입별 차이**를 상세히 설명한다.
-API 시그니처만 다루는 [socket API 레퍼런스](../spec/core/socket/README.ko.md)와 달리,
+API 시그니처만 다루는 [socket API 레퍼런스](../api/socket.ko.md)와 달리,
 이 가이드는 **옵션이 런타임에 무엇을 바꾸는지**에 초점을 둔다.
 
 ## 옵션 소유권 카테고리
@@ -539,7 +539,7 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작한다. 멀티호밍 서
 |-----------|---------------|-----|------|
 | `SUB` / `XSUB` | `LINGER` | `0` | 구독 소켓은 종료 시 대기 불필요 |
 | `ROUTER` | `ROUTER_MANDATORY` | `1` | 미연결 peer 대상 전송 실패를 surface |
-| `PUB` / `XPUB` | `PUB_NODROP` | `1` | HWM 시 조용한 drop 대신 `BACKPRESSURED` surface |
+| `PUB` / `XPUB` | `PUB_NODROP` | `0` | 손실 허용 fanout: HWM 시 해당 구독자 몫을 drop. `1`이면 `BACKPRESSURED` surface |
 | `STREAM` | `BACKLOG` | `65536` | 다수 외부 클라이언트 수용 |
 
 > **기본값과 관찰 가능한 동작:**
@@ -553,7 +553,7 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작한다. 멀티호밍 서
 >   `ZLINK_RID_DUPLICATE_REJECT` 이다. duplicate peer identity 가 들어오면
 >   기존 pipe 를 유지하고 새 연결은 등록하지 않는다. 새 연결이 기존 pipe 를
 >   인수해야 하면 `ZLINK_RID_DUPLICATE_HANDOVER` 로 명시 설정한다.
-> - `PUB_NODROP` 기본값은 `1` 이다. HWM 상황에서 `zlink_publish()` 가 조용히
+> - `PUB_NODROP` 기본값은 `0` 이다. HWM 상황에서 `zlink_publish()` 가 조용히
 >   drop 하지 않고 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다. 진행률을 위해
 >   drop 이 필요한 loss-tolerant workload 는 `0` 으로 명시 설정한다.
 >
@@ -568,7 +568,7 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작한다. 멀티호밍 서
 |------|-----|-----------|
 | ROUTER | `zlink_set_router_option()` | `MANDATORY` (기본 `1`), `PROBE`, `CONNECT_ROUTING_ID`, `REQUEST_TIMEOUT_MS`, `WEIGHT` (기본 `100`) |
 | DEALER | `zlink_set_dealer_option()` | `PROBE`, `REQUEST_TIMEOUT_MS`, `WEIGHT` (기본 `100`) |
-| PUB/XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (기본 `1`), `MANUAL`, `WELCOME_MSG`, `APPROVE_SUBSCRIBE`, `REJECT_SUBSCRIBE` |
+| PUB/XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (기본 `0`), `MANUAL`, `WELCOME_MSG`, `APPROVE_SUBSCRIBE`, `REJECT_SUBSCRIBE` |
 | SUB/XSUB | `zlink_set_sub_option()` (`TOPICS_COUNT`); 구독 필터는 `zlink_set_subscription()` / `zlink_unset_subscription()` | `TOPICS_COUNT` |
 | STREAM | `zlink_set_stream_option()` | `NOTIFY` |
 

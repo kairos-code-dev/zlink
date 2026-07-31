@@ -11,6 +11,10 @@ docs_dir: ../framework
 
 theme:
   name: material
+  language: ko
+  # Material 기본 Roboto에는 한글 글리프가 없다. 한글이 글자마다 OS 대체 폰트로
+  # 떨어지면서 자간과 굵기가 흔들리므로 시스템 한글 폰트를 쓴다.
+  font: false
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -28,6 +32,9 @@ theme:
     - navigation.sections
     - navigation.top
     - search.highlight
+
+extra_css:
+  - assets/korean.css
 
 plugins:
   - search

@@ -1,0 +1,36 @@
+/* 한국어 기술문서 타이포그래피.
+   Material 기본값은 Roboto인데 Roboto에는 한글 글리프가 없다. 그래서 한글이
+   글자마다 OS 대체 폰트로 떨어지면서 자간·굵기·행간이 흔들린다. 시스템 한글
+   폰트로 고정하고, 한국어에 필요한 줄바꿈 규칙을 준다. */
+:root {
+  --md-text-font-family: -apple-system, "Apple SD Gothic Neo", "Pretendard",
+    "Noto Sans KR", "Malgun Gothic", "맑은 고딕", "Segoe UI", sans-serif;
+  --md-code-font-family: "JetBrains Mono", "D2Coding", "Cascadia Mono",
+    ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+/* 한국어는 어절 중간에서 끊으면 급격히 읽기 어려워진다. keep-all이 그것을 막는다. */
+.md-typeset { line-height: 1.78; word-break: keep-all; overflow-wrap: break-word; }
+.md-typeset h1, .md-typeset h2, .md-typeset h3, .md-typeset h4 { word-break: keep-all; }
+.md-typeset p, .md-typeset li { letter-spacing: -0.003em; }
+
+/* 본문 폭. 비교표가 많아 기본 45rem으로는 셀이 짓눌린다. */
+.md-grid { max-width: 68rem; }
+
+/* 표 — 이 문서군의 핵심 표현 수단이다. 조밀하게, 헤더는 고정 톤으로. */
+.md-typeset table:not([class]) { font-size: 0.76rem; line-height: 1.6; display: table; }
+.md-typeset table:not([class]) th { font-weight: 600; white-space: nowrap; }
+.md-typeset table:not([class]) td,
+.md-typeset table:not([class]) th { padding: 0.5em 0.9em; }
+.md-typeset__table { overflow-x: auto; }
+
+/* 코드 블록은 한글 본문보다 조금 작게 두어야 시각 무게가 맞는다. */
+.md-typeset pre > code { font-size: 0.74rem; line-height: 1.55; }
+.md-typeset code { word-break: normal; }
+
+/* 제목 간격 — 장이 길어 스캔이 중요하다. */
+.md-typeset h2 { margin-top: 2.2em; padding-top: 0.4em; border-top: 1px solid var(--md-default-fg-color--lightest); }
+.md-typeset h3 { margin-top: 1.6em; }
+
+/* 인용(샘플에서 보기 / 계약 소유 문서)은 본문과 확실히 구분한다. */
+.md-typeset blockquote { border-left-width: 3px; }

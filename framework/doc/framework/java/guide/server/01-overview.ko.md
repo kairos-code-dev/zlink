@@ -234,31 +234,14 @@ ZLink는 이 중 **연결·세션(STREAM), room·상태 단위(SPOT), 서버 간
 그리고 이 전부가 쓰던 프레임워크 안이다 — 엔진을 새로 들여와 별도 생태계로 옮겨가야
 하는 것과는 정반대 방향이다.
 
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-flowchart LR
-  subgraph engine["게임 서버 엔진 방식 — 별도 런타임으로 이동"]
-    direction TB
-    E1["<b>엔진 전용 런타임</b>"]
-    E2["엔진 방식으로 로직 작성<br/>자체 설정 · 배포 · 운영"]
-    E3["별도 학습 · 별도 스택<br/>기존 백엔드·채용 풀과 분리"]
-    E1 ~~~ E2 ~~~ E3
-  end
-  subgraph zl["ZLink 방식 — 쓰던 프레임워크 위의 계층"]
-    direction TB
-    Z1["<b>ASP.NET Core / Spring / NestJS</b><br/>DI · 설정 · 로깅 · 배포 그대로"]
-    Z2["<b>ZLink Framework</b><br/>SPOT · actor · STREAM · drain"]
-    Z1 ~~~ Z2
-  end
-  engine ~~~ zl
-  classDef island fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
-  classDef keep fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20;
-  classDef layer fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
-  class E1,E2,E3 island;
-  class Z1 keep;
-  class Z2 layer;
-  style engine stroke:#e65100,stroke-width:2px,stroke-dasharray:6 4
-  style zl stroke:#1565c0,stroke-width:3px
+```text
++-----------------------------------------------------------+
+|  ASP.NET Core / Spring / NestJS                           |
+|  DI · 설정 · 로깅 · 배포 그대로                           |
++-----------------------------------------------------------+
+|  ZLink Framework                                          |
+|  SPOT · actor · STREAM · drain                            |
++-----------------------------------------------------------+
 ```
 
 **코드로 보면.** room 하나를 선언하고, 그 room의 진행 로직을 쓴다.

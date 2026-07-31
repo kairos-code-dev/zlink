@@ -5713,3 +5713,32 @@ play-a.evidence.log : 0건
 SM-B1에서 배운 방식이 그대로 적용된다. 공통 e2e 문서의 SM-B6 절차를 먼저 확인해 어느
 node에 spot이 있어야 하는지 읽고, 필요하면 placement weight로 고정한 뒤 그 node에 물어야
 한다. 코드에서 의도를 추측하지 않는다.
+
+### SM-B6: 소유 node를 따라가게 고쳤고, 남은 것은 "비정상 종료"다
+
+공통 e2e 문서를 먼저 읽는 방식이 그대로 통했다. `config-2-spot-service.ko.md`의 SM-B6
+검증은 이렇게 적혀 있다.
+
+> (a)는 **Actor 소유 노드의** Spot에서 `OnLeaveActorAsync`만 실행한다.
+
+고정된 이름이 아니라 소유 node다. `CreateSpotRes`가 `NodeRid`를 싣고 있으므로 그것으로
+owner client와 harness rid를 정해 evidence를 묻게 했다. Leave assertion을 통과하고 다음
+지점으로 간다.
+
+남은 실패는 disconnect 쪽이다. `spot-actor-disconnected` 증거가 play-a·play-b 어디에도
+없다. Play host에는 `OnDisconnectActorAsync`가 있고 marker도 남기므로 callback 자체가
+실행되지 않은 것이다.
+
+문서가 두 경로를 구분한다.
+
+> (a) application이 명시적으로 `leaveActor(...)`를 호출하거나, (b) Actor를 bind한 STREAM
+> connection을 **비정상 종료**한다.
+
+시나리오는 (b)에서 `disconnectClient.Close.Async()`를 부른다. 이것은 정상 종료이며 (a)에
+가깝다. 명시적 close를 지우고 dispose에 맡기는 것도 시도했으나 결과가 같았다. Connector의
+dispose 역시 정상 종료로 닫는다.
+
+따라서 남은 것은 connector가 실제 abort를 낼 수 있는지, 없다면 transport를 끊는 다른
+수단(proxy 차단 등)을 쓸지다. ObservabilityOps가 `NetworkFaultProxy`로 같은 일을 한다.
+
+이 스위트는 0개에서 7개로 왔다.

@@ -34,10 +34,7 @@ Stream node에는 session type 하나를 등록한다. Actor dispatch를 사용�
 === "Java"
 
     ```java
-    options.addStreamNode("client-stream")
-        .bind("tcp://0.0.0.0:9100")
-        .enableActorDispatch("play")          // Java는 Actor를 배치한 mesh 이름을 함께 준다.
-        .registerSession(PlaySession.class);  // 연결마다 만들 session type을 등록한다.
+    --8<-- "framework/languages/java/zlink-framework-doc-examples/src/main/java/systems/zlink/framework/docexamples/stream/StreamNodeRegistration.java:register-stream-node"
     ```
 
 === "Kotlin"
@@ -371,15 +368,7 @@ one-shot reply token을 사용한다.
 === "Java"
 
     ```java
-    public CompletionStage<Void> handle(
-        ZLinkSessionContext context, ZLinkSessionDispatchContext dispatch, Ping message) {
-        if (!dispatch.canReply()) {
-            throw new IllegalStateException("Ping must be a request.");
-        }
-
-        // 같은 request correlation으로 한 번만 reply한다.
-        return context.client().reply(new Pong(message.sequence())).submit();
-    }
+    --8<-- "framework/languages/java/zlink-framework-doc-examples/src/main/java/systems/zlink/framework/docexamples/stream/PingHandler.java:typed-packet-handler"
     ```
 
 === "Kotlin"
@@ -440,12 +429,7 @@ Server가 먼저 push할 때는 `Send`를 사용한다.
 === "Java"
 
     ```java
-    // local transport queue admission까지 기다린다.
-    context.client()
-        .send(new ServerNotice("maintenance"))
-        .metadata("severity", "info")
-        .compress()
-        .submit();
+    --8<-- "framework/languages/java/zlink-framework-doc-examples/src/main/java/systems/zlink/framework/docexamples/stream/StreamNodeRegistration.java:server-push"
     ```
 
 === "Kotlin"

@@ -55,6 +55,18 @@ jobs:
       - name: Check document links and anchors
         run: python3 doc/site/scripts/check_doc_links.py framework framework-plan core-doc
 
+      # 가이드가 인용하는 교육용 예제는 실제 컴파일 대상이다. 계약과 어긋난 코드가
+      # 문서에 실리는 것을 컴파일러가 막는다.
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Compile guide examples (Java)
+        working-directory: framework/languages/java
+        run: ./gradlew :zlink-framework-doc-examples:compileJava
+
       - name: Check framework document contracts
         run: bash scripts/verify-framework-doc-contracts.sh
 

@@ -31,10 +31,7 @@ Server는 session lifecycle과 packet dispatch를 구현한다. Client는 독립
 Stream node에는 session type 하나를 등록한다. Actor dispatch를 사용하면 명시적으로 활성화한다.
 
 ```java
-options.addStreamNode("client-stream")
-    .bind("tcp://0.0.0.0:9100")
-    .enableActorDispatch("play")          // Java는 Actor를 배치한 mesh 이름을 함께 준다.
-    .registerSession(PlaySession.class);  // 연결마다 만들 session type을 등록한다.
+--8<-- "framework/languages/java/zlink-framework-doc-examples/src/main/java/systems/zlink/framework/docexamples/stream/StreamNodeRegistration.java:register-stream-node"
 ```
 
 Session handler와 Actor/Spot handler는 Framework의 기본 typed JSON serialization을 사용한다.
@@ -132,15 +129,7 @@ Handler registry가 수신 message를 typed message로 decode한다. Request에 
 one-shot reply token을 사용한다.
 
 ```java
-public CompletionStage<Void> handle(
-    ZLinkSessionContext context, ZLinkSessionDispatchContext dispatch, Ping message) {
-    if (!dispatch.canReply()) {
-        throw new IllegalStateException("Ping must be a request.");
-    }
-
-    // 같은 request correlation으로 한 번만 reply한다.
-    return context.client().reply(new Pong(message.sequence())).submit();
-}
+--8<-- "framework/languages/java/zlink-framework-doc-examples/src/main/java/systems/zlink/framework/docexamples/stream/PingHandler.java:typed-packet-handler"
 ```
 
 `reply`는 현재 request에서만 유효하며 한 번 제출할 수 있다. Timeout이나 cancellation으로 전송이
@@ -153,12 +142,7 @@ public CompletionStage<Void> handle(
 Server가 먼저 push할 때는 `send`를 사용한다.
 
 ```java
-// local transport queue admission까지 기다린다.
-context.client()
-    .send(new ServerNotice("maintenance"))
-    .metadata("severity", "info")
-    .compress()
-    .submit();
+--8<-- "framework/languages/java/zlink-framework-doc-examples/src/main/java/systems/zlink/framework/docexamples/stream/StreamNodeRegistration.java:server-push"
 ```
 
 ## 4. Actor dispatch

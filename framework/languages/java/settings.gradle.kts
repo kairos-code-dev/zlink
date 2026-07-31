@@ -30,4 +30,6 @@ include(
     "zlink-framework-kotlin",
     "zlink-http-client-kotlin",
     "zlink-framework-testkit",
+    //  가이드 교육용 예제. 배포 대상이 아니고 컴파일만 한다.
+    "zlink-framework-doc-examples",
 )

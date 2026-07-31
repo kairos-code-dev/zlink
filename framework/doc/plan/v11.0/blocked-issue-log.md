@@ -3468,3 +3468,22 @@ actor node에 **211번 도달하는데** 클라이언트는 끝내 성공을 받
 
 다음은 bind 응답이 어떻게 되는지다. `ZLinkRemoteSessionBindingHandler`가
 `ZLinkActorBoundSessionRelay.SendReplyAsync`로 응답하므로 그 경로를 본다.
+
+### ST-E2 bind는 예외가 아니라 hang이다
+
+bind 경로에 진단을 넣어 두 가지를 확인했다.
+
+```
+bind_session  session-b-...   211건   ← BindRemoteBoundSessionRouteAsync 진입
+bind_reply                      0건   ← 그 호출이 반환하지 않는다
+bind_failed                     0건   ← 예외도 아니다
+```
+
+즉 `BindRemoteBoundSessionRouteAsync`가 **진입만 하고 반환도 예외도 없이 멈춘다.**
+클라이언트는 재시도하고 그때마다 같은 일이 반복되어 211건이 쌓인다.
+
+예외 경로가 아니므로 앞서 고친 NRE와는 다르다. 그 함수 안에서 대기하는 지점을 찾아야
+한다. `bind_session` 진단 바로 뒤가 `BeginActorSessionReplacement`이므로 거기서부터
+본다. 이름이 replacement이므로 기존 binding을 교체하며 무언가를 기다릴 가능성이 있고,
+ST-E2는 이전 session이 아직 살아 있는 상태에서 새 session을 bind하는 시나리오이므로
+그 교체가 이전 binding의 해제를 기다린다면 설명이 된다.

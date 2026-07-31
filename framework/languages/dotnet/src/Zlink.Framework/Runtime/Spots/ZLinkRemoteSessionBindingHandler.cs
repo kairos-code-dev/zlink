@@ -43,11 +43,25 @@ internal static class ZLinkRemoteSessionBindingHandler
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Unavailable,
                 "Remote actor session binding request did not match the addressed Actor.");
-        var response = await runtime.BindRemoteBoundSessionRouteAsync(
-                request,
-                frame.SourceNodeRid,
-                cancellationToken)
-            .ConfigureAwait(false);
+        ZLinkRemoteSessionBindResponse response;
+        try
+        {
+            response = await runtime.BindRemoteBoundSessionRouteAsync(
+                    request,
+                    frame.SourceNodeRid,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception bindFailure)
+        {
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"bind_failed actor={request.ActorId} {bindFailure}");
+            throw;
+        }
+        //  Paired with the client's retry count: if this fires repeatedly the
+        //  bind is handled every time and the answer is what goes missing.
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"bind_reply actor={request.ActorId} response={response}");
         acknowledgeHandledFrame?.Invoke();
         await ZLinkActorBoundSessionRelay.SendReplyAsync(
                 runtime,

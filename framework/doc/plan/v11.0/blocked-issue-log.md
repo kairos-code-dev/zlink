@@ -4441,3 +4441,64 @@ knob이고, spec 06이 정의하는 byte 기반 Application HWM과는 다른 축
 - Handshake와 liveness frame은 application이 설정한 send HWM의 영향을 받지 않아야 한다.
 
 측정 편집은 되돌렸다. 판정 근거를 만들기 전에는 고치지 않는다.
+
+### 세 스위트는 컴파일이 되지 않아 시나리오에 도달한 적이 없다
+
+ResilienceLifecycle·SpotService·ToActorMessaging은 host project가 v11 대상으로 빌드되지
+않는다. runner가 `dotnet build ... >/dev/null`로 빌드 출력을 버려서 아무 메시지 없이
+실패했다. 드리프트는 넷이다.
+
+| 증상 | v11 |
+|---|---|
+| `SendHighWaterMark = int` | `ulong` |
+| `Zlink.Framework.Contracts.Eventing` | 네임스페이스 삭제 |
+| `EnableActorDispatch("mesh")` | 인자 없음 |
+| `ActorRef.Generation` | `ActorRef.ObjectGeneration` |
+
+### fixed RID + automatic discovery는 세 스위트에 걸친 공통 결함이다
+
+spec 13 §3.3은 fixed RID를 Location Store와 automatic discovery를 쓰지 않는 explicit
+manual topology에서만 허용한다. StoreFailure·ResilienceLifecycle·ToActorMessaging이
+이를 어겨 host가 기동 즉시 죽는다. 나머지 스위트의 `SetRoutingId` 호출은 실제 manual
+topology라 정상이다(로그에 해당 오류 없음).
+
+ToActorMessaging은 같은 편집으로 끝나지 않는다. Caller가
+`PeerConnections.Connect(RoutingId.From(options.ActorRid), endpoint)`로 actor peer를
+**RID로 지정해** 연결한다. Actor host가 automatic RID를 받으면 caller가 그 값을 미리 알
+수 없다. Topology 자체를 어떻게 바꿀지 결정이 필요하다.
+
+### RL-A1: 선택 가능한 target이 없을 때 `Unavailable`이 온다
+
+Provider가 내려간 창에서 select-one 호출이 `Unavailable`로 끝난다. spec 08 §7 표는
+"ChannelName의 선택 가능한 target이 없다 → `NotFound`로 끝난다"로 정한다. Framework의
+매핑 자체는 충실하다. Core가 `NotConnected`를 돌려주고
+`ZLinkRequestFailureMapper`가 그것을 `Unavailable`로 옮긴다. 즉 Core member 집합에 죽은
+provider가 남아 있다는 뜻이다.
+
+시나리오는 **registry** host의 topology에서 api-b row가 사라지기를 기다린 뒤 consumer에
+요청한다. Consumer 자신의 수렴은 기다리지 않는다. 따라서 다음 둘 중 하나다.
+
+- Consumer가 아직 수렴하지 않은 시점을 시나리오가 관측한다(시나리오 문제).
+- Row가 사라져도 Framework가 Core member를 회수하지 않는다(런타임 문제).
+
+Consumer 자신의 topology를 기다리도록 바꿔 보면 갈린다. 아직 하지 않았다.
+
+### AutomaticTurnDispatch: play → delay 요청이 나가서 도착하지 않는다
+
+`play-a`가 `await.delay` channel로 보내는 readiness 요청이 submit된 뒤 timeout으로
+끝난다.
+
+```
+System.TimeoutException: ZLink request timed out before completion.
+   at ZLinkAsyncSubmitter.SubmitRequestCoreAsync
+```
+
+`delay-a`는 `/health` 외에 아무것도 받지 못한다. 다음을 배제했다.
+
+- Barrier 시간 부족이 아니다. 3초를 30초로 늘려도 같다.
+- 기동 오류가 아니다. 양쪽 host stderr가 비어 있다.
+- `NotRequired` 정책이 아니다. play의 delay mesh는 Object role이 `None`이고
+  delay-a는 Channel Server membership을 가지므로 `IsNotRequired`가 거짓이다.
+
+즉 manual peer 연결이 성립하는데도 request가 상대에 도달하지 않는다. LocationMessaging의
+`backpressure-consumer`와 증상 계열이 같지만 그쪽 원인인 send HWM 설정은 여기에 없다.

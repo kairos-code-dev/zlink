@@ -5918,3 +5918,36 @@ Cleanup을 all-settled로 두는 것 자체는 한 actor의 callback 실패가 s
 "해당 Spot에 속한 Actor의 연결 단절을 알린다"가 지켜지지 않는다.
 
 측정 편집 세 개는 모두 되돌렸다.
+
+### SM-B6 확정: framework 수준 송신은 성공하고 frame은 도착하지 않는다
+
+앞 절이 남긴 마지막 확인점을 측정했다. `ForwardPart`의 반환값을 찍었다.
+
+```
+disconnect_forward actor=actor-sm-b6-disconnected header=True
+disconnect_forward actor=actor-sm-b6-left        header=True
+(다른 4개 actor도 모두 True)
+```
+
+실패하지 않는다. 따라서 예외도 없고, all-settled cleanup이 무언가를 삼킨 것도 아니다. 앞
+절에서 세운 "ForwardPart 실패가 조용히 사라진다"는 추정은 틀렸다.
+
+측정 네 개로 범위가 확정된다.
+
+| 지점 | 결과 |
+|---|---|
+| Relay 진입 (session-a) | 찍힘 |
+| `ForwardPart` 반환 | `True` |
+| 소유 node의 disconnect 분기 | 없음 |
+| Validation 실패 | 없음 |
+
+즉 **framework 수준에서는 송신이 성공했다고 보고되는데 상대 node의 inbound pipeline에
+frame이 도착하지 않는다.** 손실 지점은 `ForwardPart` 아래, 즉 router 송신과 전달 사이다.
+`SendFlags.DontWait`으로 보내며 ROUTER는 경로가 없는 frame을 기본적으로 조용히 버린다.
+Disconnect 시점이 transport가 막 끊긴 직후라는 점도 맞는다.
+
+다음 단계는 core lane이다. 이 송신이 어느 peer로 향했고 그때 그 route가 살아 있었는지를
+Core 쪽에서 봐야 한다. Framework 쪽에서 더 볼 것은 남아 있지 않다.
+
+이 항목은 PS-A4, 후보 0개 대기, RC-B5 reply 유실과 같은 성격으로 core lane 목록에 넣는다.
+측정 편집은 모두 되돌렸다.

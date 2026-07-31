@@ -4395,3 +4395,49 @@ pipe_t::check_hwm_for_message
 수정 위치는 `xpub_t::xsend`와 `dist_t::check_hwm`으로 core lane이다. 이 세션의 커밋은
 `framework/`로 한정해 왔고 core working tree에는 v11 lossy 작업이 진행 중이므로 여기서는
 고치지 않고 남긴다. PS-A1~A3은 통과하고 PS-A4만 이 결함에 걸려 있다.
+
+### dotnet e2e 스위트 전수 1차 실패 목록
+
+"12개 스위트가 하나의 원인으로 막혀 있다"는 추정이 무너진 뒤, 남은 스위트를 직렬로 한 번씩
+돌려 각각의 첫 실패를 확보했다.
+
+| 스위트 | 첫 실패 |
+|---|---|
+| PubSub | PS-A1~A3 통과, PS-A4는 core lossy admission 결함 |
+| StoreFailure | SF-A1·SF-A2 통과, SF-B1이 outage 중 정지 |
+| AutomaticTurnDispatch | `play-a to delay-a route readiness` 3초 timeout |
+| LocationMessaging | `backpressure-consumer route readiness` 3초 timeout |
+| ChannelEgressRouting | runner가 미구현 selector 4건(CH-E2E-03/08, CH-REG-02/05)으로 거부 |
+| ObservabilityOps | ObsA1FlowCorrelation |
+| RegistrationCodec | evidence 대기 HTTP timeout |
+| ResilienceLifecycle | 미분류 |
+| RuntimeMonitoring | MonA4AvailabilityTransition |
+| SpotService | 미분류 |
+| SubmitAdmission | HTTP 500 |
+| ToActorMessaging | 미분류 |
+| SpotActorTransfer | 15/29 통과 |
+
+### backpressure-consumer는 send HWM 4가 handshake를 굶겨서 막힌다
+
+LocationMessaging의 `backpressure-consumer`만 route readiness에 도달하지 못한다. 같은
+manual 구성인 `single-consumer`는 통과한다. 두 host의 차이는 한 줄뿐이다.
+
+```csharp
+if (options.TraceLabel == "backpressure-consumer")
+    profileMesh.ConfigureRouterSocket().SendHighWaterMark = 4;
+```
+
+측정으로 확인했다. 이 값만 4000으로 올리면 readiness barrier를 통과하고 시나리오 단계까지
+진행한다. 되돌리면 다시 막힌다. 즉 message 4개짜리 send HWM이 mesh handshake와 liveness
+frame까지 함께 제한해서 peer가 Ready로 가지 못한다.
+
+`ConfigureRouterSocket().SendHighWaterMark`는 Core socket 옵션을 그대로 노출하는
+knob이고, spec 06이 정의하는 byte 기반 Application HWM과는 다른 축이다. 공통 spec에는
+이 knob에 대한 조항도, handshake·liveness frame을 application send HWM에서 제외한다는
+조항도 없다. 따라서 다음 둘 중 어느 쪽이 옳은지 스펙만으로는 판정할 수 없다.
+
+- e2e가 backpressure를 만들려고 고른 값이 너무 낮다. Framework의 admission 계층으로
+  backpressure를 만들어야 한다.
+- Handshake와 liveness frame은 application이 설정한 send HWM의 영향을 받지 않아야 한다.
+
+측정 편집은 되돌렸다. 판정 근거를 만들기 전에는 고치지 않는다.

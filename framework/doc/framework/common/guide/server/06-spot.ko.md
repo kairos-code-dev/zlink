@@ -717,19 +717,49 @@ Framework는 Spot activation에서 handler를 한 번 만들고 Spot이 닫히�
 
 === "C++"
 
-    C++ 표는 준비 중이다.
+    C++은 handler class 대신 Spot member 함수를 등록한다. 등록 호출이 곧 종류다.
+
+    | 받는 것 | 등록 |
+    | --- | --- |
+    | Spot 앞 one-way packet | `add_handler<&TSpot::method> ()` |
+    | Spot 앞 request | `add_handler<&TSpot::method> ()`(반환값이 reply) |
+    | Logical Multicast 구독 이벤트 | `add_subscribe<&TSpot::method> (channel_name, topic)` |
+    | timer tick | `add_timer<THandler> (name, period, options)`(§6.1) |
+    | member Actor 앞 one-way packet | `add_actor_send<&TSpot::method> ()` |
+    | member Actor 앞 request | `add_actor_request<&TSpot::method> ()` |
 
 === "Java"
 
-    Java 표는 준비 중이다.
+    | 받는 것 | 구현할 interface | 등록 |
+    | --- | --- | --- |
+    | Spot 앞 one-way packet | `ZLinkSpotPacketHandler<TSpot, TMessage>` | `addPacket(THandler.class)` |
+    | Spot 앞 request | `ZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | `addPacket(THandler.class)` |
+    | Logical Multicast 구독 이벤트 | `ZLinkSpotSubscriptionHandler<TSpot, TEvent>` | `addSubscribe(THandler.class, channelName, topic)` |
+    | timer tick | `ZLinkSpotTimerHandler<TSpot>` | `addTimer(name, period, THandler.class, options)`(§6.1) |
+    | member Actor 앞 one-way packet | `ZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | `addActorPacket(THandler.class, TActor.class)` |
+    | member Actor 앞 request | `ZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | `addActorPacket(THandler.class, TActor.class)` |
 
 === "Kotlin"
 
-    Kotlin 표는 준비 중이다.
+    | 받는 것 | 구현할 interface | 등록 |
+    | --- | --- | --- |
+    | Spot 앞 one-way packet | `ZLinkSpotPacketHandler<TSpot, TMessage>` | `addPacket(THandler::class.java)` |
+    | Spot 앞 request | `ZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | `addPacket(THandler::class.java)` |
+    | Logical Multicast 구독 이벤트 | `ZLinkSpotSubscriptionHandler<TSpot, TEvent>` | `addSubscribe(THandler::class.java, channelName, topic)` |
+    | timer tick | `ZLinkSpotTimerHandler<TSpot>` | `addTimer(name, period, THandler::class.java, options)`(§6.1) |
+    | member Actor 앞 one-way packet | `ZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | `addActorPacket(THandler::class.java, TActor::class.java)` |
+    | member Actor 앞 request | `ZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | `addActorPacket(THandler::class.java, TActor::class.java)` |
 
 === "Node/TypeScript"
 
-    Node 표는 준비 중이다.
+    | 받는 것 | 구현할 interface | 등록 |
+    | --- | --- | --- |
+    | Spot 앞 one-way packet | `ZLinkSpotPacketHandler<TSpot, TMessage>` | `addPacket(THandler)` |
+    | Spot 앞 request | `ZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | `addPacket(THandler)` |
+    | Logical Multicast 구독 이벤트 | `ZLinkSpotSubscriptionHandler<TSpot, TEvent>` | `addSubscribe(THandler, channelName, topic)` |
+    | timer tick | `ZLinkSpotTimerHandler<TSpot>` | `addTimer(name, periodMs, THandler, options)`(§6.1) |
+    | member Actor 앞 one-way packet | `ZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | `addActorPacket(THandler)` |
+    | member Actor 앞 request | `ZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | `addActorPacket(THandler)` |
 
 handler는 대상 Spot instance를 첫 인자로 받는다. Spot 안에서 실행되므로 상태를 락 없이
 직접 만진다.

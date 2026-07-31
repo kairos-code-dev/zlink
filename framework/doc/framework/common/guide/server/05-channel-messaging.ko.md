@@ -394,19 +394,35 @@ Spot으로 한정되고, Classic fanout은 mesh 구성과 무관하게 연결된
 
 === "C++"
 
-    C++ 표는 준비 중이다.
+    | 종류 | 보내는 호출 | 받는 handler |
+    | --- | --- | --- |
+    | request | `request_to_channel (name, req).submit<TReply> ()` | `request_type`·`reply_type`을 선언한 handler class |
+    | send | `send_to_channel (name, msg).submit ()` | `request_type`만 선언한 handler class |
+    | publish (fanout) | `publish (name, topic, evt).submit ()` | `request_type`만 선언한 fanout handler class |
 
 === "Java"
 
-    Java 표는 준비 중이다.
+    | 종류 | 보내는 호출 | 받는 handler |
+    | --- | --- | --- |
+    | request | `requestToChannel(name, req).submit(TReply.class)` | `ZLinkRequestHandler<TRequest, TReply>` |
+    | send | `sendToChannel(name, msg).submit()` | `ZLinkSendHandler<TMessage>` |
+    | publish (fanout) | `publish(name, topic, evt).submit()` | `ZLinkFanoutHandler<TEvent>` |
 
 === "Kotlin"
 
-    Kotlin 표는 준비 중이다.
+    | 종류 | 보내는 호출 | 받는 handler |
+    | --- | --- | --- |
+    | request | `requestToChannel(name, req).submit(TReply::class.java).await()` | `ZLinkRequestHandler<TRequest, TReply>` |
+    | send | `sendToChannel(name, msg).submit().await()` | `ZLinkSendHandler<TMessage>` |
+    | publish (fanout) | `publish(name, topic, evt).submit().await()` | `ZLinkFanoutHandler<TEvent>` |
 
 === "Node/TypeScript"
 
-    Node 표는 준비 중이다.
+    | 종류 | 보내는 호출 | 받는 handler |
+    | --- | --- | --- |
+    | request | `requestToChannel(name, req).submit<TReply>()` | `ZLinkRequestHandler<TRequest, TReply>` |
+    | send | `sendToChannel(name, msg).submit()` | `ZLinkSendHandler<TMessage>` |
+    | publish (fanout) | `publish(name, topic, evt).submit()` | `ZLinkFanoutHandler<TEvent>` |
 
 channel handler는 독립 class다. 서로 다른 요청이 동시에 실행될 수 있으므로 가변 도메인
 상태를 handler 멤버에 두지 않는다. Handler instance와 scoped dependency는 그 dispatch가

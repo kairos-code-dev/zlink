@@ -987,19 +987,55 @@ timeout으로 표현한다. `Sleep`은 느린 장비에서 실패하고 빠른 �
 
 === "C++"
 
-    C++ 실행 script는 준비 중이다.
+    ```bash
+    start_server play-a "$PLAY_BIN" --config="$CONFIG_DIR/play-a.json"
+    start_server play-b "$PLAY_BIN" --config="$CONFIG_DIR/play-b.json"
+    start_server api-a  "$API_BIN"  --config="$CONFIG_DIR/api-a.json"
+
+    wait_port play-a "$PLAY_A_ROUTE_ENDPOINT"   # 포트가 열릴 때까지 기다린다. sleep을 쓰지 않는다.
+
+    "$CLIENT_BIN" --config="$CONFIG_DIR/client.json" >"$LOG_DIR/client.log" 2>&1
+
+    RUN_SUCCEEDED=1
+    ```
 
 === "Java"
 
-    Java 실행 script는 준비 중이다.
+    ```bash
+    # gradle이 실행 가능한 배포본을 만들고, script는 그 실행 파일을 띄운다.
+    gradle_run :Server:installDist :Client:installDist
+
+    start_server play-a "$(app_bin Server Server)" --config "${CONFIG_DIR}/play-a.json"
+    start_server play-b "$(app_bin Server Server)" --config "${CONFIG_DIR}/play-b.json"
+    start_server api-a  "$(app_bin Server Server)" --config "${CONFIG_DIR}/api-a.json"
+
+    wait_port "${PLAY_A_ROUTE_ENDPOINT}"        # 포트가 열릴 때까지 기다린다. sleep을 쓰지 않는다.
+
+    "$(app_bin Client Client)" --api-url "http://127.0.0.1:${api_a_http_port}" \
+      >"${log_dir}/client.log" 2>&1
+
+    RUN_SUCCEEDED=1
+    ```
 
 === "Kotlin"
 
-    Kotlin 실행 script는 준비 중이다.
+    ```bash
+    # kotlin 샘플은 java와 같은 runner를 쓰고 언어만 골라 준다.
+    ZLINK_SAMPLE_LANGUAGES=kotlin \
+      framework/languages/java/samples/run_samples.sh TicTacToe
+
+    # runner 안에서는 java와 같은 절차다 — installDist → start_server → wait_port → client.
+    ```
 
 === "Node/TypeScript"
 
-    Node 실행 script는 준비 중이다.
+    ```bash
+    # Node 샘플은 shell 대신 runner script가 같은 절차를 수행한다.
+    node "${SCRIPT_DIR}/../run-sample.mjs" "${SCRIPT_DIR}/Runner/sample-runner.mjs"
+
+    # sample-runner.mjs가 server 기동 · 포트 대기 · client 실행 · 정리를 담당한다.
+    # 판정 기준은 다른 언어와 같다 — client의 exit code다.
+    ```
 
 script는 다음 규칙을 따른다.
 

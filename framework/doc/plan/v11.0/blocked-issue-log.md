@@ -5492,3 +5492,38 @@ OBS-B4  baseline  : 4회 중 2 pass 2 fail
 
 OBS-B4의 실패는 그 자체로 조사 대상이다. Metrics를 끈 host를 다루는 시나리오가 절반쯤
 `not accepting operations`로 실패하는 것은 별개 항목으로 남긴다.
+
+### OBS-B4: traffic loop이 rebind 전이를 재시도하지 않았다
+
+앞 절에서 별개 항목으로 남긴 OBS-B4를 봤다. 실패 문구가 실행마다 다르다. 한 번은
+`not accepting operations`였고 재현했더니 다른 것이 나왔다.
+
+```
+ObsB4DisabledMetricsScenario.cs:line 45
+ZLinkFrameworkException: Actor 'obs-b4-...' session binding changed before frame admission.
+```
+
+line 45는 80회 반복하는 `GameActionReq` 구간이다. 이 오류는 runtime이
+`RetryAfterBackoff`로 표시하는 전이이며 OBS-B2의 join에서 이미 같은 처리를 했다.
+`ScenarioContext`에 재시도 helper를 만들어 traffic loop도 쓰게 했다.
+
+```
+retry 전 : 10회 중 5 fail (baseline 4회 중 2 포함)
+retry 후 : 8회 중 1 fail
+```
+
+남은 한 번은 다른 지점, 다른 종류다.
+
+```
+ObsB4DisabledMetricsScenario.cs:line 38
+could not join room 'room-b4-...-1-...': Rejected
+```
+
+Join 자체가 `Rejected`로 끝난다. `CreateRoomOnObservedNodeAsync`가 placement가 play-b를
+고를 때까지 room을 만들고 닫기를 반복하므로 그 직후 join이 정리 중인 room을 만날 수 있다.
+`Rejected`는 admission 거절이며 `InternalFailure`와 달리 정상 경로의 결과다. 이것도
+재시도 대상인지, 아니면 helper가 room을 닫은 뒤 정리를 기다려야 하는지는 아직 보지
+않았다.
+
+이 시나리오의 실패 문구가 최소 셋(`not accepting operations`, binding 전이, join
+`Rejected`)이므로, 한 번의 실행으로 원인을 특정하면 안 되는 대상이다.

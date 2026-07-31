@@ -42,7 +42,8 @@ internal static class ObsB4DisabledMetricsScenario
         for (var index = 0; index < TrafficCount; index++)
         {
             var marker = $"obs-b4-{index}";
-            var action = await connector.Request(new GameActionReq(marker)).Async<GameActionRes>();
+            var action = await ScenarioContext.RequestWithRebindRetryAsync(
+                () => connector.Request(new GameActionReq(marker)).Async<GameActionRes>().AsTask());
             ZlinkStreamAssert.Ensure(
                 action.Marker == marker && action.NodeRid == joined.NodeRid,
                 "OBS-B4 messaging changed while metrics were disabled.");

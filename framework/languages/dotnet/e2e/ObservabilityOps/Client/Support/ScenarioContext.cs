@@ -87,6 +87,26 @@ internal sealed class ScenarioContext(ClientOptions options) : IDisposable
             .Async<string[]>()).Body;
     }
 
+    /// <summary>
+    /// Retries a request that raced a session rebind. The runtime types that
+    /// failure RetryAfterBackoff, so it is a transient the caller resends.
+    /// </summary>
+    public static async Task<T> RequestWithRebindRetryAsync<T>(
+        Func<Task<T>> request)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return await request();
+            }
+            catch (Exception error) when (attempt < 10 && IsBindingRebind(error))
+            {
+                await Task.Delay(100);
+            }
+        }
+    }
+
     private static bool IsBindingRebind(Exception error) =>
         error.ToString().Contains("session binding", StringComparison.Ordinal);
 

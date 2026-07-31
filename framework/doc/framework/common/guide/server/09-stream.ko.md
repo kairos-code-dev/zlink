@@ -358,14 +358,11 @@ one-shot reply token을 사용한다.
 === "C++"
 
     ```cpp
-    task_t<void> handle (stream_t &stream,
-                         const stream_dispatch_context_t &dispatch,
-                         const ping_t &message)
+    // C++ typed handler는 stream과 decode된 payload 둘만 받는다. dispatch context는
+    // raw on_packet 경로에만 전달되므로 여기서 can_reply를 확인하지 않는다.
+    task_t<void> handle (stream_t &stream, const ping_t &message)
     {
-        if (!dispatch.can_reply ())
-            throw std::runtime_error ("Ping must be a request.");
-
-        // 같은 request correlation으로 한 번만 reply한다.
+        // 같은 request correlation으로 한 번만 reply한다. request가 아니면 실패로 끝난다.
         co_await stream.reply_packet (zlink::message_t::from_json (pong_t{message.sequence}))
           .submit ();
     }

@@ -1422,8 +1422,12 @@ handler는 dispatch마다 scope를 가지므로 ORM을 생성자로 받아도 �
     ```
 
 
-**Spot 안에서 직접 써야 한다면 `IServiceScopeFactory`로 그 호출에만 사는 scope를 연다.**
-생성자 주입 대신 factory를 받고, 사용하는 자리에서 scope를 만들고 닫는다.
+**Spot 안에서 직접 써야 한다면 그 호출에만 사는 scope를 연다.** 생성자 주입 대신
+scope factory를 받고, 사용하는 자리에서 scope를 만들고 닫는다.
+
+**C++만 모양이 다르다.** Spot packet · request handler가 handler class가 아니라 Spot
+member 함수이고, 호출마다 여는 scope 표면도 없다. 짧게 살아야 하는 자원은 그 함수 안에서
+직접 열고 닫는다.
 
 === "C#/.NET"
 
@@ -1449,24 +1453,15 @@ handler는 dispatch마다 scope를 가지므로 ORM을 생성자로 받아도 �
 === "C++"
 
     ```cpp
-    // C++ DI는 handler 생성자 주입으로 필요한 scope를 받는다.
-    // 이 호출 동안만 유지되는 자원은 handler instance와 수명을 같이한다.
-    class save_score_handler_t
+    // C++에는 호출마다 여는 scope 표면이 없다. Spot packet·request handler는
+    // Spot member 함수이고 DI handler class로 등록하지 않는다. 짧게 살아야 하는
+    // 자원은 이 함수 안에서 열고 닫는다.
+    task_t<save_score_reply_t> game_room_t::save_score (const save_score_t &request)
     {
-      public:
-        using dependency_types = dependency_list_t<score_store_t>;
-
-        explicit save_score_handler_t (score_store_t &store) : _store (store) {}
-
-        task_t<save_score_reply_t> handle (game_room_t &spot, const save_score_t &request)
-        {
-            co_await _store.append (spot.context ().spot_id (), request.value);
-            co_return save_score_reply_t{request.value};
-        }
-
-      private:
-        score_store_t &_store;
-    };
+        auto session = _store.open_session (); // 이 호출이 끝나면 함께 닫힌다.
+        co_await session.append (_context.spot_id (), request.value);
+        co_return save_score_reply_t{request.value};
+    }
     ```
 
 === "Java"

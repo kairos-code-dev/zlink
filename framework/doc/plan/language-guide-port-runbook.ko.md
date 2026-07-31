@@ -495,6 +495,24 @@ kotlin은 Java 런타임을 공유하므로 **다른 지점만 쓰고 나머지�
 lifecycle 상태처럼 **값 이름의 표기까지 언어를 따르는 자리**(PascalCase ↔
 SCREAMING_SNAKE)는 이름을 적는 대신 뜻을 적고 "표기는 언어를 따른다"를 덧붙였다.
 
+**게이트 6은 C++부터 돌렸다.** 방법은 이렇다 — 탭 코드에서 handler 선언과 `handle`
+파라미터 수를 뽑아, 그 언어의 실제 계약(.NET·Java·Node는 interface 선언, C++은 concept과
+`static_assert`)과 대조한다. `.NET` 8쌍, Java·Kotlin·Node 각 12쌍은 **전부 맞았다** —
+`.NET`이 `CancellationToken` 하나를 더 받는 차이까지 규칙대로였다.
+
+**C++에서 셋이 틀렸다.** 세 자리 다 이름은 실재하는데 **모양이 계약과 달라 컴파일되지
+않는** 유형이다. 게이트 5(식별자 대조)가 잡지 못하는 자리가 정확히 여기다.
+
+| 자리 | 무엇이 틀렸나 |
+| --- | --- |
+| 09장 typed session handler | `handle (stream, dispatch, payload)` 3개로 적었다. concept은 `handle (stream, payload)` 둘이고 dispatch context는 raw `on_packet` 경로에만 온다 |
+| 06장 §4.2 per-call scope | Spot request를 handler class로 적었다. C++은 Spot member 함수이고 호출마다 여는 scope 표면도 없다 |
+| 08장 actor packet handler | 자유 함수에 spot을 인자로 받았다. Spot member 함수라 spot은 `this`이고 인자는 셋이다 |
+
+두 번째는 `cpp/guide/server/18-di-container` §3이 *"Spot packet과 Actor payload handler는
+Spot member function이므로 DI handler class로 등록하지 않는다"* 고 이미 못박아 둔
+내용이었다. **언어별 장은 맞게 썼는데 공통 정본이 어긋난** 경우다.
+
 **게이트 4를 12장 전부에 돌렸다.** 결과는 아래에 챕터별로 적었다. **틀린 서술은 하나도
 없었고 전부 "빠졌다"였다** — 소유권을 잘못 가리킨 자리 하나(10장 lease 제약)만 예외다.
 빠진 것들의 성격은 한 갈래로 모인다. **개념과 사용법은 잘 적혀 있는데, 그 계약이 어떤
@@ -649,7 +667,7 @@ operation을 `NotifyDisconnected`라 하며 `.NET` exact interface에서는
 | 남은 일 | 규모 |
 | --- | --- |
 | ZoneWorld 샘플 구현 | cpp · java · kotlin. 문서가 아니라 코드 작업이다 |
-| 게이트 6 | 호출 형태 대조. 사람이 읽는다 |
+| 게이트 6 잔여 | C++ 외 네 언어의 호출 형태 대조 |
 
 **병행 트랙 상태.** 사이트는 정본 트리를 docs root로 쓰도록 구성했고 가이드 장의 빌드
 경고가 0이다. 체커는 정본 트리 전체를 보며 탭 언어 완전성을 검사한다. CI는 framework

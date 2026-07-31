@@ -442,8 +442,10 @@ Actor handler는 `Context.BoundSession`으로 현재 bound client에 메시지�
 === "C++"
 
     ```cpp
-    task_t<void> handle (game_room_t &spot, player_actor_t &actor,
-                         const message_context_t &, const state_changed_t &message)
+    // C++ actor handler는 Spot member 함수다. Spot은 this로 받으므로 인자는 셋이다.
+    task_t<void> game_room_t::state_changed (player_actor_t &actor,
+                                             const message_context_t &,
+                                             const state_changed_t &message)
     {
         // 현재 bound session의 local admission까지 기다린다.
         co_await actor.context ().bound_session ()

@@ -2673,3 +2673,80 @@ ST-G6, ST-I1, ST-I4, ST-I5
 이미 존재하므로 왜 동작하지 않는지만 밝히면 된다. 그 경로가 `TryRunDetached`로 분리
 실행되는 점이 눈에 띈다. 이 세션에서 네 번 만난 "예외가 삼켜져 아무 일도 일어나지 않는"
 패턴과 모양이 같다.
+
+## 2026-07-31 dotnet e2e 12개 스위트가 기동조차 못 하던 원인과 baseline
+
+SpotActorTransfer 외의 dotnet e2e 스위트 12개를 처음으로 돌렸더니 전부 기동 단계에서
+실패했다. 원인은 하나였다.
+
+```
+ZLinkConfigurationException: ApplicationHwmBytes uses Auto sizing,
+but no finite process memory limit was ...
+```
+
+`06-framework-api.ko.md`가 이 동작을 규정한다.
+
+> "Auto mode에서 유한한 process memory 상한을 확인하지 못하거나 계산 결과가 양수가
+> 아니면 socket bind 전에 configuration error로 실패한다."
+
+즉 런타임은 스펙대로다. 문제는 e2e 호스트가 컨테이너 밖에서 돌고 이 머신의 cgroup에
+메모리 한도가 없다는 것이다.
+
+### baseline
+
+git 이력으로 확인했다. Auto HWM 계약은 커밋 `00959010f4`
+("advance v11 runtime contract migration", 2026-07-31)에서 들어왔고, 같은 커밋이
+SpotActorTransfer의 host factory에만 `ProcessMemoryLimitBytes = 1 GiB`를 추가했다.
+나머지 스위트는 갱신되지 않았다. 이 커밋은 이번 세션 작업보다 앞선다.
+
+따라서 **12개 스위트는 이번 세션 작업 이전부터 깨져 있었다.** 이번에 32개 host에 같은
+설정을 추가한 것은 그 커밋의 누락을 메운 것이지 회귀 수정이 아니다.
+
+### 남은 문제
+
+기동은 풀렸다. 프로세스가 정상 기동하고 정상 종료하며 stderr도 비어 있다. 그런데
+연결·라우트 준비 증거가 나오지 않아 다음 단계에서 실패한다.
+
+```
+AutomaticTurnDispatch : play-a → delay-a route readiness 3초 타임아웃
+LocationMessaging     : backpressure-consumer route readiness 3초 타임아웃
+PubSub                : sub-1 publisher ConnectionReady 3초 타임아웃
+```
+
+이것이 `00959010f4`의 또 다른 후속 누락인지 더 오래된 상태인지는 아직 모른다. 확인하려면
+`00959010f4^`에서 PubSub 하나를 돌려 비교해야 한다. baseline 없이 고치기 시작하면 무엇을
+고치는지 모르는 채 진행하게 되므로, 그 비교를 먼저 하는 것이 낫다.
+
+`ChannelEgressRouting`은 별개다. 인자 없이 호출하면 selector를 명시하라는 사용법 안내를
+출력한다. 집계 러너가 등록하지 않는 config가 있어 명시 호출이 필요하다.
+
+## 2026-07-31 ST-B2 — recovery는 스케줄되지만 완료 전달까지 가지 않는다
+
+`SchedulePublishedActorRelocationRecovery` 진입부와 완료 전달 직전에 진단을 넣고 ST-B2를
+실행했다.
+
+```
+recovery_scheduled  aggregate=804b11a9-... already_watched=False
+(recovery_completing — 없음)
+```
+
+recovery는 중복 감시로 건너뛴 것이 아니라 **정상적으로 스케줄된다**
+(`already_watched=False`). 그런데 `CompleteRoutedActorHandoffAsync` 직전의
+`recovery_completing`은 찍히지 않는다. 즉 detached task가 완료 전달까지 도달하지 않는다.
+
+주의할 점이 있다. 이 세션에서 "진단이 없다"를 "도달하지 않았다"로 읽어 세 번 틀렸다.
+`recovery_completing`이 있는 경로에도 앞선 조건 분기가 있을 수 있으므로, 다음 단계는
+detached task 시작 직후와 그 안의 분기마다 진단을 넣어 어디서 멈추는지 특정하는 것이다.
+분기 안이 아니라 분기 앞에 조건값과 함께 찍어야 한다.
+
+현재까지 확실한 것은 둘이다. 스펙 §276이 요구하는 "commit 뒤 target 복구 후 Accepted
+전달"이 일어나지 않는다. 그리고 그 경로의 시작점인 recovery 스케줄은 정상 수행된다.
+
+### baseline 시도는 접었다
+
+`00959010f4^`에 worktree를 만들어 PubSub을 돌려 비교하려 했으나 그 시점 소스가 현재
+로컬 패키지·네이티브 상태와 맞지 않아 빌드부터 실패했다. 비용 대비 효과가 없어 접었다.
+
+따라서 12개 스위트의 연결 실패가 언제부터인지는 미확정으로 남는다. 다만 다음 둘은
+확실하다. 기동 실패는 `00959010f4`의 후속 누락이었고 이번에 해소했다. 그리고 그 커밋은
+이번 세션 작업보다 앞서므로 12개 스위트의 실패는 이번 세션이 만든 것이 아니다.

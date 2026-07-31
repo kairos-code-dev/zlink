@@ -1192,6 +1192,12 @@ internal sealed partial class ZLinkFrameworkRuntime
     private void SchedulePublishedActorRelocationRecovery(
         ZLinkRelocationEnvelope envelope)
     {
+        //  Spec 15 requires commit-time recovery to deliver Accepted from the
+        //  target even when the source dies. Both the duplicate-watch skip and
+        //  a detached task that never runs look identical from outside.
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"recovery_scheduled aggregate={envelope.AggregateId} "
+            + $"already_watched={_publishedActorRecoveryWatches.ContainsKey(envelope.AggregateId)}");
         if (!_publishedActorRecoveryWatches.TryAdd(
                 envelope.AggregateId, 0))
             return;
@@ -1296,6 +1302,10 @@ internal sealed partial class ZLinkFrameworkRuntime
                 recovery,
                 cancellationToken)
             .ConfigureAwait(false);
+        //  End of the recovery path: this is what delivers the Accepted
+        //  completion spec 15 requires after a post-commit source failure.
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"recovery_completing candidate={candidate}");
         await CompleteRoutedActorHandoffAsync(
                 recovery.TargetSpotId,
                 new ZLinkRemoteActorHandoffCompletionRequest(

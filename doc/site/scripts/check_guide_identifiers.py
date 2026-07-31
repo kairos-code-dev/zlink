@@ -66,6 +66,11 @@ FENCE_RE = re.compile(r"^\s{4}```(\w*)\s*$")
 # `.foo(` 또는 `.foo (` — 체이닝 호출. C++은 여는 괄호 앞에 공백을 둔다.
 CALL_RE = re.compile(r"\.([A-Za-z_]\w{2,})\s*[(<]")
 
+# `Type::value` · `Type.VALUE` — enum 상수 참조. 언어마다 표기 관례가 달라
+# (C++ snake_case, Java SCREAMING_SNAKE, .NET·Node PascalCase) 옮겨 적을 때
+# 틀리기 쉬운 자리다. 호출과 같은 방식으로 실제 존재를 확인한다.
+ENUM_RE = re.compile(r"\b([A-Z]\w+_t|[A-Z]\w+)\s*(?:::|\.)([a-z_][a-z0-9_]{2,}|[A-Z][A-Za-z0-9_]{2,})\b")
+
 # 언어 표준 라이브러리와 예제용 도메인 이름은 검사 대상이 아니다.
 # framework 표면인지만 본다.
 IGNORE = {
@@ -198,6 +203,20 @@ def main() -> int:
                     unknown.append(
                         f"  [{label}] {doc.name}:{start + offset}: "
                         f"실제 표면에 없는 이름: .{name}(")
+                # enum 상수는 타입 이름이 framework 표면일 때만 본다. 예제가
+                # 만들어 쓰는 도메인 타입까지 따라가면 잡음만 는다.
+                for type_name, member in ENUM_RE.findall(code):
+                    if not type_name.startswith(("ZLink", "zlink")) and not type_name.endswith("_t"):
+                        continue
+                    if type_name not in haystack:
+                        continue
+                    if member in IGNORE or member in ALLOWED_NON_FRAMEWORK:
+                        continue
+                    if member in haystack:
+                        continue
+                    unknown.append(
+                        f"  [{label}] {doc.name}:{start + offset}: "
+                        f"{type_name}에 없는 값: {member}")
 
     if unknown:
         print(f"\n가이드 예제 회귀 {len(unknown)}건:")

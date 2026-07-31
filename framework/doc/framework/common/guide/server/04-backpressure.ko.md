@@ -167,19 +167,35 @@ send는 응답을 기다리지 않지만, 기다려야 하는 대상이 하나 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    co_await client.send_to_channel ("orders", cancel_order_t{"order-1042"}).submit ();
+    // 이 co_await가 끝났다는 것은 "내 runtime이 제출을 받아들였다"까지다.
+    // 상대가 받았거나 handler가 끝났다는 뜻이 아니다.
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    client.sendToChannel("orders", new CancelOrder("order-1042")).submit().toCompletableFuture().join();
+    // 이 완료는 "내 runtime이 제출을 받아들였다"까지다.
+    // 상대가 받았거나 handler가 끝났다는 뜻이 아니다.
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    client.sendToChannel("orders", CancelOrder("order-1042")).submit().await()
+    // 이 await가 끝났다는 것은 "내 runtime이 제출을 받아들였다"까지다.
+    // 상대가 받았거나 handler가 끝났다는 뜻이 아니다.
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    await client.sendToChannel('orders', cancelOrder('order-1042')).submit();
+    // 이 await가 끝났다는 것은 "내 runtime이 제출을 받아들였다"까지다.
+    // 상대가 받았거나 handler가 끝났다는 뜻이 아니다.
+    ```
 
 
 자리가 없으면 즉시 실패하지 않고 `DefaultSocketSendTimeout`(기본 1초)까지 기다린다. 그
@@ -206,19 +222,62 @@ send는 응답을 기다리지 않지만, 기다려야 하는 대상이 하나 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    try {
+        co_await client.send_to_channel ("orders", command).submit ();
+    } catch (const framework_exception_t &ex) {
+        if (ex.kind () != framework_error_kind_t::deadline_exceeded)
+            throw;
+        // 이 시점에 확실한 것은 "제출되지 않았다" 하나다. 상대 상태는 알 수 없다.
+        // C++은 3단계 advice 대신 is_retriable() 하나로 알려 준다.
+        if (ex.is_retriable ())
+            _pending.push_back (command);
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    try {
+        client.sendToChannel("orders", command).submit().toCompletableFuture().join();
+    } catch (ZLinkFrameworkException ex) {
+        if (ex.kind() != ZLinkFrameworkErrorKind.DeadlineExceeded) {
+            throw ex;
+        }
+        // 이 시점에 확실한 것은 "제출되지 않았다" 하나다. 상대 상태는 알 수 없다.
+        // Java는 3단계 advice 대신 retriable() 하나로 알려 준다.
+        if (ex.retriable()) {
+            pending.add(command);
+        }
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    try {
+        client.sendToChannel("orders", command).submit().await()
+    } catch (ex: ZLinkFrameworkException) {
+        if (ex.kind() != ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED) throw ex
+        // 이 시점에 확실한 것은 "제출되지 않았다" 하나다. 상대 상태는 알 수 없다.
+        // Kotlin은 Java 표면을 그대로 쓰므로 retriable() 하나로 알려 준다.
+        if (ex.retriable()) pending += command
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    try {
+      await client.sendToChannel('orders', command).submit();
+    } catch (ex) {
+      if (!(ex instanceof ZLinkFrameworkException)) throw ex;
+      if (ex.kind !== ZLinkFrameworkErrorKind.DeadlineExceeded) throw ex;
+      // 이 시점에 확실한 것은 "제출되지 않았다" 하나다. 상대 상태는 알 수 없다.
+      // Node는 3단계 advice 대신 isRetriable 하나로 알려 준다.
+      if (ex.isRetriable) pending.push(command);
+    }
+    ```
 
 
 다시 보내도 되는지는 application이 업무 규칙에 따라 판단한다. **같은 명령이 두 번 도착해도
@@ -256,19 +315,65 @@ request는 보낼 자리와 상대의 reply를 모두 기다리므로, 정체가
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    task_t<place_order_reply_t> handle (const place_order_t &request)
+    {
+        // handler가 reply를 기다리는 동안 이 handler의 실행 자리는 계속 점유된다.
+        // 양쪽 node의 처리가 동시에 지연되면 유한한 timeout이 회복을 시작하는 유일한 지점이다.
+        auto reserved = co_await _client
+                          .request_to_channel ("inventory",
+                                               reserve_stock_t{request.sku, request.quantity})
+                          .timeout (std::chrono::seconds (3))
+                          .submit<stock_reserved_t> ();
+
+        co_return place_order_reply_t{request.order_id, reserved.reservation_id};
+    }
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    public CompletionStage<PlaceOrderReply> handle(PlaceOrder request, ZLinkMessageContext context) {
+        // handler가 reply를 기다리는 동안 이 handler의 실행 자리는 계속 점유된다.
+        // 양쪽 node의 처리가 동시에 지연되면 유한한 timeout이 회복을 시작하는 유일한 지점이다.
+        return client
+            .requestToChannel("inventory", new ReserveStock(request.sku(), request.quantity()))
+            .timeout(Duration.ofSeconds(3))
+            .submit(StockReserved.class)
+            .thenApply(reserved -> new PlaceOrderReply(request.orderId(), reserved.reservationId()));
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    suspend fun handle(request: PlaceOrder, context: ZLinkMessageContext): PlaceOrderReply {
+        // handler가 reply를 기다리는 동안 이 handler의 실행 자리는 계속 점유된다.
+        // 양쪽 node의 처리가 동시에 지연되면 유한한 timeout이 회복을 시작하는 유일한 지점이다.
+        val reserved = client
+            .requestToChannel("inventory", ReserveStock(request.sku, request.quantity))
+            .timeout(Duration.ofSeconds(3))
+            .submit(StockReserved::class.java)
+            .await()
+
+        return PlaceOrderReply(request.orderId, reserved.reservationId)
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    async handle(request: PlaceOrder, context: ZLinkMessageContext): Promise<PlaceOrderReply> {
+      // handler가 reply를 기다리는 동안 이 handler의 실행 자리는 계속 점유된다.
+      // 양쪽 node의 처리가 동시에 지연되면 유한한 timeout이 회복을 시작하는 유일한 지점이다.
+      const reserved = await this.client
+        .requestToChannel('inventory', reserveStock(request.sku, request.quantity))
+        .timeout(3000)
+        .submit<StockReserved>();
+
+      return placeOrderReply(request.orderId, reserved.reservationId);
+    }
+    ```
 
 
 timeout은 backpressure를 조절하는 수단이 아니라 **더 기다리지 않는 경계**다. 호출자가
@@ -455,19 +560,35 @@ Framework는 다음 message의 크기를 미리 알 수 없으므로 **byte를 �
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // C++은 수준을 message flow log mode로 지정한다.
+    options.configure_dispatch ()
+      .message_flow (message_flow_log_mode_t::errors_only); // 기본값 — error와 backpressure를 기록한다.
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // Java는 수준을 message flow log mode로 지정한다.
+    options.configureDispatch()
+        .messageFlow(ZLinkMessageFlowLogMode.ERRORS_ONLY); // 기본값 — error와 backpressure를 기록한다.
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // Kotlin은 Java 표면을 그대로 쓴다.
+    options.configureDispatch()
+        .messageFlow(ZLinkMessageFlowLogMode.ERRORS_ONLY) // 기본값 — error와 backpressure를 기록한다.
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // Node는 수준을 message flow log mode로 지정한다.
+    builder.configureDispatch()
+      .messageFlow(ZLinkMessageFlowLogMode.ErrorsOnly); // 기본값 — error와 backpressure를 기록한다.
+    ```
 
 
 message flow 기록에 `backpressured`가 남았다면 보낼 자리를 기다리는 일이 실제로 일어났다는

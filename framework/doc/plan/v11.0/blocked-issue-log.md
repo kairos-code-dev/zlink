@@ -4774,3 +4774,45 @@ Requester의 flow log가 0줄이라 inbound를 관측하지 못했는데, 이 ho
 다음 단계는 그 구분이다.
 
 Protobuf mismatch 자체는 정상 동작한다. Server가 `PayloadDecode`로 거부한다.
+
+### RC-B5: reply가 submit되는데 caller의 Core는 TimedOut으로 끝난다
+
+앞 절에서 미뤄 둔 구분("flow log가 비어 있는 것이 listener 미등록인지 실제 미도달인지")을
+정리한다. 두 host 모두 `E2eMessageFlowListener`를 등록한다. Requester의 flow log가 빈 것은
+이 listener가 inbound dispatch만 기록하기 때문이며(PubSub publisher의 flow log도 0줄이다)
+도착 여부의 근거가 되지 않는다.
+
+대신 `ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1`로 양쪽을 찍었다.
+
+```
+json-only  : [spot-discovery] route_reply_send channel=reg-codec
+json-only  : flow phase=replied surface=Channel kind=Request packet=EchoJson
+requester  : [spot-discovery] managed_operation_completed operation=...0001 kind=ChannelRequest
+requester  : [spot-discovery] managed_operation_completed operation=...0002 kind=ChannelRequest
+```
+
+`ZLinkChannelRequestDispatchPipeline`에서 `phase=replied`는 `await reply(...)`가 정상
+반환한 **뒤에** 찍힌다. 즉 server는 reply를 submitter에 넘기는 데 성공했다. 그런데
+requester의 두 operation은 `CompleteManagedOperation`으로 끝나고 caller가 받는 결과는
+`TimedOut`이다.
+
+정리하면 **reply가 server에서 submit되고 caller에 도달하지 않는다.** 같은 스위트의 다른
+10개 시나리오는 정상이므로 reply 경로 전반이 아니라 이 manual host 쌍에 한정된다.
+Protobuf mismatch 자체는 server가 `PayloadDecode`로 올바르게 거부한다.
+
+앞 절에서 의심했던 codec 비대칭은 근거가 약하다. `ZLinkCodecRegistryBuilder`의 type 해석은
+serializer별 `canSerialize` 술어로 이루어지고 `EchoRes`는 어느 쪽도 주장하지 않아 기본
+JSON으로 떨어진다.
+
+### SpotService: port 충돌 한 번, 그 다음은 evidence timeout
+
+첫 실행은 gateway가 `address already in use`로 죽었다. Runner가 고른 port를 다른
+프로세스가 먼저 잡은 harness 경합이며 재실행에서 재현되지 않았다.
+
+재실행은 `sm-b1-b2-b3-b5` operation group에서 멈춘다.
+
+```
+play-a: System.TimeoutException: Timed out waiting for spot service evidence.
+```
+
+아직 조사하지 않았다.

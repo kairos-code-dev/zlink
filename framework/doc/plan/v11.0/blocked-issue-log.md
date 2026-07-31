@@ -5691,3 +5691,25 @@ Automatic RID로 바뀐 뒤 `rid=play-a|`는 `rid=play-a-<uuid>|`와 일치하�
 따라서 SM-B1의 evidence 검사는 두 곳을 고쳐야 한다. `entry-joined`는 session host에서
 찾아야 하고, rid 비교는 prefix를 허용해야 한다. 시나리오 signature에 session client가
 없으므로 호출부까지 바뀐다. 여기서는 placement 대기까지만 반영했다.
+
+### SM-B1·SM-B2 통과, SpotService 7개로
+
+앞 절의 evidence 분석대로 고쳤다. `entry-created`는 play host에 harness role 이름으로,
+`entry-joined`는 session host에 actor의 mesh RID로 남으므로 각각 그 host에 묻는다.
+SM-B2도 같은 형태여서 같은 수정을 적용했다. Placement 대기와 합쳐 **7개 operation이
+통과**하고 SM-B6에서 멈춘다.
+
+SM-B6는 다시 placement 가정이다.
+
+```
+spot-actor-left|rid=play-b|spot=spot-sm-b6-e08e947f14654   (play-b.evidence.log)
+play-a.evidence.log : 0건
+```
+
+시나리오는 `rid=play-a`로 play-a에 묻는다. Marker 형식 자체는 맞다. Play host가
+`evidence.Rid`(harness role 이름)로 남기므로 automatic RID와 무관하다. 어긋난 것은 spot이
+놓인 node다.
+
+SM-B1에서 배운 방식이 그대로 적용된다. 공통 e2e 문서의 SM-B6 절차를 먼저 확인해 어느
+node에 spot이 있어야 하는지 읽고, 필요하면 placement weight로 고정한 뒤 그 node에 물어야
+한다. 코드에서 의도를 추측하지 않는다.

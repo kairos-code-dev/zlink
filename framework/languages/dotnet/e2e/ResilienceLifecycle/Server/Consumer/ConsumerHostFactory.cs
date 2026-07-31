@@ -13,7 +13,6 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Eventing;
 
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Locations;
@@ -90,7 +89,7 @@ internal static class ConsumerHostFactory
                 var peers = await query.ListTopologyAsync(
                     new ZLinkLocationTopologyFilter(ResilienceLifecycleNames.Channel));
                 var matches = peers.Items
-                    .Where(peer => peer.NodeRid == RoutingId.From(request.RoutingId)
+                    .Where(peer => MatchesRole(peer.NodeRid.ToString(), request.RoutingId)
                                    && (request.ExpectedWeight is null
                                        || request.ExpectedWeight == 0)
                                    && (request.ExpectedDraining is null
@@ -200,6 +199,13 @@ internal static class ConsumerHostFactory
         });
         return app;
     }
+
+    // Automatic RIDs are 'prefix-<uuid v4>' (spec 13 §3.1), so the provider
+    // role name a probe asks about is the prefix, not the whole RID. The
+    // trailing separator keeps 'api-a' from matching an 'api-ab' node.
+    static bool MatchesRole(string nodeRid, string role) =>
+        nodeRid.Equals(role, StringComparison.Ordinal)
+        || nodeRid.StartsWith(role + "-", StringComparison.Ordinal);
 
     // A caller joins the providers' RouteMesh with its own membership and
     // issues ChannelName select-one calls through IZLinkRouteClient. The bind

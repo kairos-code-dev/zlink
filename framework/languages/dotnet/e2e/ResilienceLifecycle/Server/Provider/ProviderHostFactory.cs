@@ -64,7 +64,7 @@ internal static class ProviderHostFactory
                 .SetLevel(ZLinkDiagnosticsLevel.Normal);
             var mesh = framework.AddRouteMesh(ResilienceLifecycleNames.Channel)
                 .Listen(Require(options.ChannelEndpoint, "ChannelEndpoint"))
-                .SetRoutingId(RoutingId.From(options.Rid));
+                .SetRoutingIdPrefix(options.Rid);
             mesh.Channel(ResilienceLifecycleNames.Channel).Server()
                 .SetWeight(options.Weight)
                 .AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq")

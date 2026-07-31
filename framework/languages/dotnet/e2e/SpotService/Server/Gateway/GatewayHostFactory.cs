@@ -547,7 +547,7 @@ internal sealed record GatewayOptions(
     string? ExternalSpotEndpoint = null,
     string? SpotPeerAEndpoint = null,
     string? SpotPeerBEndpoint = null,
-    int SpotPublisherSendHighWaterMark = 1,
+    ulong SpotPublisherSendHighWaterMark = 1,
     int SpotPublisherSendTimeoutMilliseconds = 250)
 {
     public static GatewayOptions Parse(string[] args)

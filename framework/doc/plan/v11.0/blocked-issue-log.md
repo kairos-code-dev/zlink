@@ -5106,3 +5106,44 @@ metric 대기 timeout이었다.
 placement를 고정하므로 방향 자체는 매 실행 같고, 무엇이 두 모드를 가르는지는 아직 모른다.
 
 다음 단계는 모드 A가 재현될 때까지 flag를 켠 채 반복 실행해 exception을 확보하는 것이다.
+
+### OBS-B2 모드 A 근본 원인: target에서 handoff commit이 닫힌 admission을 만난다
+
+Flag를 켜고 OBS-B2만 4회 반복해 모드 A를 재현했다(3/4회 재현, 1회는 모드 B).
+
+```
+run1 InternalFailure   deferred_join_failed=1
+run2 InternalFailure   deferred_join_failed=1
+run3 timeout           deferred_join_failed=0
+run4 InternalFailure   deferred_join_failed=1
+```
+
+Framework가 심어 둔 두 진단이 사슬을 그대로 보여 준다. Source 쪽:
+
+```
+deferred_join_failed kind=InternalFailure retriable=False
+  ZLinkActorHandoffRejectedException: Actor 'obs-b2-...' handoff commit was rejected.
+```
+
+Target 쪽:
+
+```
+handoff_commit_failed actor=obs-b2-... spot=room-b2-target-...
+  ZLinkFrameworkException: Actor dispatch admission is closed for a terminal lifecycle transition.
+```
+
+즉 target node에서 handoff commit이 진행되는 동안 그 actor state의 dispatch admission이
+terminal lifecycle 전이를 위해 이미 닫혀 있다. `ZLinkActorDispatchMailbox.EnterAsync`가
+`_admissionClosed`를 보고 `NotFound`를 던지고, commit 경로가 이것을 잡아 rejected reply를
+만들며, source가 그것을 `InternalFailure`로 완료한다.
+
+`CloseAdmissionAndReserveLifecycleBarrier`를 호출하는 곳은 둘이다.
+`BeginHandlerActivationCompletion`과 `InvalidateRuntimeGenerationAfterDispatchesAsync`.
+어느 쪽이 commit과 겹치는지는 아직 좁히지 않았다.
+
+이것은 e2e 구성 문제가 아니라 target actor lifecycle과 handoff commit 사이의 경합이다.
+간헐적이라는 점도 경합과 맞는다. Runtime lifecycle 코드를 더 근거 없이 건드리지 않고
+사슬을 기록해 둔다.
+
+두 진단 모두 "완료 결과가 kind만 담아서 원인이 사라진다"는 이유로 미리 심어 둔 것이다.
+이번 조사가 그 의도대로 동작했다.

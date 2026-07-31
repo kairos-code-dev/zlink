@@ -41,6 +41,11 @@ theme:
   icon:
     repo: fontawesome/brands/github
 
+# 다이어그램 안 글씨를 키운다. 폰트만 올리면 자연폭이 함께 늘어 축소율이 나빠지므로
+# 폰트와 간격 상수를 같이 조정한다. 자세한 이유는 hook 파일 머리말에.
+hooks:
+  - hooks/mermaid_size.py
+
 plugins:
   - search
   - i18n:

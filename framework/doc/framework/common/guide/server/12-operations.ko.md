@@ -45,19 +45,37 @@ framework는 `"zlink.framework"`라는 이름의 `System.Diagnostics.Metrics.Met
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // C++은 언어 표준 메트릭 파이프라인이 없으므로 monitoring 표면에서 직접 읽어
+    // 쓰는 exporter에 넘긴다. 계기 이름은 다른 언어와 같다.
+    auto status = runtime.status ();
+    // status의 inbound_dispatch 값을 앱의 exporter로 내보낸다.
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // Micrometer 등 앱이 쓰는 registry에 zlink 계기를 연결한다.
+    // "zlink.framework"가 Framework가 계기를 방출하는 정식 meter 이름이다.
+    Metrics.addRegistry(prometheusRegistry);
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // Kotlin도 Java와 같은 registry를 쓴다.
+    // "zlink.framework"가 Framework가 계기를 방출하는 정식 meter 이름이다.
+    Metrics.addRegistry(prometheusRegistry)
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // OpenTelemetry Node SDK에 zlink meter를 연결한다.
+    // "zlink.framework"가 Framework가 계기를 방출하는 정식 meter 이름이다.
+    const meterProvider = new MeterProvider({ readers: [prometheusExporter] });
+    meterProvider.getMeter('zlink.framework');
+    ```
 
 
 - zlink 전용 메트릭 API는 없다. 각 언어의 표준 메트릭 API가 그대로 표면이다.
@@ -231,19 +249,68 @@ SpotId direct 호출에 Instance intent를 붙였을 때만 시작한다([06-spo
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    relocation_options_t relocation;
+    relocation.mode = relocation_mode_t::rolling_update;
+    relocation.target_application_version = 12;              // 지정한 새 버전의 eligible node만 사용한다.
+    relocation.deadline = std::chrono::seconds (25);
+
+    auto result = co_await runtime.relocate (relocation);
+    if (result.outcome == relocation_outcome_t::relocated)
+        co_await runtime.shutdown (std::chrono::seconds (10));
+    else
+        _logger.error ("host relocation blocked");
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    ZLinkFrameworkRelocationResult result = runtime.relocate(
+        new ZLinkFrameworkRelocationOptions(
+            ZLinkFrameworkRelocationMode.ROLLING_UPDATE,
+            12L,                            // 지정한 새 버전의 eligible node만 사용한다.
+            Duration.ofSeconds(25)))
+        .toCompletableFuture().join();
+
+    if (result.outcome() == ZLinkFrameworkRelocationOutcome.RELOCATED) {
+        runtime.shutdown(Duration.ofSeconds(10)).toCompletableFuture().join();
+    } else {
+        logger.error("host relocation blocked: {}", result.reason());
+    }
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    val result = runtime.relocate(
+        ZLinkFrameworkRelocationOptions(
+            ZLinkFrameworkRelocationMode.ROLLING_UPDATE,
+            12L,                            // 지정한 새 버전의 eligible node만 사용한다.
+            Duration.ofSeconds(25)))
+        .await()
+
+    if (result.outcome() == ZLinkFrameworkRelocationOutcome.RELOCATED) {
+        runtime.shutdown(Duration.ofSeconds(10)).await()
+    } else {
+        logger.error("host relocation blocked: {}", result.reason())
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    const result = await runtime.relocate({
+      mode: ZLinkFrameworkRelocationMode.RollingUpdate,
+      targetApplicationVersion: 12n,   // 지정한 새 버전의 eligible node만 사용한다.
+      deadlineMs: 25_000
+    });
+
+    if (result.outcome === ZLinkFrameworkRelocationOutcome.Relocated) {
+      await runtime.shutdown({ deadlineMs: 10_000 });
+    } else {
+      logger.error(`host relocation blocked: ${result.reason}`);
+    }
+    ```
 
 
 `PlannedMaintenance`는 source와 같은 application version의 target만 사용한다.
@@ -265,19 +332,35 @@ Readiness는 host framework runtime의 준비 여부와 업무에 필요한 comp
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // readiness endpoint는 host runtime의 상태 하나만 본다.
+    const bool ready = runtime.status ().is_ready;
+    // ready가 false면 503을 응답한다.
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // readiness endpoint는 host runtime의 상태 하나만 본다.
+    boolean ready = runtime.status().isReady();
+    // ready가 false면 503을 응답한다.
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // readiness endpoint는 host runtime의 상태 하나만 본다.
+    val ready = runtime.status().isReady
+    // ready가 false면 503을 응답한다.
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // readiness endpoint는 host runtime의 상태 하나만 본다.
+    const ready = runtime.status.isReady;
+    // ready가 false면 503을 응답한다.
+    ```
 
 
 Kubernetes 배포에 연결하면 다음 개념이 된다.
@@ -305,19 +388,31 @@ Kubernetes 배포에 연결하면 다음 개념이 된다.
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    mesh_options.placement_weight (0);              // 새 object 배치 대상에서 제외
+    mesh_options.channel ("game.room").weight (0);  // 새 channel select-one 대상에서 제외
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    meshOptions.mesh("game.room").setPlacementWeight(0); // 새 object 배치 대상에서 제외
+    meshOptions.channel("game.room").setWeight(0);      // 새 channel select-one 대상에서 제외
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    meshOptions.mesh("game.room").setPlacementWeight(0) // 새 object 배치 대상에서 제외
+    meshOptions.channel("game.room").setWeight(0)      // 새 channel select-one 대상에서 제외
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    meshOptions.mesh('game.room').placementWeight = 0; // 새 object 배치 대상에서 제외
+    meshOptions.channel('game.room').weight = 0;       // 새 channel select-one 대상에서 제외
+    ```
 
 
 두 weight는 독립적이며 실행 중 새 선택에 반영된다. Placement weight는 Actor·Spot create와 relocation
@@ -344,19 +439,50 @@ component 이벤트 스트림을 제공한다. Host termination은 framework run
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // 노드·peer·channel의 immutable 현재 상태
+    auto snapshot = mesh_runtime.snapshot ("game.room");
+    const bool ready = mesh_runtime.is_ready ("game.room");
+
+    // state/peer 전이가 순서대로 온다. capacity를 넘기면 느린 관찰자는 건너뛴다.
+    auto observation = mesh_runtime.observe (
+      "game.room", 64, [] (const mesh_node_snapshot_t &next) { record (next); });
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // 노드·peer·channel의 immutable 현재 상태
+    ZLinkMeshNodeSnapshot snapshot = meshRuntime.snapshot("game.room");
+    boolean ready = meshRuntime.isReady("game.room");
+
+    // state/peer 전이가 순서대로 온다 — 상태 표면의 공통 규칙은 `11. Monitoring` 장 §2를 참고한다.
+    meshRuntime.observe("game.room", 64).subscribe(subscriber);
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // 노드·peer·channel의 immutable 현재 상태
+    val snapshot = meshRuntime.snapshot("game.room")
+    val ready = meshRuntime.isReady("game.room")
+
+    // state/peer 전이가 순서대로 온다 — 상태 표면의 공통 규칙은 `11. Monitoring` 장 §2를 참고한다.
+    meshRuntime.observe("game.room", 64).subscribe(subscriber)
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    // 노드·peer·channel의 immutable 현재 상태
+    const snapshot = meshRuntime.snapshot('game.room');
+    const ready = meshRuntime.isReady('game.room');
+
+    for await (const next of meshRuntime.observe('game.room', 64, signal)) {
+      // state/peer 전이가 sequence 순서로 온다 — 상태 표면의 공통 규칙은
+      // `11. Monitoring` 장 §2를 참고한다.
+    }
+    ```
 
 
 ## 6. Host lifecycle
@@ -410,19 +536,48 @@ runtime은 component snapshot을 제공하지만 별도 termination authority나
 
 === "C++"
 
-    C++ 예제는 준비 중이다.
+    ```cpp
+    // Host 전체 state, effective intent와 terminal outcome을 순서대로 기록한다.
+    auto observation = runtime.observe (
+      64, [&] (const framework_runtime_status_t &status) {
+          _logger.info ("host lifecycle state changed");
+      });
+    ```
 
 === "Java"
 
-    Java 예제는 준비 중이다.
+    ```java
+    // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
+    runtime.observe().subscribe(new Flow.Subscriber<ZLinkFrameworkRuntimeStatus>() {
+        @Override
+        public void onNext(ZLinkFrameworkRuntimeStatus status) {
+            logger.info("host lifecycle: {} {} {}",
+                status.state(), status.relocationResult(), status.terminationResult());
+        }
+        // onSubscribe · onError · onComplete는 생략했다.
+    });
+    ```
 
 === "Kotlin"
 
-    Kotlin 예제는 준비 중이다.
+    ```kotlin
+    // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
+    runtime.observe().asFlow().collect { status ->
+        logger.info("host lifecycle: {} {} {}",
+            status.state(), status.relocationResult(), status.terminationResult())
+    }
+    ```
 
 === "Node/TypeScript"
 
-    Node 예제는 준비 중이다.
+    ```typescript
+    for await (const status of runtime.observe(signal)) {
+      // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
+      logger.log(
+        `host lifecycle: ${status.state} ${status.relocationResult} ${status.terminationResult}`
+      );
+    }
+    ```
 
 
 `ZLinkFrameworkRuntimeState`의 `Preparing`·`Serving`·`Relocating`·`Relocated`·`Draining`·`Stopped`·`Error`를
